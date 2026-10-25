@@ -21,7 +21,7 @@ import type { Log } from "../src/run/log.ts"
 import { footprintOf, make as makePredictor, type Predictor } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make, type Scheduler } from "../src/run/schedule.ts"
-import type { Beads, Issue } from "../src/services/Beads.ts"
+import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -114,7 +114,7 @@ const scheduler = (options: { readonly concurrent: number; readonly footprints?:
     return { schedule, predictor, changed, started: Ref.get(started) }
   })
 
-const phase = (id: string) =>
+const phase = (id: TicketId) =>
   Effect.map(
     Effect.flatMap(Ledger, (ledger) => ledger.current),
     (state) => {
@@ -130,7 +130,7 @@ const records = Effect.flatMap(Captured, (captured) => captured.records)
 describe("the predictor organ", () => {
   test("is asked with the ticket and the repository's files, the ticket's ID outside the tags", () => {
     const ticket: Issue = {
-      id: "t-1",
+      id: "t-1" as TicketId,
       title: "Make the greeting friendlier",
       description: "Say hello by name.",
       design: "",
@@ -299,7 +299,7 @@ describe("a ticket naming nothing", () => {
 
 describe("a predicted footprint", () => {
   test("is the run's prediction when bd hasn't handed back the one kept on the ticket", () => {
-    const ticket = { id: "t-1", title: "Say hello" } as const
+    const ticket = { id: "t-1" as TicketId, title: "Say hello" } as const
     const bare: Issue = {
       ...ticket,
       description: "",
@@ -317,7 +317,7 @@ describe("a predicted footprint", () => {
       createdAt: "2026-10-17T00:00:00Z",
       closeReason: "",
     }
-    const predicted = new Map([["t-1", ["src/a.ts"]]])
+    const predicted = new Map([["t-1" as TicketId, ["src/a.ts"]]])
     expect(showFootprint(footprintOf(bare, repository, new Map()))).toBe("nothing named")
     expect(showFootprint(footprintOf(bare, repository, predicted))).toBe("src/a.ts (predicted)")
     // A ticket naming something keeps its own footprint.
@@ -335,7 +335,7 @@ describe("a predicted footprint", () => {
         yield* flush
         yield* (yield* Backlog).put({ id: "t-2", metadata: files("src/a.ts") })
         yield* schedule.fillTrying
-        return [yield* started, yield* phase("t-2"), yield* texts] as const
+        return [yield* started, yield* phase("t-2" as TicketId), yield* texts] as const
       }),
     )
     const [started, held, lines] = result
@@ -359,7 +359,7 @@ describe("a predicted footprint", () => {
         )
         yield* flush
         yield* schedule.fillTrying
-        return [yield* started, yield* phase("t-2"), yield* texts] as const
+        return [yield* started, yield* phase("t-2" as TicketId), yield* texts] as const
       }),
     )
     const [started, held, lines] = result

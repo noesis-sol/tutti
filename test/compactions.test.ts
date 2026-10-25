@@ -3,6 +3,7 @@
 // logs it (`A's worker's context was compacted (auto)`), with an `info` record. Through the live
 // host's callbacks, fired by the fake Claude Code (test/fixtures/fake-claude/claude.ts), and in a
 // whole run, where the reviewer is told how often the worker was compacted.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -22,6 +23,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import { reportsDir } from "../src/run/report.ts"
 import { finish, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, hook, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -59,7 +61,7 @@ const compactionInfos = Effect.map(
 )
 
 /** Takes `ticket` into the ledger and dispatches it, as the run does. */
-const dispatched = (ticket: string) =>
+const dispatched = (ticket: TicketId) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.transition(ticket, Move.Ready(), { title: `Ticket ${ticket}` })
@@ -67,7 +69,7 @@ const dispatched = (ticket: string) =>
   })
 
 /** The ticket's compactions tally now. */
-const tallyOf = (ticket: string) =>
+const tallyOf = (ticket: TicketId) =>
   Effect.map(
     Effect.flatMap(Ledger, (ledger) => ledger.current),
     (state) => state.tickets.get(ticket)?.tallies.compactions,
@@ -91,26 +93,29 @@ describe("the live host's PreCompact callback", () => {
     const config = appConfig({ claude: fake, settings: defaultSettings }, dir)
     const seen = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* dispatched("t-5")
+        yield* dispatched("t-5" as TicketId)
         yield* Effect.forkChild(noteCompactions, { startImmediately: true })
         const agents = yield* AgentHost
-        yield* agents.start("t-5", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* agents.send("t-5", { text: "Work on t-5.", from: "clientComposed" })
-        const idle = yield* agents.state("t-5").pipe(
+        yield* agents.start("t-5" as TicketId, {
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          cwd: dir,
+        })
+        yield* agents.send("t-5" as TicketId, { text: "Work on t-5.", from: "clientComposed" })
+        const idle = yield* agents.state("t-5" as TicketId).pipe(
           Stream.filter((s) => s._tag === "Idle"),
           Stream.runHead,
           Effect.timeout(Duration.seconds(10)),
         )
         // The callbacks record in fibers of their own: wait for both to be counted.
         const counted = yield* (yield* Ledger).changes.pipe(
-          Stream.filter((state) => state.tickets.get("t-5")?.tallies.compactions === 2),
+          Stream.filter((state) => state.tickets.get("t-5" as TicketId)?.tallies.compactions === 2),
           Stream.runHead,
           Effect.timeout(Duration.seconds(10)),
         )
         return {
           idle: Option.isSome(idle),
           counted: Option.isSome(counted),
-          tally: yield* tallyOf("t-5"),
+          tally: yield* tallyOf("t-5" as TicketId),
           lines: yield* compactionLines,
           infos: yield* compactionInfos,
         }
@@ -155,17 +160,17 @@ describe("noteCompaction", () => {
   test("a worker whose ticket the run hasn't taken up, as the probe's, is neither counted nor logged", async () => {
     const seen = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* dispatched("t-1")
-        yield* noteCompaction({ ticket: "probe", trigger: "auto" })
+        yield* dispatched("t-1" as TicketId)
+        yield* noteCompaction({ ticket: "probe" as TicketId, trigger: "auto" })
         return {
           tickets: [...(yield* (yield* Ledger).current).tickets.keys()],
-          tally: yield* tallyOf("t-1"),
+          tally: yield* tallyOf("t-1" as TicketId),
           lines: yield* compactionLines,
           infos: yield* compactionInfos,
         }
       }).pipe(Effect.provide(ledgerLayer())),
     )
-    expect(seen.tickets).toEqual(["t-1"])
+    expect(seen.tickets).toEqual(["t-1" as TicketId])
     expect(seen.tally).toBe(0)
     expect(seen.lines).toEqual([])
     expect(seen.infos).toEqual([])
@@ -174,8 +179,8 @@ describe("noteCompaction", () => {
   test("a trigger that isn't one word is logged as one sanitised line", async () => {
     const lines = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* dispatched("t-1")
-        yield* noteCompaction({ ticket: "t-1", trigger: "auto\n\u001b[31mred" })
+        yield* dispatched("t-1" as TicketId)
+        yield* noteCompaction({ ticket: "t-1" as TicketId, trigger: "auto\n\u001b[31mred" })
         return yield* compactionLines
       }).pipe(Effect.provide(ledgerLayer())),
     )
@@ -200,7 +205,7 @@ describe("a whole run", () => {
         [
           ...bash(
             "bd update t-1 --claim",
-            Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+            Effect.asVoid(Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true }))),
           ),
           hook(preCompact("auto")),
           ...bash(
@@ -211,7 +216,10 @@ describe("a whole run", () => {
               ),
             ),
           ),
-          ...bash("bd close t-1", Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done")))),
+          ...bash(
+            "bd close t-1",
+            Effect.asVoid(Effect.orDie(world.beads.close("t-1" as TicketId, "done"))),
+          ),
         ],
         result("Closed t-1."),
       )

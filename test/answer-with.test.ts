@@ -13,9 +13,10 @@ import {
 import { howToAnswer } from "../src/answer/answer.ts"
 import { answerWith } from "../src/answer/answerWith.ts"
 import * as log from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
 const base = {
-  ticket: "tut-1",
+  ticket: "tut-1" as TicketId,
   defaultToNo: false,
   suppressAlwaysAllowRule: false,
   createdAt: Date.UTC(2026, 9, 22, 10),

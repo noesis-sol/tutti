@@ -8,6 +8,7 @@
 // to each one's API-equivalent dollars, which weigh the model and the cache's reads roughly as the
 // limits do. It overstates while the account is used beside the run, which tutti can't see.
 import type { ContextUsage } from "../agent/contextUsage.ts"
+import type { TicketId } from "../services/Beads.ts"
 import type { TokensByModel } from "./events.ts"
 // Types alone from spending.ts: the UI reads this module, and Spending's needs the EventStream's.
 import type { Spent, Sums } from "./spending.ts"
@@ -31,7 +32,7 @@ export interface WindowShare {
 
 /** What a ticket's worker consumes, for its view's resource line and its breakdown. */
 export interface Resources {
-  readonly ticket: string
+  readonly ticket: TicketId
   /** When the run took the ticket up, in epoch milliseconds: its worker's time counts from then. */
   readonly took: number
   /** What its workers' turns spent in the run. */
@@ -76,7 +77,7 @@ export const windowShare = (
 
 /** What `resourcesOf` reads, for one ticket. */
 export interface ResourceInputs {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly took: number
   readonly compactions: number
   readonly sums: Sums

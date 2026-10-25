@@ -1,6 +1,7 @@
 // The Store's commit (§ 3.3), shared by its live layer and its test layer: the changes applied in
 // turn, the run stamped, and the state round-tripped through state.json's text, so a state that
 // can't be written fails in tests as it does live.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -9,6 +10,7 @@ import { BunFileSystem } from "@effect/platform-bun"
 import { Effect, Exit, type FileSystem, type Layer, Result, type Schema } from "effect"
 import fc from "fast-check"
 import { phaseNames } from "../src/run/events.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   commit,
   emptyState,
@@ -111,7 +113,7 @@ describe.each(layers)("the %s layer", (_, layer) => {
     const exit = await runStore(
       Effect.gen(function* () {
         const store = yield* Store
-        yield* store.saveSession("demo-1", session)
+        yield* store.saveSession("demo-1" as TicketId, session)
         return yield* store.state
       }),
     )
@@ -122,11 +124,11 @@ describe.each(layers)("the %s layer", (_, layer) => {
     const exit = await runStore(
       Effect.gen(function* () {
         const store = yield* Store
-        yield* store.saveSession("demo-1", session)
+        yield* store.saveSession("demo-1" as TicketId, session)
         const failed = yield* Effect.flip(store.update(unencodable))
-        const kept = yield* store.ticket("demo-1")
-        yield* store.resumed("demo-1")
-        return { failed, kept, after: yield* store.ticket("demo-1") }
+        const kept = yield* store.ticket("demo-1" as TicketId)
+        yield* store.resumed("demo-1" as TicketId)
+        return { failed, kept, after: yield* store.ticket("demo-1" as TicketId) }
       }),
     )
     if (Exit.isFailure(exit)) throw new Error(`expected a success, got ${exit.cause}`)
@@ -140,7 +142,7 @@ describe.each(layers)("the %s layer", (_, layer) => {
     const exit = await runStore(
       Effect.gen(function* () {
         const store = yield* Store
-        yield* store.saveSession("demo-1", session)
+        yield* store.saveSession("demo-1" as TicketId, session)
         const died = yield* Effect.exit(store.update(throwing))
         return { died, state: yield* store.state }
       }),
@@ -153,24 +155,33 @@ describe.each(layers)("the %s layer", (_, layer) => {
 
 /** One of the Store's operations, on one of a few tickets. */
 const operation = fc.oneof(
-  fc.record({ op: fc.constant("saveSession" as const), id: fc.constantFrom("a", "b") }),
+  fc.record({
+    op: fc.constant("saveSession" as const),
+    id: fc.constantFrom("a" as TicketId, "b" as TicketId),
+  }),
   fc.record({
     op: fc.constant("suspend" as const),
-    id: fc.constantFrom("a", "b"),
+    id: fc.constantFrom("a" as TicketId, "b" as TicketId),
     why: fc.string(),
     phase: fc.constantFrom(...phaseNames),
   }),
-  fc.record({ op: fc.constant("resumed" as const), id: fc.constantFrom("a", "b") }),
-  fc.record({ op: fc.constant("remove" as const), id: fc.constantFrom("a", "b") }),
+  fc.record({
+    op: fc.constant("resumed" as const),
+    id: fc.constantFrom("a" as TicketId, "b" as TicketId),
+  }),
+  fc.record({
+    op: fc.constant("remove" as const),
+    id: fc.constantFrom("a" as TicketId, "b" as TicketId),
+  }),
   fc.record({
     op: fc.constant("setMetadata" as const),
-    id: fc.constantFrom("a", "b"),
+    id: fc.constantFrom("a" as TicketId, "b" as TicketId),
     key: fc.string(),
     value: fc.jsonValue().map((value) => value as Schema.Json),
   }),
   fc.record({
     op: fc.constant("unsetMetadata" as const),
-    id: fc.constantFrom("a", "b"),
+    id: fc.constantFrom("a" as TicketId, "b" as TicketId),
     key: fc.string(),
   }),
 )
@@ -199,7 +210,7 @@ describe("the test layer", () => {
     const state = await Effect.runPromise(
       Effect.gen(function* () {
         const store = yield* Store
-        yield* store.saveSession("demo-1", session)
+        yield* store.saveSession("demo-1" as TicketId, session)
         return yield* store.state
       }).pipe(Effect.provide(memoryLayer())),
     )

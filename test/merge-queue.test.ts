@@ -9,7 +9,7 @@ import { Ledger, type State } from "../src/run/ledger.ts"
 import { budgets, type FinishedTicket, type MergeStop } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, Checks, CheckTimedOut } from "../src/services/Checks.ts"
 import { ProcessGroups } from "../src/services/exec.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
@@ -57,13 +57,13 @@ const until = (ready: (state: State) => boolean) =>
     yield* ledger.changes.pipe(Stream.filter(ready), Stream.runHead)
   })
 
-const phaseOf = (state: State, id: string) => state.tickets.get(id)?.phase
+const phaseOf = (state: State, id: TicketId) => state.tickets.get(id)?.phase
 
 /**
  * A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed in Beads,
  * Working in the ledger.
  */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -146,7 +146,7 @@ const failedCheck = new CheckFailed({
 describe("a clean merge", () => {
   test("a ticket on top of the base fast-forwards it, unchecked, and is cleaned up", async () => {
     const ran = await mergeAll({ backlog: backlog().ticket("a").seeds, config: noCheck }, [
-      finished("a", { "a.txt": "a\n" }),
+      finished("a" as TicketId, { "a.txt": "a\n" }),
     ])
     const merged = resultOf(ran)
     expect(tags(merged)).toEqual({ a: "Done" })
@@ -155,7 +155,7 @@ describe("a clean merge", () => {
     expect(done?._tag === "Done" && done.outcome._tag === "Merged").toBe(true)
     expect(ran.checkRuns).toEqual([])
     expect(ran.worktreeCalls.filter((call) => call.op === "remove")).toEqual([
-      { op: "remove", id: "a", force: false },
+      { op: "remove", id: "a" as TicketId, force: false },
     ])
     expectLog(ran, [
       /^ {2}a closed \([0-9a-f]{7} Do a \(a\)\); merged into main, worktree and branch removed$/,
@@ -173,13 +173,13 @@ describe("a clean merge", () => {
       { backlog: backlog().ticket("a").seeds },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const ticket = yield* finished("a", { "a.txt": "a\n" })
+          const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
           const tip = yield* (yield* Repository).head(ticket.branch)
           yield* queue.offer(ticket)
           yield* queue.settled
           expect(yield* (yield* Repository).head("main")).toBe(tip)
           expect((yield* (yield* Repository).tree("main")).get("a.txt")).toBe("a\n")
-          const phase = phaseOf(yield* (yield* Ledger).current, "a")
+          const phase = phaseOf(yield* (yield* Ledger).current, "a" as TicketId)
           expect(phase).toEqual(
             expect.objectContaining({ outcome: expect.objectContaining({ commit: tip }) }),
           )
@@ -192,7 +192,7 @@ describe("a clean merge", () => {
   test("a ticket behind the base is rebased and checked, its check.log in its worktree", async () => {
     const ran = await mergeAll(
       { backlog: backlog().ticket("a").seeds },
-      [finished("a", { "a.txt": "a\n" })],
+      [finished("a" as TicketId, { "a.txt": "a\n" })],
       moveMain(),
     )
     expect(tags(resultOf(ran))).toEqual({ a: "Done" })
@@ -221,7 +221,7 @@ describe("a clean merge", () => {
           ],
         },
       },
-      [finished("a", { "a.txt": "a\n" })],
+      [finished("a" as TicketId, { "a.txt": "a\n" })],
       moveMain(),
     )
     expect(tags(resultOf(ran))).toEqual({ a: "Done" })
@@ -239,7 +239,7 @@ describe("a clean merge", () => {
         backlog: backlog().ticket("a").seeds,
         config: noCheck,
       },
-      [finished("a", { "a.txt": "a\n" })],
+      [finished("a" as TicketId, { "a.txt": "a\n" })],
       moveMain(),
     )
     expect(tags(resultOf(ran))).toEqual({ a: "Done" })
@@ -258,7 +258,7 @@ describe("finishing order", () => {
     const placed = (state: State) =>
       Object.fromEntries(
         ["a", "b", "c"].map((id) => {
-          const phase = phaseOf(state, id)
+          const phase = phaseOf(state, id as TicketId)
           return [
             id,
             phase?._tag === "ToMerge"
@@ -269,7 +269,7 @@ describe("finishing order", () => {
           ]
         }),
       )
-    const merging = (id: string) => (state: State) => {
+    const merging = (id: TicketId) => (state: State) => {
       const phase = phaseOf(state, id)
       return phase?._tag === "Merging" && phase.step === "check"
     }
@@ -283,20 +283,20 @@ describe("finishing order", () => {
       withQueue((queue) =>
         Effect.gen(function* () {
           const ledger = yield* Ledger
-          const c = yield* finished("c", { "c.txt": "c\n" })
-          const a = yield* finished("a", { "a.txt": "a\n" })
-          const b = yield* finished("b", { "b.txt": "b\n" })
+          const c = yield* finished("c" as TicketId, { "c.txt": "c\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+          const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
           yield* moveMain()
           yield* queue.offer(c)
-          yield* until(merging("c"))
+          yield* until(merging("c" as TicketId))
           yield* queue.offer(a)
           yield* queue.offer(b)
           seen.push(placed(yield* ledger.current))
           yield* Deferred.succeed(gates[0] as Deferred.Deferred<void>, undefined)
-          yield* until(merging("a"))
+          yield* until(merging("a" as TicketId))
           seen.push(placed(yield* ledger.current))
           yield* Deferred.succeed(gates[1] as Deferred.Deferred<void>, undefined)
-          yield* until(merging("b"))
+          yield* until(merging("b" as TicketId))
           seen.push(placed(yield* ledger.current))
           yield* Deferred.succeed(gates[2] as Deferred.Deferred<void>, undefined)
           yield* queue.settled
@@ -327,7 +327,7 @@ const mergeOne = (
     { backlog: backlog().ticket("a").ticket("b").seeds, ...setup },
     withQueue((queue) =>
       Effect.gen(function* () {
-        const ticket = yield* finished("a", { "a.txt": "a\n" })
+        const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
         yield* script(ticket)
         yield* queue.offer(ticket)
         yield* queue.settled
@@ -416,7 +416,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
         Effect.gen(function* () {
           const git = yield* Git
           const repository = yield* Repository
-          const ticket = yield* finished("a", { "a.txt": "a\n" })
+          const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
           worktree = ticket.worktree
           tip = yield* repository.head(ticket.branch)
           yield* moveMain({ "a.txt": "main's a\n" })
@@ -492,8 +492,8 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
       { backlog: backlog().ticket("a").ticket("b").seeds },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a.txt": "a\n" })
-          const b = yield* finished("b", { "b.txt": "b\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+          const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
           yield* (yield* Repository).write("/repo", { "README.md": "edited by hand\n" })
           yield* queue.offer(a)
           yield* queue.offer(b)
@@ -563,7 +563,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
       withQueue(
         (queue) =>
           Effect.gen(function* () {
-            const ticket = yield* finished("a", { "a.txt": "a\n" })
+            const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
             worktree = ticket.worktree
             yield* (yield* Repository).fail("merge --ff-only", {
               exitCode: 128,
@@ -613,7 +613,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
       withQueue(
         (queue) =>
           Effect.gen(function* () {
-            const ticket = yield* finished("a", { "a.txt": "a\n" })
+            const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
             yield* moveMain()
             yield* queue.offer(ticket)
             yield* queue.settled
@@ -655,10 +655,10 @@ describe("epics", () => {
       withQueue((queue) =>
         Effect.gen(function* () {
           const beads = yield* Beads
-          yield* queue.offer(yield* finished("a", { "a.txt": "a\n" }))
+          yield* queue.offer(yield* finished("a" as TicketId, { "a.txt": "a\n" }))
           yield* queue.settled
-          expect((yield* beads.show("F")).status).not.toBe("closed")
-          yield* queue.offer(yield* finished("b", { "b.txt": "b\n" }))
+          expect((yield* beads.show("F" as TicketId)).status).not.toBe("closed")
+          yield* queue.offer(yield* finished("b" as TicketId, { "b.txt": "b\n" }))
           yield* queue.settled
         }),
       ),
@@ -687,8 +687,8 @@ describe("epics", () => {
       { backlog: seeds, checks: { fast: [inA] } },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a.txt": "a\n" })
-          const b = yield* finished("b", { "b.txt": "b\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+          const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
           yield* moveMain()
           // a's check fails in its own a.txt, so it isn't checked again; b merges after it.
           yield* queue.offer(a)
@@ -726,7 +726,7 @@ describe("an interrupt", () => {
     )
 
   const merging = (step: "rebase" | "check") => (state: State) => {
-    const phase = phaseOf(state, "a")
+    const phase = phaseOf(state, "a" as TicketId)
     return phase?._tag === "Merging" && phase.step === step
   }
 
@@ -739,8 +739,8 @@ describe("an interrupt", () => {
       { backlog: backlog().ticket("a").ticket("b").seeds, checks: { fast: [hanging] } },
       (queue, close) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a.txt": "a\n" })
-          const b = yield* finished("b", { "b.txt": "b\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+          const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
           yield* moveMain()
           yield* queue.offer(a)
           yield* until(merging("check"))
@@ -779,7 +779,7 @@ describe("an interrupt", () => {
       (queue, close) =>
         Effect.gen(function* () {
           const groups = yield* ProcessGroups
-          const a = yield* finished("a", { "a.txt": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
           worktree = a.worktree
           yield* moveMain()
           yield* queue.offer(a)
@@ -809,7 +809,7 @@ describe("an interrupt", () => {
         Effect.gen(function* () {
           const git = yield* Git
           const repository = yield* Repository
-          const a = yield* finished("a", { "a.txt": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
           tip = yield* repository.head(a.branch)
           yield* moveMain()
           // git stops partway, its rebase in progress, and hangs there.
@@ -855,7 +855,7 @@ describe("an interrupt", () => {
         Effect.gen(function* () {
           const git = yield* Git
           const repository = yield* Repository
-          const a = yield* finished("a", { "a.txt": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
           tip = yield* repository.head(a.branch)
           worktree = a.worktree
           yield* moveMain({ "a.txt": "main's a\n" })
@@ -896,14 +896,14 @@ describe("an interrupt", () => {
       { backlog: backlog().ticket("a").seeds },
       (queue, close) =>
         Effect.gen(function* () {
-          yield* queue.offer(yield* finished("a", { "a.txt": "a\n" }))
+          yield* queue.offer(yield* finished("a" as TicketId, { "a.txt": "a\n" }))
           yield* Deferred.await(inTurn)
           const closing = yield* Effect.forkChild(close)
           yield* Effect.yieldNow
           yield* Deferred.succeed(gate, undefined)
           yield* Fiber.join(closing)
           expect(yield* queue.state).toEqual({
-            waiting: ["a"],
+            waiting: ["a" as TicketId],
             merging: null,
             resolving: [],
             stop: null,
@@ -935,7 +935,7 @@ describe("an interrupt", () => {
       { backlog: backlog().ticket("a").seeds },
       (queue, close) =>
         Effect.gen(function* () {
-          yield* queue.offer(yield* finished("a", { "a.txt": "a\n" }))
+          yield* queue.offer(yield* finished("a" as TicketId, { "a.txt": "a\n" }))
           yield* Deferred.await(started)
           const closing = yield* Effect.forkChild(close)
           yield* Effect.yieldNow

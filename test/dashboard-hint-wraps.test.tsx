@@ -3,6 +3,7 @@
 // to one line lost `? keys` and part of `s`. Where a request's buttons aren't drawn, the hint
 // without `d` and `a` gives the lines it no longer needs to the blank ones above the foot. A toast
 // is drawn above the hint's lines, however many it wraps onto (useHintHeight).
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
@@ -12,6 +13,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
 import { widthOf } from "../src/ui/line.tsx"
@@ -26,7 +28,7 @@ const theme = themeOf("dark")
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
-const entryOf = (ticket: string, worker: number, row: number): Entry => ({
+const entryOf = (ticket: TicketId, worker: number, row: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: TicketPhase.Working(),
@@ -44,7 +46,10 @@ const viewOf = (workers: number): RunView =>
   project({
     ledger: {
       tickets: new Map(
-        Array.from({ length: workers }, (_, i) => [`t-${i + 1}`, entryOf(`t-${i + 1}`, i + 1, i)]),
+        Array.from({ length: workers }, (_, i) => [
+          `t-${i + 1}` as TicketId,
+          entryOf(`t-${i + 1}` as TicketId, i + 1, i),
+        ]),
       ),
       rows: workers,
       windDown: null,
@@ -67,7 +72,7 @@ const viewOf = (workers: number): RunView =>
 
 const permission: AttentionRequest = {
   id: "r1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Permission",
     tool: "Bash",

@@ -15,6 +15,7 @@ import { useContext, useRef } from "react"
 import { type Answer, type AttentionRequest, allowsForRun } from "../agent/Attention.ts"
 import { UiCommand } from "../run/commands.ts"
 import type { ShownRequest } from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { Box, useInput } from "./keys.ts"
 import {
   type Opened,
@@ -228,7 +229,7 @@ const openingOf = (opener: UrlOpener): Set<string> => {
  * Accept.
  */
 export const useSendAnswer = (): ((
-  request: { readonly id: string; readonly ticket: string },
+  request: { readonly id: string; readonly ticket: TicketId },
   answer: Answer,
 ) => void) => {
   const command = useCommand()
@@ -236,7 +237,7 @@ export const useSendAnswer = (): ((
   const { toasts } = useInput()
   const opener = useContext(ShellContext)?.urlOpener
   const openOf = (id: string) => latest().requests.find((open) => open.id === id)
-  const send = (request: { readonly id: string; readonly ticket: string }, answer: Answer) => {
+  const send = (request: { readonly id: string; readonly ticket: TicketId }, answer: Answer) => {
     if (openOf(request.id) !== undefined) {
       command(UiCommand.Answer({ requestId: request.id, answer }))
     } else toasts.show(staleToast(request.ticket))

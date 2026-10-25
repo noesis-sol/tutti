@@ -1,6 +1,7 @@
 // The small test layers that go through the live code: AppConfig through resolve, Log through
 // Log.layerOn, RunLock through the lock files' texts, Transcripts' ID check in makeTranscripts,
 // Tty through fromEnvironment, and Worktrees through found.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { TestClock } from "effect/testing"
 import { makeTranscripts, type Storage, Transcripts } from "../src/agent/Transcripts.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { Log, line } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import type { Sha } from "../src/services/Git.ts"
 import {
   AlreadyRunning,
@@ -218,11 +220,11 @@ describe("the Worktrees test layer", () => {
       status: [],
     }
     const at = (existing: boolean, branchLeft: boolean) =>
-      found("t-1", "/w/t-1", { existing, branchLeft, earlier })
+      found("t-1" as TicketId, "/w/t-1", { existing, branchLeft, earlier })
     expect(at(true, true)).toMatchObject({ reused: true, fresh: false, earlier })
     expect(at(false, true)).toMatchObject({ reused: true, fresh: true, earlier })
     expect(at(false, false)).toEqual({
-      id: "t-1",
+      id: "t-1" as TicketId,
       branch: "tutti/t-1",
       path: "/w/t-1",
       reused: false,
@@ -240,9 +242,9 @@ describe("the Worktrees test layer", () => {
     const [first, again] = await Effect.runPromise(
       Effect.gen(function* () {
         const worktrees = yield* Worktrees
-        const first = yield* worktrees.prepare("t-1")
-        yield* worktrees.remove("t-1")
-        const again = yield* worktrees.prepare("t-1")
+        const first = yield* worktrees.prepare("t-1" as TicketId)
+        yield* worktrees.remove("t-1" as TicketId)
+        const again = yield* worktrees.prepare("t-1" as TicketId)
         return [first, again]
       }).pipe(
         Effect.provide(testWorktrees({ root, earlier: { "t-1": earlier }, branchesLeft: ["t-1"] })),
@@ -257,7 +259,7 @@ describe("the Worktrees test layer", () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "tutti-shared-layers-")))
     mkdirSync(join(root, "t-2"))
     const worktree = await Effect.runPromise(
-      Effect.flatMap(Worktrees, (worktrees) => worktrees.prepare("t-2")).pipe(
+      Effect.flatMap(Worktrees, (worktrees) => worktrees.prepare("t-2" as TicketId)).pipe(
         Effect.provide(testWorktrees({ root })),
       ),
     )

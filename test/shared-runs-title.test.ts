@@ -1,6 +1,7 @@
 // The title line says `· shared with N runs` while other tutti or orchestra runs share the machine
 // (orchestra 0.8.5): the run keeps the count its last look at the folder of runs found
 // (Status.shared, run.ts's lookAround), and the title line shows it beside its states.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,7 @@ import { run } from "../src/run/run.ts"
 import type { RunView, TitleView } from "../src/run/runView.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -100,17 +102,17 @@ describe("the run's dashboard", () => {
         worktrees: { root },
         scripts: (world) => ({
           "t-1": [
-            claimsAndCloses("t-1", {
+            claimsAndCloses("t-1" as TicketId, {
               claim: Effect.andThen(
                 Deferred.await(gate),
-                Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+                Effect.asVoid(Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true }))),
               ),
               commit: Effect.asVoid(
                 Effect.orDie(
                   world.repository.commit(join(root, "t-1"), "Change (t-1)", { "t-1.txt": "x\n" }),
                 ),
               ),
-              close: Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done"))),
+              close: Effect.asVoid(Effect.orDie(world.beads.close("t-1" as TicketId, "done"))),
             }),
           ],
         }),

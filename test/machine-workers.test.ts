@@ -3,6 +3,7 @@
 // saying HOLD: MACHINE once, and fills it within seconds of one of the other run's finishing. A
 // run with none of its own running never waits, and a registration whose run is gone counts no
 // workers.
+
 import { describe, expect, test } from "bun:test"
 import {
   existsSync,
@@ -20,6 +21,7 @@ import { noFlags, type RunFlagName } from "../src/cli/flags.ts"
 import { line } from "../src/run/log.ts"
 import { type ProcessCheck, Processes } from "../src/run/machine.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -45,7 +47,7 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
   Effect.asVoid(Effect.orDie(effect))
 
 /** Claims its ticket and, after `takes`, commits and closes it, as a worker does. */
-const works = (world: World, root: string, id: string, takes: Duration.Input): SessionScript =>
+const works = (world: World, root: string, id: TicketId, takes: Duration.Input): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -78,7 +80,7 @@ const caughtUp = Effect.gen(function* () {
  * `kinds`: the run's start writes nothing for longer than `caughtUp`'s 30 ms on a loaded machine,
  * and its first dispatch is due at the clock's start.
  */
-const started = (ids: ReadonlyArray<string>, kinds: ReadonlyArray<string> = []) =>
+const started = (ids: ReadonlyArray<TicketId>, kinds: ReadonlyArray<string> = []) =>
   Effect.gen(function* () {
     const backlog = yield* Backlog
     const captured = yield* Captured
@@ -216,7 +218,7 @@ const loop = async <A>(
 ) => {
   const repo = folder("repo")
   const root = folder("worktrees")
-  const ids = Object.keys(tickets)
+  const ids = Object.keys(tickets).map((id) => id as TicketId)
   const seeds = ids.reduce((built, id, i) => built.ticket(id, { priority: i }), backlog()).seeds
   const ran = await scenario(
     {
@@ -322,8 +324,8 @@ describe("--machine-workers", () => {
         git: { dir: repo, files: { "README.md": "tutti\n" } },
         worktrees: { root },
         scripts: (world: World) => ({
-          a: [works(world, root, "a", "10 minutes")],
-          b: [works(world, root, "b", "1 minute")],
+          a: [works(world, root, "a" as TicketId, "10 minutes")],
+          b: [works(world, root, "b" as TicketId, "1 minute")],
         }),
       },
       Effect.gen(function* () {
@@ -336,7 +338,7 @@ describe("--machine-workers", () => {
             Effect.provideService(Processes, processes),
           ),
         )
-        yield* started(["a"], ["machine_hold"])
+        yield* started(["a" as TicketId], ["machine_hold"])
         yield* passes("45 seconds")
         const since = looks
         writeFileSync(join(runs, "run-4242-1.json"), other(1))

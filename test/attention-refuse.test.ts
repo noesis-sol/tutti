@@ -3,6 +3,7 @@
 // `tutti answer` or the test policy, while its requests stay open for the end to read and an abort
 // still withdraws them. Other tickets' requests, and a session made afterwards (the next run's), are
 // answered as before.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -27,6 +28,7 @@ import {
 } from "../src/agent/attentionFiles.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
@@ -70,7 +72,7 @@ const rm = { command: "rm -rf build" }
  * and waits until the request is open.
  */
 const ask = (
-  ticket: string,
+  ticket: TicketId,
   options: Parameters<CanUseTool>[2] = sdkOptions(),
   callback?: CanUseTool,
 ) =>
@@ -119,9 +121,9 @@ describe("Attention: answers refused once the run's end stops a ticket", () => {
     const seen = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const a = yield* ask("a")
-        const b = yield* ask("b")
-        yield* attention.refuse("a")
+        const a = yield* ask("a" as TicketId)
+        const b = yield* ask("b" as TicketId)
+        yield* attention.refuse("a" as TicketId)
         const refused = yield* allow(a.request)
         const open = (yield* attention.current).map((request) => request.ticket)
         const other = yield* allow(b.request)
@@ -131,14 +133,14 @@ describe("Attention: answers refused once the run's end stops a ticket", () => {
           other,
           b: yield* Effect.promise(() => b.result),
           log: yield* texts,
-          tally: yield* attention.tally("a"),
+          tally: yield* attention.tally("a" as TicketId),
         }
       }),
     )
     const error = failure(seen.refused)
     expect(error).toBeInstanceOf(NotOpen)
     expect(error.message).toBe(`request r1 is no longer open: ${runEnding}`)
-    expect(seen.open).toEqual(["a", "b"])
+    expect(seen.open).toEqual(["a" as TicketId, "b" as TicketId])
     expect(Exit.isSuccess(seen.other)).toBe(true)
     expect(seen.b?.behavior).toBe("allow")
     expect(seen.log.filter((text) => text.includes("a's worker") && /allowed/.test(text))).toEqual(
@@ -151,9 +153,9 @@ describe("Attention: answers refused once the run's end stops a ticket", () => {
     const seen = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const session = yield* attention.request("a", openFibers())
-        yield* attention.refuse("a")
-        const { request } = yield* ask("a", sdkOptions(), session)
+        const session = yield* attention.request("a" as TicketId, openFibers())
+        yield* attention.refuse("a" as TicketId)
+        const { request } = yield* ask("a" as TicketId, sdkOptions(), session)
         return { refused: yield* allow(request), open: (yield* attention.current).length }
       }),
       { policy: allowAll },
@@ -166,9 +168,9 @@ describe("Attention: answers refused once the run's end stops a ticket", () => {
     const seen = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        yield* ask("a")
-        yield* attention.refuse("a")
-        const next = yield* ask("a")
+        yield* ask("a" as TicketId)
+        yield* attention.refuse("a" as TicketId)
+        const next = yield* ask("a" as TicketId)
         return {
           answered: yield* allow(next.request),
           result: yield* Effect.promise(() => next.result),
@@ -184,8 +186,8 @@ describe("Attention: answers refused once the run's end stops a ticket", () => {
       Effect.gen(function* () {
         const attention = yield* Attention
         const options = sdkOptions()
-        const { result } = yield* ask("a", options)
-        yield* attention.refuse("a")
+        const { result } = yield* ask("a" as TicketId, options)
+        yield* attention.refuse("a" as TicketId)
         options.controller.abort()
         const outcome = yield* Effect.promise(() => result)
         return { outcome, open: (yield* attention.current).length }
@@ -200,9 +202,9 @@ describe("Attention: answers refused once the run's end stops a ticket", () => {
     const seen = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const { request } = yield* ask("a")
+        const { request } = yield* ask("a" as TicketId)
         yield* until("the request's file", () => existsSync(join(repo, attentionFolder)))
-        yield* attention.refuse("a")
+        yield* attention.refuse("a" as TicketId)
         yield* Effect.orDie(
           writeExclusive(
             repo,

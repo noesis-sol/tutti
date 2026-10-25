@@ -3,6 +3,7 @@
 // tutti runs on every ticket. tutti init lists each suite there with the scout's command for part of
 // the project (§ 6.3); checks.own (§ 8.4) names a worker's own check, which the check note gives in
 // place of the merge check, and which footprints leave out as the other checks.
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -27,6 +28,7 @@ import {
 } from "../src/project/prompt.ts"
 import { checkCommands, Settings } from "../src/project/settings.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -256,7 +258,7 @@ const configWith = (own: string | null, fast: string | null): AppConfigValue => 
 const rules = (config: AppConfigValue): string => {
   const options = workerOptions({
     config,
-    ticket: "bd-7",
+    ticket: "bd-7" as TicketId,
     worktree: "/w",
     prompt: { text: "You work on TICKET_ID.", file: null },
     servers: { servers: [], note: null },

@@ -1,6 +1,7 @@
 // A failed full check's whole output is read from its worktree's .tutti/run/ through the symlink
 // guard: a symbolic link the check left in place of its output is refused, not followed into a file
 // outside, and a named pipe is refused at once rather than holding the open on the JavaScript thread.
+
 import { afterEach, describe, expect, test } from "bun:test"
 import {
   existsSync,
@@ -19,6 +20,7 @@ import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { fullCheckLogName } from "../src/run/fullcheck.ts"
 import { logFile } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, type Said, setupLogName } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { runFolder } from "../src/services/Worktrees.ts"
@@ -78,7 +80,7 @@ const config = (setup: boolean): Partial<AppConfigValue> => {
 }
 
 /** Claims, commits and closes its ticket, as a worker does. */
-const finishes = (world: World, root: string, id: string) =>
+const finishes = (world: World, root: string, id: TicketId) =>
   claimsAndCloses(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     commit: Effect.asVoid(
@@ -103,7 +105,7 @@ const runs = async (
       worktrees: { root },
       backlog: backlog().ticket("t-1").seeds,
       checks,
-      scripts: (world) => ({ "t-1": [finishes(world, root, "t-1")] }),
+      scripts: (world) => ({ "t-1": [finishes(world, root, "t-1" as TicketId)] }),
     },
     Effect.gen(function* () {
       const git = yield* Git

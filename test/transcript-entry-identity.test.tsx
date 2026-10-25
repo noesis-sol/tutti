@@ -2,6 +2,7 @@
 // the items change and kept while each is the same, the partial messages laid over them as each
 // token comes; each entry is drawn with only what concerns it. So a streamed token redraws the one
 // entry it grows, and an arrow key the two whose selection changed, not the whole transcript.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
@@ -19,6 +20,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
@@ -315,9 +317,9 @@ const view: RunView = project({
   ledger: {
     tickets: new Map([
       [
-        "t-1",
+        "t-1" as TicketId,
         {
-          ticket: "t-1",
+          ticket: "t-1" as TicketId,
           title: "Title of t-1",
           phase: TicketPhase.Working(),
           since: began,
@@ -343,7 +345,7 @@ const view: RunView = project({
 /** The shell over worker 1's view, its transcript `state`. */
 const shellOf = (state: ReturnType<typeof external<TranscriptState>>): ShellValue => ({
   view: external(view),
-  screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+  screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
   commands: Effect.runSync(makeCommands),
   appearance: external<Appearance>("dark"),
   themeOf: (appearance) => makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false }),

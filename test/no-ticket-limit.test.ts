@@ -14,7 +14,7 @@ import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { dispatchLine, make, progress } from "../src/run/schedule.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -38,16 +38,20 @@ const folder = (name: string) =>
 const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
   Effect.asVoid(Effect.orDie(effect))
 
-const issue = (id: string, labels: ReadonlyArray<string> = []): Issue =>
+const issue = (id: TicketId, labels: ReadonlyArray<string> = []): Issue =>
   ({ id, title: id, labels }) as unknown as Issue
 
 describe("the dispatch line", () => {
   test("says n/limit with a limit, and n alone with none", () => {
     expect(progress(3, 40)).toBe("3/40")
     expect(progress(3, null)).toBe("3")
-    expect(String(dispatchLine(41, null, issue("t-41")))).toBe("[41] t-41 dispatching: t-41")
-    expect(String(dispatchLine(2, 5, issue("t-2")))).toBe("[2/5] t-2 dispatching: t-2")
-    expect(String(dispatchLine(1, null, issue("s", ["solo"])))).toBe("[1] s dispatching solo: s")
+    expect(String(dispatchLine(41, null, issue("t-41" as TicketId)))).toBe(
+      "[41] t-41 dispatching: t-41",
+    )
+    expect(String(dispatchLine(2, 5, issue("t-2" as TicketId)))).toBe("[2/5] t-2 dispatching: t-2")
+    expect(String(dispatchLine(1, null, issue("s" as TicketId, ["solo"])))).toBe(
+      "[1] s dispatching solo: s",
+    )
   })
 })
 
@@ -116,7 +120,7 @@ describe("the scheduler with no limit", () => {
 })
 
 /** Claims its ticket, commits a file and closes it. */
-const works = (world: World, root: string, id: string): SessionScript =>
+const works = (world: World, root: string, id: TicketId): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -130,7 +134,7 @@ const works = (world: World, root: string, id: string): SessionScript =>
   )
 
 /** A whole run on main, one ticket at a time, with `limit` if given, each worktree made first. */
-const runs = (tickets: ReadonlyArray<string>, limit?: number): Promise<Ran<Outcome>> => {
+const runs = (tickets: ReadonlyArray<TicketId>, limit?: number): Promise<Ran<Outcome>> => {
   const repo = folder("repo")
   const root = folder("worktrees")
   const defaults = appConfig().settings
@@ -163,7 +167,7 @@ const runs = (tickets: ReadonlyArray<string>, limit?: number): Promise<Ran<Outco
 
 describe("a whole run", () => {
   test("with no limit given starts every ticket and ends READY_EMPTY, never LIMIT_REACHED", async () => {
-    const ran = await runs(["a", "b", "c"])
+    const ran = await runs(["a" as TicketId, "b" as TicketId, "c" as TicketId])
     expectExitCode(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", c: "Done" })
     expectLog(ran, [
@@ -179,7 +183,7 @@ describe("a whole run", () => {
   })
 
   test("with a limit given still stops at it, LIMIT_REACHED", async () => {
-    const ran = await runs(["a", "b", "c"], 2)
+    const ran = await runs(["a" as TicketId, "b" as TicketId, "c" as TicketId], 2)
     expectExitCode(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", c: "Queued" })
     expectLog(ran, [

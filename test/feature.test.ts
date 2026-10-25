@@ -19,6 +19,7 @@ import {
 import { type FeatureOutcome, planAndFile, scopedTo } from "../src/run/feature.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -526,12 +527,17 @@ describe("filing", () => {
           mayHaveFiled: false,
           epic: "test-1",
           filed: [
-            { id: "test-1", key: null, title: "Epic" },
-            { id: "test-1.1", key: "t1", title: "One" },
-            { id: "test-1.2", key: "t2", title: "Two" },
+            { id: "test-1" as TicketId, key: null, title: "Epic" },
+            { id: "test-1.1" as TicketId, key: "t1", title: "One" },
+            { id: "test-1.2" as TicketId, key: "t2", title: "Two" },
           ],
           unlinked: [
-            { blocked: "test-1.2", blocker: "test-1.1", blockedKey: "t2", blockerKey: "t1" },
+            {
+              blocked: "test-1.2" as TicketId,
+              blocker: "test-1.1" as TicketId,
+              blockedKey: "t2",
+              blockerKey: "t1",
+            },
           ],
         }),
       ),
@@ -570,7 +576,7 @@ describe("the run after --feature", () => {
       tickets: [ticket({ key: "t1" }), ticket({ key: "t2", blocked_by: ["t1"] })],
     }
     // "other" is test-1's place in the backlog's numbering; the epic is test-2.
-    const ids = ["test-2.1", "test-2.2"]
+    const ids = ["test-2.1" as TicketId, "test-2.2" as TicketId]
     const ran = await scenario(
       {
         config: { repo },
@@ -610,7 +616,7 @@ describe("the run after --feature", () => {
           },
         ).pipe(Effect.provide(Organs.layer.pipe(Layer.provide(cannedLayer({ screen: ok, plan })))))
         if (featured._tag !== "Filed") return yield* Effect.die(featured)
-        expect(featured.epic).toBe("test-2")
+        expect(featured.epic).toBe("test-2" as TicketId)
         const fiber = yield* Effect.forkChild(
           scopedTo(featured.epic)(
             run({ version: "0.1.0-test", base: "main", start: [line`START`] }),

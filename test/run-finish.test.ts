@@ -10,6 +10,7 @@ import { makePrinter, type Out } from "../src/print/organLine.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { finish, type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { defers, gone, type SessionScript, run as step, turn } from "../src/testing/AgentHost.ts"
 import type { Seed } from "../src/testing/Beads.ts"
@@ -23,14 +24,14 @@ const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noC
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-finish-${name}-`)))
 
 /** Claims its ticket and defers it. */
-const gives = (world: World, id: string): SessionScript =>
+const gives = (world: World, id: TicketId): SessionScript =>
   defers(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     defer: Effect.asVoid(Effect.orDie(world.beads.defer(id))),
   })
 
 /** Claims its ticket and goes, is resumed once and goes again: PAUSED. */
-const pauses = (world: World, id: string): ReadonlyArray<SessionScript> => [
+const pauses = (world: World, id: TicketId): ReadonlyArray<SessionScript> => [
   [
     ...turn([step(Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))))]).slice(
       0,
@@ -101,7 +102,7 @@ const finishes = (plan: Plan): Promise<Ran<Finished>> => {
         Object.fromEntries(
           Object.entries(plan.workers).map(([id, how]) => [
             id,
-            how === "defers" ? [gives(world, id)] : pauses(world, id),
+            how === "defers" ? [gives(world, id as TicketId)] : pauses(world, id as TicketId),
           ]),
         ),
     },
@@ -131,7 +132,7 @@ describe("when a run leaves its end to finish", () => {
     expect(outcome.closing).toEqual(
       expect.objectContaining({ _tag: "Done", text: "READY_EMPTY after 1 tickets", tickets: 1 }),
     )
-    expect(outcome.summary.rows.map((row) => row.ticket)).toEqual(["t-1"])
+    expect(outcome.summary.rows.map((row) => row.ticket)).toEqual(["t-1" as TicketId])
     expect(printed).toContain(" Tutti  0.1.0-test")
     expect(printed).toContain("Completed")
     expect(printed).toContain("Tickets")
@@ -146,7 +147,7 @@ describe("when a run leaves its end to finish", () => {
 
   test("a scoped run's stop is closed with its stops' line and its scope line", async () => {
     const ran = await finishes({
-      config: { ticket: "e-1" },
+      config: { ticket: "e-1" as TicketId },
       backlog: backlog().epic("e-1", ["e-1.1"]).seeds,
       workers: { "e-1.1": "pauses" },
     })

@@ -8,7 +8,7 @@ import { asksGit, mergeHold } from "../src/run/holds.ts"
 import { type Entry, emptyState, type State } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import type { Dependency, Issue } from "../src/services/Beads.ts"
+import type { Dependency, Issue, TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, type SessionScript } from "../src/testing/AgentHost.ts"
 import type { Seed } from "../src/testing/Beads.ts"
@@ -50,20 +50,23 @@ const callsOf = (op: string) =>
     (calls) => calls.filter((call) => call.op === op).length,
   )
 
-const warned = (ran: Ran<unknown>, id: string): number =>
+const warned = (ran: Ran<unknown>, id: TicketId): number =>
   ran.log.filter((each) => each === closedUnmergedLine(id, "main")).length
 
 /** A state in which the run has the tickets in these phases. */
 const stateWith = (phases: Readonly<Record<string, TicketPhase>>): State => ({
   ...emptyState,
   tickets: new Map(
-    Object.entries(phases).map(([ticket, phase]) => [ticket, { ticket, phase } as Entry]),
+    Object.entries(phases).map(([ticket, phase]) => [
+      ticket as TicketId,
+      { ticket, phase } as Entry,
+    ]),
   ),
 })
 
 /** A link of `type` to ticket `id`, as bd show gives it, with its status and labels. */
 const link = (
-  id: string,
+  id: TicketId,
   type: string,
   status = "closed",
   labels: ReadonlyArray<string> = [],
@@ -78,13 +81,15 @@ describe("asksGit and mergeHold", () => {
   })
 
   test("only a closed ticket the run knows nothing unmerged of is asked of git", () => {
-    expect(asksGit(state, link("by-hand", "blocks"))).toBe(true)
-    expect(asksGit(state, link("deferred", "blocks"))).toBe(true)
-    expect(asksGit(state, link("done", "blocks"))).toBe(false)
-    expect(asksGit(state, link("merging", "blocks"))).toBe(false)
-    expect(asksGit(state, link("working", "blocks"))).toBe(false)
-    expect(asksGit(state, link("open", "discovered-from", "open"))).toBe(false)
-    expect(asksGit(state, link("labelled", "blocks", "closed", ["unmerged"]))).toBe(false)
+    expect(asksGit(state, link("by-hand" as TicketId, "blocks"))).toBe(true)
+    expect(asksGit(state, link("deferred" as TicketId, "blocks"))).toBe(true)
+    expect(asksGit(state, link("done" as TicketId, "blocks"))).toBe(false)
+    expect(asksGit(state, link("merging" as TicketId, "blocks"))).toBe(false)
+    expect(asksGit(state, link("working" as TicketId, "blocks"))).toBe(false)
+    expect(asksGit(state, link("open" as TicketId, "discovered-from", "open"))).toBe(false)
+    expect(asksGit(state, link("labelled" as TicketId, "blocks", "closed", ["unmerged"]))).toBe(
+      false,
+    )
   })
 
   test("git's reason holds a blocker's dependents, and a source's follow-ups", () => {
@@ -92,15 +97,18 @@ describe("asksGit and mergeHold", () => {
       ["x", "tutti/x is not on main"],
       ["done", "tutti/done is not on main"],
     ])
-    expect(mergeHold(state, { dependencies: [link("x", "blocks")] }, branches)?.text).toBe(
-      "x closed but not merged (tutti/x is not on main)",
-    )
-    expect(mergeHold(state, { dependencies: [link("x", "discovered-from")] }, branches)?.text).toBe(
-      "filed by x's worker; x closed but not merged (tutti/x is not on main)",
-    )
+    expect(
+      mergeHold(state, { dependencies: [link("x" as TicketId, "blocks")] }, branches)?.text,
+    ).toBe("x closed but not merged (tutti/x is not on main)")
+    expect(
+      mergeHold(state, { dependencies: [link("x" as TicketId, "discovered-from")] }, branches)
+        ?.text,
+    ).toBe("filed by x's worker; x closed but not merged (tutti/x is not on main)")
     // The run merged it: what git said of a branch left behind doesn't count.
-    expect(mergeHold(state, { dependencies: [link("done", "blocks")] }, branches)).toBeUndefined()
-    expect(mergeHold(state, { dependencies: [link("x", "blocks")] })).toBeUndefined()
+    expect(
+      mergeHold(state, { dependencies: [link("done" as TicketId, "blocks")] }, branches),
+    ).toBeUndefined()
+    expect(mergeHold(state, { dependencies: [link("x" as TicketId, "blocks")] })).toBeUndefined()
   })
 })
 
@@ -112,9 +120,9 @@ describe("closedBranches", () => {
         yield* branchWith(where.repo, "tutti/t-1", "Do it (t-1)", { "t-1.txt": "1\n" })
         const branches = yield* closedBranches(where)
         const head = yield* branches.head
-        const first = yield* branches.why("t-1", head)
+        const first = yield* branches.why("t-1" as TicketId, head)
         const asked = yield* callsOf("merge-tree")
-        const again = yield* branches.why("t-1", head)
+        const again = yield* branches.why("t-1" as TicketId, head)
         return { first, again, asked, after: yield* callsOf("merge-tree") }
       }),
     )
@@ -122,9 +130,9 @@ describe("closedBranches", () => {
     expect(first).toBe("tutti/t-1 is not on main")
     expect(again).toBe(first)
     expect(after).toBe(asked)
-    expect(warned(ran, "t-1")).toBe(1)
+    expect(warned(ran, "t-1" as TicketId)).toBe(1)
     expect(ran.events.filter((each) => each.kind === "warn").map((each) => each.text)).toEqual([
-      closedUnmergedLine("t-1", "main"),
+      closedUnmergedLine("t-1" as TicketId, "main"),
     ])
   })
 
@@ -142,7 +150,13 @@ describe("closedBranches", () => {
         const branches = yield* closedBranches(where)
         const head = yield* branches.head
         const whys = []
-        for (const id of ["t-1", "t-2", "t-3", "t-4"]) whys.push(yield* branches.why(id, head))
+        for (const id of [
+          "t-1" as TicketId,
+          "t-2" as TicketId,
+          "t-3" as TicketId,
+          "t-4" as TicketId,
+        ])
+          whys.push(yield* branches.why(id, head))
         return whys
       }),
     )
@@ -159,8 +173,11 @@ describe("closedBranches", () => {
         const branches = yield* closedBranches(where)
         const head = yield* branches.head
         yield* repository.fail("merge-tree", { stderr: "fatal: the index is locked", times: 2 })
-        const failed = [yield* branches.why("t-1", head), yield* branches.why("t-1", head)]
-        return { failed, later: yield* branches.why("t-1", head) }
+        const failed = [
+          yield* branches.why("t-1" as TicketId, head),
+          yield* branches.why("t-1" as TicketId, head),
+        ]
+        return { failed, later: yield* branches.why("t-1" as TicketId, head) }
       }),
     )
     const { failed, later } = resultOf(ran)
@@ -169,7 +186,7 @@ describe("closedBranches", () => {
       "git can't tell whether tutti/t-1 is on main: fatal: the index is locked",
     ])
     expect(later).toBe("tutti/t-1 is not on main")
-    expect(warned(ran, "t-1")).toBe(1)
+    expect(warned(ran, "t-1" as TicketId)).toBe(1)
   })
 
   test("merging the branch into main, or deleting it, frees it", async () => {
@@ -181,12 +198,15 @@ describe("closedBranches", () => {
         const path = yield* branchWith(where.repo, "tutti/t-2", "Do it (t-2)", { "t-2.txt": "2\n" })
         const branches = yield* closedBranches(where)
         const before = yield* branches.head
-        const held = [yield* branches.why("t-1", before), yield* branches.why("t-2", before)]
+        const held = [
+          yield* branches.why("t-1" as TicketId, before),
+          yield* branches.why("t-2" as TicketId, before),
+        ]
         yield* git.fastForward(where.repo, "tutti/t-1")
-        const merged = yield* branches.why("t-1", yield* branches.head)
+        const merged = yield* branches.why("t-1" as TicketId, yield* branches.head)
         yield* git.removeWorktree(where.repo, path, { force: true })
         yield* git.deleteBranch(where.repo, "tutti/t-2", { force: true })
-        const deleted = yield* branches.why("t-2", before)
+        const deleted = yield* branches.why("t-2" as TicketId, before)
         return { held, merged, deleted }
       }),
     )
@@ -243,7 +263,7 @@ const runs = (plan: Plan): Promise<Ran<Outcome>> => {
 const commands = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   then: Effect.Effect<void, unknown> = Effect.void,
 ) => {
   const orDie = <A, E>(effect: Effect.Effect<A, E>) => Effect.asVoid(Effect.orDie(effect))
@@ -273,9 +293,9 @@ describe("a blocker closed by hand, its branch not merged", () => {
     })
     expectExitCode(ran, 0)
     expect(ran.log.some((each) => each.includes("dispatching"))).toBe(false)
-    expect(warned(ran, "t-1")).toBe(1)
+    expect(warned(ran, "t-1" as TicketId)).toBe(1)
     expectLog(ran, [
-      closedUnmergedLine("t-1", "main"),
+      closedUnmergedLine("t-1" as TicketId, "main"),
       "  t-2 waits: t-1 closed but not merged (tutti/t-1 is not on main)",
       "  t-3 waits: t-1 closed but not merged (tutti/t-1 is not on main)",
       "READY_EMPTY after 0 tickets",
@@ -300,7 +320,7 @@ describe("a blocker closed by hand, its branch not merged", () => {
     })
     expectExitCode(ran, 0)
     expect(ran.log.some((each) => each.includes("dispatching"))).toBe(false)
-    expect(warned(ran, "t-1")).toBe(0)
+    expect(warned(ran, "t-1" as TicketId)).toBe(0)
     expectLog(ran, [
       "  t-2 waits: t-1 closed but not merged (git can't tell whether tutti/t-1 is on main: fatal: the index is locked)",
       "READY_EMPTY after 0 tickets",
@@ -320,21 +340,21 @@ describe("a blocker closed by hand, its branch not merged", () => {
         // t-0's worker squash-merges t-1's branch into main by hand as it works.
         "t-0": [
           claimsAndCloses(
-            "t-0",
+            "t-0" as TicketId,
             commands(
               world,
               root,
-              "t-0",
+              "t-0" as TicketId,
               world.repository.commit(repo, "Merge t-1 by hand", { "t-1.txt": "1\n" }),
             ),
           ),
         ],
-        "t-2": [claimsAndCloses("t-2", commands(world, root, "t-2"))],
+        "t-2": [claimsAndCloses("t-2" as TicketId, commands(world, root, "t-2" as TicketId))],
       }),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-0": "Done", "t-2": "Done" })
-    expect(warned(ran, "t-1")).toBe(1)
+    expect(warned(ran, "t-1" as TicketId)).toBe(1)
     expectLog(ran, [
       "  t-2 waits: t-1 closed but not merged (tutti/t-1 is not on main)",
       /t-0 dispatching/,
@@ -349,7 +369,7 @@ describe("a blocker closed by hand, its branch not merged", () => {
         .ticket("t-1", { status: "closed" })
         .ticket("t-2", { blockedBy: ["t-1"] }).seeds,
       scripts: (world, root) => ({
-        "t-2": [claimsAndCloses("t-2", commands(world, root, "t-2"))],
+        "t-2": [claimsAndCloses("t-2" as TicketId, commands(world, root, "t-2" as TicketId))],
       }),
     })
     expectExitCode(ran, 0)

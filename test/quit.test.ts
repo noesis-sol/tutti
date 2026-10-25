@@ -23,7 +23,7 @@ import {
   underWayLine,
 } from "../src/run/quit.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
@@ -64,7 +64,7 @@ const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-
 const ctrlC = quitBy("SIGINT")
 
 /** What a ticket's worker's commands do to the in-memory Beads and git. */
-const commands = (world: World, root: string, id: string) => {
+const commands = (world: World, root: string, id: TicketId) => {
   const orDie = <A, E>(effect: Effect.Effect<A, E>) => Effect.asVoid(Effect.orDie(effect))
   return {
     claim: orDie(world.beads.update(id, { claim: true })),
@@ -79,7 +79,7 @@ const commands = (world: World, root: string, id: string) => {
 const atWork = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   meanwhile: ReadonlyArray<SessionScript[number]> = [],
 ): SessionScript =>
   turn(
@@ -191,8 +191,12 @@ describe("quitting", () => {
         config: { settings: { ...appConfig().settings, concurrent: 1 } },
         backlog: backlog().ticket("t-1").ticket("t-2").seeds,
         scripts: (world, root, quits) => ({
-          "t-1": [atWork(world, root, "t-1", [step(Effect.asVoid(Queue.offer(quits, ctrlC)))])],
-          "t-2": [claimsAndCloses("t-2")],
+          "t-1": [
+            atWork(world, root, "t-1" as TicketId, [
+              step(Effect.asVoid(Queue.offer(quits, ctrlC))),
+            ]),
+          ],
+          "t-2": [claimsAndCloses("t-2" as TicketId)],
         }),
       },
     })
@@ -233,7 +237,7 @@ describe("quitting", () => {
         scripts: (world, root, quits) => ({
           "t-1": [
             turn([
-              ...bash("bd update t-1 --claim", commands(world, root, "t-1").claim),
+              ...bash("bd update t-1 --claim", commands(world, root, "t-1" as TicketId).claim),
               step(Effect.asVoid(Queue.offer(quits, ctrlC))),
               sleep("1 hour"),
             ]),
@@ -246,7 +250,7 @@ describe("quitting", () => {
           yield* advance("9 seconds")
           for (let i = 0; i < 200; i++) yield* Effect.yieldNow
           const store = yield* Store
-          expect((yield* store.ticket("t-1"))?.suspended).toBeUndefined()
+          expect((yield* store.ticket("t-1" as TicketId))?.suspended).toBeUndefined()
           yield* advance("1 second")
         }),
     })
@@ -269,7 +273,7 @@ describe("quitting", () => {
         scripts: (world, root, quits) => ({
           "t-1": [
             turn([
-              ...bash("bd update t-1 --claim", commands(world, root, "t-1").claim),
+              ...bash("bd update t-1 --claim", commands(world, root, "t-1" as TicketId).claim),
               step(Effect.asVoid(Queue.offer(quits, ctrlC))),
               sleep("1 hour"),
             ]),
@@ -281,7 +285,9 @@ describe("quitting", () => {
           yield* until(interrupted("t-1"))
           yield* Queue.offerAll(quits, [ctrlC, ctrlC])
           const store = yield* Store
-          yield* until(Effect.map(store.ticket("t-1"), (saved) => saved?.suspended === "quit"))
+          yield* until(
+            Effect.map(store.ticket("t-1" as TicketId), (saved) => saved?.suspended === "quit"),
+          )
           yield* advance("10 seconds")
         }),
     })
@@ -316,11 +322,11 @@ describe("quitting", () => {
             // t-1's worker doesn't answer its interrupt, so quitting waits for it.
             "t-1": [
               turn([
-                ...bash("bd update t-1 --claim", commands(world, root, "t-1").claim),
+                ...bash("bd update t-1 --claim", commands(world, root, "t-1" as TicketId).claim),
                 sleep("1 hour"),
               ]),
             ],
-            "t-2": [claimsAndCloses("t-2", commands(world, root, "t-2"))],
+            "t-2": [claimsAndCloses("t-2" as TicketId, commands(world, root, "t-2" as TicketId))],
           }
         },
       },
@@ -385,11 +391,11 @@ describe("quitting", () => {
           return {
             "t-1": [
               turn([
-                ...bash("bd update t-1 --claim", commands(world, root, "t-1").claim),
+                ...bash("bd update t-1 --claim", commands(world, root, "t-1" as TicketId).claim),
                 sleep("1 hour"),
               ]),
             ],
-            "t-2": [claimsAndCloses("t-2", commands(world, root, "t-2"))],
+            "t-2": [claimsAndCloses("t-2" as TicketId, commands(world, root, "t-2" as TicketId))],
           }
         },
       },
@@ -426,7 +432,7 @@ describe("quitting", () => {
         scripts: (world, root) => ({
           "t-1": [
             turn([
-              ...bash("bd update t-1 --claim", commands(world, root, "t-1").claim),
+              ...bash("bd update t-1 --claim", commands(world, root, "t-1" as TicketId).claim),
               sleep("30 seconds"),
               step(
                 Effect.sync(() => {
@@ -435,7 +441,7 @@ describe("quitting", () => {
               ),
             ]),
           ],
-          "t-2": [atWork(world, root, "t-2")],
+          "t-2": [atWork(world, root, "t-2" as TicketId)],
         }),
       },
       around: (running) =>
@@ -458,7 +464,7 @@ describe("quitting", () => {
           // t-2 is dispatched, in real time, before the clock moves t-1 on to its panic.
           const beads = yield* Beads
           for (let i = 0; i < 2000; i++) {
-            const shown = yield* Effect.result(beads.show("t-2"))
+            const shown = yield* Effect.result(beads.show("t-2" as TicketId))
             if (shown._tag === "Success" && shown.success.status === "in_progress") break
             yield* Effect.promise(() => Bun.sleep(2))
           }
@@ -484,7 +490,7 @@ describe("quitting", () => {
         config: { settings: { ...appConfig().settings, concurrent: 2 } },
         scripts: (world, root) => ({
           "t-1": [
-            atWork(world, root, "t-1", [
+            atWork(world, root, "t-1" as TicketId, [
               step(
                 Effect.sync(() => {
                   armed = true
@@ -547,7 +553,9 @@ describe("quitting", () => {
         checks: { full: [hanging] },
         scripts: (world, root, quits) => {
           Effect.runSync(Ref.set(offered, quits))
-          return { "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }
+          return {
+            "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+          }
         },
       },
     })
@@ -568,7 +576,7 @@ describe("quitting", () => {
         backlog: backlog().ticket("t-1").seeds,
         checks: { fast: [Effect.die(new Error("merge boom"))] },
         scripts: (world, root) => ({
-          "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))],
+          "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
         }),
       },
       before: () =>
@@ -592,7 +600,11 @@ describe("quitting", () => {
       setup: {
         backlog: backlog().ticket("t-1").seeds,
         scripts: (world, root, quits) => ({
-          "t-1": [atWork(world, root, "t-1", [step(Effect.asVoid(Queue.offer(quits, ctrlC)))])],
+          "t-1": [
+            atWork(world, root, "t-1" as TicketId, [
+              step(Effect.asVoid(Queue.offer(quits, ctrlC))),
+            ]),
+          ],
         }),
       },
       around: (running) =>
@@ -670,7 +682,7 @@ describe("signals", () => {
 
 describe("the lines", () => {
   test("as § 4.8 words them", () => {
-    expect<unknown>(underWayLine("t-1", ctrlC)).toBe(
+    expect<unknown>(underWayLine("t-1" as TicketId, ctrlC)).toBe(
       "  t-1's merge is under way; press Ctrl+C again to abandon it",
     )
     expect<unknown>(quitLine(quitBy("SIGTERM"), [])).toBe(
@@ -702,8 +714,8 @@ describe("the lines", () => {
       began: 0,
       stopping: true,
       quitting: quittingText([
-        { ticket: "t-1", what: "worker" },
-        { ticket: "t-2", what: "merge" },
+        { ticket: "t-1" as TicketId, what: "worker" },
+        { ticket: "t-2" as TicketId, what: "merge" },
       ]),
       solo: null,
       shared: 0,

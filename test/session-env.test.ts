@@ -2,6 +2,7 @@
 // `!tutti`) has that session's variables in its environment: the sessions tutti starts don't get
 // them, so none runs as the parent's attended child or takes its messaging socket (tutti-y2i). The
 // user's own configuration stays. scripts/test.ts drops the same names for the suites.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -22,6 +23,7 @@ import {
 } from "../src/agent/env.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -145,7 +147,10 @@ const sessionEnv = (env: Record<string, string>, names: ReadonlyArray<string>) =
   return Effect.runPromise(
     Effect.gen(function* () {
       const agents = yield* AgentHost
-      yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
+      yield* agents.start("t-1" as TicketId, {
+        sessionId: "11111111-1111-4111-8111-111111111111",
+        cwd: dir,
+      })
       return yield* Effect.sync(() => loggedEnv(log)).pipe(
         Effect.repeat({
           until: (found) => found.length > 0,

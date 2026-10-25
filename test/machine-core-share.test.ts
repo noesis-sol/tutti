@@ -1,6 +1,7 @@
 // A worker's share of the cores counts the workers of the machine's other runs (tutti-kkb.37), as
 // orchestra 0.9.0's does: the run keeps how many they run as it reads their registrations
 // (OtherWorkers), and each session takes its share as it starts, up to --machine-workers.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -22,6 +23,7 @@ import {
   Processes,
 } from "../src/run/machine.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -84,7 +86,7 @@ const sharesAsOthersRun = (others: readonly [number, number, number], machineWor
       const machine = yield* OtherWorkers
       for (const [i, n] of others.entries()) {
         yield* machine.set(n)
-        yield* agents.start(`t-${i}`, { sessionId: crypto.randomUUID(), cwd: dir })
+        yield* agents.start(`t-${i}` as TicketId, { sessionId: crypto.randomUUID(), cwd: dir })
         yield* logged(log, i + 1)
       }
       return loggedShares(log)
@@ -168,7 +170,7 @@ describe("the run", () => {
               [
                 ...bash(
                   "bd update a --claim",
-                  Effect.orDie(world.beads.update("a", { claim: true })),
+                  Effect.orDie(world.beads.update("a" as TicketId, { claim: true })),
                 ),
                 sleep("1 minute"),
                 ...bash(
@@ -177,7 +179,7 @@ describe("the run", () => {
                     world.repository.commit(join(root, "a"), "Change (a)", { "a.txt": "a\n" }),
                   ),
                 ),
-                ...bash("bd close a", Effect.orDie(world.beads.close("a", "done"))),
+                ...bash("bd close a", Effect.orDie(world.beads.close("a" as TicketId, "done"))),
               ],
               result("Closed a."),
             ),
@@ -195,7 +197,7 @@ describe("the run", () => {
           others: Ref.get(count),
           set: (n) =>
             Effect.gen(function* () {
-              const known = yield* Effect.orElseSucceed(agents.current("a"), () => null)
+              const known = yield* Effect.orElseSucceed(agents.current("a" as TicketId), () => null)
               sets.push({ others: n, started: known === null ? 0 : 1 })
               yield* Ref.set(count, n)
               yield* Deferred.succeed(first, undefined)

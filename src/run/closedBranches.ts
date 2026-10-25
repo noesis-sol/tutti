@@ -11,7 +11,7 @@
 // found not on the base is asked of again too once its branch is on another commit or gone. The
 // first time a blocker is found so, CLOSED_UNMERGED says once how to clear it.
 import { Effect, Result } from "effect"
-import type { Dependency } from "../services/Beads.ts"
+import type { Dependency, TicketId } from "../services/Beads.ts"
 import { Git, type GitError, gitWhy } from "../services/Git.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -34,11 +34,11 @@ export interface ClosedBranches {
    * Why closed ticket `id`'s work is only on its branch, the base on `head`, or undefined when it
    * isn't: `tutti/<id> is not on <base>`, or that git can't tell, with git's error.
    */
-  why(id: string, head: string | undefined): Effect.Effect<string | undefined>
+  why(id: TicketId, head: string | undefined): Effect.Effect<string | undefined>
 }
 
 /** The CLOSED_UNMERGED warning, said once of each closed ticket whose work is only on its branch. */
-export const closedUnmergedLine = (id: string, base: string): Line => {
+export const closedUnmergedLine = (id: TicketId, base: string): Line => {
   const branch = branchOf(id)
   return ticketLine(
     Tag.closedUnmerged,
@@ -51,7 +51,7 @@ export const closedUnmergedLine = (id: string, base: string): Line => {
  * changes; undefined when it is on the base, or gone. Git failing to tell fails with its error.
  */
 export const branchOff = (
-  id: string,
+  id: TicketId,
   where: Where,
 ): Effect.Effect<string | undefined, GitError, Git> =>
   Effect.gen(function* () {
@@ -64,7 +64,7 @@ export const branchOff = (
   })
 
 /** Why a closed ticket's work isn't known to be on the base when git fails to tell. */
-const cantTell = (id: string, base: string, error: GitError): string =>
+const cantTell = (id: TicketId, base: string, error: GitError): string =>
   `git can't tell whether ${branchOf(id)} is on ${base}: ${gitWhy(error)}`
 
 /** What git said of a closed ticket's branch: why, with the base on `head` and the branch on `tip`. */
@@ -84,7 +84,7 @@ export const closedBranches = (
     const known = new Map<string, Known>()
     const warned = new Set<string>()
     // The commit the branch is on; undefined when git can't say, so that it is asked again.
-    const tipOf = (id: string) =>
+    const tipOf = (id: TicketId) =>
       git.revParse(where.repo, `refs/heads/${branchOf(id)}`).pipe(
         Effect.map((hash): string | undefined => hash),
         Effect.orElseSucceed(() => undefined),
@@ -125,7 +125,7 @@ export const closedBranches = (
  * Why closed ticket `id`'s work is only on its branch, as ClosedBranches' `why` says it; undefined
  * when it isn't.
  */
-export type Branches = (id: string) => Effect.Effect<string | undefined, never, Git>
+export type Branches = (id: TicketId) => Effect.Effect<string | undefined, never, Git>
 
 /** Asks the run's ClosedBranches, the base where the first ask finds it. */
 export const asking = (closed: ClosedBranches): Branches => {

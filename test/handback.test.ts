@@ -9,7 +9,7 @@ import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { resolvePrompt } from "../src/run/told.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -74,7 +74,7 @@ const pathOf = (ran: Ran<unknown>, id: string): ReadonlyArray<string> =>
   )
 
 /** Waits until the ticket is in `tag`. */
-const until = (id: string, tag: PhaseTag) =>
+const until = (id: TicketId, tag: PhaseTag) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(
@@ -110,7 +110,7 @@ const resolves = (world: World, id: string, files: Files) => turn([resolving(wor
  * a ticket an earlier run left).
  */
 const finished = (
-  id: string,
+  id: TicketId,
   files: Files,
   session: {
     readonly closed?: boolean
@@ -197,7 +197,7 @@ const conflicted = (
     { backlog: backlog().ticket("a").seeds, ...withCheck, ...setup, scripts },
     withQueue((queue) =>
       Effect.gen(function* () {
-        const ticket = yield* finished("a", { "a.txt": "a\n" }, session)
+        const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" }, session)
         yield* moveMain()
         yield* hooks.before ?? Effect.void
         const during = yield* Effect.forkChild(hooks.during ?? Effect.void)
@@ -290,15 +290,15 @@ describe("a resolution accepted", () => {
       },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a.txt": "a\n" })
-          const b = yield* finished("b", { "b.txt": "b\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+          const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
           yield* moveMain()
           const during = yield* Effect.forkChild(
             Effect.gen(function* () {
-              yield* until("b", "Done")
-              expect((yield* (yield* Ledger).current).tickets.get("a")?.phase._tag).toBe(
-                "Resolving",
-              )
+              yield* until("b" as TicketId, "Done")
+              expect(
+                (yield* (yield* Ledger).current).tickets.get("a" as TicketId)?.phase._tag,
+              ).toBe("Resolving")
               yield* advance("1 minute")
             }),
           )
@@ -368,8 +368,8 @@ describe("a resolution rejected", () => {
         }),
         // Handed back, the rebase is its worker's: its mark says so, for a run killed meanwhile.
         during: Effect.gen(function* () {
-          yield* until("a", "Resolving")
-          const metadata = yield* (yield* Store).metadata("a")
+          yield* until("a" as TicketId, "Resolving")
+          const metadata = yield* (yield* Store).metadata("a" as TicketId)
           expect(handedBackOf(metadata[uncheckedKey])).toBe(true)
         }),
         after: (ticket) =>
@@ -480,9 +480,11 @@ describe("a resolution not done in time", () => {
       {},
       {
         during: Effect.gen(function* () {
-          yield* until("a", "Resolving")
+          yield* until("a" as TicketId, "Resolving")
           yield* advance("19 minutes")
-          expect((yield* (yield* Ledger).current).tickets.get("a")?.phase._tag).toBe("Resolving")
+          expect((yield* (yield* Ledger).current).tickets.get("a" as TicketId)?.phase._tag).toBe(
+            "Resolving",
+          )
           yield* advance("1 minute")
         }),
         after: (ticket) =>
@@ -510,7 +512,7 @@ describe("a worker that can't take it", () => {
       {},
       {
         before: Effect.gen(function* () {
-          yield* (yield* Ledger).steer("a", "message")
+          yield* (yield* Ledger).steer("a" as TicketId, "message")
         }),
         after: (ticket) =>
           Effect.gen(function* () {
@@ -522,7 +524,9 @@ describe("a worker that can't take it", () => {
     expect(handed.phases.a).toEqual(
       expect.objectContaining({ _tag: "Blocked", why: "MERGE_CONFLICT" }),
     )
-    expect(handed.waiting.map((stop) => [stop.ticket.id, stop.files])).toEqual([["a", ["a.txt"]]])
+    expect(handed.waiting.map((stop) => [stop.ticket.id, stop.files])).toEqual([
+      ["a" as TicketId, ["a.txt"]],
+    ])
     expect(composed(ran)).toEqual([])
     expectLog(ran, [
       `  MERGE_CONFLICT: a closed, but tutti/a conflicts with main in a.txt, which moved on while it ran (not handed back to its worker: you have steered its worker, so the hand-back waits in its view); worktree ${worktreeOf("a")} left for review (rebase onto main, check, merge)`,
@@ -600,7 +604,7 @@ describe("a session tutti closed", () => {
 describe("the prompt", () => {
   test("names the files, the tests to run and the check left to tutti, as orchestra's does", () => {
     const stop: RebaseStop = {
-      ticket: { id: "a", title: "A", branch: "tutti/a", worktree: "/w/a" },
+      ticket: { id: "a" as TicketId, title: "A", branch: "tutti/a", worktree: "/w/a" },
       onto: "abc" as Sha,
       fork: "123" as Sha,
       head: "def" as Sha,

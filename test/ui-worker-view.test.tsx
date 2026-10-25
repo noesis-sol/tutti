@@ -2,6 +2,7 @@
 // kind collapsed and expanded, subagent work nested under its Agent call, thinking hidden, live
 // text; the attention panel with the card's buttons and rules, and the hand-back notice; the
 // window it mounts (200 at the bottom, 200 older at a time, never more than 600); the keys.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit, Queue, Scope } from "effect"
@@ -14,6 +15,7 @@ import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
@@ -322,7 +324,7 @@ describe("the window", () => {
 
 const working = TicketPhase.Working()
 
-const ledgerEntry = (ticket: string, worker: number, steered = false): LedgerEntry => ({
+const ledgerEntry = (ticket: TicketId, worker: number, steered = false): LedgerEntry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: working,
@@ -340,7 +342,10 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest> = [], workers = 2): Ru
   project({
     ledger: {
       tickets: new Map(
-        Array.from({ length: workers }, (_, i) => [`t-${i + 1}`, ledgerEntry(`t-${i + 1}`, i + 1)]),
+        Array.from({ length: workers }, (_, i) => [
+          `t-${i + 1}` as TicketId,
+          ledgerEntry(`t-${i + 1}` as TicketId, i + 1),
+        ]),
       ),
       rows: workers,
       windDown: null,
@@ -356,7 +361,7 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest> = [], workers = 2): Ru
 
 const permission = (id: string, over: Partial<AttentionRequest> = {}): AttentionRequest => ({
   id,
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Permission",
     tool: "Bash",
@@ -416,7 +421,7 @@ const shellOf = (
   extra: Partial<ShellValue> = {},
 ): ShellValue => ({
   view,
-  screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+  screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
   commands,
   appearance: external<Appearance>("dark"),
   themeOf,
@@ -854,7 +859,7 @@ describe("the attention panel", () => {
         const y = linesOf(frame).findIndex((line) => line.includes("[ Hand it the conflict now ]"))
         const x = (linesOf(frame)[y] ?? "").indexOf("[ Hand it")
         await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
-        expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: "t-1" })])
+        expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: "t-1" as TicketId })])
       },
       { extra: { handBacks: external<ReadonlyArray<string>>(["t-1"]) } },
     )

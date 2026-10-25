@@ -1,6 +1,7 @@
 // The run's stops as one list in the order raised (holds.ts): the first decides the exit code and
 // leads the closing line, a stop put first goes before them, and a change that changes nothing
 // leaves the holds as they were, so that the dashboard isn't drawn again for it.
+
 import { describe, expect, test } from "bun:test"
 import * as fc from "fast-check"
 import {
@@ -20,8 +21,9 @@ import {
   stopsLine,
   swapStop,
 } from "../src/run/holds.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
-const paused = stopFor("PAUSED", "the worker paused", { ticket: "t-1" })
+const paused = stopFor("PAUSED", "the worker paused", { ticket: "t-1" as TicketId })
 const dirty = stopFor("DIRTY_TREE", "uncommitted changes in /repo")
 const quit = stopFor("INTERRUPTED", "you quit")
 
@@ -56,7 +58,7 @@ describe("the stops as a list", () => {
   test("a swap of a stop not among them, or a lift of none, changes nothing", () => {
     const holds = raiseStop(noHolds, dirty)
     expect(changeStops(holds, (stops) => swapStop(stops, paused, null))).toBe(holds)
-    expect(liftBlocked(holds, "t-1")).toBe(holds)
+    expect(liftBlocked(holds, "t-1" as TicketId)).toBe(holds)
   })
 
   test("a swap keeps the others in their places, whatever stops are raised", () => {

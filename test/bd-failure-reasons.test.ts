@@ -17,7 +17,7 @@ import { Move } from "../src/run/phase.ts"
 import { make as makePredictor } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { TimeLimit } from "../src/services/exec.ts"
 import { Git } from "../src/services/Git.ts"
 import { result, run as step, turn } from "../src/testing/AgentHost.ts"
@@ -39,11 +39,11 @@ const setAside = (op: string, fault: Fault) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const ledger = yield* Ledger
-      yield* ledger.transition("t-1", Move.Ready(), { title: "One ticket" })
-      yield* ledger.transition("t-1", Move.Dispatched())
+      yield* ledger.transition("t-1" as TicketId, Move.Ready(), { title: "One ticket" })
+      yield* ledger.transition("t-1" as TicketId, Move.Dispatched())
       yield* (yield* Backlog).fail(op, fault)
       const deferred = yield* putAside(
-        { id: "t-1", title: "One ticket" },
+        { id: "t-1" as TicketId, title: "One ticket" },
         {
           note: "tutti: set aside.",
           reason: "set aside",
@@ -143,7 +143,7 @@ describe("a predicted footprint bd can't keep", () => {
       Effect.gen(function* () {
         yield* (yield* Backlog).fail("update", fault)
         const predictor = yield* makePredictor({ repo: "/repo" })
-        const issue = yield* (yield* Beads).show("t-1")
+        const issue = yield* (yield* Beads).show("t-1" as TicketId)
         yield* predictor.queue([issue], repoFiles(tracked), () => Effect.succeed([]))
         for (let i = 0; i < 200; i++) yield* Effect.yieldNow
         return yield* texts

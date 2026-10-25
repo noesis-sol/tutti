@@ -44,6 +44,7 @@
 // neither Claude nor its product.
 import { useTerminalDimensions } from "@opentui/react"
 import { useMemo, useState } from "react"
+import type { TicketId } from "../services/Beads.ts"
 import { stack } from "./allot.ts"
 import {
   Composer,
@@ -335,7 +336,7 @@ export const ViewHint = ({ lines }: { readonly lines: ReadonlyArray<Segments> })
 }
 
 /** The view of the ticket's worker, while the run shows it. */
-export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
+export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) => {
   const screen = useWorkerScreen(viewed)
   const { card, resources, finished, holding, steered, handBack, transcript, composer, commands } =
     screen

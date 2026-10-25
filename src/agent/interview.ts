@@ -24,7 +24,7 @@ import { evidenceId } from "../organs/evidence.ts"
 import { type FeaturePlan, type FiledPlan, maxPlanned } from "../project/planFile.ts"
 import template from "../project/templates/interview-prompt.md" with { type: "text" }
 import { shownPlan } from "../run/feature.ts"
-import type { Beads } from "../services/Beads.ts"
+import type { Beads, TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { runFolder, writeRunFile } from "../services/Worktrees.ts"
 import { type Plan, startOnQuestion } from "../ui/questions.ts"
@@ -39,7 +39,7 @@ import {
 import { SessionKind } from "./sessionKind.ts"
 
 /** The name AgentHost knows the interview's session by, as a ticket's worker is known by its ID. */
-export const interviewWorker = "tutti-interview"
+export const interviewWorker = "tutti-interview" as TicketId
 
 /** The interview's description, under the main checkout's .tutti/run/. */
 export const featureRequestName = "feature-request.md"
@@ -86,7 +86,7 @@ export type InterviewEnd = Data.TaggedEnum<{
    * epic and its tickets are offered with `question`.
    */
   Filed: {
-    readonly epic: string
+    readonly epic: TicketId
     readonly tickets: number
     readonly plan: Plan
     readonly question: string

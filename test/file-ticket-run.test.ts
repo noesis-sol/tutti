@@ -2,6 +2,7 @@
 // file what was written for a's worker as a ticket; the run files it with bd, discovered from a,
 // logs FILED and puts it in the screen's filings under the view's uuid. A run limited to one ticket
 // doesn't start it.
+
 import { expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,7 @@ import { FileOutcome, type TicketFiling } from "../src/run/fileTicket.ts"
 import { line, Tag } from "../src/run/log.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { init, result, run, sessionState, wait } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -45,7 +47,7 @@ test("FileTicket files the text with bd, logs FILED and says so in the filings",
             wait,
             init(),
             sessionState("running"),
-            run(Effect.asVoid(Effect.orDie(world.beads.update("a", { claim: true })))),
+            run(Effect.asVoid(Effect.orDie(world.beads.update("a" as TicketId, { claim: true })))),
             run(
               Effect.asVoid(
                 Effect.orDie(
@@ -61,7 +63,7 @@ test("FileTicket files the text with bd, logs FILED and says so in the filings",
                 ),
               ),
             ),
-            run(Effect.asVoid(Effect.orDie(world.beads.close("a", "done")))),
+            run(Effect.asVoid(Effect.orDie(world.beads.close("a" as TicketId, "done")))),
             result("Closed a."),
             sessionState("idle"),
           ],
@@ -105,7 +107,7 @@ test("FileTicket files the text with bd, logs FILED and says so in the filings",
           yield* Effect.promise(() => Bun.sleep(10))
         })
       yield* until("a's check", () => Deferred.isDone(checking))
-      yield* send(UiCommand.FileTicket({ from: "a", text: followUp, uuid: "u-1" }))
+      yield* send(UiCommand.FileTicket({ from: "a" as TicketId, text: followUp, uuid: "u-1" }))
       yield* until("the filing", () =>
         Effect.map(SubscriptionRef.get(inputs.filings), (now) => {
           filings = now
@@ -129,11 +131,15 @@ test("FileTicket files the text with bd, logs FILED and says so in the filings",
   expect(made?.title).toBe(followUp)
   expect(made?.status).toBe("open")
   expect(made?.dependencies.map(({ id, type }) => ({ id, type }))).toEqual([
-    { id: "a", type: "discovered-from" },
+    { id: "a" as TicketId, type: "discovered-from" },
   ])
   const filings = ran.exit._tag === "Success" ? ran.exit.value.filings : []
   expect(filings).toEqual([
-    { uuid: "u-1", from: "a", outcome: FileOutcome.Filed({ id: made?.id ?? "", title: followUp }) },
+    {
+      uuid: "u-1",
+      from: "a" as TicketId,
+      outcome: FileOutcome.Filed({ id: made?.id ?? ("" as TicketId), title: followUp }),
+    },
   ])
   expect(ran.log).toContain(
     `  ${Tag.filed}: ${made?.id ?? ""}, written for a's worker after it had finished`,

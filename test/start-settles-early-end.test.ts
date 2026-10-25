@@ -1,12 +1,14 @@
 // A session whose stream ends before its initialize is answered (AgentHostLive): the start, not the
 // reader, settles it, so the start fails saying why Claude Code didn't start, and the worker is
 // Gone for that, never "closed while it started" by the close the reader would fork.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { closedWhy } from "../src/agent/AgentHostLive.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { failStart, layer as hostLayer, type Script } from "../src/testing/AgentHost.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -18,8 +20,10 @@ const started = (script: Script) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const host = yield* AgentHost
-      const failed = yield* Effect.flip(host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" }))
-      return { failed, state: yield* host.current("t-1") }
+      const failed = yield* Effect.flip(
+        host.start("t-1" as TicketId, { sessionId: "s-1", cwd: "/work/t-1" }),
+      )
+      return { failed, state: yield* host.current("t-1" as TicketId) }
     }).pipe(
       Effect.provide(
         hostLayer({ "t-1": script }).pipe(

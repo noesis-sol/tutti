@@ -20,6 +20,7 @@ import {
   transitions,
   WaitFor,
 } from "../src/run/phase.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
 const {
   Queued,
@@ -75,8 +76,8 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Move, TicketPha
   [
     "Working → Waiting",
     Working(),
-    Move.WaitsForMerge({ blockers: ["tut-b1"] }),
-    Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) }),
+    Move.WaitsForMerge({ blockers: ["tut-b1" as TicketId] }),
+    Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1" as TicketId] }) }),
   ],
   ["Working → Waiting{setup}", Working(), Move.SetupFailed(), Waiting({ for: WaitFor.Setup() })],
   [
@@ -107,7 +108,7 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Move, TicketPha
   ["Asked → Working", Asked({ question: "tut-q1" }), Move.Answered(), Working()],
   [
     "Waiting → Queued",
-    Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) }),
+    Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1" as TicketId] }) }),
     Move.Requeued(),
     Queued(),
   ],
@@ -287,7 +288,7 @@ const phases: ReadonlyArray<TicketPhase | null> = [
   Done({ outcome: Finished.Merged({ commit: "abc" }) }),
   Done({ outcome: Finished.NoChange() }),
   Asked({ question: "tut-q1" }),
-  Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) }),
+  Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1" as TicketId] }) }),
   Waiting({ for: WaitFor.Probe() }),
   Waiting({ for: WaitFor.Setup() }),
   Waiting({ for: WaitFor.SetupProblem() }),
@@ -308,7 +309,7 @@ const moveOf: { readonly [C in MoveTag]: Extract<Move, { readonly _tag: C }> } =
   Verified: Move.Verified({ place: 1 }),
   NoChange: Move.NoChange(),
   FiledQuestion: Move.FiledQuestion({ question: "tut-q1" }),
-  WaitsForMerge: Move.WaitsForMerge({ blockers: ["tut-b1"] }),
+  WaitsForMerge: Move.WaitsForMerge({ blockers: ["tut-b1" as TicketId] }),
   SetupFailed: Move.SetupFailed(),
   SetupProblem: Move.SetupProblem(),
   Defer: Move.Defer({ why: "x" }),
@@ -378,8 +379,10 @@ describe("transition", () => {
   test("an invalid transition names its phases and move, and PHASE_BUG's line", () => {
     const bug = rejected(transition(Queued(), Move.FastForwarded({ commit: "abc" })))
     expect([bug.from, bug.to, bug.when]).toEqual(["Queued", "Done", "FastForwarded"])
-    expect(bug.phaseBug("tut-9a1")).toBe("PHASE_BUG: tut-9a1 Queued → Done (FastForwarded)")
-    expect(rejected(transition(null, Move.Dispatched())).phaseBug("tut-9a1")).toBe(
+    expect(bug.phaseBug("tut-9a1" as TicketId)).toBe(
+      "PHASE_BUG: tut-9a1 Queued → Done (FastForwarded)",
+    )
+    expect(rejected(transition(null, Move.Dispatched())).phaseBug("tut-9a1" as TicketId)).toBe(
       "PHASE_BUG: tut-9a1 outside → Working (Dispatched)",
     )
     expect(rejected(transition(Working(), Move.Unready())).message).toBe(
@@ -420,7 +423,9 @@ const phaseArb: fc.Arbitrary<TicketPhase> = fc.oneof(
     fc.constant(Done({ outcome: Finished.NoChange() })),
   ),
   text.map((question) => Asked({ question })),
-  fc.array(text).map((ids) => Waiting({ for: WaitFor.Blockers({ ids }) })),
+  fc
+    .array(text.map((id) => id as TicketId))
+    .map((ids) => Waiting({ for: WaitFor.Blockers({ ids }) })),
   fc
     .constantFrom(WaitFor.Setup(), WaitFor.Probe(), WaitFor.SetupProblem())
     .map((wait) => Waiting({ for: wait })),
@@ -451,7 +456,7 @@ const moveArb: fc.Arbitrary<Move> = fc.oneof(
   ordinal.map((place) => Move.Unmerged({ place })),
   text.map((question) => Move.FiledQuestion({ question })),
   text.map((question) => Move.StillAsked({ question })),
-  fc.array(text).map((blockers) => Move.WaitsForMerge({ blockers })),
+  fc.array(text.map((id) => id as TicketId)).map((blockers) => Move.WaitsForMerge({ blockers })),
   text.map((why) => Move.Defer({ why })),
   fc.oneof(fc.constant("CHECKS_FAILED"), text).map((why) => Move.Aside({ why })),
   fc.constantFrom("PAUSED", "TICKET_LIMIT" as const).map((why) => Move.StopRun({ why })),

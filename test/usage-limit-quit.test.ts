@@ -3,6 +3,7 @@
 // USAGE_LIMIT: the worker waiting for the limit is suspended, its session saved for the next run,
 // and it is never told to carry on. A whole run with a dashboard under TestClock, the clock never
 // moved to the reset.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -13,6 +14,7 @@ import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { resetText } from "../src/run/told.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { claimsAndCloses, hitsUsageLimit } from "../src/testing/AgentHost.ts"
@@ -60,8 +62,8 @@ describe("quitting during the usage-limit wait", () => {
         worktrees: { root },
         // t-1 hits the limit, and would finish were it told to carry on; t-2 never starts.
         scripts: {
-          "t-1": [[...hitsUsageLimit(hour), ...claimsAndCloses("t-1")]],
-          "t-2": [claimsAndCloses("t-2")],
+          "t-1": [[...hitsUsageLimit(hour), ...claimsAndCloses("t-1" as TicketId)]],
+          "t-2": [claimsAndCloses("t-2" as TicketId)],
         },
       },
       Effect.gen(function* () {
@@ -125,6 +127,6 @@ describe("quitting during the usage-limit wait", () => {
     const texts1 = toT1.flatMap((sent) =>
       sent._tag === "Message" ? [String(sent.message.message.content)] : [],
     )
-    expect(texts1).not.toContain(resetText("t-1"))
+    expect(texts1).not.toContain(resetText("t-1" as TicketId))
   })
 })

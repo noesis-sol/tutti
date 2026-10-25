@@ -15,7 +15,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { read, untilSettled } from "../src/run/settle.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -76,7 +76,7 @@ const phasesOf = (state: State): Record<string, TicketPhase> =>
   Object.fromEntries([...state.tickets.values()].map((entry) => [entry.ticket, entry.phase]))
 
 /** Waits until the ticket is in `tag`. */
-const until = (id: string, tag: PhaseTag) =>
+const until = (id: TicketId, tag: PhaseTag) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(
@@ -135,7 +135,7 @@ const resolves = (world: World, after: SessionScript = []) =>
   ])
 
 /** A ticket its worker finished, its session started and idle, Working in the ledger. */
-const finished = (id: string, files: Files, started = true) =>
+const finished = (id: TicketId, files: Files, started = true) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -194,10 +194,12 @@ const merges = (
     },
     Effect.gen(function* () {
       const queue: MergeQueue = yield* makeQueue(options)
-      const ticket = yield* finished("a", { "a.txt": "a\n" })
+      const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
       const repository = yield* Repository
       yield* repository.commit(repository.dir, "Land something else", landed)
-      const during = yield* Effect.forkChild(Effect.andThen(until("a", handed), askedAgain))
+      const during = yield* Effect.forkChild(
+        Effect.andThen(until("a" as TicketId, handed), askedAgain),
+      )
       yield* queue.offer(ticket)
       yield* queue.settled
       yield* Fiber.join(during)
@@ -276,7 +278,7 @@ const headUnreadable = <A>(
   scenario(
     { backlog: backlog().ticket("a").seeds, ...withCheck },
     Effect.gen(function* () {
-      const a = yield* finished("a", { "a.txt": "a\n" }, false)
+      const a = yield* finished("a" as TicketId, { "a.txt": "a\n" }, false)
       const repository = yield* Repository
       const first = yield* repository.head(a.branch)
       yield* repository.commit(a.worktree, "Fix the check (a)", { "fix.txt": "fixed\n" })

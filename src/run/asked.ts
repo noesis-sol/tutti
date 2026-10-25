@@ -17,7 +17,7 @@
 // then, so its line says a later run takes it up when it is open, and to reopen it when it is in
 // progress, or else to finish it by hand. A ticket bd can't show waits for the next poll.
 import { Clock, Effect, Result } from "effect"
-import { Beads, type Issue } from "../services/Beads.ts"
+import { Beads, type Issue, type TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
@@ -38,7 +38,7 @@ export interface AnswerOptions extends WorkOptions {
    * Whether there was a slot for it.
    */
   carry(
-    ticket: string,
+    ticket: TicketId,
     start: Effect.Effect<Effect.Effect<Worked, WorkError> | undefined>,
     issue?: Issue,
   ): Effect.Effect<boolean>

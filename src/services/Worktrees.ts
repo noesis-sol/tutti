@@ -5,7 +5,8 @@
 //
 // A ticket's ID names a folder and a branch, and workers file tickets themselves: Beads checks only
 // an ID's prefix, so one like x-../../y reaches the run. An ID that could lead out of the worktree
-// folder, or that git can't take in a branch name, is BadTicketId before anything is made from it.
+// folder, or that git can't take in a branch name, is BadTicketId before prepare makes anything of it:
+// checkTicketId checks it there, once. remove makes no path of an ID, and takes one unchecked.
 //
 // A worktree's .tutti/run/ is its worker's to change, and a worker reads ticket text tutti can't
 // fully trust. Had it put a symbolic link in place of .tutti, .tutti/run or a file there, tutti
@@ -27,7 +28,8 @@ import {
   SymlinkRefused,
 } from "../native/libc.ts"
 import { writeFileAtomic } from "./atomicFile.ts"
-import { type Commit, Git, type GitError, GitWriter, gitWhy, type StatusEntry } from "./Git.ts"
+import type { TicketId } from "./Beads.ts"
+import { type Commit, Git, type GitError, GitWriter, type StatusEntry } from "./Git.ts"
 
 /** A ticket ID that can't name a worktree folder and a branch; `why` says what is wrong with it. */
 export class BadTicketId extends Schema.TaggedError<BadTicketId>()("BadTicketId", {
@@ -38,10 +40,6 @@ export class BadTicketId extends Schema.TaggedError<BadTicketId>()("BadTicketId"
     return `${this.why}: ${JSON.stringify(this.id)}`
   }
 }
-
-/** What kept a ticket's worktree and branch from being removed, in a few words. */
-export const cleanupWhy = (error: BadTicketId | GitError): string =>
-  error._tag === "BadTicketId" ? error.why : gitWhy(error)
 
 /** A symbolic link stands at `path` (relative to the worktree) on the way to a run file. */
 export class RunFilesOutside extends Schema.TaggedError<RunFilesOutside>()("RunFilesOutside", {
@@ -74,7 +72,7 @@ export const runExcludeEntry = `/${runFolder}/`
 const runExcludeComment = "# per-ticket files written by tutti"
 
 /** The branch a ticket's worker commits on, in its own worktree (§ 11). */
-export const branchOf = (id: string): string => `tutti/${id}`
+export const branchOf = (id: TicketId): string => `tutti/${id}`
 
 /** Whether git refuses the character anywhere in a ref name (git help check-ref-format). */
 const notInRef = (char: string): boolean =>
@@ -111,9 +109,11 @@ export const ticketIdProblem = (id: string): string | undefined => {
 }
 
 /** The ID itself, or BadTicketId saying why it can't be run. */
-export const checkTicketId = (id: string): Effect.Effect<string, BadTicketId> => {
+export const checkTicketId = (id: string): Effect.Effect<TicketId, BadTicketId> => {
   const why = ticketIdProblem(id)
-  return why === undefined ? Effect.succeed(id) : Effect.fail(new BadTicketId({ id, why }))
+  return why === undefined
+    ? Effect.succeed(id as TicketId)
+    : Effect.fail(new BadTicketId({ id, why }))
 }
 
 /** What an earlier attempt at a ticket left: nothing in a new worktree. */
@@ -132,7 +132,7 @@ export const leftWork = (earlier: Earlier): boolean =>
 
 /** A ticket's worktree, ready for its worker. */
 export interface TicketWorktree {
-  readonly id: string
+  readonly id: TicketId
   /** `tutti/<id>`. */
   readonly branch: string
   /** The worktree's folder, absolute. */
@@ -150,7 +150,7 @@ export interface TicketWorktree {
  * in it (`earlier`), counted only where one of them was there.
  */
 export const found = (
-  id: string,
+  id: TicketId,
   path: string,
   left: { readonly existing: boolean; readonly branchLeft: boolean; readonly earlier: Earlier },
 ): TicketWorktree => {
@@ -281,7 +281,7 @@ export class Worktrees extends Context.Service<
      * <worktrees>/<id> on its branch (made from the base when there is none), with what an earlier
      * attempt left on it. Its run files are excluded from git first.
      */
-    prepare(id: string): Effect.Effect<TicketWorktree, BadTicketId | GitError | ExcludeUnwritable>
+    prepare(id: TicketId): Effect.Effect<TicketWorktree, BadTicketId | GitError | ExcludeUnwritable>
     /**
      * Removes the ticket's worktree and then its branch, each when there is one. git refuses a
      * worktree with changes and a branch the base doesn't have, unless forced; `untracked` forces
@@ -289,11 +289,13 @@ export class Worktrees extends Context.Service<
      * ticket's worktree, as its caller knows it on its branch, removed without looking for it first;
      * looked for when git can't remove it there. git forgets worktrees whose folder was deleted
      * only when no worktree has the branch, as one of them may hold it.
+     * It makes no path of the ID, which names only the branch git looks for, so it takes one
+     * unchecked: prepare checks it, once, before it makes a folder of it.
      */
     remove(
-      id: string,
+      id: TicketId,
       options?: { readonly force?: boolean; readonly untracked?: boolean; readonly at?: string },
-    ): Effect.Effect<void, BadTicketId | GitError>
+    ): Effect.Effect<void, GitError>
     /**
      * A new worktree in a folder of its own under the worktrees' folder, its name starting with
      * `prefix`, with `commit` checked out on no branch, its run files excluded from git first: the
@@ -353,7 +355,7 @@ export class Worktrees extends Context.Service<
         const earlierIn = (path: string) =>
           Effect.all({ commits: git.log(path, base), status: git.status(path) })
 
-        const prepare = (id: string) =>
+        const prepare = (id: TicketId) =>
           Effect.gen(function* () {
             yield* checkTicketId(id)
             const branch = branchOf(id)
@@ -380,7 +382,7 @@ export class Worktrees extends Context.Service<
           })
 
         const remove = (
-          id: string,
+          id: TicketId,
           removal: {
             readonly force?: boolean
             readonly untracked?: boolean
@@ -388,7 +390,6 @@ export class Worktrees extends Context.Service<
           } = {},
         ) =>
           Effect.gen(function* () {
-            yield* checkTicketId(id)
             const branch = branchOf(id)
             const force = removal.force === true
             const forceWorktree = force || removal.untracked === true
@@ -445,8 +446,9 @@ export class Worktrees extends Context.Service<
             const branches = new Set(
               (yield* git.worktrees(repo)).map((worktree) => worktree.branch),
             )
+            // A ticket's worktree is the folder its ID names, on its branch.
             return names
-              .filter((name) => !branches.has(branchOf(name)))
+              .filter((name) => !branches.has(branchOf(name as TicketId)))
               .map((name) => join(root, name))
           })
 

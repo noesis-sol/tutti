@@ -22,6 +22,7 @@ import type { BoxRenderable, TextareaRenderable } from "@opentui/core"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "../agent/Transcripts.ts"
 import { asRecord } from "../agent/untrusted.ts"
+import type { TicketId } from "../services/Beads.ts"
 import type { Command } from "./keyCommands.ts"
 import { cut, Line, padded, type Segments, seg, widthOf } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
@@ -84,7 +85,7 @@ export const FinishedLine = ({
   file,
 }: {
   readonly theme: Theme
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly width: number
   readonly file: () => void
 }) => <Line segments={finishedLine(theme, ticket, width)} press={file} />
@@ -98,7 +99,7 @@ export const heldWords = (ticket: string, merging: boolean) => ({
 /** The held line, `width` wide, over the composer of a ticket waiting to merge or merging. */
 export const heldLine = (
   theme: Theme,
-  ticket: string,
+  ticket: TicketId,
   merging: boolean,
   width: number,
 ): Segments => {
@@ -112,7 +113,7 @@ export const heldLine = (
 /** A message you sent from the composer, by the uuid it was sent with. */
 export interface Send {
   readonly uuid: string
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly text: string
   /** Sent while its ticket waited to merge or merged: the run holds it till the merge is over. */
   readonly held?: boolean
@@ -153,7 +154,7 @@ export interface Sends {
   /** Records a message sent with `uuid`: queued when a turn is under way. */
   readonly sent: (send: Send) => void
   /** Forgets the queued messages to `ticket`'s worker: an interrupt cancelled them. */
-  readonly cancelled: (ticket: string) => void
+  readonly cancelled: (ticket: TicketId) => void
 }
 
 /**
@@ -367,7 +368,7 @@ export const InterruptQuestion = ({
   no,
 }: {
   readonly theme: Theme
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly yes: () => void
   readonly no: () => void
 }) => {

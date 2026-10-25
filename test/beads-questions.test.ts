@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer } from "effect"
-import { Beads, BeadsUnreadable, decodeQuestions } from "../src/services/Beads.ts"
+import { Beads, BeadsUnreadable, decodeQuestions, type TicketId } from "../src/services/Beads.ts"
 
 const fixture = (name: string) => readFileSync(join(import.meta.dir, "fixtures/bd", name), "utf8")
 
@@ -22,7 +22,7 @@ describe("decoding bd human list --json", () => {
 
   test("a list is its questions, an empty one none", () => {
     expect(questions("[]\n")).toEqual([])
-    expect(questions(fixture("human-list.json"))).toEqual(["demo-n0n"])
+    expect(questions(fixture("human-list.json"))).toEqual(["demo-n0n" as TicketId])
   })
 
   test("output that is neither null nor a list of issues is BeadsUnreadable", () => {

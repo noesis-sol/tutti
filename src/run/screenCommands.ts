@@ -11,7 +11,7 @@
 // after the end (a hand-back merged, a worker steered, after the summary).
 import { Effect, Queue, Ref, Result, Semaphore, Stream, SubscriptionRef } from "effect"
 import { Attention } from "../agent/Attention.ts"
-import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { resolve, type UiCommand } from "./commands.ts"
 import { hear } from "./drain.ts"
 import { fileTicket } from "./fileTicket.ts"
@@ -53,7 +53,7 @@ export interface ScreenCommands {
 }
 
 /** Reads `ticket` again with bd show, onto its ledger entry; what bd can't say is logged only. */
-const readTicket = (ticket: string): Effect.Effect<void, never, Beads | Ledger> =>
+const readTicket = (ticket: TicketId): Effect.Effect<void, never, Beads | Ledger> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const read = yield* Effect.result((yield* Beads).show(ticket, { dependents: true }))

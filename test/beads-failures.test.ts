@@ -9,7 +9,7 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { Beads, BeadsFailed, BeadsTimedOut } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, BeadsTimedOut, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   claimsAndCloses,
@@ -33,7 +33,7 @@ import {
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-bdf-${name}-`)))
 
 /** Claims, commits and closes its ticket, as a worker does. */
-const finishes = (world: World, root: string, id: string): SessionScript =>
+const finishes = (world: World, root: string, id: TicketId): SessionScript =>
   claimsAndCloses(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     commit: Effect.asVoid(
@@ -48,7 +48,7 @@ interface Plan {
   readonly seeds: ReadonlyArray<Seed>
   /** The tickets workers run, each given a worktree in git first. */
   readonly tickets?: ReadonlyArray<string>
-  readonly ticket?: string
+  readonly ticket?: TicketId
   readonly settings?: Partial<ReturnType<typeof appConfig>["settings"]>
   readonly scripts?: (world: World, root: string, repo: string) => Scripts
   /** Runs before the run starts: the faults it makes bd give. */
@@ -102,8 +102,8 @@ describe("the test Beads layer's fail", () => {
       Effect.gen(function* () {
         const beads = yield* Beads
         yield* failing("show", { stderr: "Error: database is locked\n" })
-        const first = yield* Effect.flip(beads.show("t-1"))
-        const second = yield* beads.show("t-1")
+        const first = yield* Effect.flip(beads.show("t-1" as TicketId))
+        const second = yield* beads.show("t-1" as TicketId)
         return [first, second] as const
       }),
     )
@@ -114,7 +114,7 @@ describe("the test Beads layer's fail", () => {
       stderr: "Error: database is locked\n",
       noSuchIssue: false,
     })
-    expect(second.id).toBe("t-1")
+    expect(second.id).toBe("t-1" as TicketId)
   })
 
   test("only for the issue it names, as many times as it says, and times out when asked", async () => {
@@ -122,10 +122,10 @@ describe("the test Beads layer's fail", () => {
       Effect.gen(function* () {
         const beads = yield* Beads
         yield* failing("update", { id: "t-2", timedOut: true, times: 2 })
-        const other = yield* beads.update("t-1", { status: "deferred" })
-        const first = yield* Effect.flip(beads.update("t-2", { status: "deferred" }))
-        const second = yield* Effect.flip(beads.setMetadata("t-2", "k", "v"))
-        const third = yield* beads.update("t-2", { status: "deferred" })
+        const other = yield* beads.update("t-1" as TicketId, { status: "deferred" })
+        const first = yield* Effect.flip(beads.update("t-2" as TicketId, { status: "deferred" }))
+        const second = yield* Effect.flip(beads.setMetadata("t-2" as TicketId, "k", "v"))
+        const third = yield* beads.update("t-2" as TicketId, { status: "deferred" })
         return { other, first, second, third }
       }),
     )
@@ -149,7 +149,7 @@ describe("bd failing to list the deferred tickets whose blockers have merged", (
         { id: "t-1" },
       ],
       tickets: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [finishes(world, root, "t-1")] }),
+      scripts: (world, root) => ({ "t-1": [finishes(world, root, "t-1" as TicketId)] }),
       before: failing("show", { id: "k-1", stderr: "Error: database is locked\n" }),
     })
     expectExitCode(ran, 0)
@@ -170,7 +170,7 @@ describe("bd failing to list the deferred tickets whose blockers have merged", (
         { id: "e-1", type: "epic" },
         { id: "e-1.1", parent: "e-1", status: "deferred", blockedBy: ["b-1"] },
       ],
-      ticket: "e-1",
+      ticket: "e-1" as TicketId,
       before: failing("list", { id: "e-1", timedOut: true }),
     })
     expectExitCode(ran, 0)
@@ -191,7 +191,7 @@ describe("bd failing to read a scope as its run ends", () => {
   test("its subtickets unlisted: SCOPE_UNREADABLE, with bd's error", async () => {
     const ran = await runs({
       seeds,
-      ticket: "e-1",
+      ticket: "e-1" as TicketId,
       before: failing("list", {
         id: "e-1",
         stderr: "Error: database is locked\n",
@@ -207,7 +207,7 @@ describe("bd failing to read a scope as its run ends", () => {
   test("the ticket itself unread: SCOPE_UNREADABLE, with bd's error", async () => {
     const ran = await runs({
       seeds,
-      ticket: "e-1",
+      ticket: "e-1" as TicketId,
       before: failing("show", { id: "e-1", timedOut: true, times: Number.POSITIVE_INFINITY }),
     })
     expectExitCode(ran, 0)

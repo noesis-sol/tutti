@@ -21,7 +21,7 @@ import skillTemplate from "../project/templates/create-check-suite.md" with { ty
 import verifierTemplate from "../project/templates/verifier.md" with { type: "text" }
 import { soloLabel } from "../run/holds.ts"
 import { writeFileAtomic } from "../services/atomicFile.ts"
-import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import {
   checkScript,
@@ -943,14 +943,14 @@ export const fileTestWork = (
       )
     const filed = yield* Effect.result(beads.list({ labels: [testWorkLabel], all: true }))
     if (filed._tag === "Failure") return [notFiled(0, beadsWhy(filed.failure))]
-    const open = new Map<string, string>()
-    const closed = new Map<string, string>()
+    const open = new Map<string, TicketId>()
+    const closed = new Map<string, TicketId>()
     for (const issue of filed.success) {
       const by = issue.status === "closed" ? closed : open
       if (!by.has(issue.title)) by.set(issue.title, issue.id)
     }
     const steps: Array<Step> = []
-    const ids: Array<string> = []
+    const ids: Array<TicketId> = []
     for (const [at, ticket] of plan.entries()) {
       const there = open.get(ticket.title)
       if (there !== undefined) {

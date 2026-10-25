@@ -11,6 +11,7 @@ import {
   judgeRead,
   judgeWrite,
   noSuchIssueError,
+  type TicketId,
 } from "../src/services/Beads.ts"
 import {
   Backlog,
@@ -56,7 +57,7 @@ describe("a fault on a read", () => {
     const exit = await faulted("list", { exitCode: 1, stdout: fixture("list.json") }, (beads) =>
       beads.list(),
     )
-    expect(success(exit).map((issue) => issue.id)).toContain("demo-mtp.2")
+    expect(success(exit).map((issue) => issue.id)).toContain("demo-mtp.2" as TicketId)
   })
 
   test("whose stdout doesn't decode is bd failing, or unreadable when bd exits 0", async () => {
@@ -65,7 +66,7 @@ describe("a fault on a read", () => {
     expect(failed).toMatchObject({ exitCode: 1, stderr: "locked", noSuchIssue: false })
     const unreadable = failure(
       await faulted("show", { exitCode: 0, stdout: "Warning: not JSON" }, (beads) =>
-        beads.show("t-1"),
+        beads.show("t-1" as TicketId),
       ),
     )
     expect(unreadable).toBeInstanceOf(BeadsUnreadable)
@@ -74,8 +75,8 @@ describe("a fault on a read", () => {
 
   test("whose stdout says bd has no such issue fails with noSuchIssue", async () => {
     for (const call of [
-      (beads: Beads["Service"]) => Effect.asVoid(beads.show("t-1")),
-      (beads: Beads["Service"]) => Effect.asVoid(beads.metadata("t-1")),
+      (beads: Beads["Service"]) => Effect.asVoid(beads.show("t-1" as TicketId)),
+      (beads: Beads["Service"]) => Effect.asVoid(beads.metadata("t-1" as TicketId)),
     ]) {
       const error = failure(await faulted("show", { stdout: noSuchIssueStdout }, call))
       expect(error).toMatchObject({ _tag: "BeadsFailed", noSuchIssue: true })
@@ -84,7 +85,7 @@ describe("a fault on a read", () => {
 
   test("of bd show answering for another ticket is bd having no such issue", async () => {
     const exit = await faulted("show", { exitCode: 0, stdout: fixture("show-b.json") }, (beads) =>
-      beads.show("t-1"),
+      beads.show("t-1" as TicketId),
     )
     expect(failure(exit)).toMatchObject({ _tag: "BeadsFailed", noSuchIssue: true })
   })
@@ -97,7 +98,7 @@ describe("a fault on a write", () => {
       Effect.gen(function* () {
         const backlog = yield* Backlog
         yield* backlog.fail("update", { exitCode: 0, stdout: fixture("update-claim.json") })
-        const claimed = yield* (yield* Beads).update("t-1", { claim: true })
+        const claimed = yield* (yield* Beads).update("t-1" as TicketId, { claim: true })
         return { claimed, stored: yield* backlog.get("t-1") }
       }),
     )
@@ -107,13 +108,13 @@ describe("a fault on a write", () => {
   })
 
   test("that exits 0 with stdout that isn't an issue is unreadable", async () => {
-    const exit = await faulted("close", { exitCode: 0 }, (beads) => beads.close("t-1"))
+    const exit = await faulted("close", { exitCode: 0 }, (beads) => beads.close("t-1" as TicketId))
     expect(failure(exit)).toBeInstanceOf(BeadsUnreadable)
   })
 
   test("that fails is bd failing, though its stdout decodes", async () => {
     const exit = await faulted("update", { stdout: fixture("update-claim.json") }, (beads) =>
-      beads.update("t-1", { claim: true }),
+      beads.update("t-1" as TicketId, { claim: true }),
     )
     expect(failure(exit)).toMatchObject({ _tag: "BeadsFailed", exitCode: 1, noSuchIssue: false })
   })
@@ -125,7 +126,7 @@ describe("the backlog's answers, decoded as bd's", () => {
       [{ id: "t-1", metadata: { gone: undefined, at: new Date(0), files: "a.ts b.ts" } }],
       Effect.gen(function* () {
         const beads = yield* Beads
-        return { shown: yield* beads.show("t-1"), listed: yield* beads.list() }
+        return { shown: yield* beads.show("t-1" as TicketId), listed: yield* beads.list() }
       }),
     )
     const { shown, listed } = success(exit)
@@ -145,7 +146,7 @@ describe("the backlog's answers, decoded as bd's", () => {
   test("a show for an ID it has no issue for fails from bd's stdout", async () => {
     const exit = await inMemory(
       [{ id: "t-1" }],
-      Effect.flatMap(Beads, (beads) => beads.show("t-gone")),
+      Effect.flatMap(Beads, (beads) => beads.show("t-gone" as TicketId)),
     )
     expect(failure(exit)).toMatchObject({
       _tag: "BeadsFailed",
@@ -158,7 +159,9 @@ describe("the backlog's answers, decoded as bd's", () => {
   test("a write for an ID it has no issue for fails as the show before it does", async () => {
     const exit = await inMemory(
       [{ id: "t-1" }],
-      Effect.flatMap(Beads, (beads) => beads.addDependency("t-1", "t-gone")),
+      Effect.flatMap(Beads, (beads) =>
+        beads.addDependency("t-1" as TicketId, "t-gone" as TicketId),
+      ),
     )
     expect(failure(exit)).toMatchObject({
       _tag: "BeadsFailed",

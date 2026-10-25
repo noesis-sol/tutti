@@ -1,6 +1,7 @@
 // A message pushed into a session's inbox (AgentHostLive's push): one the inbox takes is recorded
 // and outstanding; one pushed as the session closes, its inbox ended, fails AgentGone with nothing
 // recorded and its uuid withdrawn.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { type Cause, Effect, Exit, Layer, Queue, SubscriptionRef } from "effect"
@@ -8,6 +9,7 @@ import { AgentGone, type MessageUuid, makeWorkers } from "../src/agent/AgentHost
 import { closingWhy, push } from "../src/agent/AgentHostLive.ts"
 import { read } from "../src/agent/reading.ts"
 import { WorkerEvent } from "../src/agent/WorkerState.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
@@ -29,12 +31,12 @@ const pushed = (ended: boolean, uuid: MessageUuid) =>
     Effect.scoped(
       Effect.gen(function* () {
         const workers = yield* makeWorkers()
-        const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
+        const entry = yield* workers.open("t-1" as TicketId, { session: "s-1", resumed: false })
         for (const event of settled) yield* workers.fold(entry, event)
         const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
         if (ended) yield* Queue.end(inbox)
         const claude = { send: (message: SDKUserMessage) => Queue.offer(inbox, message) }
-        const session = { ticket: "t-1", sessionId: "s-1", entry, claude }
+        const session = { ticket: "t-1" as TicketId, sessionId: "s-1", entry, claude }
         const exit = yield* Effect.exit(
           push(workers, session, { text: "hello", from: "clientComposed", uuid }),
         )

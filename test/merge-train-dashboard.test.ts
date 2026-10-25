@@ -31,7 +31,7 @@ import { run } from "../src/run/run.ts"
 import { checkAheadText, emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -86,7 +86,7 @@ const withLedger = <A, E>(effect: Effect.Effect<A, E, Env>): Promise<A> =>
   )
 
 /** Moves `ticket` by each of `causes` in turn, failing the test on an invalid one. */
-const go = (ticket: string, ...causes: ReadonlyArray<Move>) =>
+const go = (ticket: TicketId, ...causes: ReadonlyArray<Move>) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     for (const [i, cause] of causes.entries()) {
@@ -111,7 +111,7 @@ describe("a card waiting to merge", () => {
   test("says how its check ahead of its turn goes, and nothing once there is none", async () => {
     const seen = await withLedger(
       Effect.gen(function* () {
-        yield* go("b", ...toMerge)
+        yield* go("b" as TicketId, ...toMerge)
         const failed: CheckAhead = { step: "failed", behind: "tutti/a" }
         return {
           checking: yield* actionWith("b", new Map([["b", { step: "check", behind: "tutti/a" }]])),
@@ -132,7 +132,7 @@ describe("a card waiting to merge", () => {
   test("says it in its turn while its train is boarded, its merge's step after", async () => {
     const seen = await withLedger(
       Effect.gen(function* () {
-        yield* go("b", ...toMerge, Move.ItsTurn())
+        yield* go("b" as TicketId, ...toMerge, Move.ItsTurn())
         return {
           boarding: yield* actionWith("b", new Map([["b", { step: "check", behind: "tutti/a" }]])),
           after: yield* actionWith("b", new Map()),
@@ -144,7 +144,7 @@ describe("a card waiting to merge", () => {
 })
 
 /** Claims its ticket and, after `takes`, commits a file and closes it, as a worker does. */
-const works = (world: World, root: string, id: string, takes: Duration.Input): SessionScript =>
+const works = (world: World, root: string, id: TicketId, takes: Duration.Input): SessionScript =>
   turn(
     [
       ...bash(
@@ -217,8 +217,8 @@ const watched = async (checks: ReadonlyArray<Scripted>) => {
       worktrees: { root },
       checks: { fast: [slow("10 minutes"), ...checks] },
       scripts: (world: World) => ({
-        a: [works(world, root, "a", 0)],
-        b: [works(world, root, "b", "1 minute")],
+        a: [works(world, root, "a" as TicketId, 0)],
+        b: [works(world, root, "b" as TicketId, "1 minute")],
       }),
     },
     Effect.gen(function* () {
@@ -285,7 +285,7 @@ describe("a whole run's dashboard", () => {
 })
 
 /** A ticket its worker finished: a commit naming it on tutti/<id>, closed, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -327,8 +327,8 @@ describe("the merge queue's checks ahead", () => {
       Effect.gen(function* () {
         const queue = yield* makeQueue({ repo: "/repo", base: "main" })
         const repository = yield* Repository
-        const a = yield* finished("a", { "a.txt": "a\n" })
-        const b = yield* finished("b", { "b.txt": "b\n" })
+        const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+        const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
         yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
         yield* queue.offer(a)
         yield* queue.offer(b)

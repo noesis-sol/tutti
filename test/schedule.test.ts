@@ -11,7 +11,7 @@ import type { Log } from "../src/run/log.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { make, readTries, type Scheduler } from "../src/run/schedule.ts"
 import { byPriority, end, ledgerView, line, ready, takes } from "../src/run/scope.ts"
-import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -45,7 +45,7 @@ const flush = Effect.gen(function* () {
 const scheduler = (options: {
   readonly concurrent?: number
   readonly limit?: number
-  readonly scope?: string | null
+  readonly scope?: TicketId | null
   readonly excludeTypes?: ReadonlyArray<string>
   /** Whether the usage limit holds the run, its gate's only hold besides the ledger's wind-down. */
   readonly usageHeld?: Effect.Effect<boolean>
@@ -94,7 +94,7 @@ const scheduler = (options: {
     return { schedule, started: Ref.get(started), finish }
   })
 
-const phaseOf = (id: string) =>
+const phaseOf = (id: TicketId) =>
   Effect.map(
     Effect.flatMap(Ledger, (ledger) => ledger.current),
     (state): PhaseTag | undefined => state.tickets.get(id)?.phase._tag,
@@ -144,10 +144,10 @@ describe("the candidates", () => {
         })
         const filled = yield* schedule.fillTrying
         yield* flush
-        return [filled, yield* started, yield* phaseOf("q-1")] as const
+        return [filled, yield* started, yield* phaseOf("q-1" as TicketId)] as const
       }),
     )
-    expect(filled.dispatched).toEqual(["t-1"])
+    expect(filled.dispatched).toEqual(["t-1" as TicketId])
     expect(started).toEqual(["t-1"])
     expect(queued).toBeUndefined()
   })
@@ -159,7 +159,7 @@ describe("the candidates", () => {
         return yield* ready(yield* Beads, null, { excludeTypes: [] })
       }),
     )
-    expect(issues.map((issue) => issue.id)).toEqual(["t-1"])
+    expect(issues.map((issue) => issue.id)).toEqual(["t-1" as TicketId])
   })
 
   test("enter the ledger as Queued with a queue record, and go to Working with a dispatch record", async () => {
@@ -168,7 +168,10 @@ describe("the candidates", () => {
       Effect.gen(function* () {
         const { schedule } = yield* scheduler({ concurrent: 1 })
         yield* schedule.fillTrying
-        return [yield* records, [yield* phaseOf("t-1"), yield* phaseOf("t-2")]] as const
+        return [
+          yield* records,
+          [yield* phaseOf("t-1" as TicketId), yield* phaseOf("t-2" as TicketId)],
+        ] as const
       }),
     )
     expect(phases).toEqual(["Working", "Queued"])
@@ -210,7 +213,7 @@ describe("the slots", () => {
     )
     expect(first).toEqual(["t-1", "t-2"])
     expect(second).toEqual(["t-1", "t-2", "t-3"])
-    expect(running).toEqual(["t-2", "t-3"])
+    expect(running).toEqual(["t-2" as TicketId, "t-3" as TicketId])
   })
 
   test("the ready poll every 30 s fills them with tickets that became ready", async () => {
@@ -244,10 +247,13 @@ describe("the slots", () => {
         yield* schedule.fillTrying
         // A ticket the run set aside that bd still lists as ready, as after a defer that failed.
         const ledger = yield* Ledger
-        yield* ledger.transition("t-1", Move.Defer({ why: "deferred" }))
+        yield* ledger.transition("t-1" as TicketId, Move.Defer({ why: "deferred" }))
         yield* schedule.fillTrying
         yield* flush
-        return [yield* started, [yield* phaseOf("t-1"), yield* phaseOf("t-2")]] as const
+        return [
+          yield* started,
+          [yield* phaseOf("t-1" as TicketId), yield* phaseOf("t-2" as TicketId)],
+        ] as const
       }),
     )
     expect(started).toEqual(["t-1", "t-2"])
@@ -259,7 +265,7 @@ describe("the slots", () => {
       [{ id: "t-1" }, { id: "t-2" }],
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 2, limit: 1 })
-        yield* schedule.carry("c-1", Effect.succeed(Effect.never))
+        yield* schedule.carry("c-1" as TicketId, Effect.succeed(Effect.never))
         yield* schedule.fillTrying
         yield* flush
         return [yield* started, yield* schedule.started] as const
@@ -316,7 +322,7 @@ describe("--limit", () => {
           yield* schedule.started,
           yield* schedule.limitReached,
           dispatches,
-          yield* phaseOf("t-3"),
+          yield* phaseOf("t-3" as TicketId),
         ] as const
       }),
     )
@@ -336,10 +342,10 @@ describe("BAD_TICKET_ID", () => {
         const { schedule, started } = yield* scheduler({ concurrent: 1 })
         const filled = yield* schedule.fillTrying
         yield* flush
-        expect(filled.setAside).toEqual(["x-../y"])
+        expect(filled.setAside).toEqual(["x-../y" as TicketId])
         return [
           yield* started,
-          yield* phaseOf("x-../y"),
+          yield* phaseOf("x-../y" as TicketId),
           yield* (yield* Backlog).get("x-../y"),
           yield* texts,
           yield* records,
@@ -451,23 +457,23 @@ describe("the scope", () => {
         const filter = { excludeTypes: ["epic"] }
         const ids = (issues: ReadonlyArray<Issue>) => issues.map((issue) => issue.id)
         return [
-          ids(yield* ready(beads, "r", filter)),
-          ids(yield* ready(beads, "t", filter)),
+          ids(yield* ready(beads, "r" as TicketId, filter)),
+          ids(yield* ready(beads, "t" as TicketId, filter)),
         ] as const
       }),
     )
-    expect(epicScope).toEqual(["r.1", "r.2", "r.2.1"])
-    expect(taskScope).toEqual(["t", "t.1"])
+    expect(epicScope).toEqual(["r.1" as TicketId, "r.2" as TicketId, "r.2.1" as TicketId])
+    expect(taskScope).toEqual(["t" as TicketId, "t.1" as TicketId])
   })
 
   test("a scoped scheduler dispatches nothing outside the scope", async () => {
     const [started, parent] = await run(
       tree,
       Effect.gen(function* () {
-        const { schedule, started } = yield* scheduler({ concurrent: 8, scope: "r.2" })
+        const { schedule, started } = yield* scheduler({ concurrent: 8, scope: "r.2" as TicketId })
         yield* schedule.fillTrying
         yield* flush
-        return [yield* started, yield* phaseOf("r.2")] as const
+        return [yield* started, yield* phaseOf("r.2" as TicketId)] as const
       }),
     )
     // r.2 waits for its subticket.
@@ -475,7 +481,7 @@ describe("the scope", () => {
     expect(parent).toBe("HeldBack")
   })
 
-  const endOf = (root: string, closed: ReadonlySet<string> = new Set()) =>
+  const endOf = (root: TicketId, closed: ReadonlySet<string> = new Set()) =>
     Effect.gen(function* () {
       const state = yield* (yield* Ledger).current
       return line(
@@ -494,7 +500,11 @@ describe("the scope", () => {
         { id: "e.1", parent: "e", status: "closed" },
       ],
       Effect.gen(function* () {
-        return [yield* endOf("t"), yield* endOf("r", new Set(["r"])), yield* endOf("e")]
+        return [
+          yield* endOf("t" as TicketId),
+          yield* endOf("r" as TicketId, new Set(["r"])),
+          yield* endOf("e" as TicketId),
+        ]
       }),
     )
     expect(lines).toEqual([
@@ -522,12 +532,12 @@ describe("the scope", () => {
         // r.5 is closed but waits to merge, and r.1 was set aside in this run.
         const ledger = yield* Ledger
         for (const cause of [Move.Ready(), Move.Dispatched(), Move.Verified({ place: 1 })]) {
-          yield* ledger.transition("r.5", cause)
+          yield* ledger.transition("r.5" as TicketId, cause)
         }
         for (const cause of [Move.Ready(), Move.Dispatched(), Move.Aside({ why: "OFF_BRANCH" })]) {
-          yield* ledger.transition("r.1", cause)
+          yield* ledger.transition("r.1" as TicketId, cause)
         }
-        return yield* endOf("r")
+        return yield* endOf("r" as TicketId)
       }),
     )
     expect(result).toBe(
@@ -541,7 +551,7 @@ describe("the scope", () => {
   test("SCOPE_OPEN when only the ticket itself is left", async () => {
     const result = await run(
       [{ id: "t" }, { id: "t.1", parent: "t", status: "closed" }],
-      endOf("t"),
+      endOf("t" as TicketId),
     )
     expect(result).toBe(
       "SCOPE_OPEN: t: its 1 subticket is merged, but t itself is not done (not started)",
@@ -549,13 +559,13 @@ describe("the scope", () => {
   })
 
   test("SCOPE_UNREADABLE when bd can't show the ticket", async () => {
-    const result = await run([], endOf("gone"))
+    const result = await run([], endOf("gone" as TicketId))
     expect(result).toMatch(/^SCOPE_UNREADABLE: could not read gone: /)
   })
 })
 
 describe("byPriority", () => {
-  const issue = (id: string, priority: number | undefined): Issue => ({
+  const issue = (id: TicketId, priority: number | undefined): Issue => ({
     id,
     title: id,
     description: "",
@@ -578,7 +588,7 @@ describe("byPriority", () => {
   test("orders by priority, none last, keeping the given order among equals", () => {
     fc.assert(
       fc.property(fc.array(fc.option(fc.integer({ min: 0, max: 4 }), { nil: undefined })), (ps) => {
-        const given = ps.map((p, i) => issue(`t-${i}`, p))
+        const given = ps.map((p, i) => issue(`t-${i}` as TicketId, p))
         const sorted = byPriority(given)
         expect([...sorted].map((each) => each.id).sort()).toEqual(
           given.map((each) => each.id).sort(),
@@ -597,7 +607,7 @@ describe("byPriority", () => {
   test("takes reads labels and types as given, whatever their text", () => {
     fc.assert(
       fc.property(fc.array(fc.string()), fc.string(), (labels, type) => {
-        const each = { ...issue("t", 2), labels, type }
+        const each = { ...issue("t" as TicketId, 2), labels, type }
         const expected = !labels.includes("human") && type !== "epic" && type !== "chore"
         expect(takes({ excludeTypes: ["chore"] }, each)).toBe(expected)
       }),

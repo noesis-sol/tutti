@@ -4,6 +4,7 @@
 // the answers to their requests from then on (tutti-t7z7), so the answer changes nothing of it: it
 // fails NotOpen, the worker doesn't run on to commit and close its ticket, no PHASE_BUG line, no
 // merge, the worker suspended waiting on you, and the run's exit code its stop's.
+
 import { expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,7 @@ import { Duration, Effect, Exit, Fiber } from "effect"
 import { Attention, NotOpen, runEnding } from "../src/agent/Attention.ts"
 import { type Log, line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, canUseTool, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -22,7 +24,7 @@ import { advance, backlog, expectExitCode, expectPhases, scenario, type World } 
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-answer-${name}-`)))
 
 /** Claims its ticket, asks to remove the build, commits and closes it, as a worker does. */
-const asksThenFinishes = (world: World, root: string, id: string): SessionScript =>
+const asksThenFinishes = (world: World, root: string, id: TicketId): SessionScript =>
   turn(
     [
       ...bash(
@@ -55,7 +57,7 @@ test("an answer after the last look reaches no ticket fiber and changes nothing 
       git: { dir: repo },
       worktrees: { root },
       policy: waitForTest,
-      scripts: (world: World) => ({ a: [asksThenFinishes(world, root, "a")] }),
+      scripts: (world: World) => ({ a: [asksThenFinishes(world, root, "a" as TicketId)] }),
     },
     Effect.gen(function* () {
       const git = yield* Git

@@ -2,17 +2,19 @@
 // as after either, each mode in its own words; and makeCounts, the per-ticket count of hand-backs
 // that the conflict hand-backs (HandBacks) and the check hand-backs (Fixes) each keep apart.
 // leftClean runs against the in-memory Git.
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { makeFixes } from "../src/run/checkback.ts"
 import { type HandBackMode, leftClean, makeCounts, makeHandBacks } from "../src/run/handback.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 
 const worktree = "/worktrees/a"
 const ticket = {
-  id: "a",
+  id: "a" as TicketId,
   title: "Ticket a",
   branch: "tutti/a",
   worktree,
@@ -76,16 +78,16 @@ describe("makeCounts", () => {
     const counted = await Effect.runPromise(
       Effect.gen(function* () {
         const counts = yield* makeCounts
-        const first = yield* counts.next("a")
-        const second = yield* counts.next("a")
-        const other = yield* counts.next("b")
+        const first = yield* counts.next("a" as TicketId)
+        const second = yield* counts.next("a" as TicketId)
+        const other = yield* counts.next("b" as TicketId)
         return {
           first,
           second,
           other,
-          a: yield* counts.count("a"),
-          b: yield* counts.count("b"),
-          c: yield* counts.count("c"),
+          a: yield* counts.count("a" as TicketId),
+          b: yield* counts.count("b" as TicketId),
+          c: yield* counts.count("c" as TicketId),
         }
       }),
     )
@@ -97,10 +99,13 @@ describe("makeCounts", () => {
       Effect.gen(function* () {
         const handBacks = yield* makeHandBacks
         const fixes = yield* makeFixes
-        yield* handBacks.next("a")
-        yield* handBacks.next("a")
-        yield* fixes.next("a")
-        return { conflicts: yield* handBacks.count("a"), checks: yield* fixes.count("a") }
+        yield* handBacks.next("a" as TicketId)
+        yield* handBacks.next("a" as TicketId)
+        yield* fixes.next("a" as TicketId)
+        return {
+          conflicts: yield* handBacks.count("a" as TicketId),
+          checks: yield* fixes.count("a" as TicketId),
+        }
       }),
     )
     expect(counted).toEqual({ conflicts: 2, checks: 1 })

@@ -9,7 +9,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -81,22 +81,22 @@ const commitsNothing = turn([])
 const finished = Effect.gen(function* () {
   const git = yield* Git
   const repository = yield* Repository
-  const worktree = yield* (yield* Worktrees).prepare("a")
+  const worktree = yield* (yield* Worktrees).prepare("a" as TicketId)
   yield* git.addWorktree(repository.dir, worktree.path, { branch: worktree.branch, base: "main" })
   yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
-  yield* (yield* Beads).close("a", "done")
+  yield* (yield* Beads).close("a" as TicketId, "done")
   const ledger = yield* Ledger
-  yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-  yield* ledger.transition("a", Move.Dispatched())
-  yield* (yield* Store).saveSession("a", {
+  yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+  yield* ledger.transition("a" as TicketId, Move.Dispatched())
+  yield* (yield* Store).saveSession("a" as TicketId, {
     session: "session-a",
     worktree: worktree.path,
     branch: worktree.branch,
   })
-  yield* (yield* AgentHost).start("a", { sessionId: "session-a", cwd: worktree.path })
-  yield* untilSettled("a")
+  yield* (yield* AgentHost).start("a" as TicketId, { sessionId: "session-a", cwd: worktree.path })
+  yield* untilSettled("a" as TicketId)
   return {
-    id: "a",
+    id: "a" as TicketId,
     title: "Ticket a",
     branch: worktree.branch,
     worktree: worktree.path,

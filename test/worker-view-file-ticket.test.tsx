@@ -1,6 +1,7 @@
 // Filing a finished worker's message as a ticket (§ 7.5, tutti-g0wd): once its card has gone, Ctrl+T
 // or the File as ticket button on the finished line offers FileTicket with the composer's text; the
 // composer keeps the text until the run's filings say bd has it, and keeps it when bd hasn't.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Queue } from "effect"
@@ -12,6 +13,7 @@ import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { fileWords, finishedWords } from "../src/ui/Composer.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -48,7 +50,7 @@ const items: ReadonlyArray<Item> = [
 ]
 
 const ledgerEntry: LedgerEntry = {
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   title: "Title of t-1",
   phase: TicketPhase.Working(),
   since: began,
@@ -64,7 +66,7 @@ const ledgerEntry: LedgerEntry = {
 const viewOf = (merged: boolean): RunView =>
   project({
     ledger: {
-      tickets: new Map(merged ? [] : [["t-1", ledgerEntry]]),
+      tickets: new Map(merged ? [] : [["t-1" as TicketId, ledgerEntry]]),
       rows: 1,
       windDown: null,
       bugs: [],
@@ -127,7 +129,7 @@ const scene = async (
     <Root
       value={{
         view,
-        screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+        screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
         commands,
         appearance: external<Appearance>("dark"),
         themeOf,
@@ -191,7 +193,7 @@ describe("filing a finished worker's message as a ticket", () => {
       let frame = await until(rendered, has(fileWords.filing))
       const asked = filed(commands)
       expect(asked.map(({ from, text }) => ({ from, text }))).toEqual([
-        { from: "t-1", text: followUp },
+        { from: "t-1" as TicketId, text: followUp },
       ])
       expect(frame.chars).toContain(` > ${followUp}`)
 
@@ -203,7 +205,11 @@ describe("filing a finished worker's message as a ticket", () => {
       const uuid = asked[0]?.uuid ?? ""
       await rendered.input(() =>
         filings.set([
-          { uuid, from: "t-1", outcome: FileOutcome.Filed({ id: "t-9", title: followUp }) },
+          {
+            uuid,
+            from: "t-1" as TicketId,
+            outcome: FileOutcome.Filed({ id: "t-9" as TicketId, title: followUp }),
+          },
         ]),
       )
       frame = await until(rendered, has(fileWords.filed("t-9", followUp)))
@@ -217,7 +223,9 @@ describe("filing a finished worker's message as a ticket", () => {
       await pressCtrlT(rendered)
       const uuid = filed(commands)[0]?.uuid ?? ""
       await rendered.input(() =>
-        filings.set([{ uuid, from: "t-1", outcome: FileOutcome.NotFiled({ why: "bd is gone" }) }]),
+        filings.set([
+          { uuid, from: "t-1" as TicketId, outcome: FileOutcome.NotFiled({ why: "bd is gone" }) },
+        ]),
       )
       const frame = await until(rendered, has(fileWords.notFiled("bd is gone")))
       expect(frame.chars).toContain(` > ${followUp}`)
@@ -236,7 +244,11 @@ describe("filing a finished worker's message as a ticket", () => {
       await rendered.input((setup) => setup.mockInput.typeText(" too"))
       await rendered.input(() =>
         filings.set([
-          { uuid, from: "t-1", outcome: FileOutcome.Filed({ id: "t-9", title: followUp }) },
+          {
+            uuid,
+            from: "t-1" as TicketId,
+            outcome: FileOutcome.Filed({ id: "t-9" as TicketId, title: followUp }),
+          },
         ]),
       )
       const frame = await until(rendered, has(fileWords.filed("t-9", followUp)))

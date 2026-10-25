@@ -1,6 +1,7 @@
 // The run's notifications (§ 7.9) as whole runs send them, read from the harness's captured
 // notices: a stop, a quit, the full check failing, a question, a title cut to 60 characters, and
 // none for a run with nothing to run. notices.test.ts has what each record says.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -11,6 +12,7 @@ import { line } from "../src/run/log.ts"
 import { endIfNothing } from "../src/run/nothing.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -40,7 +42,7 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
   Effect.asVoid(Effect.orDie(effect))
 
 /** What a ticket's worker's commands do to the in-memory Beads and git. */
-const commands = (world: World, root: string, id: string) => ({
+const commands = (world: World, root: string, id: TicketId) => ({
   claim: orDie(world.beads.update(id, { claim: true })),
   commit: orDie(world.repository.commit(join(root, id), `Change (${id})`, { [`${id}.txt`]: "x" })),
   close: orDie(world.beads.close(id, "done")),
@@ -52,7 +54,7 @@ type How = "finishes" | "defers" | "pauses" | "asks" | "quits"
 const sessions = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   how: How,
   quits: Queue.Queue<QuitRequest>,
 ): ReadonlyArray<SessionScript> => {
@@ -123,7 +125,7 @@ const runs = (plan: Plan): Promise<Ran<Outcome>> => {
         Object.fromEntries(
           Object.entries(plan.workers).map(([id, how]) => [
             id,
-            sessions(world, root, id, how, quits),
+            sessions(world, root, id as TicketId, how, quits),
           ]),
         ),
     },

@@ -17,6 +17,7 @@
 import { type Cause, Effect, Exit, Option, Ref, Result, Schema } from "effect"
 import type { SetupProblem } from "../cli/AppConfig.ts"
 import { detail, type Line, type Log, line } from "../run/log.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { type Billing, type PermissionModeInEffect, permissionModeLine } from "./Account.ts"
 import { type ChosenServers, checkInit, checkStatus } from "./mcp.ts"
 import { withStderr } from "./sessionProcess.ts"
@@ -59,7 +60,7 @@ export const billedKey = (billing: Billing, source: string | undefined): boolean
   billing._tag === "Subscription" && source !== undefined && source !== noKey
 
 /** The log line when `ticket`'s worker ends over a setup problem, before it does anything. */
-export const setupLine = (ticket: string, problem: string): Line => detail`${ticket}: ${problem}`
+export const setupLine = (ticket: TicketId, problem: string): Line => detail`${ticket}: ${problem}`
 
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
@@ -68,7 +69,7 @@ const messageOf = (cause: unknown): string =>
  * The log line for a message tutti died taking in, a CLI of another version sending a shape it
  * didn't expect: the message is skipped, and the session reads on.
  */
-export const skippedLine = (ticket: string, defect: unknown): Line =>
+export const skippedLine = (ticket: TicketId, defect: unknown): Line =>
   detail`${ticket}: a message tutti couldn't take in, skipped: ${messageOf(defect)}`
 
 /** Why a worker is gone, and its start failed, when Claude Code couldn't be spawned (§ 4.8). */

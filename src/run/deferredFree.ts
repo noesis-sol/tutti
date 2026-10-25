@@ -5,7 +5,7 @@
 // so the maintainer decides. One deferred until a later date (bd defer --until) was deferred on
 // purpose, with a time to look again, and isn't listed until that time has come.
 import { Clock, Effect, Result } from "effect"
-import { Beads, type BeadsError, HumanLabel, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import { shellWord } from "../services/exec.ts"
 import { Git } from "../services/Git.ts"
 import { allChanges } from "../services/gitStatus.ts"
@@ -19,9 +19,9 @@ import { descendants, excludedTypes, type Filter } from "./scope.ts"
 
 /** A deferred ticket in the run's scope whose blockers have all merged. */
 export interface DeferredFree {
-  readonly id: string
+  readonly id: TicketId
   /** The tickets blocking it, each closed and merged. */
-  readonly blockers: ReadonlyArray<string>
+  readonly blockers: ReadonlyArray<TicketId>
   /**
    * Its worktree (on tutti/<id>), left with no commits beyond the base and no uncommitted changes,
    * and so safe to remove; absent when there is none, or it holds work.
@@ -76,9 +76,9 @@ export interface Freeing {
   /** The queue's `exclude_types`. */
   readonly filter: Filter
   /** Whether the ticket is in the run's scope. */
-  readonly inScope: (id: string) => boolean
+  readonly inScope: (id: TicketId) => boolean
   /** Why the blocker `id`, closed in bd or not, hasn't merged; undefined once it has. */
-  readonly pending: (id: string, closed: boolean) => Effect.Effect<string | undefined, never, Git>
+  readonly pending: (id: TicketId, closed: boolean) => Effect.Effect<string | undefined, never, Git>
 }
 
 /**
@@ -89,8 +89,8 @@ export interface Freeing {
  * though bd may still label it `unmerged`: the run and git, not a label, say what has merged.
  */
 export const startPending =
-  (carried: ReadonlySet<string>, unmerged: ReadonlySet<string>, branches?: Branches) =>
-  (id: string, closed: boolean): Effect.Effect<string | undefined, never, Git> =>
+  (carried: ReadonlySet<TicketId>, unmerged: ReadonlySet<TicketId>, branches?: Branches) =>
+  (id: TicketId, closed: boolean): Effect.Effect<string | undefined, never, Git> =>
     carried.has(id)
       ? Effect.succeed("running")
       : !closed
@@ -112,9 +112,9 @@ const deferredUntilLater = (issue: Issue, now: number): boolean => {
 const mergedBlockers = (
   freeing: Freeing,
   issue: Issue,
-): Effect.Effect<ReadonlyArray<string> | undefined, never, Git> =>
+): Effect.Effect<ReadonlyArray<TicketId> | undefined, never, Git> =>
   Effect.gen(function* () {
-    const ids: Array<string> = []
+    const ids: Array<TicketId> = []
     for (const link of issue.dependencies) {
       if (link.type !== "blocks") continue
       const closed = link.issue?.status === "closed"
@@ -132,7 +132,7 @@ const mergedBlockers = (
  */
 const leftWorktree = (
   freeing: Freeing,
-  id: string,
+  id: TicketId,
 ): Effect.Effect<Pick<DeferredFree, "worktree" | "uncommitted">, never, Git> =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -238,9 +238,9 @@ export const sayAtStart = (options: {
   readonly repo: string
   readonly base: string
   readonly filter: Filter
-  readonly root: string | null
-  readonly carried: ReadonlyMap<string, Carried>
-  readonly unmerged: ReadonlySet<string>
+  readonly root: TicketId | null
+  readonly carried: ReadonlyMap<TicketId, Carried>
+  readonly unmerged: ReadonlySet<TicketId>
   readonly closedBranches?: ClosedBranches
 }): Effect.Effect<void, never, Beads | Git | Log | EventStream> =>
   Effect.gen(function* () {

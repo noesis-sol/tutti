@@ -6,7 +6,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -50,26 +50,26 @@ const finished = (...commits: ReadonlyArray<Files>) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
-    const prepared = yield* (yield* Worktrees).prepare("a")
+    const prepared = yield* (yield* Worktrees).prepare("a" as TicketId)
     worktree = prepared.path
     yield* git.addWorktree(repository.dir, prepared.path, { branch: prepared.branch, base: "main" })
     for (const [n, files] of commits.entries()) {
       const last = n === commits.length - 1
       yield* repository.commit(prepared.path, last ? "Do a (a)" : "Start a", files)
     }
-    yield* (yield* Beads).close("a", "done")
+    yield* (yield* Beads).close("a" as TicketId, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-    yield* ledger.transition("a", Move.Dispatched())
-    yield* (yield* Store).saveSession("a", {
+    yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+    yield* ledger.transition("a" as TicketId, Move.Dispatched())
+    yield* (yield* Store).saveSession("a" as TicketId, {
       session: "session-a",
       worktree: prepared.path,
       branch: prepared.branch,
     })
-    yield* (yield* AgentHost).start("a", { sessionId: "session-a", cwd: prepared.path })
-    yield* untilSettled("a")
+    yield* (yield* AgentHost).start("a" as TicketId, { sessionId: "session-a", cwd: prepared.path })
+    yield* untilSettled("a" as TicketId)
     return {
-      id: "a",
+      id: "a" as TicketId,
       title: "Ticket a",
       branch: prepared.branch,
       worktree: prepared.path,
@@ -117,7 +117,7 @@ const handedBack = (resolved: Files, ...commits: ReadonlyArray<Files>) =>
       yield* queue.offer(ticket)
       yield* queue.settled
       return {
-        phase: (yield* (yield* Ledger).current).tickets.get("a")?.phase,
+        phase: (yield* (yield* Ledger).current).tickets.get("a" as TicketId)?.phase,
         before: head,
         after: yield* repository.head("main"),
         branch: yield* repository.head(ticket.branch),
@@ -146,7 +146,7 @@ describe("a hand-back whose resolution leaves the branch changing nothing", () =
       "Done",
     ])
     expect(ran.worktreeCalls.filter((call) => call.op === "remove")).toEqual([
-      { op: "remove", id: "a", force: false },
+      { op: "remove", id: "a" as TicketId, force: false },
     ])
     expectLog(ran, [
       resolvingLine,

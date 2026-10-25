@@ -12,6 +12,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { stamp } from "../src/run/localTime.ts"
 import { denied, detail, Log, line, start, undated } from "../src/run/log.ts"
 import { attentionCap, cappedAttention, gather } from "../src/run/report.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as beadsLayer } from "../src/testing/Beads.ts"
@@ -97,7 +98,12 @@ describe("the reviewer's attention section", () => {
         yield* logs.write(...start({ version: "0.1.0", repo, base: "main", settings: [] }))
         for (let i = 0; i < total; i++) {
           yield* logs.write(
-            denied({ id: `t-${i}`, what: "Bash(rm -rf build)", by: "rule", reason: "no" }),
+            denied({
+              id: `t-${i}` as TicketId,
+              what: "Bash(rm -rf build)",
+              by: "rule",
+              reason: "no",
+            }),
           )
           yield* logs.write(detail`CHECKS_PASSED: t-${i}`)
         }

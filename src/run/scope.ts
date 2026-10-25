@@ -9,6 +9,7 @@ import {
   type Dependency,
   HumanLabel,
   type Issue,
+  type TicketId,
 } from "../services/Beads.ts"
 import type { State } from "./ledger.ts"
 
@@ -47,7 +48,7 @@ export const byPriority = (issues: ReadonlyArray<Issue>): ReadonlyArray<Issue> =
  */
 export const ready = (
   beads: Beads["Service"],
-  scope: string | null,
+  scope: TicketId | null,
   filter: Filter,
 ): Effect.Effect<ReadonlyArray<Issue>, BeadsError> =>
   Effect.gen(function* () {
@@ -68,13 +69,13 @@ export const ready = (
  */
 export const unclosedIn = (
   open: ReadonlyArray<Issue>,
-  scope: string | null,
+  scope: TicketId | null,
   filter: Filter,
 ): number => {
   const parentOf = new Map(open.map((issue) => [issue.id, issue.parent]))
-  const inScope = (id: string): boolean => {
+  const inScope = (id: TicketId): boolean => {
     const seen = new Set<string>()
-    for (let at: string | undefined = id; at !== undefined; at = parentOf.get(at)) {
+    for (let at: TicketId | undefined = id; at !== undefined; at = parentOf.get(at)) {
       if (at === scope) return true
       if (seen.has(at)) return false
       seen.add(at)
@@ -88,7 +89,7 @@ export const unclosedIn = (
 /** The ticket's subtickets, theirs and so on, closed or not: bd lists one level at a time. */
 export const descendants = (
   beads: Beads["Service"],
-  id: string,
+  id: TicketId,
 ): Effect.Effect<ReadonlyArray<Issue>, BeadsError> =>
   Effect.gen(function* () {
     const found: Array<Issue> = []
@@ -96,7 +97,7 @@ export const descendants = (
     for (let queue = [id]; queue.length > 0; ) {
       const [next, ...rest] = queue
       queue = rest
-      for (const child of yield* beads.list({ all: true, parent: next as string })) {
+      for (const child of yield* beads.list({ all: true, parent: next as TicketId })) {
         if (seen.has(child.id)) continue
         seen.add(child.id)
         found.push(child)
@@ -111,14 +112,14 @@ export interface View {
   /** Why the ticket is closed but not merged, or undefined when it isn't. */
   unmerged(issue: Pick<Issue, "id" | "status" | "labels">): string | undefined
   /** Whether the run set the ticket aside. */
-  aside(id: string): boolean
+  aside(id: TicketId): boolean
   /** Whether the run closed the ticket, an epic, as its last subticket merged. */
-  closedByRun(id: string): boolean
+  closedByRun(id: TicketId): boolean
   /**
    * Where the whole output is of the setup that failed in the ticket's worktree, keeping it out of
    * the run, Waiting{setup}; undefined when it didn't.
    */
-  setupFailed?(id: string): string | undefined
+  setupFailed?(id: TicketId): string | undefined
 }
 
 /** The label of a ticket closed but not merged, which later runs read (§ 5.1). */
@@ -161,7 +162,7 @@ export const ledgerView = (
 
 /** A ticket of the scope that isn't closed and merged, and why, as SCOPE_OPEN names it. */
 export interface NotDone {
-  readonly id: string
+  readonly id: TicketId
   /** `blocked by Y`, `in progress`, `waiting for its subtickets`, … */
   readonly why: string
 }
@@ -174,14 +175,14 @@ export type End =
    */
   | {
       readonly _tag: "Done"
-      readonly root: string
+      readonly root: TicketId
       readonly subtickets: number
       readonly closed: "tutti" | "you" | null
     }
   /** Descendants not done, or only the ticket itself (`notDone` is then just the ticket). */
   | {
       readonly _tag: "Open"
-      readonly root: string
+      readonly root: TicketId
       readonly subtickets: number
       readonly notDone: ReadonlyArray<NotDone>
       /** Only the ticket itself is left. */
@@ -190,7 +191,7 @@ export type End =
   /** bd couldn't say: `what` it couldn't read, and why. */
   | {
       readonly _tag: "Unreadable"
-      readonly root: string
+      readonly root: TicketId
       readonly what: string
       readonly reason: string
     }
@@ -265,7 +266,7 @@ const reasonOf = (error: BeadsError): string =>
  */
 export const end = (
   beads: Beads["Service"],
-  root: string,
+  root: TicketId,
   view: View,
   filter: Filter,
 ): Effect.Effect<End> =>

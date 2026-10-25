@@ -3,6 +3,7 @@
 // sent anything: a setup problem ends the worker Gone with `setup`, as system/init's check, which
 // stays as a backstop, does, and the start or resume sends nothing. Either way the worker's process
 // group is killed at once, not given the SDK's grace.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -23,6 +24,7 @@ import {
 import { apiKeyProblem } from "../src/agent/sessionChecks.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -106,7 +108,7 @@ const run = <A, E>(
 const until = (matches: (state: WorkerState) => boolean) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
-    const found = yield* host.state("t-1").pipe(
+    const found = yield* host.state("t-1" as TicketId).pipe(
       Stream.filter(matches),
       Stream.runHead,
       Effect.timeoutOrElse({
@@ -124,10 +126,12 @@ const until = (matches: (state: WorkerState) => boolean) =>
 const started = (dir: string, log: string) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
-    const exit = yield* Effect.exit(host.start("t-1", { sessionId: crypto.randomUUID(), cwd: dir }))
-    const state = yield* host.current("t-1")
+    const exit = yield* Effect.exit(
+      host.start("t-1" as TicketId, { sessionId: crypto.randomUUID(), cwd: dir }),
+    )
+    const state = yield* host.current("t-1" as TicketId)
     const from = Date.now()
-    yield* host.close("t-1")
+    yield* host.close("t-1" as TicketId)
     return {
       failed: Exit.isFailure(exit),
       state,
@@ -163,11 +167,11 @@ describe("AgentHost live: the setup check before the first turn", () => {
         const sessionId = crypto.randomUUID()
         const uuid = MessageUuid.draw()
         const sent = yield* host.resume(
-          "t-1",
+          "t-1" as TicketId,
           { sessionId, cwd: dir },
           { text: "carry on", from: "clientComposed", uuid },
         )
-        return { uuid, sent, state: yield* host.current("t-1"), users: usersRead(log) }
+        return { uuid, sent, state: yield* host.current("t-1" as TicketId), users: usersRead(log) }
       }),
     )
     expect(found.sent).toBe(found.uuid)
@@ -194,8 +198,8 @@ describe("AgentHost live: the setup check before the first turn", () => {
         (dir) =>
           Effect.gen(function* () {
             const host = yield* AgentHost
-            yield* host.start("t-1", { sessionId: crypto.randomUUID(), cwd: dir })
-            yield* host.send("t-1", { text: "go", from: "clientComposed" })
+            yield* host.start("t-1" as TicketId, { sessionId: crypto.randomUUID(), cwd: dir })
+            yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
             return yield* until((s) => s._tag === "Idle" || s._tag === "Gone")
           }),
         servers,
@@ -214,11 +218,11 @@ describe("AgentHost live: the setup check before the first turn", () => {
       (dir) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", { sessionId: crypto.randomUUID(), cwd: dir })
-          yield* host.send("t-1", { text: "go", from: "clientComposed" })
+          yield* host.start("t-1" as TicketId, { sessionId: crypto.randomUUID(), cwd: dir })
+          yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
           const state = yield* until((s) => s._tag === "Gone")
           const from = Date.now()
-          yield* host.close("t-1")
+          yield* host.close("t-1" as TicketId)
           return { state, closing: Date.now() - from }
         }),
     )

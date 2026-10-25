@@ -6,6 +6,7 @@
 // Claude Code never spawned. Through the
 // run's start and resume, the first sets the ticket aside (START_FAILED) and the second fails the
 // resume with the folder's reason.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, existsSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -22,6 +23,7 @@ import { line } from "../src/run/log.ts"
 import { Move } from "../src/run/phase.ts"
 import { resume } from "../src/run/sessions.ts"
 import { start } from "../src/run/start.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Store } from "../src/services/Store.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
@@ -124,9 +126,12 @@ describe("a failed spawn", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const exit = yield* Effect.exit(
-          host.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir }),
+          host.start("t-1" as TicketId, {
+            sessionId: "11111111-1111-4111-8111-111111111111",
+            cwd: dir,
+          }),
         )
-        return { exit, state: yield* host.current("t-1") }
+        return { exit, state: yield* host.current("t-1" as TicketId) }
       }),
     )
     const failed = startFailedOf(exit)
@@ -146,7 +151,10 @@ describe("a failed spawn", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         return yield* Effect.exit(
-          host.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir }),
+          host.start("t-1" as TicketId, {
+            sessionId: "11111111-1111-4111-8111-111111111111",
+            cwd: dir,
+          }),
         )
       }),
     )
@@ -167,13 +175,16 @@ describe("a failed spawn", () => {
         },
         Effect.gen(function* () {
           const ledger = yield* Ledger
-          yield* ledger.transition("t-1", Move.Ready(), { title: "One ticket" })
-          yield* ledger.transition("t-1", Move.Dispatched())
-          const started = yield* start({ id: "t-1", title: "One ticket", metadata: {} }, "main")
+          yield* ledger.transition("t-1" as TicketId, Move.Ready(), { title: "One ticket" })
+          yield* ledger.transition("t-1" as TicketId, Move.Dispatched())
+          const started = yield* start(
+            { id: "t-1" as TicketId, title: "One ticket", metadata: {} },
+            "main",
+          )
           return {
             started,
-            phase: (yield* ledger.current).tickets.get("t-1")?.phase,
-            record: yield* (yield* Store).ticket("t-1"),
+            phase: (yield* ledger.current).tickets.get("t-1" as TicketId)?.phase,
+            record: yield* (yield* Store).ticket("t-1" as TicketId),
           }
         }).pipe(
           Effect.provide(
@@ -210,11 +221,14 @@ describe("a session whose folder isn't there", () => {
         const host = yield* AgentHost
         const missing = join(dir, "gone")
         const started = yield* Effect.exit(
-          host.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: missing }),
+          host.start("t-1" as TicketId, {
+            sessionId: "11111111-1111-4111-8111-111111111111",
+            cwd: missing,
+          }),
         )
         const resumed = yield* Effect.exit(
           host.resume(
-            "t-2",
+            "t-2" as TicketId,
             { sessionId: "22222222-2222-4222-8222-222222222222", cwd: missing },
             { text: "Carry on.", from: "clientComposed" },
           ),
@@ -245,14 +259,14 @@ describe("a session whose folder isn't there", () => {
       { config: { claude: fake }, backlog: backlog().ticket("t-1").seeds, worktrees: { root } },
       Effect.gen(function* () {
         const store = yield* Store
-        yield* store.saveSession("t-1", {
+        yield* store.saveSession("t-1" as TicketId, {
           session: "11111111-1111-4111-8111-111111111111",
           worktree,
           branch: "tutti/t-1",
         })
         return yield* Effect.exit(
           resume({
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             why: "suspended",
             message: "Carry on.",
             what: line`t-1 was suspended as the last run ended`,

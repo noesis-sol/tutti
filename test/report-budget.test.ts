@@ -23,7 +23,7 @@ import {
   runSections,
   showConcurrency,
 } from "../src/run/report.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -153,7 +153,7 @@ const huge = "x".repeat(2000)
 
 /** A run of `n` closed tickets, `n` set aside and `n` in progress, each with long text. */
 const bigRun = (n: number) => {
-  const ids = (kind: string) => Array.from({ length: n }, (_, i) => `${kind}-${i + 1}`)
+  const ids = (kind: string) => Array.from({ length: n }, (_, i) => `${kind}-${i + 1}` as TicketId)
   const seeds: Array<Seed> = [
     ...ids("closed").map((id) => ({
       id,

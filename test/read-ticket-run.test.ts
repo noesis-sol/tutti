@@ -13,7 +13,7 @@ import { line } from "../src/run/log.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import type { TicketText } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { init, result, run, sessionState, wait } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -48,7 +48,7 @@ test("the card has the issue from the start, and ReadTicket brings the notes add
             sessionState("running"),
             run(Deferred.succeed(working, undefined)),
             run(Deferred.await(gate)),
-            run(Effect.asVoid(Effect.orDie(world.beads.close("a", "nothing to do")))),
+            run(Effect.asVoid(Effect.orDie(world.beads.close("a" as TicketId, "nothing to do")))),
             result("Closed a."),
             sessionState("idle"),
           ],
@@ -89,8 +89,10 @@ test("the card has the issue from the start, and ReadTicket brings the notes add
       yield* until("a's worker", () => Deferred.isDone(working))
       yield* until("a's card", () => Effect.map(issueOf, (issue) => issue !== undefined))
       const first = (yield* issueOf) as TicketText
-      yield* Effect.orDie((yield* Beads).update("a", { appendNotes: "Found the second file." }))
-      yield* Queue.offer(inputs.commands, UiCommand.ReadTicket({ ticket: "a" }))
+      yield* Effect.orDie(
+        (yield* Beads).update("a" as TicketId, { appendNotes: "Found the second file." }),
+      )
+      yield* Queue.offer(inputs.commands, UiCommand.ReadTicket({ ticket: "a" as TicketId }))
       yield* until("the notes", () =>
         Effect.map(issueOf, (issue) => issue?.notes.includes("Found the second file.") === true),
       )

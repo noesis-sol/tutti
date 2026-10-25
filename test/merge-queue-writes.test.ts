@@ -9,7 +9,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue, type QueueState } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -60,7 +60,11 @@ const gatedLedger = (gates: ReadonlyArray<Gate>) =>
     Ledger,
     Effect.map(makeLedger, (ledger) => ({
       ...ledger,
-      transition: (ticket: string, cause: Move, more?: Parameters<typeof ledger.transition>[2]) => {
+      transition: (
+        ticket: TicketId,
+        cause: Move,
+        more?: Parameters<typeof ledger.transition>[2],
+      ) => {
         const held = gates.find((each) => each.ticket === ticket && each.cause === cause._tag)
         const moved = ledger.transition(ticket, cause, more)
         return held === undefined
@@ -89,7 +93,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 const phasesOf = (state: State): Record<string, TicketPhase> =>
   Object.fromEntries([...state.tickets.values()].map((entry) => [entry.ticket, entry.phase]))
 
-const untilPhase = (id: string, tag: TicketPhase["_tag"]) =>
+const untilPhase = (id: TicketId, tag: TicketPhase["_tag"]) =>
   Effect.gen(function* () {
     yield* (yield* Ledger).changes.pipe(
       Stream.filter((state) => state.tickets.get(id)?.phase._tag === tag),
@@ -113,7 +117,7 @@ const finishedSession = (then: SessionScript = []): SessionScript => [
  * A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed in Beads,
  * Working in the ledger, its session started and its worker idle.
  */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -184,20 +188,20 @@ const handBackEnds = (cause: "Verified" | "ItsTurn") =>
     withQueue([gate("b", cause)], (queue, [held]) =>
       Effect.gen(function* () {
         if (held === undefined) return yield* Effect.die("no gate")
-        const a = yield* finished("a", { "a.txt": "a\n" })
+        const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
         yield* (yield* Repository).commit("/repo", "Land something else", { "a.txt": "main's a\n" })
-        const b = yield* finished("b", { "b.txt": "b\n" })
+        const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
         yield* queue.offer(a)
-        yield* untilQueue(queue, (state) => state.resolving.includes("a"))
+        yield* untilQueue(queue, (state) => state.resolving.includes("a" as TicketId))
         const offered = yield* Effect.forkChild(queue.offer(b))
         yield* Deferred.await(held.entered)
         yield* advance("1 minute")
-        yield* untilPhase("a", "Blocked")
+        yield* untilPhase("a" as TicketId, "Blocked")
         yield* untilQueue(queue, (state) => state.resolving.length === 0)
         yield* Deferred.succeed(held.open, undefined)
         yield* Fiber.join(offered)
         // b merges after the held write, whether or not the write undid a's end.
-        yield* untilPhase("b", "Done")
+        yield* untilPhase("b" as TicketId, "Done")
         yield* untilQueue(queue, (state) => state.merging === null)
         return yield* queue.state
       }),
@@ -231,8 +235,8 @@ describe("the merges stopping, while an offer waits on the ledger", () => {
       withQueue([gate("a", "Block"), gate("b", "Verified")], (queue, [blocked, verified]) =>
         Effect.gen(function* () {
           if (blocked === undefined || verified === undefined) return yield* Effect.die("no gate")
-          const a = yield* finished("a", { "a.txt": "a\n" })
-          const b = yield* finished("b", { "b.txt": "b\n" })
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+          const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
           yield* (yield* Repository).write("/repo", { "README.md": "edited by hand\n" })
           yield* queue.offer(a)
           // a's merge stops on the dirty tree; b's offer reads the state before it is over.

@@ -1,5 +1,6 @@
 // What wakes the attention folder's scan (src/agent/attentionFiles.ts's serve), under TestClock: the
 // folder's events, and the poll, which goes on where the watch fails or its folder goes.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -18,6 +19,7 @@ import {
   writeExclusive,
 } from "../src/agent/attentionFiles.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
@@ -78,7 +80,7 @@ const pastFirstScan = Effect.promise(() => Bun.sleep(200))
 /** Opens a permission request of `t-1`'s, and gives it with its call's result. */
 const ask = Effect.gen(function* () {
   const attention = yield* Attention
-  const canUseTool = yield* attention.request("t-1", openFibers())
+  const canUseTool = yield* attention.request("t-1" as TicketId, openFibers())
   const result = canUseTool("Bash", { command: "rm -rf build" }, sdkOptions())
   const open = yield* attention.open.pipe(
     Stream.filter((all) => all.length > 0),

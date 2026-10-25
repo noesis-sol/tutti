@@ -14,7 +14,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, ticketText } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { widthOf } from "../src/ui/line.tsx"
@@ -51,7 +51,7 @@ const description =
 
 /** t-1's issue, with `fields` over a bug at P2 with nothing but its title. */
 const issueOf = (fields: Partial<Issue> = {}): Issue => ({
-  id: "t-1",
+  id: "t-1" as TicketId,
   title,
   description: "",
   design: "",
@@ -74,7 +74,7 @@ const issueOf = (fields: Partial<Issue> = {}): Issue => ({
 /** Worker 1 on t-1, its ledger entry holding `issue`. */
 const viewOf = (issue: Issue | undefined): RunView => {
   const entry: Entry = {
-    ticket: "t-1",
+    ticket: "t-1" as TicketId,
     title,
     ...(issue === undefined ? {} : { issue }),
     phase: TicketPhase.Working(),
@@ -87,7 +87,7 @@ const viewOf = (issue: Issue | undefined): RunView => {
     tallies: emptyTallies,
   }
   return project({
-    ledger: { tickets: new Map([["t-1", entry]]), rows: 1, windDown: null, bugs: [] },
+    ledger: { tickets: new Map([["t-1" as TicketId, entry]]), rows: 1, windDown: null, bugs: [] },
     workers: new Map([["t-1", WS.Idle({ at: began })]]),
     requests: [],
     status: { ...emptyStatus, version: "0.1.0", branch: "batch", began, concurrency: 1 },
@@ -134,7 +134,7 @@ const scene = async (
   const commands = Effect.runSync(makeCommands)
   const shell: ShellValue = {
     view,
-    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
     commands,
     appearance: external<Appearance>("dark"),
     themeOf,
@@ -329,12 +329,12 @@ const whole = issueOf({
     "- [ ] Account bookmarks are indexed under their own label\n- [x] Bookmarks still are",
   notes: "Started on the reader.",
   labels: ["bookmarks"],
-  parent: "t-0",
+  parent: "t-0" as TicketId,
   dependencies: [
-    { id: "t-0", type: "parent-child" },
-    { id: "t-9", type: "blocks" },
+    { id: "t-0" as TicketId, type: "parent-child" },
+    { id: "t-9" as TicketId, type: "blocks" },
   ],
-  dependents: [{ id: "t-5", type: "blocks" }],
+  dependents: [{ id: "t-5" as TicketId, type: "blocks" }],
 })
 
 describe("the whole ticket", () => {

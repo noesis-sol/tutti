@@ -3,6 +3,7 @@
 // seconds. The scripted sessions (src/testing/AgentHost.ts) and the fake Claude Code
 // (test/fixtures/fake-claude/claude.ts) under the live host, with the messages the spike recorded
 // (docs/spikes/01-sdk-session.md, item 4).
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -23,6 +24,7 @@ import { defaultSettings } from "../src/cli/AppConfig.ts"
 import type { Denied, EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   assistantText,
   deniedTool,
@@ -62,7 +64,7 @@ const run = <A, E>(scripts: Readonly<Record<string, Script>>, effect: Effect.Eff
   )
 
 /** Starts the ticket's worker, sends it its first message, and gives the states it had until Idle. */
-const playToIdle = (ticket: string) =>
+const playToIdle = (ticket: TicketId) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     yield* host.start(ticket, { sessionId: "s-1", cwd: `/work/${ticket}` })
@@ -100,7 +102,7 @@ describe("a held removal in auto mode", () => {
     const seen = await run(
       { "t-1": [script] },
       Effect.gen(function* () {
-        const states = yield* playToIdle("t-1")
+        const states = yield* playToIdle("t-1" as TicketId)
         const transcripts = yield* Transcripts
         const shown = yield* transcripts.latestAction("t-1")
         yield* TestClock.adjust(Duration.millis(deniedShownFor - 1))
@@ -115,7 +117,7 @@ describe("a held removal in auto mode", () => {
           after,
           lines: yield* deniedLines,
           events: yield* deniedEvents,
-          tally: yield* attention.tally("t-1"),
+          tally: yield* attention.tally("t-1" as TicketId),
           open: yield* attention.current,
           sent: yield* (yield* Recording).all,
         }
@@ -160,11 +162,11 @@ describe("denials of each type", () => {
     const seen = await run(
       { "t-2": [script] },
       Effect.gen(function* () {
-        yield* playToIdle("t-2")
+        yield* playToIdle("t-2" as TicketId)
         return {
           lines: yield* deniedLines,
           events: yield* deniedEvents,
-          tally: yield* (yield* Attention).tally("t-2"),
+          tally: yield* (yield* Attention).tally("t-2" as TicketId),
           shown: yield* (yield* Transcripts).latestAction("t-2"),
         }
       }),
@@ -226,7 +228,10 @@ describe("Attention.denial", () => {
   test("a call whose input never came is named by its tool alone", async () => {
     const lines = await withAttention(
       Effect.gen(function* () {
-        yield* (yield* Attention).denial("t-3", denial({ decision_reason_type: "classifier" }))
+        yield* (yield* Attention).denial(
+          "t-3" as TicketId,
+          denial({ decision_reason_type: "classifier" }),
+        )
         return yield* deniedLines
       }),
     )
@@ -240,9 +245,9 @@ describe("Attention.denial", () => {
       Effect.gen(function* () {
         const attention = yield* Attention
         for (const by of ["__proto__", "constructor", "toString", "constructor"]) {
-          yield* attention.denial("t-3", denial({ decision_reason_type: by }))
+          yield* attention.denial("t-3" as TicketId, denial({ decision_reason_type: by }))
         }
-        return yield* attention.tally("t-3")
+        return yield* attention.tally("t-3" as TicketId)
       }),
     )
     expect(Object.entries(tally.deniedBy)).toEqual([
@@ -268,7 +273,7 @@ describe("Attention.denial", () => {
             Effect.gen(function* () {
               const attention = yield* Attention
               yield* attention.denial(
-                "t-4",
+                "t-4" as TicketId,
                 denial({
                   tool_name: tool,
                   message,
@@ -280,7 +285,7 @@ describe("Attention.denial", () => {
               return {
                 lines: yield* (yield* Log).lines,
                 events: yield* deniedEvents,
-                tally: yield* attention.tally("t-4"),
+                tally: yield* attention.tally("t-4" as TicketId),
               }
             }),
           )
@@ -341,9 +346,12 @@ describe("the live host", () => {
     const seen = await Effect.runPromise(
       Effect.gen(function* () {
         const agents = yield* AgentHost
-        yield* agents.start("t-5", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* agents.send("t-5", { text: "Work on t-5.", from: "clientComposed" })
-        const idle = yield* agents.state("t-5").pipe(
+        yield* agents.start("t-5" as TicketId, {
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          cwd: dir,
+        })
+        yield* agents.send("t-5" as TicketId, { text: "Work on t-5.", from: "clientComposed" })
+        const idle = yield* agents.state("t-5" as TicketId).pipe(
           Stream.filter((s) => s._tag === "Idle"),
           Stream.runHead,
           Effect.timeout(Duration.seconds(10)),
@@ -352,7 +360,7 @@ describe("the live host", () => {
           idle: Option.isSome(idle),
           lines: yield* deniedLines,
           events: yield* deniedEvents,
-          tally: yield* (yield* Attention).tally("t-5"),
+          tally: yield* (yield* Attention).tally("t-5" as TicketId),
         }
       }).pipe(
         Effect.provide(

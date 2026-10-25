@@ -45,6 +45,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
 import { fixCheck, fixResolution, type HandedCheck, handOverFix, makeFixes } from "./checkback.ts"
@@ -77,14 +78,14 @@ import { makeSetUps, takeSettings } from "./setup.ts"
 
 export interface QueueState {
   /** The tickets waiting for their turn, next first. */
-  readonly waiting: ReadonlyArray<string>
+  readonly waiting: ReadonlyArray<TicketId>
   /** The ticket whose merge is under way. */
-  readonly merging: string | null
+  readonly merging: TicketId | null
   /**
    * The tickets whose conflicts or failed checks are handed back to their workers, Resolving or
    * Fixing.
    */
-  readonly resolving: ReadonlyArray<string>
+  readonly resolving: ReadonlyArray<TicketId>
   /** What stopped the merges, if anything has. */
   readonly stop: MergeStop | null
 }
@@ -202,7 +203,7 @@ export const make = (
     const memory = { rechecks, setUps, passes, handBacks, fixes, train }
 
     // The places of the tickets waiting, from 1.
-    const renumber = (waiting: ReadonlyArray<string>) =>
+    const renumber = (waiting: ReadonlyArray<TicketId>) =>
       Effect.forEach(waiting, (id, i) => ledger.refine(id, Detail.Place({ place: i + 1 })), {
         discard: true,
       })
@@ -322,7 +323,7 @@ export const make = (
     // its own, the ticket's merge over for the queue. Verified puts it back in line; the run's end
     // stops one under way.
     const underWay = (
-      id: string,
+      id: TicketId,
       handed: boolean,
       work: Effect.Effect<boolean, never, MergeEnv>,
       ticket: FinishedTicket,

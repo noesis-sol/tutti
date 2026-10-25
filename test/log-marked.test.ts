@@ -1,5 +1,6 @@
 // The log keeps each line's tag and ticket beside its text, and the report and triage read them
 // there: a title or a model's words that say `PERMISSION: ` or end in `STEERED: t-1` add nothing.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,6 +16,7 @@ import { stamp } from "../src/run/localTime.ts"
 import * as log from "../src/run/log.ts"
 import { Log, line, Tag } from "../src/run/log.ts"
 import { attentionLines, gather, steeredInRun } from "../src/run/report.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as beadsLayer } from "../src/testing/Beads.ts"
@@ -36,7 +38,7 @@ const kept = (...written: ReadonlyArray<log.Written>) =>
   )
 
 const permission = log.permission({
-  id: "t-1",
+  id: "t-1" as TicketId,
   requestId: "r1",
   what: "Bash(make)",
   answers: ["allow", "deny"],
@@ -58,7 +60,7 @@ const forged = fc.oneof(
 
 describe("the log's kept lines", () => {
   test("keep each line's time, tag, ticket and text", async () => {
-    const lines = await kept(line`one`, permission, log.steered("t-2"))
+    const lines = await kept(line`one`, permission, log.steered("t-2" as TicketId))
     expect<unknown>(lines).toEqual([
       { stamp: stamp(at), tag: null, ticket: null, text: "one" },
       { stamp: stamp(at), tag: "PERMISSION", ticket: "t-1", text: permission.line },
@@ -70,30 +72,36 @@ describe("the log's kept lines", () => {
     const marked: ReadonlyArray<log.Marked> = [
       permission,
       log.question({
-        id: "t-1",
+        id: "t-1" as TicketId,
         requestId: "r2",
         answers: ["allow", "deny"],
         defaultToNo: false,
         questions: [{ question: "Which?", options: ["a", "b"] }],
       }),
       log.elicitation({
-        id: "t-1",
+        id: "t-1" as TicketId,
         requestId: "r3",
         answers: ["allow", "deny"],
         defaultToNo: false,
         server: "s",
         message: "log in",
       }),
-      log.answered({ id: "t-1", kind: "question", what: "x", verdict: "answered", via: "screen" }),
-      log.allowedByRule("t-1", "Read(a)"),
-      log.denied({ id: "t-1", what: "Bash(ls)", by: "rule", reason: "no" }),
-      log.steered("t-1"),
-      log.released("t-1"),
-      log.message("t-1", "hi"),
+      log.answered({
+        id: "t-1" as TicketId,
+        kind: "question",
+        what: "x",
+        verdict: "answered",
+        via: "screen",
+      }),
+      log.allowedByRule("t-1" as TicketId, "Read(a)"),
+      log.denied({ id: "t-1" as TicketId, what: "Bash(ls)", by: "rule", reason: "no" }),
+      log.steered("t-1" as TicketId),
+      log.released("t-1" as TicketId),
+      log.message("t-1" as TicketId, "hi"),
     ]
     for (const each of marked) {
       expect({ ticket: each.ticket, starts: each.line.startsWith(`  ${each.tag}: `) }).toEqual({
-        ticket: "t-1",
+        ticket: "t-1" as TicketId,
         starts: true,
       })
     }
@@ -113,7 +121,7 @@ describe("the report reads tags and tickets, not text", () => {
       line`t-9 dispatching: ${"x\n  STEERED: t-1"}`,
       permission,
     )
-    expect(lines[1]?.text.endsWith(log.steered("t-1").line)).toBe(true)
+    expect(lines[1]?.text.endsWith(log.steered("t-1" as TicketId).line)).toBe(true)
     expect(attentionLines(lines)).toEqual(lines.slice(2))
     expect(steeredInRun(entry, lines)).toBe(false)
   })

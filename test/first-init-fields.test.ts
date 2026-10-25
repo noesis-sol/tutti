@@ -16,6 +16,7 @@ import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { type ChosenServers, checkInit, noServersNote, unlistedProblem } from "../src/agent/mcp.ts"
 import { uncheckedLine } from "../src/agent/sessionChecks.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -126,7 +127,7 @@ const sessionIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-
  */
 const settle = async (
   fields: ReadonlyArray<string>,
-  tickets: ReadonlyArray<string> = ["t-1"],
+  tickets: ReadonlyArray<TicketId> = ["t-1" as TicketId],
   billing: Billing = { _tag: "Subscription", keyUnused: false },
 ) => {
   const dir = mkdtempSync(join(tmpdir(), "tutti-first-init-"))
@@ -193,14 +194,17 @@ describe("AgentHost live: a first system/init without a field the setup check re
   })
 
   test("without permissionMode, the mode isn't checked, logged once in the run", async () => {
-    const { states, lines } = await settle(["permissionMode"], ["t-1", "t-2"])
+    const { states, lines } = await settle(
+      ["permissionMode"],
+      ["t-1" as TicketId, "t-2" as TicketId],
+    )
     expect(states.map((s) => s._tag)).toEqual(["Idle", "Idle"])
     const skipped = uncheckedLine("permissionMode", "the permission mode in effect is auto")
     expect(lines.filter((l) => l.includes("system/init gives no"))).toEqual([skipped])
   })
 
   test("without apiKeySource, the key isn't checked, logged once in the run", async () => {
-    const { states, lines } = await settle(["apiKeySource"], ["t-1", "t-2"])
+    const { states, lines } = await settle(["apiKeySource"], ["t-1" as TicketId, "t-2" as TicketId])
     expect(states.map((s) => s._tag)).toEqual(["Idle", "Idle"])
     expect(lines.filter((l) => l.includes("system/init gives no"))).toEqual([
       uncheckedLine("apiKeySource", "that workers bill the subscription login, not an API key"),
@@ -208,7 +212,9 @@ describe("AgentHost live: a first system/init without a field the setup check re
   })
 
   test("without apiKeySource while billing is the API key, nothing is skipped", async () => {
-    const { states, lines } = await settle(["apiKeySource"], ["t-1"], { _tag: "ApiKey" })
+    const { states, lines } = await settle(["apiKeySource"], ["t-1" as TicketId], {
+      _tag: "ApiKey",
+    })
     expect(states.map((s) => s._tag)).toEqual(["Idle"])
     expect(lines.filter((l) => l.includes("system/init gives no"))).toEqual([])
   })

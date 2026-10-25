@@ -2,12 +2,14 @@
 // code: every flag it gives a tutti command is one that command's --help lists, its table of stop
 // lines gives each the exit code tutti ends with, its PERMISSION and QUESTION lines are the ones the
 // log writes, and it names every field `tutti answer --json` prints.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { RequestFile } from "../src/agent/attentionFiles.ts"
 import { stopCodes } from "../src/run/holds.ts"
 import * as log from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
 // Each --help starts tutti as a bun process, which bun's 5 s default fails when other checks run
 // beside this one.
@@ -111,7 +113,7 @@ describe("the tutti skill", () => {
 
   test("shows the PERMISSION and QUESTION lines the log writes", () => {
     const permission = log.permission({
-      id: "tut-9a1",
+      id: "tut-9a1" as TicketId,
       requestId: "a3f9c2d1",
       what: "Bash(rm -rf build)",
       why: "held by the safety check",
@@ -119,7 +121,7 @@ describe("the tutti skill", () => {
       defaultToNo: true,
     })
     const question = log.question({
-      id: "tut-7k2",
+      id: "tut-7k2" as TicketId,
       requestId: "5be01c7a",
       answers: ["allow", "deny"],
       defaultToNo: false,

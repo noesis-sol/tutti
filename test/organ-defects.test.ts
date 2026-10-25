@@ -17,7 +17,7 @@ import { make as makePredictor } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { run } from "../src/run/run.ts"
 import { type Deferral, make as makeTriage } from "../src/run/triage.ts"
-import { Beads, type Issue } from "../src/services/Beads.ts"
+import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -52,7 +52,7 @@ const flush = Effect.gen(function* () {
   for (let i = 0; i < 300; i++) yield* Effect.yieldNow
 })
 
-const deferral = (ticket: string): Deferral => ({
+const deferral = (ticket: TicketId): Deferral => ({
   ticket,
   how: "the worker deferred it",
   worktree: `/repo-worktrees/${ticket}`,
@@ -68,7 +68,7 @@ describe("causeWhy", () => {
 })
 
 describe("a defect in one ticket's triage", () => {
-  const id = "t-1"
+  const id = "t-1" as TicketId
 
   test("from the organ is TRIAGE_FAILED, and the next ticket is still triaged", async () => {
     const calls: Array<OrganCallRecord> = []
@@ -87,7 +87,7 @@ describe("a defect in one ticket's triage", () => {
         })
         yield* triaging.deferred(deferral(id))
         yield* flush
-        yield* triaging.deferred(deferral("t-2"))
+        yield* triaging.deferred(deferral("t-2" as TicketId))
         yield* flush
         return yield* triaging.pending
       }).pipe(
@@ -106,7 +106,7 @@ describe("a defect in one ticket's triage", () => {
       "  triage t-2: problem (medium confidence) - Second.",
     ])
     expect(ran.events.find((r) => r.kind === "warn")).toMatchObject({ ticket: id })
-    expect(blamed.map((v) => v.ticket)).toEqual(["t-2"])
+    expect(blamed.map((v) => v.ticket)).toEqual(["t-2" as TicketId])
     expect(done).toBe(2)
   })
 
@@ -126,7 +126,7 @@ describe("a defect in one ticket's triage", () => {
           },
         })
         yield* triaging.deferred(deferral(id))
-        yield* triaging.deferred(deferral("t-2"))
+        yield* triaging.deferred(deferral("t-2" as TicketId))
         yield* flush
         return yield* triaging.pending
       }).pipe(Effect.provide(organsLayer({ triage: verdict("Both.") }))),
@@ -171,7 +171,7 @@ describe("a run whose triage dies on one ticket", () => {
     realpathSync(mkdtempSync(join(tmpdir(), `tutti-organ-defects-${name}-`)))
 
   /** Claims its ticket and defers it. */
-  const defers = (world: World, id: string): SessionScript =>
+  const defers = (world: World, id: TicketId): SessionScript =>
     turn(
       [
         ...bash(`bd update ${id} --claim`, Effect.orDie(world.beads.update(id, { claim: true }))),
@@ -186,7 +186,7 @@ describe("a run whose triage dies on one ticket", () => {
   test("still triages the next ticket and ends", async () => {
     const repo = folder("repo")
     const root = folder("worktrees")
-    const tickets = ["t-1", "t-2"]
+    const tickets = ["t-1" as TicketId, "t-2" as TicketId]
     const ran = await scenario(
       {
         config: { repo, settings: { ...appConfig().settings, concurrent: 1 } },
@@ -252,7 +252,7 @@ describe("a defect in one ticket's prediction", () => {
         const predictor = yield* makePredictor({ repo: "/repo" })
         const issues = yield* Ref.make<ReadonlyArray<Issue>>([])
         const beads = yield* Beads
-        for (const id of ["t-1", "t-2"]) {
+        for (const id of ["t-1" as TicketId, "t-2" as TicketId]) {
           const issue = yield* Effect.orDie(beads.show(id))
           yield* Ref.update(issues, (all) => [...all, issue])
         }
@@ -263,7 +263,7 @@ describe("a defect in one ticket's prediction", () => {
     )
     expect(lines).toContain("  PREDICT_FAILED for t-1: the guess broke")
     expect(lines).toContain("  t-2 footprint predicted: src/a.ts")
-    expect(predicted.get("t-2")).toEqual(["src/a.ts"])
-    expect(predicted.has("t-1")).toBe(false)
+    expect(predicted.get("t-2" as TicketId)).toEqual(["src/a.ts"])
+    expect(predicted.has("t-1" as TicketId)).toBe(false)
   })
 })

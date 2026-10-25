@@ -15,7 +15,7 @@ import { type AttentionRequest, describe } from "../agent/Attention.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads, type Dependency, type Issue } from "../services/Beads.ts"
+import { Beads, type Dependency, type Issue, type TicketId } from "../services/Beads.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import type { EventStream } from "./eventstream.ts"
 import type { Footprint } from "./footprint.ts"
@@ -59,7 +59,7 @@ export const leftUnmerged = <I extends Pick<Issue, "id">>(
   labelled.filter((issue) => state.tickets.get(issue.id)?.phase._tag !== "Done")
 
 /** The run's tickets that may not have merged, whose parents wait for them. */
-export const unmerged = (state: State): ReadonlyArray<string> =>
+export const unmerged = (state: State): ReadonlyArray<TicketId> =>
   [...state.tickets.values()]
     .filter((entry) => phaseFacts[entry.phase._tag].unsettled)
     .map((entry) => entry.ticket)
@@ -72,13 +72,13 @@ export const unmerged = (state: State): ReadonlyArray<string> =>
 export const parentsWaiting = (
   open: ReadonlyArray<Pick<Issue, "parent">>,
   state: State,
-  parentOf: ReadonlyMap<string, string>,
-): ReadonlySet<string> => {
-  const parents = new Set<string>()
+  parentOf: ReadonlyMap<TicketId, TicketId | null>,
+): ReadonlySet<TicketId> => {
+  const parents = new Set<TicketId>()
   for (const issue of open) if (issue.parent !== undefined) parents.add(issue.parent)
   for (const id of unmerged(state)) {
     const parent = parentOf.get(id)
-    if (parent !== undefined && parent !== "") parents.add(parent)
+    if (parent !== undefined && parent !== null) parents.add(parent)
   }
   return parents
 }
@@ -182,13 +182,13 @@ export const overlapHold = (
 }
 
 /** `  <id> waits: <why>`, said once per reason. */
-export const waitsLine = (id: string, why: string): Line => detail`${id} waits: ${why}`
+export const waitsLine = (id: TicketId, why: string): Line => detail`${id} waits: ${why}`
 
 /** `  skipping <id>: <why>`, said once per reason. */
-export const skippingLine = (id: string, why: string): Line => detail`skipping ${id}: ${why}`
+export const skippingLine = (id: TicketId, why: string): Line => detail`skipping ${id}: ${why}`
 
 /** The line for the tickets waiting on solo ticket `id`, running or next. */
-export const soloLine = (id: string, next: boolean): Line =>
+export const soloLine = (id: TicketId, next: boolean): Line =>
   next
     ? detail`solo ticket ${id} is next: no new tickets start until the running ones finish, then it runs alone`
     : detail`waiting for solo ticket ${id} to finish`
@@ -231,7 +231,7 @@ export type Said = ReadonlyMap<string, string>
  */
 export const saying = (
   said: Said,
-  id: string,
+  id: TicketId,
   why: string,
 ): { readonly said: Said; readonly say: boolean } => ({
   said: new Map(said).set(id, why),
@@ -239,7 +239,7 @@ export const saying = (
 })
 
 /** `said` without the ticket's reason: the next one is said, whatever it is. */
-export const unsaid = (said: Said, id: string): Said => {
+export const unsaid = (said: Said, id: TicketId): Said => {
   if (!said.has(id)) return said
   const without = new Map(said)
   without.delete(id)
@@ -333,7 +333,7 @@ export interface StopReason {
   /** The line the run ends with for it, starting with `why`: `PAUSED: …`. */
   readonly text: Line
   /** The ticket it stopped the run over, if any. */
-  readonly ticket?: string
+  readonly ticket?: TicketId
   /** What it keeps that ticket from merging for, in a few words, as a `stop` record says. */
   readonly blocked?: string
   /** Its `stop` record was written as it came, so the run's end needn't write it again. */
@@ -483,7 +483,7 @@ export const extendFirst = (stops: Stops, parts: ReadonlyArray<string>): Stops =
 export interface RunHolds {
   readonly stops: Stops
   /** The tickets whose workers went on past --ticket-limit: the run doesn't wait for them. */
-  readonly overLimit: ReadonlySet<string>
+  readonly overLimit: ReadonlySet<TicketId>
   /** The run holds a free slot while the machine is at --machine-workers. */
   readonly machine: boolean
   /** What the usage limit's hold shows: the usage line, its banner and its notice. */
@@ -508,13 +508,13 @@ export const raiseStop = (holds: RunHolds, stop: StopReason): RunHolds =>
   changeStops(holds, (stops) => addStop(stops, stop))
 
 /** `holds` with `ticket`'s worker past its ticket limit: its TICKET_LIMIT `stop` raised. */
-export const pastTicketLimit = (holds: RunHolds, ticket: string, stop: StopReason): RunHolds => ({
+export const pastTicketLimit = (holds: RunHolds, ticket: TicketId, stop: StopReason): RunHolds => ({
   ...raiseStop(holds, stop),
   overLimit: new Set([...holds.overLimit, ticket]),
 })
 
 /** The tickets the run holds with BLOCKED, each its stop's. */
-export const blockedTickets = (holds: RunHolds): ReadonlySet<string> =>
+export const blockedTickets = (holds: RunHolds): ReadonlySet<TicketId> =>
   new Set(
     holds.stops.flatMap((stop) =>
       stop.why === "BLOCKED" && stop.ticket !== undefined ? [stop.ticket] : [],
@@ -522,7 +522,7 @@ export const blockedTickets = (holds: RunHolds): ReadonlySet<string> =>
   )
 
 /** `holds` with the BLOCKED stop of `ticket` lifted, its requests answered. */
-export const liftBlocked = (holds: RunHolds, ticket: string): RunHolds =>
+export const liftBlocked = (holds: RunHolds, ticket: TicketId): RunHolds =>
   changeStops(holds, (stops) => liftStops(stops, (stop) => isBlockedOn(stop, ticket)))
 
 /** `holds` with the machine's hold on (`full`) or off. */
@@ -568,7 +568,7 @@ export const longRunning: Duration.Duration = Duration.hours(2)
 
 /** The TICKET_LIMIT stop of `id`'s worker, still going `limit` after its dispatch. */
 export const ticketLimitStop = (t: {
-  readonly id: string
+  readonly id: TicketId
   /** The ticket limit, as in `20m`. */
   readonly limit: string
   readonly worktree: string
@@ -580,13 +580,13 @@ export const ticketLimitStop = (t: {
   )
 
 /** `  LONG_RUNNING: …`, said once of a worker going on without a ticket limit. */
-export const longRunningLine = (id: string): Line =>
+export const longRunningLine = (id: TicketId): Line =>
   ticketLine(
     Tag.longRunning,
   )`${id} still working after ${formatDuration(longRunning)}; still waiting on it, as no ticket limit is set (--ticket-limit)`
 
 /** The BLOCKED stop of `id`'s worker, its request `what` unanswered: `BLOCKED >4min: …`. */
-export const blockedStop = (id: string, what: string): StopReason => ({
+export const blockedStop = (id: TicketId, what: string): StopReason => ({
   why: "BLOCKED",
   code: stopCodes.BLOCKED,
   text: line`${Tag.blocked} >4min: ${id} needs you: ${what}`,
@@ -596,11 +596,11 @@ export const blockedStop = (id: string, what: string): StopReason => ({
 })
 
 /** The line of a BLOCKED hold lifted, `id`'s requests answered. */
-export const blockedLifted = (id: string): Line =>
+export const blockedLifted = (id: TicketId): Line =>
   line`${Tag.hold} lifted: ${id}'s requests were answered`
 
 /** Whether `stop` is the BLOCKED stop of ticket `id`. */
-export const isBlockedOn = (stop: StopReason, id: string): boolean =>
+export const isBlockedOn = (stop: StopReason, id: TicketId): boolean =>
   stop.why === "BLOCKED" && stop.ticket === id
 
 /**
@@ -610,14 +610,14 @@ export const isBlockedOn = (stop: StopReason, id: string): boolean =>
  */
 export const blockedAt = (
   requests: ReadonlyArray<AttentionRequest>,
-  blocked: ReadonlySet<string>,
+  blocked: ReadonlySet<TicketId>,
   now: number,
   after: Duration.Duration,
 ): {
-  readonly trips: ReadonlyArray<{ readonly ticket: string; readonly what: string }>
-  readonly lifts: ReadonlyArray<string>
+  readonly trips: ReadonlyArray<{ readonly ticket: TicketId; readonly what: string }>
+  readonly lifts: ReadonlyArray<TicketId>
 } => {
-  const trips = new Map<string, string>()
+  const trips = new Map<TicketId, string>()
   for (const request of requests) {
     if (now - request.createdAt < Duration.toMillis(after)) continue
     if (blocked.has(request.ticket) || trips.has(request.ticket)) continue
@@ -631,7 +631,7 @@ export const blockedAt = (
 }
 
 /** Waits until `ticket`'s worker is in a state `wanted` picks; never, once its session has gone. */
-const until = (ticket: string, wanted: (state: WorkerState) => boolean) =>
+const until = (ticket: TicketId, wanted: (state: WorkerState) => boolean) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const seen = yield* host.state(ticket).pipe(
@@ -647,7 +647,7 @@ const until = (ticket: string, wanted: (state: WorkerState) => boolean) =>
  * and the time the machine slept not counted.
  */
 export const goneOn = (
-  ticket: string,
+  ticket: TicketId,
   span: Duration.Duration,
   since: number,
 ): Effect.Effect<void, never, AgentHost> =>
@@ -675,7 +675,7 @@ export const goneOn = (
  * worker goes on, and interrupted once it has settled.
  */
 export const timeLimit = (
-  ticket: string,
+  ticket: TicketId,
   worktree: string,
   since: number,
   onLimit: (stop: StopReason) => Effect.Effect<void>,

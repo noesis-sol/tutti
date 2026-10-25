@@ -8,6 +8,7 @@
 // stubs as well as on the run's own.
 import { Effect } from "effect"
 import type { Attention } from "../agent/Attention.ts"
+import type { TicketId } from "../services/Beads.ts"
 import type { EnvironmentHold } from "./environment.ts"
 import { changeStops, firstStop, type Gate, swapStop, takesNew } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
@@ -43,7 +44,7 @@ export interface LoopParts {
   /** Whether a worker to be resumed found no slot since the look began (runEnd.ts's Look). */
   readonly resuming: Effect.Effect<boolean>
   /** Shows the end-of-run box, naming the workers waiting on you; null for none. */
-  readonly showEndOfRun: (tickets: ReadonlyArray<string> | null) => Effect.Effect<void>
+  readonly showEndOfRun: (tickets: ReadonlyArray<TicketId> | null) => Effect.Effect<void>
   /** Whether the run has a dashboard, which shows the end-of-run box. */
   readonly dashboard: boolean
 }

@@ -1,6 +1,7 @@
 // Wrapping the worker view's items (§ 7.5): a message sent to the worker and a tool call's summary
 // wrap to the pane's width, each item a fixed height computed from it, so that scrolling back
 // through the transcript stays where you put it rather than jumping to the bottom (#1514).
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit, Scope } from "effect"
@@ -12,6 +13,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { type Segments, seg, widthOf, wrap } from "../src/ui/line.tsx"
@@ -224,9 +226,9 @@ const view: RunView = project({
   ledger: {
     tickets: new Map([
       [
-        "t-1",
+        "t-1" as TicketId,
         {
-          ticket: "t-1",
+          ticket: "t-1" as TicketId,
           title: "Title of t-1",
           phase: TicketPhase.Working(),
           since: began,
@@ -273,7 +275,7 @@ const viewing = async (
   const feed = Effect.runSync(transcriptFeed(transcripts).pipe(Scope.provide(scope)))
   const shell: ShellValue = {
     view: external(view),
-    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
     themeOf,

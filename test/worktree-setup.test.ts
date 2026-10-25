@@ -6,6 +6,7 @@
 // SCOPE_OPEN's `its setup failed`); a mark left by a setup cut short has it run again; a merge
 // that changes the setup settings has the run use them; and a conflict handed back after a rebase
 // that brings in a setup file tells its worker to run the setup.
+
 import { describe, expect, test } from "bun:test"
 import {
   existsSync,
@@ -31,6 +32,7 @@ import {
   setupMarkName,
   setupWaiting,
 } from "../src/run/setup.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, setupLogName } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { runFolder, writeRunFile } from "../src/services/Worktrees.ts"
@@ -79,7 +81,7 @@ interface Places {
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   options: { readonly files?: Files; readonly first?: SessionScript } = {},
 ): SessionScript =>
   turn(
@@ -147,7 +149,7 @@ const untilLogged = (pattern: RegExp) =>
   })
 
 /** Waits, in real time, until `id`'s worker has claimed it: the run has dispatched it. */
-const untilClaimed = (world: World, id: string) =>
+const untilClaimed = (world: World, id: TicketId) =>
   Effect.orDie(
     Effect.gen(function* () {
       for (let i = 0; i < 2000; i++) {
@@ -176,7 +178,7 @@ interface Plan {
   /** Laid over the settings: the defaults with the check `check`, the setup `setup`, 1 worker. */
   readonly settings?: (settings: Settings) => Partial<Settings>
   /** Laid over the run's configuration besides its settings, as --ticket. */
-  readonly ticket?: string
+  readonly ticket?: TicketId
   readonly checks?: ChecksScript
   readonly scripts: (world: World, places: Places) => Scripts
   /** Runs before the run starts, its worktrees made in git. */
@@ -278,7 +280,7 @@ describe("the setup before a worker", () => {
       tickets: ["a"],
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             first: [step(Effect.sync(() => (marked = existsSync(markOf(places, "a")))))],
           }),
         ],
@@ -300,7 +302,7 @@ describe("the setup before a worker", () => {
       settings: (settings) => ({
         checks: { ...settings.checks, setup: { ...settings.checks.setup, command: null } },
       }),
-      scripts: (world, places) => ({ a: [works(world, places, "a")] }),
+      scripts: (world, places) => ({ a: [works(world, places, "a" as TicketId)] }),
     })
     expectClean(ran, 0)
     expect(ran.checkRuns.filter((each) => each.check === "setup")).toEqual([])
@@ -311,7 +313,7 @@ describe("the setup before a worker", () => {
     const ran = await runs({
       tickets: ["a"],
       before: (places) => mkdirSync(join(places.root, "a"), { recursive: true }),
-      scripts: (world, places) => ({ a: [works(world, places, "a")] }),
+      scripts: (world, places) => ({ a: [works(world, places, "a" as TicketId)] }),
     })
     expectClean(ran, 0)
     expect(setUpIn(ran)).toEqual([])
@@ -328,7 +330,7 @@ describe("the setup before a worker", () => {
       },
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             first: [step(Effect.sync(() => (marked = existsSync(markOf(places, "a")))))],
           }),
         ],
@@ -350,7 +352,7 @@ describe("the setup before a worker", () => {
     const path = join(root, "a")
     mkdirSync(path, { recursive: true })
     const worktree = {
-      id: "a",
+      id: "a" as TicketId,
       branch: "tutti/a",
       path,
       reused: false,
@@ -391,7 +393,7 @@ describe("a reused worktree whose branch changed a setup file", () => {
     const path = join(folder("changed-worktrees"), "a")
     mkdirSync(path, { recursive: true })
     const worktree = {
-      id: "a",
+      id: "a" as TicketId,
       branch: "tutti/a",
       path,
       reused: true,
@@ -411,7 +413,7 @@ describe("a reused worktree whose branch changed a setup file", () => {
         const setUps = yield* makeSetUps
         // Not set up in this run: nothing says what changed since, and nothing runs.
         expect(yield* setUpWorktree(worktree, setUps, repo)).toEqual({ _tag: "Unneeded" })
-        yield* setUps.setWorktree("a", yield* git.revParse(repo, "tutti/a"))
+        yield* setUps.setWorktree("a" as TicketId, yield* git.revParse(repo, "tutti/a"))
         yield* repository.commit(path, "Notes (a)", { "notes.txt": "n\n" })
         expect(yield* setUpWorktree(worktree, setUps, repo)).toEqual({ _tag: "Unneeded" })
         yield* repository.commit(path, "Bump left-pad (a)", { "bun.lock": "left-pad 2\n" })
@@ -446,20 +448,22 @@ describe("leaving a ticket whose setup failed", () => {
         const ledger = yield* Ledger
         const setUps = yield* makeSetUps
         // "gone" isn't in bd: reopening it fails.
-        for (const id of ["a", "gone"]) {
+        for (const id of ["a" as TicketId, "gone" as TicketId]) {
           yield* ledger.transition(id, Move.Ready(), { title: id })
           yield* ledger.transition(id, Move.Dispatched())
           yield* leaveSetupFailed({ id, title: id, status: "in_progress" }, path, failed, setUps)
         }
         const state = yield* ledger.current
-        expect(state.tickets.get("a")?.phase).toEqual(TicketPhase.Waiting({ for: WaitFor.Setup() }))
-        expect(state.tickets.get("gone")?.phase).toEqual(
+        expect(state.tickets.get("a" as TicketId)?.phase).toEqual(
+          TicketPhase.Waiting({ for: WaitFor.Setup() }),
+        )
+        expect(state.tickets.get("gone" as TicketId)?.phase).toEqual(
           TicketPhase.Waiting({ for: WaitFor.Setup() }),
         )
         const failures = yield* setUps.failures
         expect(failures.get("a")).toMatchObject({ notReopened: false })
         expect(failures.get("gone")).toMatchObject({ notReopened: true })
-        expect(setupWaiting(state, failures)).toEqual([["a", failed.output]])
+        expect(setupWaiting(state, failures)).toEqual([["a" as TicketId, failed.output]])
       }).pipe(Effect.provide(Ledger.layer)),
     )
     expect(ran.exit._tag).toBe("Success")
@@ -478,8 +482,8 @@ describe("a setup that fails before a worker", () => {
       tickets: ["a", "b"],
       checks: { setup: [setupFails()] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a")],
-        b: [works(world, places, "b")],
+        a: [works(world, places, "a" as TicketId)],
+        b: [works(world, places, "b" as TicketId)],
       }),
     })
     expectClean(ran, 0)
@@ -526,7 +530,7 @@ describe("a setup that fails before a worker", () => {
       tickets: ["a", "b"],
       // a's setup fails each time; b's works.
       checks: { setup: [setupFails(), passed("setup"), setupFails()] },
-      scripts: (world, places) => ({ b: [works(world, places, "b")] }),
+      scripts: (world, places) => ({ b: [works(world, places, "b" as TicketId)] }),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Waiting", b: "Done" })
@@ -545,7 +549,7 @@ describe("a setup that fails before a worker", () => {
   test("a scoped run says its ticket waits on a failed setup", async () => {
     const ran = await runs({
       tickets: ["a"],
-      ticket: "a",
+      ticket: "a" as TicketId,
       checks: { setup: [setupFails()] },
       scripts: () => ({}),
     })
@@ -561,9 +565,9 @@ describe("a setup that fails before a worker", () => {
       tickets: ["a", "b", "c"],
       checks: { setup: [setupFails(), setupFails()] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a")],
-        b: [works(world, places, "b")],
-        c: [works(world, places, "c")],
+        a: [works(world, places, "a" as TicketId)],
+        b: [works(world, places, "b" as TicketId)],
+        c: [works(world, places, "c" as TicketId)],
         [probeWorker]: [probeRuns(places)],
       }),
       during: Effect.gen(function* () {
@@ -665,11 +669,11 @@ describe("the setup settings a merge changes", () => {
       }),
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             files: { [settingsFile]: JSON.stringify({ checks: { setup: { command: "npm ci" } } }) },
           }),
         ],
-        b: [works(world, places, "b")],
+        b: [works(world, places, "b" as TicketId)],
       }),
     })
     expectClean(ran, 0)
@@ -692,8 +696,8 @@ describe("the setup settings a merge changes", () => {
       tickets: ["a", "b"],
       chain: true,
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: { [settingsFile]: "{ not json" } })],
-        b: [works(world, places, "b")],
+        a: [works(world, places, "a" as TicketId, { files: { [settingsFile]: "{ not json" } })],
+        b: [works(world, places, "b" as TicketId)],
       }),
     })
     expectClean(ran, 0)
@@ -714,10 +718,15 @@ describe("a conflict handed back", () => {
       tickets: ["a", "b"],
       settings: () => ({ concurrent: 2 }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: aFiles, first: [step(untilClaimed(world, "b"))] })],
+        a: [
+          works(world, places, "a" as TicketId, {
+            files: aFiles,
+            first: [step(untilClaimed(world, "b" as TicketId))],
+          }),
+        ],
         b: [
           [
-            ...works(world, places, "b", {
+            ...works(world, places, "b" as TicketId, {
               files: { "shared.txt": "b\n" },
               first: [step(untilOnMain(world, aFiles))],
             }),
@@ -755,7 +764,7 @@ describe("the dashboard", () => {
     expect(countsUnder(TicketPhase.Waiting({ for: WaitFor.Setup() }))).toEqual(["setupFailed"])
     expect(countsUnder(TicketPhase.Waiting({ for: WaitFor.Probe() }))).toEqual([])
     expect(
-      countsUnder(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) })),
+      countsUnder(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1" as TicketId] }) })),
     ).toEqual([])
     const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
     const totals = { ...emptyView.totals, slots: 2, queued: 1, unclosed: 3, setupFailed: 1 }

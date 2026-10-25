@@ -2,6 +2,7 @@
 // run only with TUTTI_LIVE=1. Each test starts sessions with a worker's options in a fresh temp
 // folder and reads their first system/init's tools: a worker's lacks only the tools it is denied,
 // and keeps what it works with; Skill stays in a project with skills of its own.
+
 import { expect } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,7 @@ import { noServersNote } from "../../src/agent/mcp.ts"
 import { type WorkerCallbacks, workerOptions } from "../../src/agent/options.ts"
 import { deniedTools, unusedTools } from "../../src/agent/unusedTools.ts"
 import { defaultSettings } from "../../src/cli/AppConfig.ts"
+import type { TicketId } from "../../src/services/Beads.ts"
 import { appConfig } from "../../src/testing/AppConfig.ts"
 import { live } from "../gates.ts"
 
@@ -66,7 +68,7 @@ const initTools = async (
   )
   const { disallowedTools, ...options } = workerOptions({
     config,
-    ticket: "contract-tools",
+    ticket: "contract-tools" as TicketId,
     worktree: dir,
     prompt: null,
     servers: { servers: [], note: noServersNote },

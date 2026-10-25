@@ -30,6 +30,7 @@ import {
   type RunView,
   type Status,
 } from "../src/run/runView.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -49,7 +50,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, Env>): Promise<A> =>
   )
 
 /** Moves `ticket` by each of `causes` in turn, failing the test on an invalid one. */
-const go = (ticket: string, ...causes: ReadonlyArray<Move>) =>
+const go = (ticket: TicketId, ...causes: ReadonlyArray<Move>) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     for (const [i, cause] of causes.entries()) {
@@ -63,7 +64,7 @@ const dispatched = [Move.Ready(), Move.Dispatched()] as const
 const toMerge = [...dispatched, Move.Verified({ place: 1 })] as const
 const merging = [...toMerge, Move.ItsTurn()] as const
 
-const permission = (id: string, ticket: string, defaultToNo = false): AttentionRequest => ({
+const permission = (id: string, ticket: TicketId, defaultToNo = false): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -97,26 +98,33 @@ describe("totals", () => {
   test("count each phase as § 5.1 does, and Needs you each ticket once", async () => {
     const view = await run(
       Effect.gen(function* () {
-        yield* go("queued", Move.Ready())
-        yield* go("held", Move.Ready(), Move.Held({ why: "overlap" }))
-        yield* go("working", ...dispatched)
-        yield* go("asking", ...dispatched)
-        yield* go("needs", ...dispatched)
-        yield* go("to-merge", ...toMerge)
-        yield* go("merging", ...merging)
-        yield* go("merged", ...merging, Move.FastForwarded({ commit: "abc1234def" }))
-        yield* go("no-change", ...dispatched, Move.NoChange())
-        yield* go("asked", ...dispatched, Move.FiledQuestion({ question: "q-1" }))
-        yield* go("blocked", ...merging, Move.Block({ why: "MERGE_CONFLICT" }))
-        yield* go("deferred", ...dispatched, Move.Defer({ why: "BAD_TICKET_ID" }))
-        yield* go("review", ...dispatched, Move.Aside({ why: "OFF_BRANCH" }))
-        yield* go("stopped", ...dispatched, Move.StopRun({ why: "PAUSED" }))
-        yield* go("waiting", ...dispatched, Move.WaitsForMerge({ blockers: ["x-1"] }))
-        yield* go("fixing", ...merging, Move.CheckHandedBack({ attempt: 1 }))
+        yield* go("queued" as TicketId, Move.Ready())
+        yield* go("held" as TicketId, Move.Ready(), Move.Held({ why: "overlap" }))
+        yield* go("working" as TicketId, ...dispatched)
+        yield* go("asking" as TicketId, ...dispatched)
+        yield* go("needs" as TicketId, ...dispatched)
+        yield* go("to-merge" as TicketId, ...toMerge)
+        yield* go("merging" as TicketId, ...merging)
+        yield* go("merged" as TicketId, ...merging, Move.FastForwarded({ commit: "abc1234def" }))
+        yield* go("no-change" as TicketId, ...dispatched, Move.NoChange())
+        yield* go("asked" as TicketId, ...dispatched, Move.FiledQuestion({ question: "q-1" }))
+        yield* go("blocked" as TicketId, ...merging, Move.Block({ why: "MERGE_CONFLICT" }))
+        yield* go("deferred" as TicketId, ...dispatched, Move.Defer({ why: "BAD_TICKET_ID" }))
+        yield* go("review" as TicketId, ...dispatched, Move.Aside({ why: "OFF_BRANCH" }))
+        yield* go("stopped" as TicketId, ...dispatched, Move.StopRun({ why: "PAUSED" }))
+        yield* go(
+          "waiting" as TicketId,
+          ...dispatched,
+          Move.WaitsForMerge({ blockers: ["x-1" as TicketId] }),
+        )
+        yield* go("fixing" as TicketId, ...merging, Move.CheckHandedBack({ attempt: 1 }))
         // asking has two open requests; needs's worker waits on you without one.
         return project(
           inputs(yield* current, {
-            requests: [permission("r1", "asking"), permission("r2", "asking")],
+            requests: [
+              permission("r1", "asking" as TicketId),
+              permission("r2", "asking" as TicketId),
+            ],
             workers: new Map([["needs", WorkerState.NeedsYou({ requests: 1 })]]),
           }),
         )
@@ -158,7 +166,14 @@ describe("totals", () => {
     expect(view.rows.find((row) => row.ticket === "merged")?.note).toBe("abc1234 merged into main")
     // Cards for the phases with work under way only.
     expect(view.cards.map((card) => card.ticket).sort()).toEqual(
-      ["asking", "fixing", "merging", "needs", "to-merge", "working"].sort(),
+      [
+        "asking" as TicketId,
+        "fixing" as TicketId,
+        "merging" as TicketId,
+        "needs" as TicketId,
+        "to-merge" as TicketId,
+        "working" as TicketId,
+      ].sort(),
     )
     const asking = view.cards.find((card) => card.ticket === "asking")
     expect(asking?.status).toBe("permission — waiting for you (2)")
@@ -170,13 +185,16 @@ describe("totals", () => {
   test("rows keep the order the run picked their tickets up in, but as they leave Current", async () => {
     const view = await run(
       Effect.gen(function* () {
-        yield* go("b", Move.Ready())
-        yield* go("a", ...dispatched)
-        yield* go("c", ...dispatched)
+        yield* go("b" as TicketId, Move.Ready())
+        yield* go("a" as TicketId, ...dispatched)
+        yield* go("c" as TicketId, ...dispatched)
         const ledger = yield* Ledger
-        yield* ledger.transition("b", Move.Dispatched())
-        yield* ledger.transition("a", Move.WaitsForMerge({ blockers: ["c"] }))
-        yield* ledger.transition("a", Move.Requeued())
+        yield* ledger.transition("b" as TicketId, Move.Dispatched())
+        yield* ledger.transition(
+          "a" as TicketId,
+          Move.WaitsForMerge({ blockers: ["c" as TicketId] }),
+        )
+        yield* ledger.transition("a" as TicketId, Move.Requeued())
         return project(inputs(yield* current))
       }),
     )
@@ -193,7 +211,7 @@ describe("totals", () => {
     fc.assert(
       fc.property(fc.string({ unit: "binary" }), (title) => {
         const entry = {
-          ticket: "t",
+          ticket: "t" as TicketId,
           title,
           phase: { _tag: "Working" } as TicketPhase,
           since: 0,
@@ -204,7 +222,9 @@ describe("totals", () => {
           lastMessage: null,
           tallies: emptyTallies,
         }
-        const view = project(inputs({ ...emptyState, tickets: new Map([["t", entry]]) }))
+        const view = project(
+          inputs({ ...emptyState, tickets: new Map([["t" as TicketId, entry]]) }),
+        )
         expect(view.rows[0]?.title).toBe(sanitizeLine(title))
         expect(view.cards[0]?.title).toBe(sanitizeLine(title))
       }),
@@ -219,21 +239,21 @@ describe("worker numbers", () => {
         const ledger = yield* Ledger
         const workers = (state: State) =>
           Object.fromEntries([...state.tickets.values()].map((e) => [e.ticket, e.worker]))
-        yield* go("t1", ...dispatched)
-        yield* go("t2", ...dispatched)
-        yield* go("t3", ...dispatched)
+        yield* go("t1" as TicketId, ...dispatched)
+        yield* go("t2" as TicketId, ...dispatched)
+        yield* go("t3" as TicketId, ...dispatched)
         const first = workers(yield* current)
-        yield* ledger.transition("t2", Move.NoChange())
-        yield* ledger.transition("t1", Move.Verified({ place: 1 }))
+        yield* ledger.transition("t2" as TicketId, Move.NoChange())
+        yield* ledger.transition("t1" as TicketId, Move.Verified({ place: 1 }))
         const second = workers(yield* current)
-        yield* go("t4", ...dispatched)
-        yield* go("t5", ...dispatched)
+        yield* go("t4" as TicketId, ...dispatched)
+        yield* go("t5" as TicketId, ...dispatched)
         const third = workers(yield* current)
-        yield* ledger.transition("t1", Move.ItsTurn())
-        yield* ledger.transition("t1", Move.CheckHandedBack({ attempt: 1 }))
-        yield* ledger.transition("t1", Move.Aside({ why: "CHECKS_FAILED" }))
-        yield* ledger.transition("t3", Move.Defer({ why: "deferred by its worker" }))
-        yield* go("t6", ...dispatched)
+        yield* ledger.transition("t1" as TicketId, Move.ItsTurn())
+        yield* ledger.transition("t1" as TicketId, Move.CheckHandedBack({ attempt: 1 }))
+        yield* ledger.transition("t1" as TicketId, Move.Aside({ why: "CHECKS_FAILED" }))
+        yield* ledger.transition("t3" as TicketId, Move.Defer({ why: "deferred by its worker" }))
+        yield* go("t6" as TicketId, ...dispatched)
         const fourth = workers(yield* current)
         const view = project(inputs(yield* current))
         return { first, second, third, fourth, cards: view.cards.map((c) => c.worker) }
@@ -252,9 +272,9 @@ describe("identity", () => {
   test("unchanged parts keep their identity", async () => {
     const result = await run(
       Effect.gen(function* () {
-        yield* go("a", ...dispatched)
-        yield* go("b", ...dispatched)
-        yield* go("c", ...merging, Move.FastForwarded({ commit: "abc1234" }))
+        yield* go("a" as TicketId, ...dispatched)
+        yield* go("b" as TicketId, ...dispatched)
+        yield* go("c" as TicketId, ...merging, Move.FastForwarded({ commit: "abc1234" }))
         const first = project(inputs(yield* current))
         const again = project(inputs(yield* current), first)
         const editing = WorkerState.Working({ doing: "editing" })
@@ -293,8 +313,8 @@ describe("a failed turn's card", () => {
   test("shows stopped for an interrupt and failed for another error", async () => {
     const statuses = await run(
       Effect.gen(function* () {
-        yield* go("a", ...dispatched)
-        yield* go("b", ...dispatched)
+        yield* go("a" as TicketId, ...dispatched)
+        yield* go("b" as TicketId, ...dispatched)
         const workers = new Map([
           ["a", WorkerState.Failed({ at: 0, error: "interrupted", interrupted: true })],
           ["b", WorkerState.Failed({ at: 0, error: "API Error: 401", interrupted: false })],
@@ -321,7 +341,7 @@ describe("the 30 Hz throttle", () => {
     const result = await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* go("a", ...dispatched)
+        yield* go("a" as TicketId, ...dispatched)
         const status = yield* SubscriptionRef.make<Status>({ ...emptyStatus, concurrency: 2 })
         const workers = yield* SubscriptionRef.make<ReadonlyMap<string, WorkerState>>(new Map())
         const doing = (activity: "editing" | "reading" | "testing") =>
@@ -374,13 +394,13 @@ describe("transitions", () => {
     const records = await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition("a", Move.Ready(), { title: "A" })
-        yield* ledger.transition("a", Move.Dispatched(), {
+        yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "A" })
+        yield* ledger.transition("a" as TicketId, Move.Dispatched(), {
           beside: [
             { kind: "dispatch", ticket: "a", title: "A", n: 1, limit: 0, queued: 0, text: "[1] a" },
           ],
         })
-        yield* ledger.transition("a", Move.Verified({ place: 2 }))
+        yield* ledger.transition("a" as TicketId, Move.Verified({ place: 2 }))
         return yield* (yield* Captured).records
       }),
     )
@@ -395,18 +415,18 @@ describe("transitions", () => {
     const result = await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition("a", Move.Ready())
-        const first = yield* ledger.transition("a", Move.ItsTurn(), {
+        yield* ledger.transition("a" as TicketId, Move.Ready())
+        const first = yield* ledger.transition("a" as TicketId, Move.ItsTurn(), {
           beside: [{ kind: "info", ticket: "a", text: "never written" }],
         })
-        const second = yield* ledger.transition("a", Move.ItsTurn())
-        const refined = yield* ledger.refine("a", Detail.Step({ step: "check" }))
+        const second = yield* ledger.transition("a" as TicketId, Move.ItsTurn())
+        const refined = yield* ledger.refine("a" as TicketId, Detail.Step({ step: "check" }))
         const state = yield* current
         return {
           first,
           second,
           refined,
-          phase: state.tickets.get("a")?.phase._tag,
+          phase: state.tickets.get("a" as TicketId)?.phase._tag,
           bugs: state.bugs,
           lines: yield* texts,
           records: yield* (yield* Captured).records,
@@ -429,12 +449,12 @@ describe("transitions", () => {
     const tallies = await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* go("a", ...dispatched)
-        yield* ledger.count("a", "compactions")
-        yield* ledger.count("a", "compactions")
-        yield* ledger.count("a", "messages", 3)
-        yield* ledger.count("unknown", "messages")
-        return (yield* current).tickets.get("a")?.tallies
+        yield* go("a" as TicketId, ...dispatched)
+        yield* ledger.count("a" as TicketId, "compactions")
+        yield* ledger.count("a" as TicketId, "compactions")
+        yield* ledger.count("a" as TicketId, "messages", 3)
+        yield* ledger.count("unknown" as TicketId, "messages")
+        return (yield* current).tickets.get("a" as TicketId)?.tallies
       }),
     )
     expect(tallies).toEqual({ messages: 3, compactions: 2 })
@@ -446,14 +466,19 @@ describe("wind-down and hint", () => {
     const result = await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* go("a", ...dispatched)
-        yield* go("b", ...dispatched)
-        yield* go("c", ...dispatched)
-        yield* go("q", Move.Ready())
-        const before = project(inputs(yield* current, { requests: [permission("r1", "c", true)] }))
+        yield* go("a" as TicketId, ...dispatched)
+        yield* go("b" as TicketId, ...dispatched)
+        yield* go("c" as TicketId, ...dispatched)
+        yield* go("q" as TicketId, Move.Ready())
+        const before = project(
+          inputs(yield* current, { requests: [permission("r1", "c" as TicketId, true)] }),
+        )
         yield* ledger.windDown
-        yield* ledger.transition("a", Move.NoChange())
-        yield* ledger.transition("b", Move.WaitsForMerge({ blockers: ["x"] }))
+        yield* ledger.transition("a" as TicketId, Move.NoChange())
+        yield* ledger.transition(
+          "b" as TicketId,
+          Move.WaitsForMerge({ blockers: ["x" as TicketId] }),
+        )
         const during = project(inputs(yield* current))
         yield* ledger.windUp
         const after = project(inputs(yield* current), during)
@@ -470,9 +495,9 @@ describe("wind-down and hint", () => {
     )
     expect(result.during.windDown).toEqual({
       marks: [
-        { ticket: "a", mark: "done" },
-        { ticket: "b", mark: "faint" },
-        { ticket: "c", mark: "windingDown" },
+        { ticket: "a" as TicketId, mark: "done" },
+        { ticket: "b" as TicketId, mark: "faint" },
+        { ticket: "c" as TicketId, mark: "windingDown" },
       ],
       running: 1,
     })
@@ -504,23 +529,27 @@ describe("commands", () => {
     const result = await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* go("a", ...dispatched)
-        yield* go("b", ...dispatched)
-        yield* ledger.transition("a", Move.NoChange())
+        yield* go("a" as TicketId, ...dispatched)
+        yield* go("b" as TicketId, ...dispatched)
+        yield* ledger.transition("a" as TicketId, Move.NoChange())
         const state = yield* current
-        const now = { ledger: state, requests: [permission("r1", "b")] }
+        const now = { ledger: state, requests: [permission("r1", "b" as TicketId)] }
         const commands = yield* makeCommands
-        offer(commands, UiCommand.OpenWorker({ ticket: "b" }))
+        offer(commands, UiCommand.OpenWorker({ ticket: "b" as TicketId }))
         offer(commands, UiCommand.Quit({ now: true }))
         const taken = [yield* Queue.take(commands), yield* Queue.take(commands)]
         return {
           taken: taken.map((command) => command._tag),
-          openB: resolve(UiCommand.OpenWorker({ ticket: "b" }), now),
-          openA: resolve(UiCommand.OpenWorker({ ticket: "a" }), now),
+          openB: resolve(UiCommand.OpenWorker({ ticket: "b" as TicketId }), now),
+          openA: resolve(UiCommand.OpenWorker({ ticket: "a" as TicketId }), now),
           answer: resolve(UiCommand.Answer({ requestId: "r1", answer: { _tag: "Deny" } }), now),
           answered: resolve(UiCommand.Answer({ requestId: "r9", answer: { _tag: "Deny" } }), now),
           message: resolve(
-            UiCommand.SendMessage({ ticket: "a", text: "hi", uuid: "u-1" as MessageUuid }),
+            UiCommand.SendMessage({
+              ticket: "a" as TicketId,
+              text: "hi",
+              uuid: "u-1" as MessageUuid,
+            }),
             now,
           ),
           drain: resolve(UiCommand.Drain(), now),

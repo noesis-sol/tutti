@@ -1,6 +1,7 @@
 // One layout function per screen (tutti-axpo.5): the dashboard's sections (dashboardLayout) and a
 // transcript view's parts (viewLayout) are handed out in priority order and add up to the pane's
 // height, each drawing within its own lines, so that no part draws over the one below it.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
@@ -20,6 +21,7 @@ import {
   shownRequest,
 } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { compactLines, labelLines, sectionLines } from "../src/ui/Card.tsx"
 import { type DashboardLayout, dashboardLayout } from "../src/ui/Dashboard.tsx"
@@ -45,7 +47,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const now = began + 67_000
 
 /** A Bash permission request on `ticket`, its command `lines` lines long. */
-const bash = (id: string, ticket: string, lines: number): AttentionRequest => ({
+const bash = (id: string, ticket: TicketId, lines: number): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -75,7 +77,7 @@ const cardArb = (i: number): fc.Arbitrary<Card> =>
       title: fc.string({ maxLength: 60 }),
     })
     .map(({ motion, action, asks, title }) => ({
-      ticket: `t-${i}`,
+      ticket: `t-${i}` as TicketId,
       label: `t-${i}`,
       title,
       worker: i,
@@ -88,7 +90,7 @@ const cardArb = (i: number): fc.Arbitrary<Card> =>
       action,
       latest: null,
       steered: false,
-      requests: asks ? [shownRequest(bash(`r${i}`, `t-${i}`, 3))] : [],
+      requests: asks ? [shownRequest(bash(`r${i}`, `t-${i}` as TicketId, 3))] : [],
     }))
 
 /** A RunView of up to 30 cards, 20 slots, 8 warnings, the wind-down and the end-of-run box. */
@@ -315,9 +317,9 @@ describe("drawn", () => {
       ledger: {
         tickets: new Map([
           [
-            "t-1",
+            "t-1" as TicketId,
             {
-              ticket: "t-1",
+              ticket: "t-1" as TicketId,
               title: "Title of t-1",
               phase: TicketPhase.Working(),
               since: began,
@@ -335,7 +337,7 @@ describe("drawn", () => {
         bugs: [],
       },
       workers: new Map([["t-1", WS.Idle({ at: began })]]),
-      requests: [bash("r1", "t-1", 20)],
+      requests: [bash("r1", "t-1" as TicketId, 20)],
       status: { ...emptyStatus, version: "0.1.0", branch: "batch", began, concurrency: 1 },
       actions: new Map(),
     })
@@ -344,7 +346,7 @@ describe("drawn", () => {
       <Root
         value={{
           view: external(view),
-          screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+          screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
           commands: Effect.runSync(makeCommands),
           appearance: external<Appearance>("dark"),
           themeOf,

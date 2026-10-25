@@ -9,6 +9,7 @@ import type { AttentionRequest } from "../agent/Attention.ts"
 import { WorkerState } from "../agent/WorkerState.ts"
 import { Finished, TicketPhase } from "../run/phase.ts"
 import { type Card, type Key, type Row, rowStatus, shownRequest } from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { Tty } from "../services/Tty.ts"
 import { attentionLines } from "../ui/AttentionCard.tsx"
 import { defaultFocus } from "../ui/attentionKeys.ts"
@@ -97,7 +98,7 @@ const began = (now: number, millis: number) => now - millis
 
 /** The mock's worker card: a worker editing, its latest action under its title. */
 const workingCard = (now: number): Card => ({
-  ticket: "tut-12",
+  ticket: "tut-12" as TicketId,
   label: "tut-12",
   title: "Retry a merge that lost the race",
   worker: 1,
@@ -116,7 +117,7 @@ const workingCard = (now: number): Card => ({
 /** The mock's attention card's request: a command waiting for permission. */
 const permission = (now: number): AttentionRequest => ({
   id: "r1",
-  ticket: "tut-14",
+  ticket: "tut-14" as TicketId,
   kind: {
     _tag: "Permission",
     tool: "Bash",
@@ -133,7 +134,7 @@ const permission = (now: number): AttentionRequest => ({
 
 /** The mock's attention card: a worker waiting for you to allow a command. */
 const attentionCard = (now: number): Card => ({
-  ticket: "tut-14",
+  ticket: "tut-14" as TicketId,
   label: "tut-14",
   title: "Clear the build cache between checks",
   worker: 2,
@@ -152,7 +153,7 @@ const attentionCard = (now: number): Card => ({
 /** The mock's ticket rows, one in each of a few states. */
 const rows: ReadonlyArray<Row> = [
   {
-    ticket: "tut-9",
+    ticket: "tut-9" as TicketId,
     label: "tut-9",
     ...rowStatus(TicketPhase.Done({ outcome: Finished.Merged({ commit: "" }) })),
     title: "",
@@ -160,7 +161,7 @@ const rows: ReadonlyArray<Row> = [
     verdict: null,
   },
   {
-    ticket: "tut-12",
+    ticket: "tut-12" as TicketId,
     label: "tut-12",
     ...rowStatus(TicketPhase.Working(), "editing"),
     title: "",
@@ -168,7 +169,7 @@ const rows: ReadonlyArray<Row> = [
     verdict: null,
   },
   {
-    ticket: "tut-13",
+    ticket: "tut-13" as TicketId,
     label: "tut-13",
     ...rowStatus(TicketPhase.ToMerge({ place: 1 })),
     title: "",
@@ -176,7 +177,7 @@ const rows: ReadonlyArray<Row> = [
     verdict: null,
   },
   {
-    ticket: "tut-14",
+    ticket: "tut-14" as TicketId,
     label: "tut-14",
     ...rowStatus(TicketPhase.Working(), "allow"),
     title: "",

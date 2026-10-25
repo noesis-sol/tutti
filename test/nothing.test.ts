@@ -19,7 +19,7 @@ import {
   plainLines,
   themeStyles,
 } from "../src/run/nothing.ts"
-import { Beads, type Issue } from "../src/services/Beads.ts"
+import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git, type GitWriter } from "../src/services/Git.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -108,10 +108,10 @@ describe("the box and its lines", () => {
     {
       name: "nothing ready in a scope",
       n: make({
-        scope: "k-1",
+        scope: "k-1" as TicketId,
         notDone: [
-          { id: "k-2", why: "blocked by k-9 outside the scope" },
-          { id: "k-3", why: "closed but not merged: left unmerged by an earlier run" },
+          { id: "k-2" as TicketId, why: "blocked by k-9 outside the scope" },
+          { id: "k-3" as TicketId, why: "closed but not merged: left unmerged by an earlier run" },
         ],
       }),
       styled:
@@ -171,8 +171,10 @@ describe("the box and its lines", () => {
 
   test("a narrow terminal wraps the box's long lines, indented under their own", () => {
     const n = make({
-      scope: "k-1",
-      notDone: [{ id: "k-3", why: "closed but not merged: left unmerged by an earlier run" }],
+      scope: "k-1" as TicketId,
+      notDone: [
+        { id: "k-3" as TicketId, why: "closed but not merged: left unmerged by an earlier run" },
+      ],
     })
     const got = box(n, 40, noStyles)
     expect(got).toBe(
@@ -216,10 +218,10 @@ describe("the box and its lines", () => {
     })
     fc.assert(
       fc.property(
-        fc.array(fc.record({ id: text, why: text }), { maxLength: 4 }),
+        fc.array(fc.record({ id: text.map((id) => id as TicketId), why: text }), { maxLength: 4 }),
         fc.integer({ min: 0, max: 120 }),
         (notDone, width) => {
-          const drawn = box(make({ scope: "k-1", notDone }), width, noStyles)
+          const drawn = box(make({ scope: "k-1" as TicketId, notDone }), width, noStyles)
           const rows = drawn.split("\n")
           for (const row of rows) {
             expect(Bun.stringWidth(row)).toBeLessThanOrEqual(Math.max(width, 20))
@@ -233,7 +235,10 @@ describe("the box and its lines", () => {
 })
 
 describe("DEFERRED_FREE", () => {
-  const d: free.DeferredFree = { id: "k-4", blockers: ["k-2", "k-3"] }
+  const d: free.DeferredFree = {
+    id: "k-4" as TicketId,
+    blockers: ["k-2" as TicketId, "k-3" as TicketId],
+  }
 
   test("the START block's line, as orchestra words it", () => {
     expect(free.startLine(d, "main")).toBe(
@@ -254,8 +259,8 @@ describe("DEFERRED_FREE", () => {
       deferred: 3,
       deferredFree: [
         d,
-        { ...d, id: "k-5", worktree: "/wt/k-5" },
-        { ...d, id: "k-6", uncommitted: "/wt/k-6" },
+        { ...d, id: "k-5" as TicketId, worktree: "/wt/k-5" },
+        { ...d, id: "k-6" as TicketId, uncommitted: "/wt/k-6" },
       ],
     })
     expect(plain(n)).toBe(
@@ -268,8 +273,8 @@ describe("DEFERRED_FREE", () => {
         "    its worktree holds uncommitted changes, not safe to remove: git -C /wt/k-6 status",
     )
     const scoped = make({
-      scope: "k-1",
-      notDone: [{ id: "k-4", why: "deferred" }],
+      scope: "k-1" as TicketId,
+      notDone: [{ id: "k-4" as TicketId, why: "deferred" }],
       deferredFree: [d],
     })
     expect(lines(scoped, noStyles).rest).toEqual([
@@ -309,8 +314,12 @@ describe("DEFERRED_FREE", () => {
       { id: "chore", status: "deferred", blockedBy: ["b-1"], type: "chore" },
       { id: "later", status: "deferred", blockedBy: ["b-1"], deferUntil: "2026-12-01T00:00:00Z" },
     ]
-    expect(await run(seeds, listOf({ filter: { excludeTypes: ["chore"] } }))).toEqual(["free"])
-    expect(await run(seeds, listOf({ inScope: (id) => id !== "free" }))).toEqual(["chore"])
+    expect(await run(seeds, listOf({ filter: { excludeTypes: ["chore"] } }))).toEqual([
+      "free" as TicketId,
+    ])
+    expect(await run(seeds, listOf({ inScope: (id) => id !== "free" }))).toEqual([
+      "chore" as TicketId,
+    ])
   })
 
   test("a blocker closed but not merged, or still with its worker, frees nothing", async () => {
@@ -318,10 +327,10 @@ describe("DEFERRED_FREE", () => {
       { id: "b-1", status: "closed" },
       { id: "k-1", status: "deferred", blockedBy: ["b-1"] },
     ]
-    expect(await run(seeds, listOf({}))).toEqual(["k-1"])
-    const unmerged = free.startPending(new Set(), new Set(["b-1"]))
+    expect(await run(seeds, listOf({}))).toEqual(["k-1" as TicketId])
+    const unmerged = free.startPending(new Set(), new Set(["b-1" as TicketId]))
     expect(await run(seeds, listOf({ pending: unmerged }))).toEqual([])
-    const carried = free.startPending(new Set(["b-1"]), new Set())
+    const carried = free.startPending(new Set(["b-1" as TicketId]), new Set())
     expect(await run(seeds, listOf({ pending: carried }))).toEqual([])
   })
 
@@ -332,7 +341,7 @@ describe("DEFERRED_FREE", () => {
     ]
     const at = (time: string) => Effect.andThen(TestClock.setTime(Date.parse(time)), listOf({}))
     expect(await run(seeds, at("2026-11-30T23:59:59Z"))).toEqual([])
-    expect(await run(seeds, at("2026-12-01T00:00:01Z"))).toEqual(["k-1"])
+    expect(await run(seeds, at("2026-12-01T00:00:01Z"))).toEqual(["k-1" as TicketId])
   })
 
   test("its worktree: safe to remove when empty, kept with uncommitted changes or commits", async () => {
@@ -357,10 +366,10 @@ describe("DEFERRED_FREE", () => {
       }),
     )
     expect([...found].sort((a, b) => a.id.localeCompare(b.id))).toEqual([
-      { id: "dirty", blockers: ["b-1"], uncommitted: "/wt/dirty" },
-      { id: "empty", blockers: ["b-1"], worktree: "/wt/empty" },
-      { id: "none", blockers: ["b-1"] },
-      { id: "work", blockers: ["b-1"] },
+      { id: "dirty" as TicketId, blockers: ["b-1" as TicketId], uncommitted: "/wt/dirty" },
+      { id: "empty" as TicketId, blockers: ["b-1" as TicketId], worktree: "/wt/empty" },
+      { id: "none" as TicketId, blockers: ["b-1" as TicketId] },
+      { id: "work" as TicketId, blockers: ["b-1" as TicketId] },
     ])
   })
 
@@ -429,7 +438,7 @@ describe("the check", () => {
       { id: "after-1" },
       { id: "followup-1" },
     ]
-    const unmerged = new Set(["c-1"])
+    const unmerged = new Set(["c-1" as TicketId])
     const n = await run(seeds, check(options({ held: heldByName, unmerged })))
     expect(n).toMatchObject({
       allDone: false,
@@ -448,22 +457,28 @@ describe("the check", () => {
 
   test("a ticket closed but not merged keeps all done from being said", async () => {
     const seeds: ReadonlyArray<Seed> = [{ id: "c-1", status: "closed", labels: ["unmerged"] }]
-    const n = await run(seeds, check(options({ unmerged: new Set(["c-1"]) })))
+    const n = await run(seeds, check(options({ unmerged: new Set(["c-1" as TicketId]) })))
     expect(n).toMatchObject({ allDone: false, unmerged: 1 })
   })
 
   test("a worker the last run left in the scope is something to run", async () => {
     const seeds: ReadonlyArray<Seed> = [{ id: "k-1", status: "in_progress" }]
-    expect(await run(seeds, check(options({ carried: new Set(["k-1"]) })))).toBeNull()
+    expect(await run(seeds, check(options({ carried: new Set(["k-1" as TicketId]) })))).toBeNull()
     // One outside the scope is no matter to a scoped run.
     const scoped = [
       ...seeds,
       { id: "e-1", type: "epic" },
       { id: "e-1.1", parent: "e-1", status: "closed" },
     ]
-    const outside = await run(scoped, check(options({ scope: "e-1", carried: new Set(["k-1"]) })))
+    const outside = await run(
+      scoped,
+      check(options({ scope: "e-1" as TicketId, carried: new Set(["k-1" as TicketId]) })),
+    )
     expect(outside).toMatchObject({ scope: "e-1", allDone: true })
-    const inside = await run(scoped, check(options({ scope: "e-1", carried: new Set(["e-1.1"]) })))
+    const inside = await run(
+      scoped,
+      check(options({ scope: "e-1" as TicketId, carried: new Set(["e-1.1" as TicketId]) })),
+    )
     expect(inside).toBeNull()
   })
 
@@ -475,12 +490,15 @@ describe("the check", () => {
       { id: "e-1.2", parent: "e-1", status: "closed" },
       { id: "e-1.3", parent: "e-1", status: "deferred" },
     ]
-    const n = await run(seeds, check(options({ scope: "e-1", unmerged: new Set(["e-1.2"]) })))
+    const n = await run(
+      seeds,
+      check(options({ scope: "e-1" as TicketId, unmerged: new Set(["e-1.2" as TicketId]) })),
+    )
     const byId = [...(n?.notDone ?? [])].sort((a, b) => a.id.localeCompare(b.id))
     expect(byId).toEqual([
-      { id: "e-1.1", why: "blocked by x-9 outside the scope" },
-      { id: "e-1.2", why: "closed but not merged: left unmerged by an earlier run" },
-      { id: "e-1.3", why: "deferred" },
+      { id: "e-1.1" as TicketId, why: "blocked by x-9 outside the scope" },
+      { id: "e-1.2" as TicketId, why: "closed but not merged: left unmerged by an earlier run" },
+      { id: "e-1.3" as TicketId, why: "deferred" },
     ])
     expect(n?.done).toStartWith(
       "READY_EMPTY after 0 tickets: nothing ready; SCOPE_OPEN: e-1: 3 of its 3 subtickets not done: ",
@@ -493,7 +511,7 @@ describe("the check", () => {
       { id: "e-1", type: "epic" },
       { id: "e-1.1", parent: "e-1", status: "closed" },
     ]
-    const n = await run(seeds, check(options({ scope: "e-1" })))
+    const n = await run(seeds, check(options({ scope: "e-1" as TicketId })))
     expect(n).toMatchObject({ allDone: true, stillOpen: ["e-1"] })
     expect(plain(n as NothingToRun)).toBe("✓ All done\n  Still open: e-1 (bd close e-1)")
   })

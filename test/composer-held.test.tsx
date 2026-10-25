@@ -1,6 +1,7 @@
 // The composer while its ticket waits to merge or merges (§ 7.5, held.ts): the held line says the
 // run holds your messages until the merge is over, a message you send is shown `held`, and once the
 // ticket has merged with it still held, `not sent`.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Queue } from "effect"
@@ -11,6 +12,7 @@ import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { finishedWords, heldWords } from "../src/ui/Composer.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -47,7 +49,7 @@ const items: ReadonlyArray<Item> = [
 ]
 
 const ledgerEntry: LedgerEntry = {
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   title: "Title of t-1",
   phase: TicketPhase.ToMerge({ place: 1 }),
   since: began,
@@ -64,7 +66,9 @@ const viewOf = (phase: TicketPhase | null, steered = false): RunView =>
   project({
     ledger: {
       tickets: new Map(
-        phase === null ? [] : [["t-1", { ...ledgerEntry, phase, steered, handBack: steered }]],
+        phase === null
+          ? []
+          : [["t-1" as TicketId, { ...ledgerEntry, phase, steered, handBack: steered }]],
       ),
       rows: 1,
       windDown: null,
@@ -115,7 +119,7 @@ const scene = async (
     <Root
       value={{
         view,
-        screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+        screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
         commands,
         appearance: external<Appearance>("dark"),
         themeOf,

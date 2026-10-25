@@ -1,6 +1,7 @@
 // Each worker gets its share of the machine's cores for its checks (tutti-kkb.24): the cores
 // divided among the run's workers, in TUTTI_CORES and ORCHESTRA_CORES and as -p in GOFLAGS, and
 // the rules' note on checks says so. tutti's own test runner keeps bun's threads to it.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -31,6 +32,7 @@ import {
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { checkNote, coresNote } from "../src/project/prompt.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -178,7 +180,10 @@ const sessionShare = (concurrent: number, cores: number) => {
   return Effect.runPromise(
     Effect.gen(function* () {
       const agents = yield* AgentHost
-      yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
+      yield* agents.start("t-1" as TicketId, {
+        sessionId: "11111111-1111-4111-8111-111111111111",
+        cwd: dir,
+      })
       return yield* Effect.sync(() => loggedEnv(log)).pipe(
         Effect.repeat({
           until: (found) => found.length > 0,

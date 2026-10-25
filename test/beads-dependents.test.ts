@@ -7,7 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer } from "effect"
-import { Beads, issueFor } from "../src/services/Beads.ts"
+import { Beads, issueFor, type TicketId } from "../src/services/Beads.ts"
 import { layer as backlogLayer } from "../src/testing/Beads.ts"
 
 const shown = JSON.stringify([
@@ -44,40 +44,42 @@ describe("bd show's dependents", () => {
   test("are decoded with how each links", () => {
     const issue = Effect.runSync(issueFor("t-1", "bd show t-1", shown))
     expect(issue.dependents?.map(({ id, type }) => ({ id, type }))).toEqual([
-      { id: "t-2", type: "blocks" },
+      { id: "t-2" as TicketId, type: "blocks" },
     ])
-    expect(issue.parent).toBe("t-0")
+    expect(issue.parent).toBe("t-0" as TicketId)
   })
 
   test("the live layer asks for them only when told to", async () => {
     const fake = fakeBd()
     const asked = await live(
       fake,
-      Effect.flatMap(Beads, (beads) => beads.show("t-1", { dependents: true })),
+      Effect.flatMap(Beads, (beads) => beads.show("t-1" as TicketId, { dependents: true })),
     )
     expect(fake.args()).toEqual(["show", "t-1", "--json", "--include-dependents"])
-    expect(Exit.isSuccess(asked) && asked.value.dependents?.map((each) => each.id)).toEqual(["t-2"])
+    expect(Exit.isSuccess(asked) && asked.value.dependents?.map((each) => each.id)).toEqual([
+      "t-2" as TicketId,
+    ])
     await live(
       fake,
-      Effect.flatMap(Beads, (beads) => beads.show("t-1")),
+      Effect.flatMap(Beads, (beads) => beads.show("t-1" as TicketId)),
     )
     expect(fake.args()).toEqual(["show", "t-1", "--json"])
   })
 
   test("the test layer gives the issues linked to it, as bd does", () => {
     const issue = Effect.runSync(
-      Effect.flatMap(Beads, (beads) => beads.show("a", { dependents: true })).pipe(
+      Effect.flatMap(Beads, (beads) => beads.show("a" as TicketId, { dependents: true })).pipe(
         Effect.provide(
           backlogLayer([{ id: "a" }, { id: "b", blockedBy: ["a"] }, { id: "c", parent: "a" }]),
         ),
       ),
     )
     expect(issue.dependents?.map(({ id, type }) => ({ id, type }))).toEqual([
-      { id: "b", type: "blocks" },
-      { id: "c", type: "parent-child" },
+      { id: "b" as TicketId, type: "blocks" },
+      { id: "c" as TicketId, type: "parent-child" },
     ])
     const plain = Effect.runSync(
-      Effect.flatMap(Beads, (beads) => beads.show("a")).pipe(
+      Effect.flatMap(Beads, (beads) => beads.show("a" as TicketId)).pipe(
         Effect.provide(backlogLayer([{ id: "a" }, { id: "b", blockedBy: ["a"] }])),
       ),
     )
@@ -92,7 +94,7 @@ describe("bd show's dependents", () => {
     )
     expect(
       ready.map(({ id, dependentCount, dependents }) => ({ id, dependentCount, dependents })),
-    ).toEqual([{ id: "a", dependentCount: 1, dependents: undefined }])
+    ).toEqual([{ id: "a" as TicketId, dependentCount: 1, dependents: undefined }])
     const decoded = Effect.runSync(
       issueFor(
         "t-1",

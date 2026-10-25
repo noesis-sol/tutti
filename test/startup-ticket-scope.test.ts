@@ -11,7 +11,7 @@ import fc from "fast-check"
 import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/AppConfig.ts"
 import { noFlags } from "../src/cli/flags.ts"
 import { check, exitSetup, type Started, type StartupFailed } from "../src/run/startup.ts"
-import { Beads, BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
@@ -31,7 +31,7 @@ const project = () => {
 
 /** The startup checks of a run scoped to `ticket`, over `beads`, after `before`. */
 const run = (
-  ticket: string | null,
+  ticket: TicketId | null,
   beads: Layer.Layer<Beads>,
   before: (repo: string) => Effect.Effect<void, unknown, TestGit.Repository> = () => Effect.void,
 ) => {
@@ -80,20 +80,20 @@ const showFailing = (failure: BeadsFailed) =>
 
 describe("--ticket at startup", () => {
   test("an open ticket that is work passes", async () => {
-    const exit = await run("tut-1", TestBeads.layer([{ id: "tut-1" }]))
+    const exit = await run("tut-1" as TicketId, TestBeads.layer([{ id: "tut-1" }]))
     if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause))
-    expect(exit.value.config.ticket).toBe("tut-1")
+    expect(exit.value.config.ticket).toBe("tut-1" as TicketId)
   })
 
   test("in progress, blocked or deferred, it is still work", async () => {
     for (const status of ["in_progress", "blocked", "deferred"] as const) {
-      const exit = await run("tut-1", TestBeads.layer([{ id: "tut-1", status }]))
+      const exit = await run("tut-1" as TicketId, TestBeads.layer([{ id: "tut-1", status }]))
       expect(Exit.isSuccess(exit)).toBe(true)
     }
   })
 
   test("a ticket bd has no issue for is a setup problem", async () => {
-    expect(problemsOf(await run("tut-9", TestBeads.layer([{ id: "tut-1" }])))).toEqual([
+    expect(problemsOf(await run("tut-9" as TicketId, TestBeads.layer([{ id: "tut-1" }])))).toEqual([
       "Cannot read ticket tut-9 (--ticket): bd has no ticket by that ID",
     ])
   })
@@ -107,34 +107,34 @@ describe("--ticket at startup", () => {
         noSuchIssue: false,
       }),
     )
-    expect(problemsOf(await run("tut-1", beads))).toEqual([
+    expect(problemsOf(await run("tut-1" as TicketId, beads))).toEqual([
       "Cannot read ticket tut-1 (--ticket): Error: database is locked",
     ])
     const silent = showFailing(
       new BeadsFailed({ command: "bd show", exitCode: 3, stderr: "", noSuchIssue: false }),
     )
-    expect(problemsOf(await run("tut-1", silent))).toEqual([
+    expect(problemsOf(await run("tut-1" as TicketId, silent))).toEqual([
       "Cannot read ticket tut-1 (--ticket): exit code 3",
     ])
   })
 
   test("a closed ticket is a setup problem, with the command that reopens it", async () => {
     const beads = TestBeads.layer([{ id: "tut-1", status: "closed" }])
-    expect(problemsOf(await run("tut-1", beads))).toEqual([
+    expect(problemsOf(await run("tut-1" as TicketId, beads))).toEqual([
       "Ticket tut-1 (--ticket) is closed: nothing to run. Reopen it with: bd update tut-1 --status open",
     ])
   })
 
   test("a question is a setup problem, with the command that answers it", async () => {
     const beads = TestBeads.layer([{ id: "tut-1", labels: ["human"] }])
-    expect(problemsOf(await run("tut-1", beads))).toEqual([
+    expect(problemsOf(await run("tut-1" as TicketId, beads))).toEqual([
       "Ticket tut-1 (--ticket) is a question for you (label human), not work. Answer it with: bd human respond tut-1",
     ])
   })
 
   test("is listed with the other problems, after bd's", async () => {
     const beads = TestBeads.layer([{ id: "tut-1", status: "closed" }])
-    const exit = await run("tut-1", beads, (repo) =>
+    const exit = await run("tut-1" as TicketId, beads, (repo) =>
       Effect.flatMap(TestGit.Repository, (repository) =>
         repository.write(repo, { "notes.txt": "new\n" }),
       ),
@@ -159,7 +159,7 @@ describe("--ticket at startup", () => {
         const beads = showFailing(
           new BeadsFailed({ command: "bd show", exitCode: 1, stderr, noSuchIssue: false }),
         )
-        const [problem] = problemsOf(await run(id === "" ? "x" : id, beads))
+        const [problem] = problemsOf(await run((id === "" ? "x" : id) as TicketId, beads))
         expect(problem).toBeDefined()
         expect(problem).toBe(sanitizeLine(problem ?? ""))
       }),

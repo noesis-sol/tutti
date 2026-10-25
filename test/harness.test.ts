@@ -6,6 +6,7 @@ import { EventStream } from "../src/run/eventstream.ts"
 import { RunFibers } from "../src/run/fibers.ts"
 import { Log, line } from "../src/run/log.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { exec, ProcessGroups, run as runCommand } from "../src/services/exec.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -60,11 +61,13 @@ const trivialRun = Effect.gen(function* () {
     tickets,
     Effect.gen(function* () {
       yield* Effect.sleep("1 minute")
-      const worktree = yield* (yield* Worktrees).prepare("t-1")
-      yield* host.start("t-1", { sessionId: "s-1", cwd: worktree.path })
-      yield* host.send("t-1", { text: "Work on t-1.", from: "clientComposed" })
-      yield* host.state("t-1").pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
-      yield* host.end("t-1")
+      const worktree = yield* (yield* Worktrees).prepare("t-1" as TicketId)
+      yield* host.start("t-1" as TicketId, { sessionId: "s-1", cwd: worktree.path })
+      yield* host.send("t-1" as TicketId, { text: "Work on t-1.", from: "clientComposed" })
+      yield* host
+        .state("t-1" as TicketId)
+        .pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
+      yield* host.end("t-1" as TicketId)
       yield* log.write(line`  t-1 merged`)
       return yield* repo.head("main")
     }),
@@ -89,10 +92,10 @@ const oneTicket = {
   backlog: backlog().ticket("t-1", { title: "One ticket" }).seeds,
   scripts: ({ beads, repository }: World) => ({
     "t-1": [
-      claimsAndCloses("t-1", {
-        claim: Effect.orDie(beads.update("t-1", { claim: true })),
+      claimsAndCloses("t-1" as TicketId, {
+        claim: Effect.orDie(beads.update("t-1" as TicketId, { claim: true })),
         commit: Effect.asVoid(repository.commit(repository.dir, "Change (t-1)", { "a.txt": "a" })),
-        close: Effect.orDie(beads.close("t-1")),
+        close: Effect.orDie(beads.close("t-1" as TicketId)),
       }),
     ],
   }),
@@ -108,7 +111,7 @@ describe("scenario", () => {
     expectLog(ran, ["checked", /t-1 merged$/])
     expectEvents(ran, ["done"])
     expect(ran.leaks).toEqual({ fibers: [], processes: [] })
-    expect(ran.worktreeCalls).toEqual([{ op: "prepare", id: "t-1" }])
+    expect(ran.worktreeCalls).toEqual([{ op: "prepare", id: "t-1" as TicketId }])
     expect(ran.sent.map((sent) => sent._tag)).toEqual(["Started", "Message", "Closed", "Ended"])
     expect(ran.issues.find((issue) => issue.id === "t-1")?.status).toBe("closed")
   }, 30_000)
@@ -183,7 +186,7 @@ describe("environment", () => {
         return { ids: issues.map((issue) => issue.id), stored, start }
       }).pipe(Effect.provide(environment({ backlog: backlog().chain("a-1", "a-2").seeds }))),
     )
-    expect(state.ids).toEqual(["a-1", "a-2"])
+    expect(state.ids).toEqual(["a-1" as TicketId, "a-2" as TicketId])
     expect(state.stored.tickets).toEqual({})
     expect(state.start).toBe(0)
   })

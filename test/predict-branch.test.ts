@@ -9,7 +9,7 @@ import type { Log } from "../src/run/log.ts"
 import { make as makePredictor } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
-import { Beads, type Issue } from "../src/services/Beads.ts"
+import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -111,7 +111,7 @@ describe("a ticket with commits on its branch", () => {
     // The ticket without a branch is still predicted, once.
     expect(asked(calls)).toEqual(["t-2"])
     expect(carried?.metadata.predicted_files).toBeUndefined()
-    expect([...predicted.keys()]).toEqual(["t-2"])
+    expect([...predicted.keys()]).toEqual(["t-2" as TicketId])
     expect(lines).toContain("  t-1 footprint: src/a.ts (from its branch)")
     expect(lines.some((text) => text.includes("t-1 footprint predicted"))).toBe(false)
   })
@@ -135,7 +135,8 @@ describe("a ticket with commits on its branch", () => {
         const predictor = yield* makePredictor({ repo: "/repo" })
         const beads = yield* Beads
         const issues: Array<Issue> = []
-        for (const id of ["t-1", "t-2", "t-3"]) issues.push(yield* Effect.orDie(beads.show(id)))
+        for (const id of ["t-1" as TicketId, "t-2" as TicketId, "t-3" as TicketId])
+          issues.push(yield* Effect.orDie(beads.show(id)))
         yield* predictor.queue(issues, repository, branch)
         yield* flush
         // Queued once a run: a second fill reads no branch again.

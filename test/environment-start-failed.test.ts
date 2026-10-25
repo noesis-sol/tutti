@@ -11,6 +11,7 @@ import { Duration, Effect, Fiber } from "effect"
 import { type FastFail, fastFailsWhy } from "../src/run/environment.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { failStart, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -119,7 +120,7 @@ describe("the environment hold and sessions that don't start", () => {
 describe("fastFailsWhy", () => {
   const window = Duration.minutes(2)
   const row = (...hows: ReadonlyArray<FastFail["how"]>): ReadonlyArray<FastFail> =>
-    hows.map((how, i) => ({ ticket: `t-${i + 1}`, how }))
+    hows.map((how, i) => ({ ticket: `t-${i + 1}` as TicketId, how }))
 
   test("names each way the row failed, setups first", () => {
     expect(fastFailsWhy(row("start", "setup", "atOnce"), window, "bun install")).toBe(

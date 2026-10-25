@@ -29,7 +29,7 @@
 // state.json forgotten.
 import { Data, Effect, Result, Schema } from "effect"
 import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
-import { Beads } from "../services/Beads.ts"
+import { Beads, type TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { leaveForReview } from "./aside.ts"
 import type { resumedWhy } from "./events.ts"
@@ -57,7 +57,7 @@ export const lifetime = (phase: TicketPhase, recheck = false, handBackWaits = fa
  * may not, and none does.
  */
 export const fit = (
-  ticket: string,
+  ticket: TicketId,
   rechecks?: Rechecks,
   handBacks?: HandBacks,
 ): Effect.Effect<void, never, AgentHost | Ledger> =>
@@ -91,7 +91,7 @@ export class ResumeFailed extends Schema.TaggedError<ResumeFailed>()("ResumeFail
 
 /** A resume of a ticket's session: what it is for, what it is sent, and what its line says. */
 export interface Resuming {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly why: ResumeWhy
   /** What the session is sent, client_composed. */
   readonly message: string
@@ -154,7 +154,7 @@ export const GoneResume = Data.taggedEnum<GoneResume>()
  * progress, telling it to carry on: once per ticket per run (§ 4.8).
  */
 export const resumeGone = (
-  ticket: string,
+  ticket: TicketId,
   why: string,
 ): Effect.Effect<GoneResume, never, AgentHost | Beads | Ledger | Store | Log | EventStream> =>
   Effect.gen(function* () {
@@ -187,7 +187,7 @@ export const workerGone = ({
   worktree,
   why,
 }: {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly worktree: string
   readonly why: string
 }): Effect.Effect<void, never, Beads | Ledger | Log | Store> =>

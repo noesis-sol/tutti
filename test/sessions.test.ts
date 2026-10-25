@@ -24,7 +24,7 @@ import { GoneResume, lifetime, resume, resumeGone } from "../src/run/sessions.ts
 import type { StartTicket } from "../src/run/start.ts"
 import { goneText } from "../src/run/told.ts"
 import { type Worked, work } from "../src/run/work.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -51,7 +51,7 @@ import {
   type World,
 } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 const tiny = backlog().ticket(id, { title: "One ticket" })
 
@@ -90,7 +90,11 @@ describe("lifetime: § 4.8's table, row by row", () => {
     ["merged", TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }), "closed"],
     ["closed with no change", TicketPhase.Done({ outcome: Finished.NoChange() }), "closed"],
     ["asked", TicketPhase.Asked({ question: "t-9" }), "closed"],
-    ["waits for merge", TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["t-0"] }) }), "closed"],
+    [
+      "waits for merge",
+      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["t-0" as TicketId] }) }),
+      "closed",
+    ],
     ["deferred", TicketPhase.Deferred({ why: "by the worker" }), "closed"],
     ["left for review", TicketPhase.Review({ why: "CLOSED_WITHOUT_COMMIT" }), "closed"],
     ["blocked on its conflicts", TicketPhase.Blocked({ why: "MERGE_CONFLICT" }), "closed"],
@@ -220,7 +224,9 @@ describe("a ticket's session, as its worker's outcome is read", () => {
 
   test("waits for merge: closed", async () => {
     const ran = await working(
-      (c, world) => [turn([run(c.claim), run(orDie(world.beads.addDependency(id, "t-0")))])],
+      (c, world) => [
+        turn([run(c.claim), run(orDie(world.beads.addDependency(id, "t-0" as TicketId)))]),
+      ],
       { backlog: backlog().ticket("t-0").ticket(id, { title: "One ticket" }) },
     )
     expect(phaseOf(ran)?._tag).toBe("Waiting")
@@ -277,7 +283,7 @@ const failing = (said: ReadonlyArray<string>) =>
  * A ticket its worker finished, its session open: its worktree on tutti/<id> with a commit naming
  * it, closed in Beads, Working.
  */
-const finished = (ticket: string, files: Files) =>
+const finished = (ticket: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const host = yield* AgentHost
@@ -299,7 +305,7 @@ const finished = (ticket: string, files: Files) =>
   })
 
 /** Waits until the ticket is in `phase` and the merge queue has settled. */
-const until = (queue: MergeQueue, ticket: string, phase: PhaseTag) =>
+const until = (queue: MergeQueue, ticket: TicketId, phase: PhaseTag) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(

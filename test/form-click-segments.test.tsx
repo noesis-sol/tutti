@@ -1,6 +1,7 @@
 // The forms' click targets as segments (D9, § 7.3): an init option or the start question's wrapped
 // onto two lines is one target on both; the answer form's frame is boxed's, drawn as text, and an option's row is its
 // target to the frame, past its text.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
@@ -10,6 +11,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { type Asking, emptyScreen, InitView } from "../src/ui/InitForm.tsx"
@@ -96,7 +98,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
 const asked: AttentionRequest = {
   id: "q1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Question",
     questions: [
@@ -120,9 +122,9 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest>): RunView =>
     ledger: {
       tickets: new Map([
         [
-          "t-1",
+          "t-1" as TicketId,
           {
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             title: "Title of t-1",
             phase: TicketPhase.Working(),
             since: began,
@@ -153,7 +155,7 @@ describe("the answer form", () => {
       <Root
         value={{
           view: external(viewOf([asked])),
-          screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+          screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
           commands,
           appearance: external<Appearance>("dark"),
           themeOf,

@@ -6,7 +6,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -36,7 +36,7 @@ const failedCheck = new CheckFailed({
 })
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -68,7 +68,7 @@ const moveMain = (files: Files = { "main.txt": "moved\n" }) =>
   })
 
 /** The ticket's phase in this run's ledger. */
-const phaseIn = (id: string) =>
+const phaseIn = (id: TicketId) =>
   Effect.gen(function* () {
     const state = yield* (yield* Ledger).current
     return state.tickets.get(id)?.phase
@@ -103,7 +103,7 @@ const nextRun = (ticket: FinishedTicket) =>
   ).pipe(Effect.provide(Ledger.layer))
 
 /** The ticket's rebased-and-unchecked mark in state.json, as it is now. */
-const markOf = (id: string) =>
+const markOf = (id: TicketId) =>
   Effect.gen(function* () {
     const metadata = yield* (yield* Store).metadata(id)
     return Object.hasOwn(metadata, uncheckedKey) ? metadata[uncheckedKey] : undefined
@@ -125,7 +125,7 @@ describe("a branch rebased before a quit cut its check short", () => {
       Effect.gen(function* () {
         const git = yield* Git
         const repository = yield* Repository
-        const a = yield* finished("a", { "a.txt": "a\n" })
+        const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
         const fork = yield* git.mergeBase(repository.dir, "main", a.branch)
         const head = yield* repository.head(a.branch)
         yield* moveMain()
@@ -133,10 +133,19 @@ describe("a branch rebased before a quit cut its check short", () => {
         // Its branch stays rebased onto main, on top of it, as the quit left it.
         const main = yield* repository.head("main")
         const onTop = (yield* git.mergeBase(repository.dir, "main", a.branch)) === main
-        const marked = yield* markOf("a")
+        const marked = yield* markOf("a" as TicketId)
         const next = yield* nextRun(a)
         const merged = (yield* repository.tree("main")).get("a.txt")
-        return { quit, onTop, marked, fork, head, next, merged, left: yield* markOf("a") }
+        return {
+          quit,
+          onTop,
+          marked,
+          fork,
+          head,
+          next,
+          merged,
+          left: yield* markOf("a" as TicketId),
+        }
       }),
     )
     const result = resultOf(ran)
@@ -162,12 +171,12 @@ describe("a branch rebased before a quit cut its check short", () => {
       { backlog: backlog().ticket("a").seeds, checks: { fast: [hanging(started), failedCheck] } },
       Effect.gen(function* () {
         const repository = yield* Repository
-        const a = yield* finished("a", { "a.txt": "a\n" })
+        const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
         yield* moveMain()
         yield* quitDuringCheck(a, started)
         const next = yield* nextRun(a)
         const merged = (yield* repository.tree("main")).has("a.txt")
-        return { next, merged, marked: yield* markOf("a") }
+        return { next, merged, marked: yield* markOf("a" as TicketId) }
       }),
     )
     const result = resultOf(ran)
@@ -193,7 +202,7 @@ describe("a branch rebased before a quit cut its check short", () => {
       { backlog: backlog().ticket("a").seeds, config, checks: { fast: [hanging(started)] } },
       Effect.gen(function* () {
         const repository = yield* Repository
-        const a = yield* finished("a", { "a.txt": "a\n" })
+        const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
         yield* moveMain({ "package.json": "{}\n" })
         yield* quitDuringCheck(a, started)
         const next = yield* nextRun(a)
@@ -214,13 +223,13 @@ describe("the rebased-and-unchecked mark", () => {
       { backlog: backlog().ticket("a").seeds },
       Effect.gen(function* () {
         const repository = yield* Repository
-        const a = yield* finished("a", { "a.txt": "a\n" })
+        const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
         yield* moveMain()
         const phase = yield* nextRun(a)
         return {
           phase,
           merged: (yield* repository.tree("main")).get("a.txt"),
-          mark: yield* markOf("a"),
+          mark: yield* markOf("a" as TicketId),
         }
       }),
     )
@@ -239,7 +248,7 @@ describe("the rebased-and-unchecked mark", () => {
     const ran = await scenario(
       { backlog: backlog().ticket("a").seeds, config },
       Effect.gen(function* () {
-        const a = yield* finished("a", { "a.txt": "a\n" })
+        const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
         return yield* nextRun(a)
       }),
     )
@@ -251,10 +260,10 @@ describe("the rebased-and-unchecked mark", () => {
     const ran = await scenario(
       { backlog: backlog().ticket("a").seeds },
       Effect.gen(function* () {
-        const a = yield* finished("a", { "a.txt": "a\n" })
-        yield* (yield* Store).setMetadata("a", uncheckedKey, "edited by hand")
+        const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+        yield* (yield* Store).setMetadata("a" as TicketId, uncheckedKey, "edited by hand")
         const phase = yield* nextRun(a)
-        return { phase, mark: yield* markOf("a") }
+        return { phase, mark: yield* markOf("a" as TicketId) }
       }),
     )
     const result = resultOf(ran)

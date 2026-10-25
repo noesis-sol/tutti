@@ -7,6 +7,7 @@ import type { Transcripts } from "../src/agent/Transcripts.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   backgroundCommand,
   layer as hostLayer,
@@ -47,12 +48,12 @@ const late =
 /** Starts t-1's worker and sends it its first message. */
 const start = Effect.gen(function* () {
   const host = yield* AgentHost
-  yield* host.start("t-1", session)
-  yield* host.send("t-1", { text: "Your ticket is t-1.", from: "clientComposed" })
+  yield* host.start("t-1" as TicketId, session)
+  yield* host.send("t-1" as TicketId, { text: "Your ticket is t-1.", from: "clientComposed" })
 })
 
 const current = Effect.gen(function* () {
-  return yield* (yield* AgentHost).current("t-1")
+  return yield* (yield* AgentHost).current("t-1" as TicketId)
 })
 
 describe("a finished background task's report", () => {

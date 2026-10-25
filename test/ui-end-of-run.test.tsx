@@ -1,5 +1,6 @@
 // The end-of-run box (D19, § 5 item 14, § 7.2): its words as § 5 item 14 gives them, the box in
 // place of the Current cards, its frame in `needsYou`, the hint's `q`, and `q` ending the run.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import fc from "fast-check"
@@ -9,6 +10,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { endOfRunLines, endOfRunText } from "../src/ui/EndOfRunBox.tsx"
 import { widthOf } from "../src/ui/line.tsx"
@@ -26,7 +28,7 @@ const now = began + 67_000
 const working = TicketPhase.Working()
 
 const entryOf = (
-  ticket: string,
+  ticket: TicketId,
   worker: number | null,
   phase: TicketPhase,
   row: number,
@@ -43,7 +45,7 @@ const entryOf = (
   tallies: emptyTallies,
 })
 
-const permission = (id: string, ticket: string): AttentionRequest => ({
+const permission = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -58,7 +60,7 @@ const permission = (id: string, ticket: string): AttentionRequest => ({
   createdAt: began,
 })
 
-const question = (id: string, ticket: string): AttentionRequest => ({
+const question = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
   ticket,
   kind: { _tag: "Question", questions: [], input: {} },
@@ -68,28 +70,28 @@ const question = (id: string, ticket: string): AttentionRequest => ({
 })
 
 /** § 5 item 14's run: one ticket merged, tut-9a1 and tut-7k2 waiting on you; the box or not. */
-const viewOf = (endOfRun: ReadonlyArray<string> | null): RunView =>
+const viewOf = (endOfRun: ReadonlyArray<TicketId> | null): RunView =>
   project({
     ledger: {
       tickets: new Map([
         [
-          "tut-dwv",
+          "tut-dwv" as TicketId,
           entryOf(
-            "tut-dwv",
+            "tut-dwv" as TicketId,
             null,
             TicketPhase.Done({ outcome: Finished.Merged({ commit: "ffd6ce4" }) }),
             0,
           ),
         ],
-        ["tut-9a1", entryOf("tut-9a1", 1, working, 1)],
-        ["tut-7k2", entryOf("tut-7k2", 2, working, 2)],
+        ["tut-9a1" as TicketId, entryOf("tut-9a1" as TicketId, 1, working, 1)],
+        ["tut-7k2" as TicketId, entryOf("tut-7k2" as TicketId, 2, working, 2)],
       ]),
       rows: 3,
       windDown: null,
       bugs: [],
     },
     workers: new Map(),
-    requests: [permission("r1", "tut-9a1"), question("r2", "tut-7k2")],
+    requests: [permission("r1", "tut-9a1" as TicketId), question("r2", "tut-7k2" as TicketId)],
     status: {
       ...emptyStatus,
       version: "0.1.0",
@@ -126,23 +128,23 @@ const belowTable = (frame: Frame): string => {
 }
 
 /** RunView's inputs but its status: tut-9a1 and tut-7k2 at work, `ticket`'s request answered. */
-const inputsWithout = (ticket: string) => ({
+const inputsWithout = (ticket: TicketId) => ({
   ledger: {
     tickets: new Map([
-      ["tut-9a1", entryOf("tut-9a1", 1, working, 0)],
-      ["tut-7k2", entryOf("tut-7k2", 2, working, 1)],
+      ["tut-9a1" as TicketId, entryOf("tut-9a1" as TicketId, 1, working, 0)],
+      ["tut-7k2" as TicketId, entryOf("tut-7k2" as TicketId, 2, working, 1)],
     ]),
     rows: 2,
     windDown: null,
     bugs: [],
   },
   workers: new Map(),
-  requests: [permission("r1", "tut-9a1"), question("r2", "tut-7k2")].filter(
+  requests: [permission("r1", "tut-9a1" as TicketId), question("r2", "tut-7k2" as TicketId)].filter(
     (request) => request.ticket !== ticket,
   ),
 })
 
-const statusOf = (endOfRun: ReadonlyArray<string>) => ({
+const statusOf = (endOfRun: ReadonlyArray<TicketId>) => ({
   ...emptyStatus,
   branch: "main",
   concurrency: 3,
@@ -151,11 +153,11 @@ const statusOf = (endOfRun: ReadonlyArray<string>) => ({
 
 describe("the end-of-run box's words", () => {
   test("as § 5 item 14 words them", () => {
-    expect(viewOf(["tut-9a1", "tut-7k2"]).endOfRun).toEqual([
+    expect(viewOf(["tut-9a1" as TicketId, "tut-7k2" as TicketId]).endOfRun).toEqual([
       { ticket: "tut-9a1", asks: ["Allow Bash(rm -rf build)?"] },
       { ticket: "tut-7k2", asks: ["a question"] },
     ])
-    const waiting = viewOf(["tut-9a1", "tut-7k2"]).endOfRun ?? []
+    const waiting = viewOf(["tut-9a1" as TicketId, "tut-7k2" as TicketId]).endOfRun ?? []
     expect(endOfRunText(waiting)).toBe(
       "Everything else is done. 2 workers wait for you: tut-9a1 (Allow Bash(rm -rf build)?), tut-7k2 (a question)",
     )
@@ -165,7 +167,10 @@ describe("the end-of-run box's words", () => {
   })
 
   test("a worker answered meanwhile isn't named; with none left, there is no box", () => {
-    const view = project({ ...inputsWithout("tut-7k2"), status: statusOf(["tut-9a1", "tut-7k2"]) })
+    const view = project({
+      ...inputsWithout("tut-7k2" as TicketId),
+      status: statusOf(["tut-9a1" as TicketId, "tut-7k2" as TicketId]),
+    })
     expect(view.endOfRun).toEqual([{ ticket: "tut-9a1", asks: ["Allow Bash(rm -rf build)?"] }])
     expect(viewOf(null).endOfRun).toBeNull()
     expect(viewOf([]).endOfRun).toBeNull()
@@ -188,10 +193,13 @@ describe("the end-of-run box's words", () => {
 
 describe("the end-of-run box on the dashboard", () => {
   test("replaces the Current cards; the hint names q", async () => {
-    const frame = await renderFrame(<Root value={value(viewOf(["tut-9a1", "tut-7k2"]))} />, {
-      width: 80,
-      height: 30,
-    })
+    const frame = await renderFrame(
+      <Root value={value(viewOf(["tut-9a1" as TicketId, "tut-7k2" as TicketId]))} />,
+      {
+        width: 80,
+        height: 30,
+      },
+    )
     expect(belowTable(frame)).toMatchInlineSnapshot(`
       "
       ╭──────────────────────────────────────────────────────────────────────────────╮
@@ -207,10 +215,13 @@ describe("the end-of-run box on the dashboard", () => {
   })
 
   test("at 120 columns, § 5 item 14's sentence on one line", async () => {
-    const frame = await renderFrame(<Root value={value(viewOf(["tut-9a1", "tut-7k2"]))} />, {
-      width: 120,
-      height: 30,
-    })
+    const frame = await renderFrame(
+      <Root value={value(viewOf(["tut-9a1" as TicketId, "tut-7k2" as TicketId]))} />,
+      {
+        width: 120,
+        height: 30,
+      },
+    )
     expect(belowTable(frame)).toMatchInlineSnapshot(`
       "
       ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
@@ -223,7 +234,7 @@ describe("the end-of-run box on the dashboard", () => {
   })
 
   test("its frame is drawn in needsYou", () => {
-    const lines = endOfRunLines(viewOf(["tut-9a1"]).endOfRun ?? [], theme, 60)
+    const lines = endOfRunLines(viewOf(["tut-9a1" as TicketId]).endOfRun ?? [], theme, 60)
     const corner = lines[0]?.[0]
     expect(corner?.text.startsWith("╭")).toBe(true)
     expect(corner?.look?.fg?.toInts()).toEqual(theme.look("needsYou").fg?.toInts())
@@ -233,7 +244,7 @@ describe("the end-of-run box on the dashboard", () => {
     const taken = (commands: Commands) => Effect.runSync(Queue.takeAll(commands))
     const commands = Effect.runSync(makeCommands)
     await withRender(
-      <Root value={value(viewOf(["tut-9a1", "tut-7k2"]), commands)} />,
+      <Root value={value(viewOf(["tut-9a1" as TicketId, "tut-7k2" as TicketId]), commands)} />,
       { width: 80, height: 30 },
       async (rendered) => {
         await rendered.input((setup) => setup.mockInput.pressKey("q"))

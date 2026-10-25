@@ -21,6 +21,7 @@
 //   and its conflict is handed back with the steered check waived for that once (handback.ts).
 import { Effect, Result } from "effect"
 import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { EventStream } from "./eventstream.ts"
 import type { RebaseStop } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
@@ -41,7 +42,7 @@ export const lengthOf = (text: string): number => [...text].length
  * Marks the ticket's worker steered by `by`: the STEERED line and its `steered` record when it
  * wasn't steered already. A ticket the run no longer has is left alone.
  */
-export const steer = (ticket: string, by: "message" | "interrupt") =>
+export const steer = (ticket: TicketId, by: "message" | "interrupt") =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const logs = yield* Log
@@ -60,7 +61,7 @@ export const steer = (ticket: string, by: "message" | "interrupt") =>
  * Whether the worker took it; one whose session has ended didn't, and nothing is recorded.
  */
 export const sendMessage = (
-  ticket: string,
+  ticket: TicketId,
   { text, uuid }: { readonly text: string; readonly uuid: MessageUuid },
 ): Effect.Effect<boolean, never, SteerEnv> =>
   Effect.gen(function* () {
@@ -87,7 +88,7 @@ export const sendMessage = (
  * Interrupts the turn of the ticket's worker, the worker steered first; the host cancels the
  * messages queued behind it. Whether it was interrupted.
  */
-export const interrupt = (ticket: string): Effect.Effect<boolean, never, SteerEnv> =>
+export const interrupt = (ticket: TicketId): Effect.Effect<boolean, never, SteerEnv> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     yield* steer(ticket, "interrupt")
@@ -103,7 +104,7 @@ export const interrupt = (ticket: string): Effect.Effect<boolean, never, SteerEn
  * Releases the ticket's steered worker: the RELEASED line and its `released` record. Whether it
  * was steered, and so released.
  */
-export const release = (ticket: string): Effect.Effect<boolean, never, SteerEnv> =>
+export const release = (ticket: TicketId): Effect.Effect<boolean, never, SteerEnv> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const logs = yield* Log
@@ -124,7 +125,7 @@ type HandBackQueue = Pick<MergeQueue, "offer" | "handBacks">
  * hand-back waiting, or no longer Blocked on its conflict, stays as it is.
  */
 const handOver = (
-  ticket: string,
+  ticket: TicketId,
   queue: HandBackQueue,
   said: (stop: RebaseStop) => Line,
   waive: boolean,
@@ -162,7 +163,7 @@ const handOver = (
  * stays as it is.
  */
 export const handBackNow = (
-  ticket: string,
+  ticket: TicketId,
   queue: HandBackQueue,
   options: MergeTarget,
 ): Effect.Effect<boolean, never, Ledger | Log | EventStream> =>
@@ -182,7 +183,7 @@ export const handBackNow = (
  * hand-back waits again. Whether it went back.
  */
 export const releaseAndHandOver = (
-  ticket: string,
+  ticket: TicketId,
   queue: HandBackQueue,
   options: MergeTarget,
 ): Effect.Effect<boolean, never, SteerEnv> =>

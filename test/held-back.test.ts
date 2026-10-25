@@ -13,7 +13,7 @@ import { overlaps } from "../src/run/overlap.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, footprintsOf, make, type Scheduler } from "../src/run/schedule.ts"
-import type { Beads, Issue } from "../src/services/Beads.ts"
+import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
@@ -55,7 +55,7 @@ const scheduler = (options: { readonly concurrent: number; readonly footprints?:
   Effect.gen(function* () {
     const started = yield* Ref.make<ReadonlyArray<string>>([])
     const gates = new Map<string, Deferred.Deferred<void>>()
-    const gate = (id: string) =>
+    const gate = (id: TicketId) =>
       Effect.gen(function* () {
         const known = gates.get(id)
         if (known !== undefined) return known
@@ -77,7 +77,7 @@ const scheduler = (options: { readonly concurrent: number; readonly footprints?:
           }),
       },
     })
-    const finish = (id: string) =>
+    const finish = (id: TicketId) =>
       Effect.gen(function* () {
         yield* Deferred.succeed(yield* gate(id), undefined)
         yield* flush
@@ -85,7 +85,7 @@ const scheduler = (options: { readonly concurrent: number; readonly footprints?:
     return { schedule, started: Ref.get(started), finish }
   })
 
-const phase = (id: string) =>
+const phase = (id: TicketId) =>
   Effect.map(
     Effect.flatMap(Ledger, (ledger) => ledger.current),
     (state): TicketPhase | undefined => state.tickets.get(id)?.phase,
@@ -95,18 +95,18 @@ const phase = (id: string) =>
 const shown = (p: TicketPhase | undefined): string =>
   p === undefined ? "none" : p._tag === "HeldBack" ? `HeldBack:${p.why}` : p._tag
 
-const phases = (...ids: ReadonlyArray<string>) =>
+const phases = (...ids: ReadonlyArray<TicketId>) =>
   Effect.gen(function* () {
     const all: Array<string> = []
     for (const id of ids) all.push(shown(yield* phase(id)))
     return all
   })
 
-const transition = (id: string, cause: Move) =>
+const transition = (id: TicketId, cause: Move) =>
   Effect.flatMap(Ledger, (ledger) => ledger.transition(id, cause))
 
 /** The ticket's work verified: closed in bd and ToMerge. */
-const verified = (id: string) =>
+const verified = (id: TicketId) =>
   Effect.gen(function* () {
     const backlog = yield* Backlog
     const issue = yield* backlog.get(id)
@@ -115,7 +115,7 @@ const verified = (id: string) =>
   })
 
 /** The ticket merged: its turn, then fast-forwarded. */
-const merged = (id: string) =>
+const merged = (id: TicketId) =>
   Effect.gen(function* () {
     yield* transition(id, Move.ItsTurn())
     yield* transition(id, Move.FastForwarded({ commit: "abc1234" }))
@@ -151,15 +151,19 @@ describe("a parent", () => {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 2 })
         const steps: Array<unknown> = []
         const filled = yield* schedule.fillTrying
-        steps.push([filled.heldBack, yield* started, yield* phases("p", "p.1")])
+        steps.push([
+          filled.heldBack,
+          yield* started,
+          yield* phases("p" as TicketId, "p.1" as TicketId),
+        ])
         // Closed but not merged yet, it still holds its parent back.
-        yield* verified("p.1")
-        yield* finish("p.1")
+        yield* verified("p.1" as TicketId)
+        yield* finish("p.1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("p")])
-        yield* merged("p.1")
+        steps.push([yield* started, yield* phases("p" as TicketId)])
+        yield* merged("p.1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("p")])
+        steps.push([yield* started, yield* phases("p" as TicketId)])
         return steps
       }),
     )
@@ -202,20 +206,20 @@ describe("a blocker", () => {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 2 })
         const steps: Array<unknown> = []
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
         // bd ready lists t-2 once b-1 closes, while b-1's worker is still at it.
         const backlog = yield* Backlog
         const b1 = (yield* backlog.get("b-1")) as Issue
         yield* backlog.put({ ...seedOf(b1), status: "closed" })
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
-        yield* transition("b-1", Move.Verified({ place: 1 }))
-        yield* finish("b-1")
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
+        yield* transition("b-1" as TicketId, Move.Verified({ place: 1 }))
+        yield* finish("b-1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
-        yield* merged("b-1")
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
+        yield* merged("b-1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
         return [steps, yield* texts] as const
       }),
     )
@@ -247,12 +251,12 @@ describe("a follow-up", () => {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 3 })
         const steps: Array<unknown> = []
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("f-1", "f-2")])
-        yield* verified("s-1")
-        yield* finish("s-1")
-        yield* merged("s-1")
+        steps.push([yield* started, yield* phases("f-1" as TicketId, "f-2" as TicketId)])
+        yield* verified("s-1" as TicketId)
+        yield* finish("s-1" as TicketId)
+        yield* merged("s-1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("f-1")])
+        steps.push([yield* started, yield* phases("f-1" as TicketId)])
         return [steps, yield* texts] as const
       }),
     )
@@ -276,7 +280,7 @@ describe("a follow-up", () => {
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 2 })
         yield* schedule.fillTrying
-        return [yield* started, yield* phases("f-1"), yield* texts] as const
+        return [yield* started, yield* phases("f-1" as TicketId), yield* texts] as const
       }),
     )
     expect(started).toEqual([])
@@ -298,12 +302,12 @@ describe("a ticket left unmerged by an earlier run", () => {
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 2 })
         yield* schedule.fillTrying
-        const steps: Array<unknown> = [[yield* started, yield* phases("t-2")]]
+        const steps: Array<unknown> = [[yield* started, yield* phases("t-2" as TicketId)]]
         // Carried over and merged by this run, though bd may still label it.
-        yield* transition("b-1", Move.Unmerged({ place: 1 }))
-        yield* merged("b-1")
+        yield* transition("b-1" as TicketId, Move.Unmerged({ place: 1 }))
+        yield* merged("b-1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
         return steps
       }),
     )
@@ -323,7 +327,7 @@ describe("a ticket left unmerged by an earlier run", () => {
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 2 })
         yield* schedule.fillTrying
-        return [yield* started, yield* phases("p")] as const
+        return [yield* started, yield* phases("p" as TicketId)] as const
       }),
     )
     expect(started).toEqual([])
@@ -344,12 +348,14 @@ describe("a solo ticket", () => {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 3 })
         const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
-        const steps: Array<unknown> = [[yield* started, yield* phases("t-1", "t-2")]]
+        const steps: Array<unknown> = [
+          [yield* started, yield* phases("t-1" as TicketId, "t-2" as TicketId)],
+        ]
         yield* TestClock.adjust("30 seconds")
         yield* flush
         steps.push([yield* started])
-        yield* finish("s")
-        steps.push([yield* started, yield* phases("t-1", "t-2")])
+        yield* finish("s" as TicketId)
+        steps.push([yield* started, yield* phases("t-1" as TicketId, "t-2" as TicketId)])
         yield* Fiber.interrupt(fiber)
         return [steps, yield* texts, yield* records] as const
       }),
@@ -387,13 +393,13 @@ describe("a solo ticket", () => {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 3 })
         const steps: Array<unknown> = []
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("s", "t-2")])
-        yield* finish("t-1")
+        steps.push([yield* started, yield* phases("s" as TicketId, "t-2" as TicketId)])
+        yield* finish("t-1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("s", "t-2")])
-        yield* finish("s")
+        steps.push([yield* started, yield* phases("s" as TicketId, "t-2" as TicketId)])
+        yield* finish("s" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
         return [steps, yield* texts] as const
       }),
     )
@@ -422,10 +428,12 @@ describe("a solo ticket", () => {
       Effect.gen(function* () {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 1 })
         yield* schedule.fillTrying
-        const steps: Array<unknown> = [[yield* started, yield* phases("s", "t-2")]]
-        yield* finish("t-1")
+        const steps: Array<unknown> = [
+          [yield* started, yield* phases("s" as TicketId, "t-2" as TicketId)],
+        ]
+        yield* finish("t-1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
         return steps
       }),
     )
@@ -455,10 +463,10 @@ describe("a footprint overlapping a running ticket's", () => {
         })
         const steps: Array<unknown> = []
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
-        yield* finish("t-1")
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
+        yield* finish("t-1" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("t-2")])
+        steps.push([yield* started, yield* phases("t-2" as TicketId)])
         return [steps, yield* texts] as const
       }),
     )
@@ -488,7 +496,7 @@ describe("a footprint overlapping a running ticket's", () => {
         yield* Ref.set(changed, new Map([["t-1", ["src/c.ts"]]]))
         // With every slot taken, t-2 waits for a slot as it would anyway.
         yield* schedule.fillTrying
-        return [[yield* started, yield* phases("t-2")], yield* texts] as const
+        return [[yield* started, yield* phases("t-2" as TicketId)], yield* texts] as const
       }),
     )
     expect(steps).toEqual([["t-1"], ["Queued"]])
@@ -504,7 +512,7 @@ describe("a footprint overlapping a running ticket's", () => {
         })
         yield* Ref.set(changed, new Map([["t-1", ["src/c.ts"]]]))
         yield* schedule.fillTrying
-        return [[yield* started, yield* phases("t-2")], yield* texts] as const
+        return [[yield* started, yield* phases("t-2" as TicketId)], yield* texts] as const
       }),
     )
     // t-1 is dispatched in the same fill: its worktree's changes are read as it runs.
@@ -523,7 +531,7 @@ describe("a footprint overlapping a running ticket's", () => {
         const changed = yield* Ref.make<ReadonlyMap<string, ReadonlyArray<string>>>(new Map())
         const { schedule } = yield* scheduler({ concurrent: 2, footprints: footprints(changed) })
         yield* schedule.fillTrying
-        return [yield* phases("s"), yield* texts] as const
+        return [yield* phases("s" as TicketId), yield* texts] as const
       }),
     )
     expect(held).toEqual(["HeldBack:solo"])
@@ -656,9 +664,9 @@ describe("the checkout's footprints", () => {
         return [
           files.resolve("a.ts", false),
           files.checks("scripts/check.sh"),
-          yield* source.changed("t-1"),
+          yield* source.changed("t-1" as TicketId),
           // A ticket without a worktree has changed nothing git can say.
-          yield* source.changed("t-9"),
+          yield* source.changed("t-9" as TicketId),
         ] as const
       }).pipe(
         Effect.provide(

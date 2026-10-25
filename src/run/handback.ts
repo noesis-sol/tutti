@@ -42,7 +42,7 @@ import { type AgentGone, AgentHost, type MessageUuid } from "../agent/AgentHost.
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads } from "../services/Beads.ts"
+import { Beads, type TicketId } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
@@ -100,9 +100,9 @@ export interface HandedRebase extends RebaseStop {
 /** How many times each ticket has had a kind of hand-back in a run. */
 export interface Counts {
   /** How many times the ticket has been handed back to its worker so in this run. */
-  count(id: string): Effect.Effect<number>
+  count(id: TicketId): Effect.Effect<number>
   /** Counts one more hand-back of the ticket's: this one's number. */
-  next(id: string): Effect.Effect<number>
+  next(id: TicketId): Effect.Effect<number>
 }
 
 /** A run's count of a kind of hand-back: none yet. */
@@ -133,14 +133,14 @@ export interface HandBacks extends Counts {
   /** Keeps a hand-back due to a steered worker, in place of any earlier one of its ticket's. */
   wait(stop: RebaseStop): Effect.Effect<void>
   /** Takes the ticket's waiting hand-back out of those waiting; undefined when it has none. */
-  take(id: string): Effect.Effect<RebaseStop | undefined>
+  take(id: TicketId): Effect.Effect<RebaseStop | undefined>
   /**
    * Waives the steered check for the ticket's next conflict, as you handed it over (§ 4.3): its
    * worker, steered, is handed the conflict all the same.
    */
-  waive(id: string): Effect.Effect<void>
+  waive(id: TicketId): Effect.Effect<void>
   /** Takes the ticket's waiver, as its rebase starts: whether it had one. */
-  waived(id: string): Effect.Effect<boolean>
+  waived(id: TicketId): Effect.Effect<boolean>
 }
 
 /** A run's hand-backs: none yet. */
@@ -253,7 +253,7 @@ const goneAgain = (why: string): string =>
  * resume of the run left (§ 4.8).
  */
 export const workerAway = (
-  id: string,
+  id: TicketId,
 ): Effect.Effect<string | undefined, never, AgentHost | Ledger | Store> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
@@ -464,17 +464,17 @@ export interface AtReset {
    * already: the caller sends it.
    */
   keep(
-    id: string,
+    id: TicketId,
     mode: HandBackMode,
     prompt: string,
   ): Effect.Effect<Effect.Effect<MessageUuid | undefined, AgentGone> | null>
   /** Takes back the ticket's hand-back kept for the reset: false once the reset has sent it. */
-  takeBack(id: string): Effect.Effect<boolean>
+  takeBack(id: TicketId): Effect.Effect<boolean>
   /**
    * Runs `wait`, the ticket's hand-back waiting for its worker, at the limit on it, to leave the
    * limit: with nothing else running, the run waits for the reset, or ends USAGE_LIMIT, meanwhile.
    */
-  waits<A, E, R>(id: string, wait: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
+  waits<A, E, R>(id: TicketId, wait: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
 }
 
 /** No usage-limit hold to wait on: a hand-back is sent at once, its wait for the limit its own. */
@@ -537,7 +537,7 @@ const resumeGoneFor = ({
  * worker ended).
  */
 const whenState = (
-  id: string,
+  id: TicketId,
   wanted: (state: WorkerState) => boolean,
 ): Effect.Effect<void, never, AgentHost> =>
   Effect.gen(function* () {
@@ -627,7 +627,7 @@ const clock = (
   })
 
 /** Stops the turn of the ticket's worker, still at its hand-back past its time limit, and tells it `text`. */
-const interruptWith = (id: string, text: string): Effect.Effect<void, never, GiveEnv> =>
+const interruptWith = (id: TicketId, text: string): Effect.Effect<void, never, GiveEnv> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const logs = yield* Log
@@ -684,7 +684,7 @@ const endLate = (
 type Sent = Result.Result<MessageUuid, string>
 
 /** Sends the ticket's worker its hand-back, `prompt`, now. */
-const sendNow = (id: string, prompt: string): Effect.Effect<Sent, never, AgentHost> =>
+const sendNow = (id: TicketId, prompt: string): Effect.Effect<Sent, never, AgentHost> =>
   Effect.gen(function* () {
     const sent = yield* Effect.result(
       (yield* AgentHost).send(id, { text: prompt, from: "clientComposed" }),

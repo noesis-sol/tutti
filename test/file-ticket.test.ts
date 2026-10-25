@@ -1,6 +1,7 @@
 // Filing a finished worker's message as a ticket, the run's side (§ 7.5, tutti-g0wd): FileTicket is
 // resolved whatever the ledger holds, and fileTicket files the text with bd create, discovered from
 // the finished ticket, and puts how it went in the screen's filings under the view's uuid.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Result, SubscriptionRef } from "effect"
 import fc from "fast-check"
@@ -15,6 +16,7 @@ import {
   titleOf,
 } from "../src/run/fileTicket.ts"
 import { line } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 
@@ -56,7 +58,7 @@ describe("fileTicket", () => {
     const { filings, issues, logged } = await Effect.runPromise(
       Effect.gen(function* () {
         const filings = yield* filingsRef()
-        yield* fileTicket({ from: "t-1", text, uuid: "u-1" }, filings)
+        yield* fileTicket({ from: "t-1" as TicketId, text, uuid: "u-1" }, filings)
         return {
           filings: yield* SubscriptionRef.get(filings),
           issues: yield* (yield* Backlog).issues,
@@ -69,13 +71,16 @@ describe("fileTicket", () => {
     expect(made?.description).toBe(descriptionOf(text, "t-1"))
     expect(made?.description.startsWith(text)).toBe(true)
     expect(made?.dependencies.map(({ id, type }) => ({ id, type }))).toEqual([
-      { id: "t-1", type: "discovered-from" },
+      { id: "t-1" as TicketId, type: "discovered-from" },
     ])
     expect(filings).toEqual([
       {
         uuid: "u-1",
-        from: "t-1",
-        outcome: FileOutcome.Filed({ id: made?.id ?? "", title: "Also cover the empty case" }),
+        from: "t-1" as TicketId,
+        outcome: FileOutcome.Filed({
+          id: made?.id ?? ("" as TicketId),
+          title: "Also cover the empty case",
+        }),
       },
     ])
     // The line names the new ticket, never the text.
@@ -88,7 +93,7 @@ describe("fileTicket", () => {
     const { filings, logged } = await Effect.runPromise(
       Effect.gen(function* () {
         const filings = yield* filingsRef()
-        yield* fileTicket({ from: "gone-1", text: "a follow-up", uuid: "u-2" }, filings)
+        yield* fileTicket({ from: "gone-1" as TicketId, text: "a follow-up", uuid: "u-2" }, filings)
         return { filings: yield* SubscriptionRef.get(filings), logged: yield* texts }
       }).pipe(Effect.provide(world())),
     )
@@ -103,13 +108,13 @@ describe("fileTicket", () => {
   test("keeps the latest filings only", async () => {
     const old: ReadonlyArray<TicketFiling> = Array.from({ length: filingsKept }, (_, i) => ({
       uuid: `old-${i}`,
-      from: "t-1",
+      from: "t-1" as TicketId,
       outcome: FileOutcome.NotFiled({ why: "bd is gone" }),
     }))
     const filings = await Effect.runPromise(
       Effect.gen(function* () {
         const filings = yield* filingsRef(old)
-        yield* fileTicket({ from: "t-1", text: "one more", uuid: "new" }, filings)
+        yield* fileTicket({ from: "t-1" as TicketId, text: "one more", uuid: "new" }, filings)
         return yield* SubscriptionRef.get(filings)
       }).pipe(Effect.provide(world())),
     )
@@ -121,7 +126,11 @@ describe("fileTicket", () => {
 
 describe("FileTicket", () => {
   test("is resolved though its ticket has no worker", () => {
-    const command = UiCommand.FileTicket({ from: "t-1", text: "a follow-up", uuid: "u-1" })
+    const command = UiCommand.FileTicket({
+      from: "t-1" as TicketId,
+      text: "a follow-up",
+      uuid: "u-1",
+    })
     const resolved = resolve(command, {
       ledger: { tickets: new Map(), rows: 0, windDown: null, bugs: [] },
       requests: [],

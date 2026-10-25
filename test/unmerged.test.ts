@@ -13,7 +13,7 @@ import {
   mergedSince,
   namesTicket,
 } from "../src/run/unmerged.ts"
-import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git, GitWriter, isHash } from "../src/services/Git.ts"
 import { layer as backlogLayer, type Seed } from "../src/testing/Beads.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
@@ -54,7 +54,7 @@ const moveMain = (message = "Land something else", files: Files = { "main.txt": 
   })
 
 /** Takes the ticket up in the ledger, Working, as its dispatch does. */
-const dispatched = (id: string) =>
+const dispatched = (id: TicketId) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.transition(id, Move.Ready(), { title: `Ticket ${id}` })
@@ -66,7 +66,7 @@ const withLedger = <A, E>(effect: Effect.Effect<A, E, Env | Ledger>) =>
 
 describe("namesTicket", () => {
   const part = fc.stringMatching(/^[a-z0-9]{1,6}$/)
-  const id = fc.tuple(part, part).map(([a, b]) => `${a}-${b}`)
+  const id = fc.tuple(part, part).map(([a, b]) => `${a}-${b}` as TicketId)
   const apart = fc.constantFrom(" ", ":", "(", ")", ",", "\n", "/", "[", "]")
 
   test("an ID set apart by other characters is named", () => {
@@ -110,14 +110,14 @@ describe("namesTicket", () => {
       fc.property(fc.string(), id, (message, ticket) => {
         fc.pre(!message.includes(ticket))
         expect(namesTicket(message, ticket)).toBe(false)
-        expect(namesTicket(message, "")).toBe(false)
+        expect(namesTicket(message, "" as TicketId)).toBe(false)
       }),
     )
   })
 
   test("the ID named once as a whole is enough, after a longer one", () => {
-    expect(namesTicket("tut-1.2 builds on tut-1", "tut-1")).toBe(true)
-    expect(namesTicket("tut-1.2 builds on tut-12", "tut-1")).toBe(false)
+    expect(namesTicket("tut-1.2 builds on tut-1", "tut-1" as TicketId)).toBe(true)
+    expect(namesTicket("tut-1.2 builds on tut-12", "tut-1" as TicketId)).toBe(false)
   })
 })
 
@@ -154,17 +154,17 @@ describe("labelled as the run ends", () => {
           const beads = yield* Beads
           const repository = yield* Repository
           const fork = yield* repository.head("main")
-          for (const id of ["a", "b"]) {
+          for (const id of ["a" as TicketId, "b" as TicketId]) {
             yield* dispatched(id)
             yield* work(`tutti/${id}`, `${id}: Do it`, { [`${id}.txt`]: `${id}\n` })
             yield* beads.update(id, { claim: true })
           }
-          yield* beads.close("a", "done")
+          yield* beads.close("a" as TicketId, "done")
           yield* moveMain()
           const ledger = yield* Ledger
-          yield* ledger.transition("a", Move.Verified({ place: 1 }))
-          yield* ledger.transition("a", Move.RunEnded({ why: "quit" }))
-          yield* ledger.transition("b", Move.RunEnded({ why: "quit" }))
+          yield* ledger.transition("a" as TicketId, Move.Verified({ place: 1 }))
+          yield* ledger.transition("a" as TicketId, Move.RunEnded({ why: "quit" }))
+          yield* ledger.transition("b" as TicketId, Move.RunEnded({ why: "quit" }))
           yield* labelAtEnd(options)
           return fork
         }),
@@ -198,10 +198,10 @@ describe("labelled as the run ends", () => {
       withLedger(
         Effect.gen(function* () {
           const ledger = yield* Ledger
-          for (const id of ["a", "c"]) yield* dispatched(id)
-          yield* ledger.transition("a", Move.Verified({ place: 1 }))
-          yield* ledger.transition("a", Move.RunEnded({ why: "quit" }))
-          yield* ledger.transition("c", Move.NoChange())
+          for (const id of ["a" as TicketId, "c" as TicketId]) yield* dispatched(id)
+          yield* ledger.transition("a" as TicketId, Move.Verified({ place: 1 }))
+          yield* ledger.transition("a" as TicketId, Move.RunEnded({ why: "quit" }))
+          yield* ledger.transition("c" as TicketId, Move.NoChange())
           yield* labelAtEnd(options)
         }),
       ),
@@ -221,7 +221,7 @@ describe("labelled as the run ends", () => {
       },
       withLedger(
         Effect.gen(function* () {
-          for (const id of ["a", "b"]) {
+          for (const id of ["a" as TicketId, "b" as TicketId]) {
             yield* dispatched(id)
             yield* (yield* Ledger).transition(id, Move.Verified({ place: 1 }))
           }
@@ -253,7 +253,7 @@ describe("labelled as the run ends", () => {
 })
 
 /** Labels the ticket as a run that ends with it closed and not merged does, its fork noted. */
-const labelNow = (id: string) =>
+const labelNow = (id: TicketId) =>
   Effect.gen(function* () {
     const git = yield* Git
     const beads = yield* Beads
@@ -281,7 +281,7 @@ describe("checked as the run starts", () => {
         { backlog: [closed("a")] },
         Effect.gen(function* () {
           yield* work(`${prefix}/a`, "a: Do it", { "a.txt": "a\n" })
-          yield* labelNow("a")
+          yield* labelNow("a" as TicketId)
           yield* fastForward(`${prefix}/a`)
           return yield* loadUnmerged(options)
         }),
@@ -299,7 +299,7 @@ describe("checked as the run starts", () => {
         { backlog: [closed("a")] },
         Effect.gen(function* () {
           yield* work(`${prefix}/a`, "a: Do it", { "a.txt": "a\n" })
-          yield* labelNow("a")
+          yield* labelNow("a" as TicketId)
           yield* moveMain()
           return yield* loadUnmerged(options)
         }),
@@ -318,7 +318,7 @@ describe("checked as the run starts", () => {
       { backlog: [closed("a")] },
       Effect.gen(function* () {
         yield* work("wt/a", "a: Do it", { "a.txt": "a\n" })
-        yield* labelNow("a")
+        yield* labelNow("a" as TicketId)
         yield* moveMain()
         yield* moveMain("Squash wt/a (a)", { "a.txt": "a\n" })
         return yield* loadUnmerged(options)
@@ -333,12 +333,12 @@ describe("checked as the run starts", () => {
       { backlog: [closed("a")] },
       Effect.gen(function* () {
         yield* work("tutti/a", "a: Do it", { "a.txt": "a\n" })
-        yield* labelNow("a")
+        yield* labelNow("a" as TicketId)
         yield* moveMain("b: builds on a")
         return yield* loadUnmerged(options)
       }),
     )
-    expect(resultOf(ran).map((each) => each.issue.id)).toEqual(["a"])
+    expect(resultOf(ran).map((each) => each.issue.id)).toEqual(["a" as TicketId])
     expect(issueOf(ran, "a").labels).toEqual([unmergedLabel])
   })
 
@@ -349,11 +349,11 @@ describe("checked as the run starts", () => {
         yield* moveMain("Plan a")
         const repository = yield* Repository
         yield* (yield* Git).createBranch(repository.dir, "tutti/a", "main")
-        yield* labelNow("a")
+        yield* labelNow("a" as TicketId)
         return yield* loadUnmerged(options)
       }),
     )
-    expect(resultOf(ran).map((each) => each.issue.id)).toEqual(["a"])
+    expect(resultOf(ran).map((each) => each.issue.id)).toEqual(["a" as TicketId])
     expect(issueOf(ran, "a").labels).toEqual([unmergedLabel])
   })
 
@@ -364,7 +364,7 @@ describe("checked as the run starts", () => {
         const git = yield* Git
         const repository = yield* Repository
         yield* moveMain("Older work on a")
-        for (const id of ["a", "b"]) {
+        for (const id of ["a" as TicketId, "b" as TicketId]) {
           const path = yield* work(`tutti/${id}`, `${id}: Do it`, { [`${id}.txt`]: `${id}\n` })
           yield* labelNow(id)
           yield* git.removeWorktree(repository.dir, path, { force: true })
@@ -390,7 +390,7 @@ describe("checked as the run starts", () => {
         return yield* loadUnmerged(options)
       }),
     )
-    expect(resultOf(ran).map((each) => each.issue.id)).toEqual(["a"])
+    expect(resultOf(ran).map((each) => each.issue.id)).toEqual(["a" as TicketId])
     expect(issueOf(ran, "a").labels).toEqual([unmergedLabel])
   })
 
@@ -399,10 +399,10 @@ describe("checked as the run starts", () => {
       { backlog: [{ id: "o", labels: [unmergedLabel] }, closed("a")] },
       Effect.gen(function* () {
         yield* work("tutti/a", "a: Do it", { "a.txt": "a\n" })
-        yield* labelNow("a")
+        yield* labelNow("a" as TicketId)
         yield* fastForward("tutti/a")
         const beads = yield* Beads
-        const found = yield* mergedSince(yield* beads.show("a"), options)
+        const found = yield* mergedSince(yield* beads.show("a" as TicketId), options)
         const left = yield* loadUnmerged(options)
         return { found, left }
       }),
@@ -445,9 +445,9 @@ slow.describe("with real git", () => {
           const ledger = yield* Ledger
           // o was orchestra's, labelled on wt/o as it labels a ticket; a and s are this run's.
           const beads = yield* Beads
-          yield* beads.setMetadata("o", forkKey, forks.o as string)
-          yield* beads.addLabel("o", unmergedLabel)
-          for (const id of ["a", "s"]) {
+          yield* beads.setMetadata("o" as TicketId, forkKey, forks.o as string)
+          yield* beads.addLabel("o" as TicketId, unmergedLabel)
+          for (const id of ["a" as TicketId, "s" as TicketId]) {
             yield* dispatched(id)
             yield* ledger.transition(id, Move.Verified({ place: 1 }))
             yield* ledger.transition(id, Move.RunEnded({ why: "quit" }))

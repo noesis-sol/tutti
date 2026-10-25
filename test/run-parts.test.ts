@@ -1,11 +1,13 @@
 // The run's parts, each made on its own (run.ts): its holds (holdsGate.ts), and the run's end the
 // screen's commands act until (screenCommands.ts).
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Ref, SubscriptionRef } from "effect"
 import { stopFor } from "../src/run/holds.ts"
 import { make as makeHoldsGate } from "../src/run/holdsGate.ts"
 import { emptyStatus, type Status } from "../src/run/runView.ts"
 import { make as makeScreenCommands } from "../src/run/screenCommands.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import * as TestAgentHost from "../src/testing/AgentHost.ts"
 import * as TestAttention from "../src/testing/Attention.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
@@ -39,7 +41,7 @@ describe("the holds gate", () => {
     const said = await Effect.runPromise(
       Effect.gen(function* () {
         const { holds, status, woken } = yield* gate
-        const stop = stopFor("PAUSED", "the worker paused", { ticket: "t-1" })
+        const stop = stopFor("PAUSED", "the worker paused", { ticket: "t-1" as TicketId })
         yield* holds.stopped(stop)
         expect((yield* holds.currentStops)[0]).toEqual(stop)
         expect((yield* SubscriptionRef.get(status)).stopping).toBe(true)
@@ -55,7 +57,9 @@ describe("the holds gate", () => {
     const said = await Effect.runPromise(
       Effect.gen(function* () {
         const { holds } = yield* gate
-        yield* holds.stopped(stopFor("TICKET_LIMIT", "t-1 ran past its limit", { ticket: "t-1" }))
+        yield* holds.stopped(
+          stopFor("TICKET_LIMIT", "t-1 ran past its limit", { ticket: "t-1" as TicketId }),
+        )
         return yield* texts
       }).pipe(Effect.provide(ledgerLayer)),
     )

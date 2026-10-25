@@ -1,6 +1,7 @@
 // The worker view in a narrow pane (§ 7.5, § 7.11; tutti-rfs): its header wraps the ticket's whole
 // title onto more lines, and its hint every key, rather than cut them; neither is in the
 // transcript's scrollbox. wrapped and hintLines, which lay them out, keep every word and key.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit, Scope } from "effect"
@@ -12,6 +13,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, type Key, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { hintLines } from "../src/ui/Hint.tsx"
@@ -35,9 +37,9 @@ const view: RunView = project({
   ledger: {
     tickets: new Map([
       [
-        "t-1",
+        "t-1" as TicketId,
         {
-          ticket: "t-1",
+          ticket: "t-1" as TicketId,
           title,
           phase: TicketPhase.Working(),
           since: began,
@@ -85,7 +87,7 @@ const narrow = async (width: number, body: (rendered: Rendered) => Promise<void>
   const feed = Effect.runSync(transcriptFeed(transcripts).pipe(Scope.provide(scope)))
   const shell: ShellValue = {
     view: external(view),
-    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
     themeOf,

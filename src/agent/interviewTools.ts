@@ -31,7 +31,7 @@ import {
   ticketTypes,
   validatePlan,
 } from "../project/planFile.ts"
-import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
+import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "./callbacks.ts"
 
@@ -202,10 +202,11 @@ export const makeInterviewTools = (
       },
       (args, extra) =>
         run(
+          // The model names the epic by its ID, as bd gave it: bd looks it up.
           beads
             .list({
               ...(args.status === undefined ? {} : { status: args.status }),
-              ...(args.parent === undefined ? {} : { parent: args.parent }),
+              ...(args.parent === undefined ? {} : { parent: args.parent as TicketId }),
               ...(args.all === true ? { all: true } : {}),
             })
             .pipe(
@@ -236,7 +237,8 @@ export const makeInterviewTools = (
       { id: z.string().describe("The ticket's ID") },
       (args, extra) =>
         run(
-          beads.show(args.id).pipe(
+          // The model names the ticket by its ID, as bd gave it: bd looks it up.
+          beads.show(args.id as TicketId).pipe(
             Effect.map((issue) => toolAnswer(ticketText(issue))),
             Effect.catch((error) =>
               Effect.succeed(toolRefusal(`bd couldn't show ${args.id}: ${beadsWhy(error)}`)),

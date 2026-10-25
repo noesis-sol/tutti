@@ -7,6 +7,7 @@ import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
 import { closing, Ending, printSummary, type Summary, summary } from "../src/print/summary.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
 
@@ -27,7 +28,7 @@ const unsafe = (text: string): boolean =>
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is sought
   /[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/.test(text.replace(sgr, ""))
 
-const row = (ticket: string, phase: TicketPhase, note: string): Row => ({
+const row = (ticket: TicketId, phase: TicketPhase, note: string): Row => ({
   ticket,
   label: ticket,
   title: note,
@@ -50,7 +51,7 @@ describe("the summary", () => {
   test("has the title, the totals and every ticket, as wide as the terminal", () => {
     const rows = Array.from({ length: 40 }, (_, i) =>
       row(
-        `tut-${i}`,
+        `tut-${i}` as TicketId,
         TicketPhase.Done({ outcome: Finished.NoChange() }),
         `abc${i} merged into main`,
       ),
@@ -97,12 +98,12 @@ describe("the summary", () => {
     const out = summary(
       ended([
         row(
-          "tut-1",
+          "tut-1" as TicketId,
           TicketPhase.Done({ outcome: Finished.NoChange() }),
           "abc1234 merged into main",
         ),
-        row("tut-2", TicketPhase.Stopped({ why: "PAUSED" }), "Two"),
-        row("tut-3", TicketPhase.ToMerge({ place: 1 }), "Three"),
+        row("tut-2" as TicketId, TicketPhase.Stopped({ why: "PAUSED" }), "Two"),
+        row("tut-3" as TicketId, TicketPhase.ToMerge({ place: 1 }), "Three"),
       ]),
       theme,
       80,
@@ -122,7 +123,11 @@ describe("the summary", () => {
       const out = strip(
         summary(
           ended([
-            row("tutti-nrg.5.11.long", TicketPhase.Done({ outcome: Finished.NoChange() }), "x"),
+            row(
+              "tutti-nrg.5.11.long" as TicketId,
+              TicketPhase.Done({ outcome: Finished.NoChange() }),
+              "x",
+            ),
           ]),
           theme,
           width,
@@ -134,7 +139,11 @@ describe("the summary", () => {
 
   test("a long note is cut to the table", () => {
     const out = strip(
-      summary(ended([row("tut-1", TicketPhase.Deferred({ why: "" }), "x".repeat(200))]), theme, 60),
+      summary(
+        ended([row("tut-1" as TicketId, TicketPhase.Deferred({ why: "" }), "x".repeat(200))]),
+        theme,
+        60,
+      ),
     )
     expect(out).toContain("x…")
     for (const line of out.split("\n")) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(60)
@@ -197,7 +206,9 @@ describe("the closing line", () => {
     await Effect.runPromise(
       printSummary(
         makePrinter(out, theme),
-        ended([row("tut-1", TicketPhase.Done({ outcome: Finished.NoChange() }), "merged")]),
+        ended([
+          row("tut-1" as TicketId, TicketPhase.Done({ outcome: Finished.NoChange() }), "merged"),
+        ]),
         Ending.Done({ text: "READY_EMPTY after 1 ticket", tickets: 1, limit: null, took: 0 }),
         theme,
         80,
@@ -440,23 +451,28 @@ describe("untrusted text", () => {
 
   test("the summary and the closing line hold none", () => {
     fc.assert(
-      fc.property(hostile, hostile, hostile, (ticket, note, text) => {
-        const out = summary(
-          {
-            ...ended([row(ticket, TicketPhase.Working(), note)]),
-            branch: text,
-            scope: ticket,
-          },
-          theme,
-          80,
-        )
-        expect(unsafe(out)).toBe(false)
-        expect(strip(out).split("\n").length).toBe(10)
-        expect(unsafe(closing(Ending.Stopped({ text }), theme))).toBe(false)
-        expect(
-          unsafe(closing(Ending.Done({ text, tickets: 1, limit: null, took: 0 }), theme)),
-        ).toBe(false)
-      }),
+      fc.property(
+        hostile.map((id) => id as TicketId),
+        hostile,
+        hostile,
+        (ticket, note, text) => {
+          const out = summary(
+            {
+              ...ended([row(ticket, TicketPhase.Working(), note)]),
+              branch: text,
+              scope: ticket,
+            },
+            theme,
+            80,
+          )
+          expect(unsafe(out)).toBe(false)
+          expect(strip(out).split("\n").length).toBe(10)
+          expect(unsafe(closing(Ending.Stopped({ text }), theme))).toBe(false)
+          expect(
+            unsafe(closing(Ending.Done({ text, tickets: 1, limit: null, took: 0 }), theme)),
+          ).toBe(false)
+        },
+      ),
     )
   })
 

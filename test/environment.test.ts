@@ -18,6 +18,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyStatus, emptyView, project } from "../src/run/runView.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { runFolder, writeRunFile } from "../src/services/Worktrees.ts"
 import {
@@ -52,7 +53,7 @@ const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-
 const givesUp: SessionScript = turn([], result("Every command was refused."))
 
 /** Claims, commits and closes its ticket, as a worker does. */
-const finishes = (world: World, root: string, id: string): SessionScript =>
+const finishes = (world: World, root: string, id: TicketId): SessionScript =>
   claimsAndCloses(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     commit: Effect.asVoid(
@@ -127,9 +128,9 @@ describe("the environment hold", () => {
     const ran = await runs({
       tickets: ["t-1", "t-2", "t-3"],
       scripts: (world, root, repo) => ({
-        "t-1": [givesUp, finishes(world, root, "t-1")],
-        "t-2": [givesUp, finishes(world, root, "t-2")],
-        "t-3": [finishes(world, root, "t-3")],
+        "t-1": [givesUp, finishes(world, root, "t-1" as TicketId)],
+        "t-2": [givesUp, finishes(world, root, "t-2" as TicketId)],
+        "t-3": [finishes(world, root, "t-3" as TicketId)],
         [probeWorker]: [probeRuns(repo)],
       }),
       during: toTheProbe,
@@ -229,7 +230,7 @@ describe("the environment hold", () => {
       tickets: ["t-1", "t-2", "t-3"],
       scripts: (world, root) => ({
         "t-1": [givesUp],
-        "t-2": [finishes(world, root, "t-2")],
+        "t-2": [finishes(world, root, "t-2" as TicketId)],
         "t-3": [givesUp],
       }),
     })
@@ -272,7 +273,7 @@ describe("the environment hold", () => {
       scripts: (world, root) => ({
         "t-1": [limited],
         "t-2": [givesUp],
-        "t-3": [finishes(world, root, "t-3")],
+        "t-3": [finishes(world, root, "t-3" as TicketId)],
       }),
       during: () =>
         Effect.andThen(untilLogged(/^USAGE_LIMIT: nothing else runs/), advance("100 seconds")),
@@ -302,7 +303,7 @@ describe("triage's blame", () => {
       }).pipe(Effect.provide(Layer.fresh(Ledger.layer))),
     )
 
-  const verdict = (ticket: string, fields: Partial<Verdict> = {}): Verdict => ({
+  const verdict = (ticket: TicketId, fields: Partial<Verdict> = {}): Verdict => ({
     ticket,
     cause: "environment",
     confidence: "high",
@@ -314,8 +315,8 @@ describe("triage's blame", () => {
   test("two verdicts in a row blaming the environment with high confidence hold the run", async () => {
     const ran = await withHold((hold, held) =>
       Effect.gen(function* () {
-        yield* hold.blamed(verdict("a"))
-        yield* hold.blamed(verdict("b"))
+        yield* hold.blamed(verdict("a" as TicketId))
+        yield* hold.blamed(verdict("b" as TicketId))
         return yield* Ref.get(held)
       }),
     )
@@ -329,11 +330,11 @@ describe("triage's blame", () => {
   test("another verdict ends the row, and one from before a probe counts for nothing", async () => {
     const ran = await withHold((hold, held) =>
       Effect.gen(function* () {
-        yield* hold.blamed(verdict("a"))
-        yield* hold.blamed(verdict("b", { cause: "ticket" }))
-        yield* hold.blamed(verdict("c", { confidence: "medium" }))
-        yield* hold.blamed(verdict("d"))
-        yield* hold.blamed(verdict("e", { generation: 1 }))
+        yield* hold.blamed(verdict("a" as TicketId))
+        yield* hold.blamed(verdict("b" as TicketId, { cause: "ticket" }))
+        yield* hold.blamed(verdict("c" as TicketId, { confidence: "medium" }))
+        yield* hold.blamed(verdict("d" as TicketId))
+        yield* hold.blamed(verdict("e" as TicketId, { generation: 1 }))
         return { stops: yield* Ref.get(held), generation: yield* hold.generation }
       }),
     )
@@ -357,10 +358,10 @@ describe("triage's blame", () => {
           }),
         )
         void hold
-        yield* off.blamed(verdict("a"))
-        yield* off.blamed(verdict("b"))
-        yield* off.settled("c", "atOnce")
-        yield* off.settled("d", "atOnce")
+        yield* off.blamed(verdict("a" as TicketId))
+        yield* off.blamed(verdict("b" as TicketId))
+        yield* off.settled("c" as TicketId, "atOnce")
+        yield* off.settled("d" as TicketId, "atOnce")
         return yield* Ref.get(held)
       }),
     )

@@ -28,7 +28,7 @@ import type { Log } from "../src/run/log.ts"
 import { notifying } from "../src/run/notices.ts"
 import type { PhaseTag, TicketPhase } from "../src/run/phase.ts"
 import type { Spending } from "../src/run/spending.ts"
-import { Beads, type Issue } from "../src/services/Beads.ts"
+import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import type { Checks } from "../src/services/Checks.ts"
 import { ProcessGroups } from "../src/services/exec.ts"
 import type { Git, GitWriter } from "../src/services/Git.ts"
@@ -128,7 +128,7 @@ export interface Setup {
    */
   readonly scripts?: Scripts | ((world: World) => Scripts)
   /** The process each ticket's Claude Code has while its session is open: none by default. */
-  readonly processes?: ReadonlyMap<string, number>
+  readonly processes?: ReadonlyMap<TicketId, number>
   /** How long a closed session's Claude Code takes to exit: no time by default. */
   readonly closeTakes?: Duration.Input
   /** How Attention answers requests as they open; it allows everything by default. */

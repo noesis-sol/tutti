@@ -6,6 +6,7 @@ import { WorkerState } from "../src/agent/WorkerState.ts"
 import { holdsWorker, Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import { workerStates } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as hostLayer, type Script, wait } from "../src/testing/AgentHost.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -33,7 +34,7 @@ const run = <A, E>(
 const session = (ticket: string, sessionId = "s-1") => ({ sessionId, cwd: `/work/${ticket}` })
 
 /** Moves the ticket to Working, as a dispatch does before its worker is started. */
-const dispatch = (ticket: string) =>
+const dispatch = (ticket: TicketId) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.transition(ticket, Move.Ready(), { title: ticket })
@@ -60,15 +61,15 @@ describe("the workers' states on the dashboard", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const ledger = yield* Ledger
-        yield* dispatch("t-1")
-        yield* dispatch("t-2")
+        yield* dispatch("t-1" as TicketId)
+        yield* dispatch("t-2" as TicketId)
         const phases = [...(yield* ledger.current).tickets.values()].map((e) => e.phase)
         expect(phases.every(holdsWorker)).toBe(true)
         // The dashboard follows from here: both tickets hold a worker the host doesn't know yet.
         const states = yield* workerStates
         const both = yield* first(states, (all) => all.size === 2)
-        yield* host.start("t-1", session("t-1"))
-        yield* host.start("t-2", session("t-2"))
+        yield* host.start("t-1" as TicketId, session("t-1"))
+        yield* host.start("t-2" as TicketId, session("t-2"))
         return yield* Fiber.join(both)
       }),
     )
@@ -87,13 +88,13 @@ describe("the workers' states on the dashboard", () => {
         const host = yield* AgentHost
         const states = yield* workerStates
         const started = yield* first(states, (all) => all.has("t-1"))
-        yield* host.start("t-1", session("t-1"))
+        yield* host.start("t-1" as TicketId, session("t-1"))
         const before = yield* Fiber.join(started)
         const gone = yield* first(states, (all) => !all.has("t-1"))
-        yield* host.end("t-1")
+        yield* host.end("t-1" as TicketId)
         const after = yield* Fiber.join(gone)
         const again = yield* first(states, (all) => all.has("t-1"))
-        yield* host.start("t-1", session("t-1", "s-2"))
+        yield* host.start("t-1" as TicketId, session("t-1", "s-2"))
         return { before, after, again: yield* Fiber.join(again) }
       }),
     )

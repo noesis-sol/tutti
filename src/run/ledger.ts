@@ -21,7 +21,7 @@ import {
   type Stream,
   SubscriptionRef,
 } from "effect"
-import type { Issue } from "../services/Beads.ts"
+import type { Issue, TicketId } from "../services/Beads.ts"
 import { type Event, type Phases, type TokensByModel, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import * as log from "./log.ts"
@@ -64,7 +64,7 @@ export const emptyTallies: Tallies = {
 
 /** A ticket the run took up. Times are epoch milliseconds. */
 export interface Entry {
-  readonly ticket: string
+  readonly ticket: TicketId
   /** Its title as Beads gave it: untrusted, sanitised where it enters RunView. */
   readonly title: string
   /**
@@ -212,12 +212,12 @@ export const ending = (
 /** The wind-down (orchestra's drain): when it began, and the tickets running then. */
 export interface WindDown {
   readonly since: number
-  readonly tickets: ReadonlyArray<string>
+  readonly tickets: ReadonlyArray<TicketId>
 }
 
 export interface State {
   /** Every ticket the run took up, in the order it took them up. */
-  readonly tickets: ReadonlyMap<string, Entry>
+  readonly tickets: ReadonlyMap<TicketId, Entry>
   /** The place the next ticket to get a row takes. */
   readonly rows: number
   /** Set while the run winds down: no new tickets, the running ones finish. */
@@ -262,7 +262,7 @@ export const showsCard = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
   hasCard(entry.phase) || handBackWaits(entry)
 
 /** The lowest number from 1 that no ticket's worker has. */
-export const lowestFree = (tickets: ReadonlyMap<string, Entry>): number => {
+export const lowestFree = (tickets: ReadonlyMap<TicketId, Entry>): number => {
   const taken = new Set<number>()
   for (const entry of tickets.values()) {
     if (entry.worker !== null) taken.add(entry.worker)
@@ -304,7 +304,7 @@ const details = (
  * leaving it).
  */
 export const phaseRecord = (
-  ticket: string,
+  ticket: TicketId,
   from: TicketPhase | null,
   to: TicketPhase | null,
   move: Move,
@@ -381,7 +381,7 @@ export const accounted = (entry: Entry, phase: TicketPhase, move: Move, now: num
   }
 }
 
-const newEntry = (ticket: string, title: string, phase: TicketPhase): Entry => ({
+const newEntry = (ticket: TicketId, title: string, phase: TicketPhase): Entry => ({
   ticket,
   title,
   phase,
@@ -420,7 +420,7 @@ export class Ledger extends Context.Service<
      * was.
      */
     transition(
-      ticket: string,
+      ticket: TicketId,
       move: Move,
       options?: {
         readonly title?: string
@@ -432,35 +432,35 @@ export class Ledger extends Context.Service<
     ): Effect.Effect<Result.Result<TicketPhase | null, InvalidTransition>>
     /** Changes a detail of `ticket`'s phase (its place or step), not the phase. */
     refine(
-      ticket: string,
+      ticket: TicketId,
       detail: Detail,
     ): Effect.Effect<Result.Result<TicketPhase, InvalidTransition>>
     /**
      * Marks `ticket`'s worker steered by you, by a message (its time noted for the idle grace) or an
      * interrupt; a ticket not in the run has no worker to steer.
      */
-    steer(ticket: string, by: "message" | "interrupt"): Effect.Effect<void>
+    steer(ticket: TicketId, by: "message" | "interrupt"): Effect.Effect<void>
     /** Releases `ticket`'s worker: it is no longer steered. */
-    release(ticket: string): Effect.Effect<void>
+    release(ticket: TicketId): Effect.Effect<void>
     /**
      * Keeps `issue`, as bd show gave it now, on `ticket`'s entry, for its worker view (§ 7.5); a
      * ticket not in the run is left out.
      */
-    readIssue(ticket: string, issue: Issue): Effect.Effect<void>
+    readIssue(ticket: TicketId, issue: Issue): Effect.Effect<void>
     /**
      * Notes that a conflict hand-back waits for `ticket`'s steered worker (§ 4.3), as it is kept:
      * Blocked on it, the ticket keeps its worker's number and its card until it leaves Blocked.
      */
-    handBackWaits(ticket: string): Effect.Effect<void>
+    handBackWaits(ticket: TicketId): Effect.Effect<void>
     /**
      * Claims `ticket`'s one resume of a session that ended unexpectedly (Gone) in this run (§ 4.8):
      * true the first time, false after.
      */
-    claimGoneResume(ticket: string): Effect.Effect<boolean>
+    claimGoneResume(ticket: TicketId): Effect.Effect<boolean>
     /** Whether `ticket`'s one resume of a Gone session in this run is claimed already. */
-    goneResumed(ticket: string): Effect.Effect<boolean>
+    goneResumed(ticket: TicketId): Effect.Effect<boolean>
     /** Adds `by` (1 by default) to one of `ticket`'s tallies; a ticket not in the run has none. */
-    count(ticket: string, tally: TallyName, by?: number): Effect.Effect<void>
+    count(ticket: TicketId, tally: TallyName, by?: number): Effect.Effect<void>
     /**
      * Writes the ticket_end of each ticket the run took up that is back in the queue as it ends
      * (Waiting, Queued, HeldBack): no RunEnded moves it, and its workers spent what they spent.
@@ -492,7 +492,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
     const goneResumed = yield* Ref.make<ReadonlySet<string>>(new Set())
 
     // Logs `error` about `ticket` as PHASE_BUG, unless the same line was logged before.
-    const bug = (state: State, ticket: string, error: InvalidTransition) => {
+    const bug = (state: State, ticket: TicketId, error: InvalidTransition) => {
       const text = log.phaseBug({
         id: ticket,
         from: error.from ?? "outside",
@@ -590,7 +590,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       })
 
     // `ticket`'s entry changed by `change`; a ticket not in the run is left out.
-    const updateEntry = (ticket: string, change: (entry: Entry, now: number) => Entry) =>
+    const updateEntry = (ticket: TicketId, change: (entry: Entry, now: number) => Entry) =>
       SubscriptionRef.updateEffect(ref, (state) =>
         Effect.map(Clock.currentTimeMillis, (now) => {
           const entry = state.tickets.get(ticket)

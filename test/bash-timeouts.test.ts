@@ -2,6 +2,7 @@
 // command to the background after 2 minutes unless given a longer timeout, so tutti sets Bash's
 // default timeout to the merge check's time limit and its maximum to that or 10 minutes, whichever
 // is longer, and the worker prompt says to pass Bash no timeout of its own.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,6 +16,7 @@ import { bashTimeouts, probeEnv, workerEnv, workerVariables } from "../src/agent
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -120,7 +122,10 @@ describe("a worker's session", () => {
     const env = await Effect.runPromise(
       Effect.gen(function* () {
         const agents = yield* AgentHost
-        yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
+        yield* agents.start("t-1" as TicketId, {
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          cwd: dir,
+        })
         return yield* Effect.sync(() => loggedEnv(log)).pipe(
           Effect.repeat({
             until: (found) => found.length > 0,

@@ -6,7 +6,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -121,7 +121,7 @@ const resolves = (world: World, id: string, files: Files) =>
  * A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed in Beads,
  * Working in the ledger, its session started and saved, and its worker idle.
  */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -169,7 +169,7 @@ const merged = (landed: Files, checks: Script, scripts: (world: World) => Script
     { backlog: backlog().ticket("a").seeds, config, checks, scripts },
     withQueue((queue) =>
       Effect.gen(function* () {
-        const ticket = yield* finished("a", { "a.txt": "a\n", "bun.lock": "a's\n" })
+        const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n", "bun.lock": "a's\n" })
         const repository = yield* Repository
         yield* repository.commit(repository.dir, "Land something else", landed)
         yield* queue.offer(ticket)
@@ -218,7 +218,7 @@ describe("the setup before a fix's check", () => {
       },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const ticket = yield* finished("a", { "a.txt": "a\n" })
+          const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
           const repository = yield* Repository
           yield* repository.commit(repository.dir, "Land something else", {
             "package.json": "{}\n",

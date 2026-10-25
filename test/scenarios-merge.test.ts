@@ -2,6 +2,7 @@
 // a whole run under TestClock. Each asserts the run's log lines, its event records, the phases its
 // tickets went through and ended in (with no PHASE_BUG), that it left no fiber or process behind
 // it, and its exit code.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -14,6 +15,7 @@ import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { resetText } from "../src/run/told.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { writeRunFile } from "../src/services/Worktrees.ts"
@@ -69,7 +71,7 @@ interface Places {
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   options: {
     readonly files?: Files
     readonly takes?: Duration.Input
@@ -187,7 +189,7 @@ const untilLogged = (pattern: RegExp) =>
   })
 
 /** Waits, in real time, until `id`'s worker has claimed it: the run has dispatched it. */
-const untilClaimed = (world: World, id: string) =>
+const untilClaimed = (world: World, id: TicketId) =>
   Effect.orDie(
     Effect.gen(function* () {
       for (let i = 0; i < 2000; i++) {
@@ -221,10 +223,18 @@ const aThenB = (
   bFiles: Files,
   rest: SessionScript = [],
 ): Scripts => ({
-  a: [works(world, places, "a", { files: aFiles, first: [step(untilClaimed(world, "b"))] })],
+  a: [
+    works(world, places, "a" as TicketId, {
+      files: aFiles,
+      first: [step(untilClaimed(world, "b" as TicketId))],
+    }),
+  ],
   b: [
     [
-      ...works(world, places, "b", { files: bFiles, first: [step(untilOnMain(world, aFiles))] }),
+      ...works(world, places, "b" as TicketId, {
+        files: bFiles,
+        first: [step(untilOnMain(world, aFiles))],
+      }),
       ...rest,
     ],
   ],
@@ -530,18 +540,21 @@ describe("the base moving on", () => {
       scripts: (world, places) => ({
         // a finishes once c is dispatched, so that all three are dispatched before any closes.
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             files: { "shared.txt": "a\n" },
-            first: [step(untilClaimed(world, "c"))],
+            first: [step(untilClaimed(world, "c" as TicketId))],
           }),
         ],
         b: [
           [
-            ...works(world, places, "b", { files: { "shared.txt": "b\n" }, takes: "1 minute" }),
+            ...works(world, places, "b" as TicketId, {
+              files: { "shared.txt": "b\n" },
+              takes: "1 minute",
+            }),
             ...resolves(world, places, "b", { "shared.txt": "a and b\n" }, "5 minutes"),
           ],
         ],
-        c: [works(world, places, "c", { takes: "3 minutes" })],
+        c: [works(world, places, "c" as TicketId, { takes: "3 minutes" })],
       }),
       // The clock starts once a has landed, so that b conflicts with it at 1m.
       during: () =>
@@ -628,7 +641,7 @@ describe("the full check", () => {
         checks: { ...settings.checks, full: { command: full, timeout: Duration.minutes(60) } },
       }),
       checks: { full: [fails("full", "e2e")] },
-      scripts: (world, places) => ({ a: [works(world, places, "a")] }),
+      scripts: (world, places) => ({ a: [works(world, places, "a" as TicketId)] }),
     })
     // A failing full check files a ticket and changes no exit code.
     expectClean(ran, 0)
@@ -669,9 +682,9 @@ describe("the environment hold", () => {
       tickets: ["a", "b", "c"],
       settings: () => ({ concurrent: 1 }),
       scripts: (world, places) => ({
-        a: [givesUp, works(world, places, "a")],
-        b: [givesUp, works(world, places, "b")],
-        c: [works(world, places, "c")],
+        a: [givesUp, works(world, places, "a" as TicketId)],
+        b: [givesUp, works(world, places, "b" as TicketId)],
+        c: [works(world, places, "c" as TicketId)],
         [probeWorker]: [probeRuns(places)],
       }),
       during: () =>
@@ -750,8 +763,8 @@ describe("the usage-limit hold", () => {
       settings: () => ({ concurrent: 1 }),
       before: advance(Duration.millis(fixtureReset - 3_600_000)),
       scripts: (world, places) => ({
-        a: [[...fixture("rejected.jsonl"), ...works(world, places, "a")]],
-        b: [works(world, places, "b")],
+        a: [[...fixture("rejected.jsonl"), ...works(world, places, "a" as TicketId)]],
+        b: [works(world, places, "b" as TicketId)],
       }),
       during: () =>
         Effect.gen(function* () {
@@ -781,7 +794,7 @@ describe("the usage-limit hold", () => {
       "lifted",
       "HOLD: USAGE_LIMIT lifted",
     ])
-    expect(composed(ran, "a")).toEqual([resetText("a")])
+    expect(composed(ran, "a")).toEqual([resetText("a" as TicketId)])
     expect(pathOf(ran, "a")).toEqual(["Queued", "Working", "ToMerge", "Merging", "Done"])
   })
 
@@ -814,10 +827,10 @@ describe("the time holds", () => {
         workers: { ...settings.workers, ticket_limit: Duration.hours(1) },
       }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { takes: "3 hours" })],
-        b: [works(world, places, "b", { takes: "30 minutes" })],
-        c: [works(world, places, "c", { takes: "45 minutes" })],
-        d: [works(world, places, "d")],
+        a: [works(world, places, "a" as TicketId, { takes: "3 hours" })],
+        b: [works(world, places, "b" as TicketId, { takes: "30 minutes" })],
+        c: [works(world, places, "c" as TicketId, { takes: "45 minutes" })],
+        d: [works(world, places, "d" as TicketId)],
       }),
       during: () =>
         Effect.gen(function* () {
@@ -868,10 +881,12 @@ describe("the time holds", () => {
       policy: waitForTest,
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", { first: [canUseTool("Bash", { command: "rm -rf build" })] }),
+          works(world, places, "a" as TicketId, {
+            first: [canUseTool("Bash", { command: "rm -rf build" })],
+          }),
         ],
-        b: [works(world, places, "b", { takes: "10 minutes" })],
-        c: [works(world, places, "c", { takes: "1 minute" })],
+        b: [works(world, places, "b" as TicketId, { takes: "10 minutes" })],
+        c: [works(world, places, "c" as TicketId, { takes: "1 minute" })],
       }),
       during: () =>
         Effect.gen(function* () {

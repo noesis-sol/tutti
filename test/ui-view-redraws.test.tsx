@@ -1,6 +1,7 @@
 // What a transcript's view draws anew, and what it works out once (tutti-k2n1): the spinner and the
 // clock tick in the view's head, a leaf, so that the view under it isn't drawn ten times a second
 // while its worker works; an edit's change is worked out once for each tool call's input.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
@@ -11,6 +12,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
@@ -71,9 +73,9 @@ const viewOf = (state: WorkerState): RunView =>
     ledger: {
       tickets: new Map([
         [
-          "t-1",
+          "t-1" as TicketId,
           {
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             title: "Title of t-1",
             phase: TicketPhase.Working(),
             since: began,
@@ -122,7 +124,7 @@ const shellOf = (view: Settable<RunView>, clock = { turns: false, reads: 0 }): S
   let at = began
   return {
     view,
-    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
     themeOf: (appearance) =>
@@ -186,7 +188,7 @@ describe("a click on an entry", () => {
     const drawn: Array<{ readonly selected: string | null; readonly open: boolean }> = []
     const Probe = () => {
       const card = useRunView().cards.find((each) => each.ticket === "t-1")
-      const transcript = useTranscriptWindow("t-1", true)
+      const transcript = useTranscriptWindow("t-1" as TicketId, true)
       const selection = useSelection(transcript, usePanel(card))
       clicks.push(selection.click)
       drawn.push({ selected: selection.selected, open: transcript.expanded.has("e-1") })

@@ -7,7 +7,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer } from "effect"
-import { Beads, BeadsFailed, BeadsUnreadable, beadsWhy } from "../src/services/Beads.ts"
+import {
+  Beads,
+  BeadsFailed,
+  BeadsUnreadable,
+  beadsWhy,
+  type TicketId,
+} from "../src/services/Beads.ts"
 
 const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (Exit.isSuccess(exit)) throw new Error(`expected a failure, got ${JSON.stringify(exit.value)}`)
@@ -51,7 +57,7 @@ const list = (count: number) =>
 describe("bd's output past exec's cap", () => {
   test("a list within the cap is read whole", async () => {
     const exit = await withBd(fakeBd(list(1)), (beads) => beads.list({ all: true }))
-    expect(Exit.isSuccess(exit) && exit.value.map((one) => one.id)).toEqual(["t-0"])
+    expect(Exit.isSuccess(exit) && exit.value.map((one) => one.id)).toEqual(["t-0" as TicketId])
   })
 
   test("a list past the cap fails saying so, not as JSON it can't read", async () => {
@@ -59,7 +65,7 @@ describe("bd's output past exec's cap", () => {
     const reads: ReadonlyArray<(beads: Beads["Service"]) => Effect.Effect<unknown, unknown>> = [
       (beads) => beads.list({ all: true }),
       (beads) => beads.ready(),
-      (beads) => beads.show("t-0"),
+      (beads) => beads.show("t-0" as TicketId),
     ]
     for (const read of reads) {
       const error = failure(await withBd(fake, read))

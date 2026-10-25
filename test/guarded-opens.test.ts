@@ -23,6 +23,7 @@ import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { close, libcPath, NotAFileRefused, O, openUnder } from "../src/native/libc.ts"
 import { outputTo } from "../src/run/check.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Checks, checkLogName } from "../src/services/Checks.ts"
 import { readRunFile, runFolder, writeRunFile } from "../src/services/Worktrees.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -192,7 +193,11 @@ describe("a named pipe at the merge check's check.log", () => {
       Effect.gen(function* () {
         const ran = yield* Effect.scoped(
           Effect.gen(function* () {
-            const to = yield* outputTo({ id: "a", worktree }, checkLogName, "the check's")
+            const to = yield* outputTo(
+              { id: "a" as TicketId, worktree },
+              checkLogName,
+              "the check's",
+            )
             expect(to).toEqual({ outputFile: "/dev/null" })
             return yield* Effect.exit((yield* Checks).fast({ cwd: worktree, ...to }))
           }),

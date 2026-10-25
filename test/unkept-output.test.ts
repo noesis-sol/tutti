@@ -2,6 +2,7 @@
 // link stands there) goes to /dev/null, and what the run says of where it is names /dev/null, not
 // the log file: CHECKS_FAILED, SETUP_FAILED, the report and the fix prompt don't point at a file
 // that doesn't hold it, nor at a link a worker planted.
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { Effect } from "effect"
 import { checkOnce } from "../src/run/check.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { makeSetUps, setUp, setUpWorktree } from "../src/run/setup.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, type CheckKind, checkLogName, setupLogName } from "../src/services/Checks.ts"
 import type { Sha } from "../src/services/Git.ts"
 import { nothingEarlier, runFolder } from "../src/services/Worktrees.ts"
@@ -63,7 +65,7 @@ for (const linked of [false, true]) {
       const worktree = worktreeWith(checkLogName, linked)
       const ran = await scenario(
         { checks: { fast: [fails("fast")] } },
-        checkOnce({ id: "a", worktree }),
+        checkOnce({ id: "a" as TicketId, worktree }),
       )
       const output = linked ? "/dev/null" : join(worktree, runFolder, checkLogName)
       expect(ran.exit).toMatchObject({ _tag: "Success", value: { _tag: "Failed", output } })
@@ -76,9 +78,9 @@ for (const linked of [false, true]) {
         { config: { settings }, checks: { setup: [fails("setup")] } },
         Effect.gen(function* () {
           const setUps = yield* makeSetUps
-          yield* setUps.offBase("a", "it was set up on top of b")
+          yield* setUps.offBase("a" as TicketId, "it was set up on top of b")
           return yield* setUp(
-            { id: "a", title: "a", branch: "tutti/a", worktree },
+            { id: "a" as TicketId, title: "a", branch: "tutti/a", worktree },
             { repo: folder("repo"), base: "main" },
             setUps,
             { fork: "fork" as Sha, onto: "onto" as Sha },
@@ -98,7 +100,7 @@ for (const linked of [false, true]) {
           const setUps = yield* makeSetUps
           return yield* setUpWorktree(
             {
-              id: "a",
+              id: "a" as TicketId,
               branch: "tutti/a",
               path,
               reused: false,

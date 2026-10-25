@@ -51,7 +51,7 @@ import { fastScript, runnerCommands } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import type { Scouting, Suite as ScoutSuite } from "../src/organs/scout.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -532,7 +532,7 @@ describe("the choice of checks", () => {
     expect(lines(summary)).toContain(`• ticket  app-1 is open: ${testsEpicTitle}; not filed again`)
     const again = issues.filter((issue) => issue.title === setUpTestsTitle)
     expect(again.map((issue) => issue.status)).toEqual(["closed", "open"])
-    expect(again[1]?.parent).toBe("app-1")
+    expect(again[1]?.parent).toBe("app-1" as TicketId)
     expect(issues.filter((issue) => issue.title === testsEpicTitle)).toHaveLength(1)
   })
 

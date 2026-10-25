@@ -40,6 +40,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useMemo } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { Card, Key, RunView } from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { allot } from "./allot.ts"
 import { type AnswerKey, keyAnswer, useAnswering } from "./attentionKeys.ts"
 import {
@@ -437,7 +438,10 @@ export const Dashboard = () => {
   const current = () => (cards.some((card) => card.ticket === chosen()) ? chosen() : target)
   const highlighted = current()
   const choose = (ticket: string | null) => setChosen(() => ticket)
-  const open = useCallback((ticket: string) => command(UiCommand.OpenWorker({ ticket })), [command])
+  const open = useCallback(
+    (ticket: TicketId) => command(UiCommand.OpenWorker({ ticket })),
+    [command],
+  )
 
   // The hint names `d` and `a` for the highlighted card's request: the layout is the highlight's.
   const laid = useMemo(

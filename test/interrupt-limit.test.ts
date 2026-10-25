@@ -3,6 +3,7 @@
 // not answering them would hold whoever interrupts it, the hand-back's time limit, steering or a
 // quit. Past the limit the session is aborted and closed and its worker is gone. Over the fake
 // Claude Code (test/fixtures/fake-claude/claude.ts), whose control requests go unanswered.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -21,6 +22,7 @@ import type { EventStream } from "../src/run/eventstream.ts"
 import type { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import { interrupt } from "../src/run/steer.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -37,7 +39,7 @@ const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 const limit = Duration.millis(500)
 
 /** Waits, at most 10 s, for the ticket's worker to reach a state with `tag`; the last state. */
-const reaches = (ticket: string, tag: WorkerState["_tag"]) =>
+const reaches = (ticket: TicketId, tag: WorkerState["_tag"]) =>
   Effect.flatMap(AgentHost, (host) =>
     host.state(ticket).pipe(
       Stream.takeUntil((s) => s._tag === tag),
@@ -116,10 +118,14 @@ const fakeRead = (file: string, n: number) =>
 const working = (dir: string, queued: number) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
-    yield* host.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-    yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-    yield* reaches("t-1", "Working")
-    for (let i = 0; i < queued; i++) yield* host.send("t-1", { text: `And ${i}.`, from: "human" })
+    yield* host.start("t-1" as TicketId, {
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      cwd: dir,
+    })
+    yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+    yield* reaches("t-1" as TicketId, "Working")
+    for (let i = 0; i < queued; i++)
+      yield* host.send("t-1" as TicketId, { text: `And ${i}.`, from: "human" })
     yield* fakeRead(join(dir, "fake.jsonl"), 1 + queued)
     return host
   })
@@ -134,8 +140,10 @@ const interruptWedged = <A, E>(dir: string, queued: number, by: Effect.Effect<A,
     const started = Date.now()
     const given = yield* Effect.result(by)
     const took = Date.now() - started
-    const state = yield* reaches("t-1", "Gone")
-    const closed = yield* host.close("t-1").pipe(Effect.timeoutOption(Duration.seconds(10)))
+    const state = yield* reaches("t-1" as TicketId, "Gone")
+    const closed = yield* host
+      .close("t-1" as TicketId)
+      .pipe(Effect.timeoutOption(Duration.seconds(10)))
     return {
       given,
       took,
@@ -154,7 +162,7 @@ describe("the live AgentHost: an interrupt Claude Code doesn't answer", () => {
       interruptWedged(
         dir,
         0,
-        Effect.flatMap(AgentHost, (host) => host.interrupt("t-1")),
+        Effect.flatMap(AgentHost, (host) => host.interrupt("t-1" as TicketId)),
       ),
     )
     expect(done.given._tag).toBe("Failure")
@@ -177,7 +185,7 @@ describe("the live AgentHost: an interrupt Claude Code doesn't answer", () => {
         interruptWedged(
           dir,
           2,
-          Effect.flatMap(AgentHost, (host) => host.interrupt("t-1")),
+          Effect.flatMap(AgentHost, (host) => host.interrupt("t-1" as TicketId)),
         ),
     )
     expect(done.given._tag).toBe("Failure")
@@ -189,7 +197,7 @@ describe("the live AgentHost: an interrupt Claude Code doesn't answer", () => {
 
   test("steering's interrupt doesn't hang on it: it answers false", async () => {
     const done = await overFake({ turns: [[{ hang: true }]], interrupt: "unanswered" }, (dir) =>
-      interruptWedged(dir, 0, interrupt("t-1")),
+      interruptWedged(dir, 0, interrupt("t-1" as TicketId)),
     )
     expect(done.given).toMatchObject({ _tag: "Success", success: false })
     expect(done.took).toBeLessThan(5000)
@@ -200,13 +208,13 @@ describe("the live AgentHost: an interrupt Claude Code doesn't answer", () => {
     const done = await overFake({ turns: [[{ hang: true }]] }, (dir) =>
       Effect.gen(function* () {
         const host = yield* working(dir, 0)
-        const receipt = yield* host.interrupt("t-1")
-        const state = yield* reaches("t-1", "Failed")
+        const receipt = yield* host.interrupt("t-1" as TicketId)
+        const state = yield* reaches("t-1" as TicketId, "Failed")
         return { receipt, state: state?._tag, processes: [...(yield* host.processes).keys()] }
       }),
     )
     expect(done.receipt).toEqual({ stillQueued: [], cancelled: [] })
     expect(done.state).toBe("Failed")
-    expect(done.processes).toEqual(["t-1"])
+    expect(done.processes).toEqual(["t-1" as TicketId])
   })
 })

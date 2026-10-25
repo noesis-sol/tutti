@@ -1,6 +1,7 @@
 // The mouse under an open box (§ 7.3, tutti-por): a click beside the box doesn't reach the view
 // under it, and a view that leaves with its own box open (the worker view's interrupt question)
 // closes it, so that the dashboard after it takes its keys.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
@@ -9,6 +10,7 @@ import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { interruptWords } from "../src/ui/Composer.tsx"
 import { stopWords } from "../src/ui/StopQuestion.tsx"
@@ -30,7 +32,7 @@ const themeOf = (appearance: Appearance) =>
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
-const ledgerEntry = (ticket: string, worker: number): LedgerEntry => ({
+const ledgerEntry = (ticket: TicketId, worker: number): LedgerEntry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: TicketPhase.Working(),
@@ -47,8 +49,8 @@ const ledgerEntry = (ticket: string, worker: number): LedgerEntry => ({
 const view: RunView = project({
   ledger: {
     tickets: new Map([
-      ["t-1", ledgerEntry("t-1", 1)],
-      ["t-2", ledgerEntry("t-2", 2)],
+      ["t-1" as TicketId, ledgerEntry("t-1" as TicketId, 1)],
+      ["t-2" as TicketId, ledgerEntry("t-2" as TicketId, 2)],
     ]),
     rows: 2,
     windDown: null,
@@ -139,7 +141,7 @@ const asked = interruptWords("t-1").ask
 
 describe("a click under an open box", () => {
   test("doesn't reach the worker view under the interrupt question", async () => {
-    await scene(Screen.Worker({ ticket: "t-1" }), async ({ commands, rendered }) => {
+    await scene(Screen.Worker({ ticket: "t-1" as TicketId }), async ({ commands, rendered }) => {
       await until(rendered, has("← Dashboard"))
       await press(rendered, { ctrl: "x" })
       expect((await until(rendered, has(asked))).chars).toContain(asked)
@@ -174,19 +176,22 @@ describe("a click under an open box", () => {
 
 describe("a view's own box", () => {
   test("the interrupt question closes as the worker view goes, and the dashboard takes its keys", async () => {
-    await scene(Screen.Worker({ ticket: "t-1" }), async ({ screen, commands, rendered }) => {
-      await until(rendered, has("← Dashboard"))
-      await press(rendered, { ctrl: "x" })
-      await until(rendered, has(asked))
-      await click(rendered, 3, 0)
-      // The run goes back to the dashboard all the same, as it does on CloseWorker.
-      await rendered.input(() => screen.set(Screen.Dashboard()))
-      const frame = await until(rendered, has("Title of t-2"))
-      expect(frame.chars).not.toContain(asked)
-      taken(commands)
-      await press(rendered, "s")
-      const stop = stopWords(false, []).ask
-      expect((await until(rendered, has(stop))).chars).toContain(stop)
-    })
+    await scene(
+      Screen.Worker({ ticket: "t-1" as TicketId }),
+      async ({ screen, commands, rendered }) => {
+        await until(rendered, has("← Dashboard"))
+        await press(rendered, { ctrl: "x" })
+        await until(rendered, has(asked))
+        await click(rendered, 3, 0)
+        // The run goes back to the dashboard all the same, as it does on CloseWorker.
+        await rendered.input(() => screen.set(Screen.Dashboard()))
+        const frame = await until(rendered, has("Title of t-2"))
+        expect(frame.chars).not.toContain(asked)
+        taken(commands)
+        await press(rendered, "s")
+        const stop = stopWords(false, []).ask
+        expect((await until(rendered, has(stop))).chars).toContain(stop)
+      },
+    )
   })
 })

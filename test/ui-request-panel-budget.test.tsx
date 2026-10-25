@@ -1,6 +1,7 @@
 // The worker view's request panel within the pane's height (tutti-7nzv): the panel has the rows
 // the view's head, rules, composer and hint leave it, and a few of the transcript's. Where its
 // requests don't fit, their inputs' rooms shrink first; then it draws one, and counts the rest.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Queue } from "effect"
@@ -13,6 +14,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { seg } from "../src/ui/line.tsx"
@@ -51,9 +53,9 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest>): RunView =>
     ledger: {
       tickets: new Map([
         [
-          "t-1",
+          "t-1" as TicketId,
           {
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             title: "Title of t-1",
             phase: TicketPhase.Working(),
             since: began,
@@ -79,7 +81,7 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest>): RunView =>
 /** The ticket's scenario: a Bash permission request whose command is `lines` lines long. */
 const bash = (id: string, lines: number): AttentionRequest => ({
   id,
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Permission",
     tool: "Bash",
@@ -119,7 +121,7 @@ const scene = async (
     <Root
       value={{
         view: external(viewOf(requests)),
-        screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+        screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
         commands,
         appearance: external<Appearance>("dark"),
         themeOf,

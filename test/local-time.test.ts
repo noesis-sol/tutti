@@ -1,6 +1,7 @@
 // Times as tutti writes them for people (src/run/localTime.ts): a usage limit's reset says its day
 // when it isn't today, in the banner, cards, log lines, notification and stop line, the report's
 // span its end date when it differs, and the log's stamp its UTC offset.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -23,6 +24,7 @@ import { run } from "../src/run/run.ts"
 import { type RunView, stateStatus } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { holdNotice, limitStop } from "../src/run/usageLimit.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, hitsUsageLimit, type SessionScript } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -201,7 +203,7 @@ describe("where the reset is shown", () => {
 const limitedThenFinishes = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   at: number,
 ): ReadonlyArray<SessionScript> => [
   [
@@ -247,7 +249,7 @@ describe("a hold across midnight", () => {
         git: { dir: repo },
         worktrees: { root },
         scripts: (world) => ({
-          "t-1": limitedThenFinishes(world, root, "t-1", Math.round(reset / 1000)),
+          "t-1": limitedThenFinishes(world, root, "t-1" as TicketId, Math.round(reset / 1000)),
         }),
       },
       Effect.gen(function* () {

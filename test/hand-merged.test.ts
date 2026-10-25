@@ -7,7 +7,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { dropRechecks } from "../src/run/recheck.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -31,7 +31,7 @@ const elsewhere = new CheckFailed({
 })
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -57,13 +57,13 @@ const moveMain = Effect.gen(function* () {
 })
 
 /** `files` squash-merged onto main by hand, the commit naming `id`. */
-const squashed = (id: string, files: Files) =>
+const squashed = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     yield* repository.commit(repository.dir, `Squash-merge ${id} (${id})`, files)
   })
 
-const phaseOf = (state: State, id: string) => state.tickets.get(id)?.phase._tag
+const phaseOf = (state: State, id: TicketId) => state.tickets.get(id)?.phase._tag
 
 /** Waits until every ticket named is in its phase. */
 const until = (phases: Readonly<Record<string, PhaseTag>>) =>
@@ -71,7 +71,7 @@ const until = (phases: Readonly<Record<string, PhaseTag>>) =>
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(
       Stream.filter((state) =>
-        Object.entries(phases).every(([id, phase]) => phaseOf(state, id) === phase),
+        Object.entries(phases).every(([id, phase]) => phaseOf(state, id as TicketId) === phase),
       ),
       Stream.runHead,
     )
@@ -113,7 +113,7 @@ const setAsideThen = (
     { backlog: seeds, checks: { fast: [elsewhere] } },
     withQueue((queue) =>
       Effect.gen(function* () {
-        const a = yield* finished("a", { "a/a.go": "a\n" })
+        const a = yield* finished("a" as TicketId, { "a/a.go": "a\n" })
         yield* moveMain
         yield* queue.offer(a)
         yield* until({ a: "Review" })
@@ -130,12 +130,14 @@ describe("a ticket set aside and merged by hand during the run", () => {
       { backlog: backlog().ticket("a").seeds, checks: { fast: [elsewhere] } },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a/a.go": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a/a.go": "a\n" })
           yield* moveMain
           yield* queue.offer(a)
           yield* until({ a: "Review" })
-          expect((yield* queue.rechecks.waiting).map((each) => each.ticket.id)).toEqual(["a"])
-          yield* squashed("a", { "a/a.go": "a\n" })
+          expect((yield* queue.rechecks.waiting).map((each) => each.ticket.id)).toEqual([
+            "a" as TicketId,
+          ])
+          yield* squashed("a" as TicketId, { "a/a.go": "a\n" })
           expect(yield* queue.recheck).toEqual([])
           expect(yield* queue.rechecks.waiting).toEqual([])
           yield* queue.settled
@@ -149,7 +151,7 @@ describe("a ticket set aside and merged by hand during the run", () => {
     ])
     expect(ran.log.some((line) => line.includes("RECHECK"))).toBe(false)
     expect(ran.checkRuns).toHaveLength(1)
-    expect(ran.worktreeCalls).toContainEqual({ op: "remove", id: "a", force: false })
+    expect(ran.worktreeCalls).toContainEqual({ op: "remove", id: "a" as TicketId, force: false })
     expect(records(ran, "closed")).toEqual([
       expect.objectContaining({ ticket: "a", detail: expect.stringMatching(/ merged by hand$/) }),
     ])
@@ -166,7 +168,7 @@ describe("a ticket set aside and merged by hand during the run", () => {
           (each) => each.branch === "tutti/a",
         )
         yield* repository.write(worktree?.path ?? "", { "notes.txt": "mine\n" })
-        yield* squashed("a", { "a/a.go": "a\n" })
+        yield* squashed("a" as TicketId, { "a/a.go": "a\n" })
       }),
     )
     expect(resultOf(ran)).toEqual({ a: "Done" })
@@ -178,7 +180,7 @@ describe("a ticket set aside and merged by hand during the run", () => {
 
   test("loses the 'unmerged' label an earlier run gave it", async () => {
     const ran = await setAsideThen(
-      () => squashed("a", { "a/a.go": "a\n" }),
+      () => squashed("a" as TicketId, { "a/a.go": "a\n" }),
       backlog().ticket("a", { labels: ["unmerged"] }).seeds,
     )
     expect(resultOf(ran)).toEqual({ a: "Done" })
@@ -200,7 +202,7 @@ describe("a ticket set aside and merged by hand during the run", () => {
       { backlog: backlog().ticket("a").seeds, checks: { fast: [elsewhere] } },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a/a.go": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a/a.go": "a\n" })
           yield* moveMain
           yield* queue.offer(a)
           yield* until({ a: "Review" })
@@ -226,14 +228,14 @@ describe("a ticket left unmerged by an earlier run and merged by hand during the
         Effect.gen(function* () {
           const git = yield* Git
           const repository = yield* Repository
-          const worktree = yield* (yield* Worktrees).prepare("x")
+          const worktree = yield* (yield* Worktrees).prepare("x" as TicketId)
           yield* git.addWorktree(repository.dir, worktree.path, {
             branch: worktree.branch,
             base: "main",
           })
           yield* repository.commit(worktree.path, "Do x (x)", { "x.txt": "x\n" })
           yield* queue.mergedByHand
-          yield* squashed("x", { "x.txt": "x\n" })
+          yield* squashed("x" as TicketId, { "x.txt": "x\n" })
           expect(yield* queue.mergedByHand).toEqual(["x"])
         }),
       ),
@@ -268,7 +270,7 @@ describe("the tickets waiting to be checked once more", () => {
       { backlog: backlog().ticket("a").seeds, checks: { fast: [elsewhere] } },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a/a.go": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a/a.go": "a\n" })
           yield* moveMain
           yield* hear({ on: true, how: "by SIGUSR1" }, queue.rechecks)
           yield* queue.offer(a)

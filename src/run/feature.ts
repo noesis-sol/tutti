@@ -20,7 +20,7 @@ import { screenRequest } from "../organs/screen.ts"
 import type { Out, Printer } from "../print/organLine.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { type FeaturePlan, filePlan, filingFailedLines, needsAnswers } from "../project/planFile.ts"
-import { type Beads, beadsWhy } from "../services/Beads.ts"
+import { type Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { paint } from "../ui/line.tsx"
 import { FormCancelled, fileQuestion, type Plan, planLines } from "../ui/questions.ts"
@@ -124,7 +124,7 @@ export const inRenderer = <S, E>(options: {
 
 /** How the feature run ended: its epic filed, or stopped with an exit code, having said why. */
 export type FeatureOutcome = Data.TaggedEnum<{
-  Filed: { readonly epic: string; readonly tickets: number }
+  Filed: { readonly epic: TicketId; readonly tickets: number }
   Stopped: { readonly exitCode: number }
 }>
 
@@ -300,7 +300,7 @@ export const planAndFile = <E = never>(
 
 /** `effect` with AppConfig scoped to `epic`, as --ticket <epic> scopes a run. */
 export const scopedTo =
-  (epic: string) =>
+  (epic: TicketId) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | AppConfig> =>
     Effect.gen(function* () {
       const config = yield* AppConfig

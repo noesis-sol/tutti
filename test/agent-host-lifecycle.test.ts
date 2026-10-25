@@ -1,6 +1,7 @@
 // A session's lifecycle in the live AgentHost (§ 4.8): a resume waits for the session's Claude Code
 // still closing to exit, closing or ending a session while it starts cancels the start, and a
 // worker folds only its session's events.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,6 +16,7 @@ import { noServersNote } from "../src/agent/mcp.ts"
 import { read } from "../src/agent/reading.ts"
 import { WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -84,7 +86,7 @@ const run = <A, E>(
 }
 
 /** Waits, at most 10 s, for the ticket's worker to reach a state `matches`. */
-const until = (ticket: string, matches: (state: WorkerState) => boolean) =>
+const until = (ticket: TicketId, matches: (state: WorkerState) => boolean) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const found = yield* host.state(ticket).pipe(
@@ -132,11 +134,15 @@ describe("AgentHost live: a session's lifecycle", () => {
       ({ dir, log }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", { sessionId, cwd: dir })
-          yield* host.send("t-1", { text: "go", from: "clientComposed" })
-          const state = yield* until("t-1", (s) => s._tag === "Gone")
+          yield* host.start("t-1" as TicketId, { sessionId, cwd: dir })
+          yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+          const state = yield* until("t-1" as TicketId, (s) => s._tag === "Gone")
           // Its Claude Code is still winding down: the resume waits for it.
-          yield* host.resume("t-1", { sessionId, cwd: dir }, { text: "on", from: "clientComposed" })
+          yield* host.resume(
+            "t-1" as TicketId,
+            { sessionId, cwd: dir },
+            { text: "on", from: "clientComposed" },
+          )
           return { state, pids: started(log), log }
         }),
     )
@@ -149,12 +155,16 @@ describe("AgentHost live: a session's lifecycle", () => {
     const { closed, pids, log } = await run({ lingerOnClose: 800 }, ({ dir, log }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", { sessionId, cwd: dir })
-        yield* host.send("t-1", { text: "go", from: "clientComposed" })
-        yield* until("t-1", (s) => s._tag === "Idle")
-        const closing = yield* Effect.forkChild(host.close("t-1"))
-        const closed = yield* until("t-1", (s) => s._tag === "Closed")
-        yield* host.resume("t-1", { sessionId, cwd: dir }, { text: "on", from: "clientComposed" })
+        yield* host.start("t-1" as TicketId, { sessionId, cwd: dir })
+        yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+        yield* until("t-1" as TicketId, (s) => s._tag === "Idle")
+        const closing = yield* Effect.forkChild(host.close("t-1" as TicketId))
+        const closed = yield* until("t-1" as TicketId, (s) => s._tag === "Closed")
+        yield* host.resume(
+          "t-1" as TicketId,
+          { sessionId, cwd: dir },
+          { text: "on", from: "clientComposed" },
+        )
         yield* Fiber.join(closing)
         return { closed, pids: started(log), log }
       }),
@@ -168,16 +178,20 @@ describe("AgentHost live: a session's lifecycle", () => {
     const { exit, state, waited, sent } = await run({ initializeLag: 20_000 }, ({ dir, log }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        const starting = yield* Effect.forkChild(host.start("t-1", { sessionId, cwd: dir }))
+        const starting = yield* Effect.forkChild(
+          host.start("t-1" as TicketId, { sessionId, cwd: dir }),
+        )
         yield* logged(log, (e) => e.args !== undefined)
         const from = Date.now()
-        yield* host.close("t-1")
+        yield* host.close("t-1" as TicketId)
         const exit = yield* Fiber.await(starting)
         const waited = Date.now() - from
         // Closed, its stdin has ended.
         yield* logged(log, (e) => e.closed === true)
-        const sent = yield* Effect.exit(host.send("t-1", { text: "lost", from: "clientComposed" }))
-        return { exit, state: yield* host.current("t-1"), waited, sent }
+        const sent = yield* Effect.exit(
+          host.send("t-1" as TicketId, { text: "lost", from: "clientComposed" }),
+        )
+        return { exit, state: yield* host.current("t-1" as TicketId), waited, sent }
       }),
     )
     expect(Exit.findErrorOption(exit)).toEqual(
@@ -192,15 +206,19 @@ describe("AgentHost live: a session's lifecycle", () => {
     const { exit, known, again } = await run({ initializeLag: 20_000 }, ({ dir, log }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        const starting = yield* Effect.forkChild(host.start("t-1", { sessionId, cwd: dir }))
+        const starting = yield* Effect.forkChild(
+          host.start("t-1" as TicketId, { sessionId, cwd: dir }),
+        )
         yield* logged(log, (e) => e.args !== undefined)
-        yield* host.end("t-1")
+        yield* host.end("t-1" as TicketId)
         const exit = yield* Fiber.await(starting)
-        const known = yield* Effect.exit(host.current("t-1"))
+        const known = yield* Effect.exit(host.current("t-1" as TicketId))
         // The ticket has no session left: a start is free to go.
-        const again = yield* Effect.forkChild(host.start("t-1", { sessionId, cwd: dir }))
+        const again = yield* Effect.forkChild(
+          host.start("t-1" as TicketId, { sessionId, cwd: dir }),
+        )
         yield* logged(log, (e) => e.args !== undefined && started(log).length === 2)
-        yield* host.close("t-1")
+        yield* host.close("t-1" as TicketId)
         return { exit, known, again: yield* Fiber.await(again) }
       }),
     )
@@ -226,17 +244,17 @@ describe("makeWorkers: events of an earlier session", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const workers = yield* makeWorkers()
-          const first = yield* workers.open("t-1", { session: "a", resumed: false })
+          const first = yield* workers.open("t-1" as TicketId, { session: "a", resumed: false })
           yield* workers.fold(first, WorkerEvent.Closed({ session: "a" }))
-          const closed = yield* workers.current("t-1")
-          const entry = yield* workers.open("t-1", { session: "b", resumed: false })
+          const closed = yield* workers.current("t-1" as TicketId)
+          const entry = yield* workers.open("t-1" as TicketId, { session: "b", resumed: false })
           // The first session's last words, after the second has started.
           yield* workers.fold(entry, WorkerEvent.Ended({ session: "a", why: "late" }))
           yield* workers.fold(entry, WorkerEvent.Sent({ session: "a", uuid: "u-1" }))
-          const starting = yield* workers.current("t-1")
+          const starting = yield* workers.current("t-1" as TicketId)
           yield* workers.fold(entry, WorkerEvent.Message({ session: "b", reading: read(init) }))
           yield* workers.fold(entry, WorkerEvent.Sent({ session: "b", uuid: "u-2" }))
-          return { closed, starting, working: yield* workers.current("t-1") }
+          return { closed, starting, working: yield* workers.current("t-1" as TicketId) }
         }),
       ).pipe(
         Effect.provide(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),

@@ -43,16 +43,25 @@ export type DependencyType =
   | "related"
   | (string & {})
 
+/**
+ * A ticket's ID, as bd gave it on an issue, state.json kept it, the CLI's --ticket named it or
+ * checkTicketId checked it: a type of its own, so an ID can't be passed for the ticket's worktree,
+ * its branch, its base or another string beside it. One from bd or state.json is decoded through
+ * this schema, and may still name no folder or branch, which checkTicketId refuses.
+ */
+export const TicketId = Schema.String.pipe(Schema.brand("TicketId"))
+export type TicketId = typeof TicketId.Type
+
 /** A link from an issue to one it depends on (or, from `dependencies(id, "up")`, one depending on it). */
 export interface Dependency {
-  readonly id: string
+  readonly id: TicketId
   readonly type: DependencyType
   /** The issue at the other end, as bd show and bd dep list give it; bd ready and bd list don't. */
   readonly issue?: Issue
 }
 
 export interface Issue {
-  readonly id: string
+  readonly id: TicketId
   readonly title: string
   readonly description: string
   readonly design: string
@@ -66,7 +75,7 @@ export interface Issue {
   readonly assignee: string
   readonly labels: ReadonlyArray<string>
   /** The issue this one is a subticket of (a parent-child link). */
-  readonly parent?: string
+  readonly parent?: TicketId
   readonly dependencies: ReadonlyArray<Dependency>
   /**
    * The issues that depend on this one, each with how it links (`blocks`: this one blocks it), as
@@ -139,7 +148,7 @@ export const beadsWhy = (error: BeadsError): string => {
 const Text = Schema.optionalKey(Schema.NullOr(Schema.String))
 
 const issueFields = {
-  id: Schema.String,
+  id: TicketId,
   title: Schema.String,
   status: Schema.String,
   description: Text,
@@ -148,7 +157,7 @@ const issueFields = {
   notes: Text,
   issue_type: Text,
   assignee: Text,
-  parent: Text,
+  parent: Schema.optionalKey(Schema.NullOr(TicketId)),
   created_at: Text,
   defer_until: Text,
   close_reason: Text,
@@ -161,7 +170,7 @@ const issueFields = {
 /** A dependency as bd ready and bd list give it: a link. */
 const BdLink = Schema.Struct({
   issue_id: Text,
-  depends_on_id: Schema.String,
+  depends_on_id: TicketId,
   type: Schema.String,
 })
 
@@ -225,7 +234,7 @@ const text = (value: string | null | undefined): string => value ?? ""
 const toIssue = (bd: BdFields, dependencies: ReadonlyArray<Dependency>): Issue => {
   const metadata = metadataOf(bd.metadata)
   const parent =
-    text(bd.parent) || dependencies.find((dependency) => dependency.type === "parent-child")?.id
+    bd.parent || dependencies.find((dependency) => dependency.type === "parent-child")?.id
   return {
     id: bd.id,
     title: bd.title,
@@ -411,7 +420,7 @@ export const judgeWrite = (command: string, output: BdOutput): Effect.Effect<voi
 
 export interface ReadyOptions {
   /** Only this issue's descendants. */
-  readonly parent?: string
+  readonly parent?: TicketId
   readonly excludeLabels?: ReadonlyArray<string>
   readonly excludeTypes?: ReadonlyArray<string>
 }
@@ -426,7 +435,7 @@ export interface ListOptions {
   readonly all?: boolean
   readonly status?: Status
   /** Only this issue's subtickets, one level down. */
-  readonly parent?: string
+  readonly parent?: TicketId
   /** Only issues carrying every one of these labels. */
   readonly labels?: ReadonlyArray<string>
   /** Only issues whose metadata gives each key this value. */
@@ -457,12 +466,12 @@ export interface NewIssue {
   /** bd's issue type; bd's default (task) when absent. */
   readonly type?: string
   readonly priority?: number
-  readonly parent?: string
+  readonly parent?: TicketId
   /** The issues it waits for. */
-  readonly blockedBy?: ReadonlyArray<string>
+  readonly blockedBy?: ReadonlyArray<TicketId>
   /** The issues that wait for it. */
-  readonly blocks?: ReadonlyArray<string>
-  readonly discoveredFrom?: ReadonlyArray<string>
+  readonly blocks?: ReadonlyArray<TicketId>
+  readonly discoveredFrom?: ReadonlyArray<TicketId>
   readonly labels?: ReadonlyArray<string>
   readonly metadata?: Readonly<Record<string, unknown>>
   /**
@@ -485,35 +494,35 @@ export class Beads extends Context.Service<
     /** bd ready: the open issues not blocked, nor deferred until later, in bd's order. */
     ready(options?: ReadyOptions): Effect.Effect<ReadonlyArray<Issue>, BeadsError>
     /** bd show: the issue, with the issues it depends on, and with `dependents` those on it. */
-    show(id: string, options?: ShowOptions): Effect.Effect<Issue, BeadsError>
+    show(id: TicketId, options?: ShowOptions): Effect.Effect<Issue, BeadsError>
     /** bd list: the issues that aren't closed, or every one with `all`. */
     list(options?: ListOptions): Effect.Effect<ReadonlyArray<Issue>, BeadsError>
-    update(id: string, update: Update): Effect.Effect<Issue, BeadsError>
-    close(id: string, reason?: string): Effect.Effect<Issue, BeadsError>
+    update(id: TicketId, update: Update): Effect.Effect<Issue, BeadsError>
+    close(id: TicketId, reason?: string): Effect.Effect<Issue, BeadsError>
     /** bd defer: sets the issue aside, indefinitely or until a date. */
-    defer(id: string, deferral?: Deferral): Effect.Effect<Issue, BeadsError>
-    addLabel(id: string, label: string): Effect.Effect<void, BeadsError>
-    removeLabel(id: string, label: string): Effect.Effect<void, BeadsError>
+    defer(id: TicketId, deferral?: Deferral): Effect.Effect<Issue, BeadsError>
+    addLabel(id: TicketId, label: string): Effect.Effect<void, BeadsError>
+    removeLabel(id: TicketId, label: string): Effect.Effect<void, BeadsError>
     /** bd dep add: `id` depends on `dependsOn`; a blocks link unless another type is given. */
     addDependency(
-      id: string,
-      dependsOn: string,
+      id: TicketId,
+      dependsOn: TicketId,
       type?: DependencyType,
       options?: Checked,
     ): Effect.Effect<void, BeadsError>
     /** bd dep list: what the issue depends on ("down", the default), or what depends on it ("up"). */
     dependencies(
-      id: string,
+      id: TicketId,
       options?: { readonly direction?: Direction; readonly type?: DependencyType },
     ): Effect.Effect<ReadonlyArray<Dependency>, BeadsError>
     create(issue: NewIssue): Effect.Effect<Issue, BeadsError>
     /** bd human list: the questions for the maintainer that aren't closed. */
     questions(): Effect.Effect<ReadonlyArray<Issue>, BeadsError>
     /** The issue's metadata, from bd show. */
-    metadata(id: string): Effect.Effect<Readonly<Record<string, unknown>>, BeadsError>
+    metadata(id: TicketId): Effect.Effect<Readonly<Record<string, unknown>>, BeadsError>
     /** Sets one key of the issue's metadata to a string, keeping the others. */
-    setMetadata(id: string, key: string, value: string): Effect.Effect<void, BeadsError>
-    unsetMetadata(id: string, key: string): Effect.Effect<void, BeadsError>
+    setMetadata(id: TicketId, key: string, value: string): Effect.Effect<void, BeadsError>
+    unsetMetadata(id: TicketId, key: string): Effect.Effect<void, BeadsError>
   }
 >()("tutti/services/Beads") {
   /**

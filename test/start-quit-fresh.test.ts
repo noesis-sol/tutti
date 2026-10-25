@@ -9,7 +9,7 @@ import { Effect, Exit, Fiber, Queue } from "effect"
 import { line } from "../src/run/log.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
 import { claimsAndCloses, Recording, run as step, wait } from "../src/testing/AgentHost.ts"
@@ -41,14 +41,14 @@ test("a quit before the worker's session begins saves none; the next run starts 
           // The first run's session takes its first message, and the run is quit before the
           // session's system/init comes.
           [wait, step(Effect.asVoid(Queue.offer(quits, quitBy("SIGINT"))))],
-          claimsAndCloses("t-1", {
-            claim: Effect.orDie(world.beads.update("t-1", { claim: true })),
+          claimsAndCloses("t-1" as TicketId, {
+            claim: Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true })),
             commit: Effect.asVoid(
               Effect.orDie(
                 world.repository.commit(join(root, "t-1"), "Change (t-1)", { "t-1.txt": "x\n" }),
               ),
             ),
-            close: Effect.orDie(world.beads.close("t-1", "done")),
+            close: Effect.orDie(world.beads.close("t-1" as TicketId, "done")),
           }),
         ],
       }),
@@ -82,7 +82,7 @@ test("a quit before the worker's session begins saves none; the next run starts 
           } satisfies Run
         })
       const first = yield* once(quits)
-      const status = (yield* (yield* Beads).show("t-1")).status
+      const status = (yield* (yield* Beads).show("t-1" as TicketId)).status
       const second = yield* once(yield* Queue.unbounded<QuitRequest>())
       return { first, status, second }
     }),

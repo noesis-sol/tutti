@@ -7,6 +7,7 @@ import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { finish, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { defers } from "../src/testing/AgentHost.ts"
 import { type Answers, layer as cannedLayer } from "../src/testing/Organs.ts"
@@ -61,9 +62,11 @@ const finishes = (plan: Plan): Promise<Ran<Made>> => {
       backlog: backlog().ticket("t-1").seeds,
       scripts: (world) => ({
         "t-1": [
-          defers("t-1", {
-            claim: Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
-            defer: Effect.asVoid(Effect.orDie(world.beads.defer("t-1"))),
+          defers("t-1" as TicketId, {
+            claim: Effect.asVoid(
+              Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true })),
+            ),
+            defer: Effect.asVoid(Effect.orDie(world.beads.defer("t-1" as TicketId))),
           }),
         ],
       }),

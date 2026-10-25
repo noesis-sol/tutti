@@ -5,9 +5,9 @@ import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { soloLabel, soloLine } from "../src/run/holds.ts"
 import { type PickFrom, pick } from "../src/run/schedule.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 
-const issue = (id: string, solo: boolean): Issue => ({
+const issue = (id: TicketId, solo: boolean): Issue => ({
   id,
   title: id,
   description: "",
@@ -29,11 +29,11 @@ const issue = (id: string, solo: boolean): Issue => ({
 // The free tickets, each solo or not, `t-0` first in line.
 const freeTickets = fc
   .array(fc.boolean(), { maxLength: 6 })
-  .map((solos) => solos.map((solo, i) => issue(`t-${i}`, solo)))
+  .map((solos) => solos.map((solo, i) => issue(`t-${i}` as TicketId, solo)))
 
 const pickFrom: fc.Arbitrary<PickFrom> = fc.record({
   free: freeTickets,
-  solo: fc.option(fc.constant("solo-1"), { nil: null }),
+  solo: fc.option(fc.constant("solo-1" as TicketId), { nil: null }),
   busy: fc.nat({ max: 4 }),
   slot: fc.boolean(),
 })
@@ -42,12 +42,14 @@ describe("pick", () => {
   test("starts nothing while a solo ticket runs, and holds the free ones for it with a slot free", () => {
     fc.assert(
       fc.property(pickFrom, (p) => {
-        const picked = pick({ ...p, solo: "solo-1", busy: Math.max(1, p.busy) })
+        const picked = pick({ ...p, solo: "solo-1" as TicketId, busy: Math.max(1, p.busy) })
         expect(picked.start).toBeUndefined()
         expect(picked.soloNext).toBeNull()
         expect(picked.soloFirst).toBeNull()
         expect(picked.heldSolo).toEqual(p.slot ? p.free.map((each) => each.id) : [])
-        expect(picked.soloLine).toBe(p.slot && p.free.length > 0 ? soloLine("solo-1", false) : "")
+        expect(picked.soloLine).toBe(
+          p.slot && p.free.length > 0 ? soloLine("solo-1" as TicketId, false) : "",
+        )
       }),
     )
   })
@@ -55,13 +57,13 @@ describe("pick", () => {
   test("a solo ticket first in line waits for the busy ones, holding the others back", () => {
     fc.assert(
       fc.property(freeTickets, fc.integer({ min: 1, max: 4 }), (rest, busy) => {
-        const first = issue("first", true)
+        const first = issue("first" as TicketId, true)
         const free = [first, ...rest]
         const picked = pick({ free, solo: null, busy, slot: true })
         expect(picked.start).toBeUndefined()
-        expect(picked.soloNext).toBe("first")
-        expect(picked.soloFirst).toBe("first")
-        expect(picked.soloLine).toBe(soloLine("first", true))
+        expect(picked.soloNext).toBe("first" as TicketId)
+        expect(picked.soloFirst).toBe("first" as TicketId)
+        expect(picked.soloLine).toBe(soloLine("first" as TicketId, true))
         expect(picked.heldSolo).toEqual(free.map((each) => each.id))
       }),
     )
@@ -79,8 +81,13 @@ describe("pick", () => {
   })
 
   test("a solo ticket first in line with every slot taken is still first, for the rechecks", () => {
-    const picked = pick({ free: [issue("first", true)], solo: null, busy: 2, slot: false })
-    expect(picked.soloFirst).toBe("first")
+    const picked = pick({
+      free: [issue("first" as TicketId, true)],
+      solo: null,
+      busy: 2,
+      slot: false,
+    })
+    expect(picked.soloFirst).toBe("first" as TicketId)
     expect(picked.soloNext).toBeNull()
     expect(picked.start).toBeUndefined()
   })
@@ -103,8 +110,13 @@ describe("pick", () => {
   })
 
   test("a solo ticket first in line starts once nothing is busy", () => {
-    const first = issue("first", true)
-    const picked = pick({ free: [first, issue("t-1", false)], solo: null, busy: 0, slot: true })
+    const first = issue("first" as TicketId, true)
+    const picked = pick({
+      free: [first, issue("t-1" as TicketId, false)],
+      solo: null,
+      busy: 0,
+      slot: true,
+    })
     expect(picked.start).toBe(first)
     expect(picked.soloFirst).toBeNull()
     expect(picked.heldSolo).toEqual([])

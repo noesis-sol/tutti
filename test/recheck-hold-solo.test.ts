@@ -1,6 +1,7 @@
 // A ticket set aside for a failed check is checked once more after the base moves on (recheck.ts),
 // as orchestra's recheckTickets has it: not while the run holds, nor while a solo ticket runs or is
 // next, and in a slot of its own, as a running ticket's, until its merge is over.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -9,6 +10,7 @@ import { type Duration, Effect, Fiber } from "effect"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, gone, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
@@ -54,7 +56,12 @@ const fails = () =>
   })
 
 /** Claims its ticket, and after `takes` commits a change and closes it. */
-const works = (world: World, root: string, id: string, takes: Duration.Input = 0): SessionScript =>
+const works = (
+  world: World,
+  root: string,
+  id: TicketId,
+  takes: Duration.Input = 0,
+): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -69,7 +76,7 @@ const works = (world: World, root: string, id: string, takes: Duration.Input = 0
   )
 
 /** Claims its ticket and, after `takes`, is gone; resumed, gone again at once: PAUSED. */
-const isGoneTwice = (world: World, id: string, takes: Duration.Input) => [
+const isGoneTwice = (world: World, id: TicketId, takes: Duration.Input) => [
   [
     ...turn([
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -209,10 +216,10 @@ describe("no recheck while the run holds", () => {
         .ticket("b", { priority: 3 }),
       4,
       (world, root) => ({
-        x: [works(world, root, "x")],
-        a: [works(world, root, "a", "1 minute")],
-        p: isGoneTwice(world, "p", "90 seconds"),
-        b: [works(world, root, "b", "3 minutes")],
+        x: [works(world, root, "x" as TicketId)],
+        a: [works(world, root, "a" as TicketId, "1 minute")],
+        p: isGoneTwice(world, "p" as TicketId, "90 seconds"),
+        b: [works(world, root, "b" as TicketId, "3 minutes")],
       }),
       5,
     )
@@ -238,11 +245,11 @@ describe("no recheck beside a solo ticket", () => {
         .ticket("s", { priority: 4, labels: ["solo"] }),
       3,
       (world, root) => ({
-        x: [works(world, root, "x")],
-        a: [works(world, root, "a", "1 minute")],
-        b: [works(world, root, "b", "2 minutes")],
-        c: [works(world, root, "c", "5 minutes")],
-        s: [works(world, root, "s", "2 minutes")],
+        x: [works(world, root, "x" as TicketId)],
+        a: [works(world, root, "a" as TicketId, "1 minute")],
+        b: [works(world, root, "b" as TicketId, "2 minutes")],
+        c: [works(world, root, "c" as TicketId, "5 minutes")],
+        s: [works(world, root, "s" as TicketId, "2 minutes")],
       }),
       9,
     )
@@ -274,11 +281,11 @@ describe("a recheck takes a slot", () => {
         .ticket("d", { priority: 4 }),
       1,
       (world, root) => ({
-        x: [works(world, root, "x")],
-        a: [works(world, root, "a", "1 minute")],
-        b: [works(world, root, "b", "1 minute")],
-        c: [works(world, root, "c", "3 minutes")],
-        d: [works(world, root, "d")],
+        x: [works(world, root, "x" as TicketId)],
+        a: [works(world, root, "a" as TicketId, "1 minute")],
+        b: [works(world, root, "b" as TicketId, "1 minute")],
+        c: [works(world, root, "c" as TicketId, "3 minutes")],
+        d: [works(world, root, "d" as TicketId)],
       }),
       8,
     )

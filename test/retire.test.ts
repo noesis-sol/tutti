@@ -9,7 +9,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -33,7 +33,7 @@ const elsewhere = new CheckFailed({
 })
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, Working. */
-const finished = (id: string) =>
+const finished = (id: TicketId) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -87,11 +87,11 @@ const mergedByHand = () =>
             }),
         }),
       )
-      const a = yield* finished("a")
+      const a = yield* finished("a" as TicketId)
       yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
       yield* queue.offer(a)
       yield* ledger.changes.pipe(
-        Stream.filter((state) => state.tickets.get("a")?.phase._tag === "Review"),
+        Stream.filter((state) => state.tickets.get("a" as TicketId)?.phase._tag === "Review"),
         Stream.runHead,
       )
       yield* repository.commit(repository.dir, "Squash-merge a (a)", { "a/a.go": "a\n" })
@@ -103,7 +103,7 @@ const mergedByHand = () =>
       for (const call of calls) git[call.op] = (git[call.op] ?? 0) + 1
       yield* queue.settled
       return {
-        phase: (yield* ledger.current).tickets.get("a")?.phase._tag,
+        phase: (yield* ledger.current).tickets.get("a" as TicketId)?.phase._tag,
         shows,
         git,
       } satisfies Retired

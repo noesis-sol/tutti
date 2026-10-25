@@ -12,6 +12,7 @@ import { countdown, type RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { nudgeText, resetText } from "../src/run/told.ts"
 import { holdNotice, liftAfter, limitName, limitStop, organHold } from "../src/run/usageLimit.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   claimsAndCloses,
@@ -67,7 +68,7 @@ const fixture = (name: string): SessionScript => [
 ]
 
 /** Claims, commits and closes its ticket, as a worker does. */
-const finishes = (world: World, root: string, id: string): SessionScript =>
+const finishes = (world: World, root: string, id: TicketId): SessionScript =>
   claimsAndCloses(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     commit: Effect.asVoid(
@@ -85,7 +86,7 @@ const finishes = (world: World, root: string, id: string): SessionScript =>
 const limitedThenFinishes = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   at: number,
   first: SessionScript = [],
 ) => {
@@ -184,7 +185,7 @@ describe("the usage-limit warning", () => {
   test("shows the usage, is said once per limit, and changes no dispatch", async () => {
     let seen: RunView | undefined
     // The warning comes in the turn that finishes the ticket, after its system/init.
-    const warns = (world: World, root: string, id: string): SessionScript => {
+    const warns = (world: World, root: string, id: TicketId): SessionScript => {
       const [taken, init, running, ...rest] = finishes(world, root, id)
       return [
         ...[taken, init, running].flatMap((step) => (step === undefined ? [] : [step])),
@@ -196,8 +197,8 @@ describe("the usage-limit warning", () => {
       tickets: ["t-1", "t-2"],
       concurrent: 2,
       scripts: (world, root) => ({
-        "t-1": [warns(world, root, "t-1")],
-        "t-2": [warns(world, root, "t-2")],
+        "t-1": [warns(world, root, "t-1" as TicketId)],
+        "t-2": [warns(world, root, "t-2" as TicketId)],
       }),
       during: (view) =>
         Effect.gen(function* () {
@@ -238,11 +239,13 @@ describe("the usage-limit hold", () => {
         const started = Deferred.makeUnsafe<void>()
         return {
           // t-1 hits the limit once t-2 has started, so that both are dispatched before the hold.
-          "t-1": limitedThenFinishes(world, root, "t-1", hour, [step(Deferred.await(started))]),
-          "t-2": limitedThenFinishes(world, root, "t-2", hour, [
+          "t-1": limitedThenFinishes(world, root, "t-1" as TicketId, hour, [
+            step(Deferred.await(started)),
+          ]),
+          "t-2": limitedThenFinishes(world, root, "t-2" as TicketId, hour, [
             step(Effect.asVoid(Deferred.done(started, Exit.void))),
           ]),
-          "t-3": [finishes(world, root, "t-3")],
+          "t-3": [finishes(world, root, "t-3" as TicketId)],
         }
       },
       during: (view) =>
@@ -277,7 +280,7 @@ describe("the usage-limit hold", () => {
     )
     expect(held?.totals.queueHeld).toBe(true)
     // Each worker waiting for it was told to carry on, once, and never nudged.
-    for (const id of ["t-1", "t-2"]) {
+    for (const id of ["t-1" as TicketId, "t-2" as TicketId]) {
       expect(messagesTo(ran.sent, id).filter((text) => text === resetText(id))).toHaveLength(1)
       expect(messagesTo(ran.sent, id)).not.toContain(nudgeText(id))
     }
@@ -319,7 +322,9 @@ describe("the usage-limit hold", () => {
     const at = 5 * hour
     const ran = await runs({
       tickets: ["t-1"],
-      scripts: (world, root) => ({ "t-1": limitedThenFinishes(world, root, "t-1", at) }),
+      scripts: (world, root) => ({
+        "t-1": limitedThenFinishes(world, root, "t-1" as TicketId, at),
+      }),
       during: () =>
         Effect.gen(function* () {
           yield* untilLogged(/^USAGE_LIMIT: nothing else runs/)
@@ -355,14 +360,16 @@ describe("the usage-limit hold", () => {
     const records = ran.events.filter((r) => r.kind === "stop" || r.kind === "suspended")
     expect(records.map((r) => r.kind)).toEqual(["suspended", "stop"])
     expect(records[1]).toMatchObject({ detail: "USAGE_LIMIT", text: stop })
-    expect(messagesTo(ran.sent, "t-1")).not.toContain(resetText("t-1"))
+    expect(messagesTo(ran.sent, "t-1")).not.toContain(resetText("t-1" as TicketId))
   })
 
   test("a shorter --usage-limit-wait ends a run a reset within 6h would hold", async () => {
     const ran = await runs({
       tickets: ["t-1"],
       usageLimitWait: Duration.minutes(30),
-      scripts: (world, root) => ({ "t-1": limitedThenFinishes(world, root, "t-1", hour) }),
+      scripts: (world, root) => ({
+        "t-1": limitedThenFinishes(world, root, "t-1" as TicketId, hour),
+      }),
     })
     expectExitCode(ran, 8)
     expect(ran.log.at(-1)).toBe(

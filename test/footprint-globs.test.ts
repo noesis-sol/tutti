@@ -19,7 +19,7 @@ import { globHolds, globsMeet } from "../src/run/glob.ts"
 import { shared } from "../src/run/overlap.ts"
 import { type RepoFiles, repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -329,7 +329,7 @@ describe("globs read from any text", () => {
 })
 
 /** An open issue whose files metadata lists these. */
-const issue = (id: string, priority: number, ...files: ReadonlyArray<string>): Issue => ({
+const issue = (id: TicketId, priority: number, ...files: ReadonlyArray<string>): Issue => ({
   id,
   title: id,
   description: "",
@@ -354,9 +354,9 @@ const shown = (links: ReadonlyArray<Link>) => links.map((l) => `${l.blocker}>${l
 describe("tutti plan", () => {
   test("links a glob to a new file it would match, however large the files there are", () => {
     const open = [
-      issue("a", 1, "internal/dispatch/*.go"),
-      issue("b", 2, "internal/dispatch/cart.go"),
-      issue("c", 3, "internal/dispatch/cart.ts"),
+      issue("a" as TicketId, 1, "internal/dispatch/*.go"),
+      issue("b" as TicketId, 2, "internal/dispatch/cart.go"),
+      issue("c" as TicketId, 3, "internal/dispatch/cart.ts"),
     ]
     for (const lines of [50, 500]) {
       const source = (file: string) => (nested.includes(file) ? "\n".repeat(lines) : undefined)
@@ -368,9 +368,9 @@ describe("tutti plan", () => {
 
   test("links two tickets listing globs in a new folder that can match one file", () => {
     const open = [
-      issue("a", 1, "web/src/*.ts"),
-      issue("b", 2, "web/**/*.ts"),
-      issue("c", 3, "app/*.go"),
+      issue("a" as TicketId, 1, "web/src/*.ts"),
+      issue("b" as TicketId, 2, "web/**/*.ts"),
+      issue("c" as TicketId, 3, "app/*.go"),
     ]
     expect(shown(planLinks(open, [], repoFiles(nested), () => undefined))).toEqual([
       "a>b:web/src/*.ts",

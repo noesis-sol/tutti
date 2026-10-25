@@ -8,7 +8,7 @@ import { Effect, Exit, Fiber, Queue, Ref } from "effect"
 import { line } from "../src/run/log.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { run } from "../src/run/run.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, Recording, sleep, run as step, turn } from "../src/testing/AgentHost.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -50,7 +50,7 @@ describe("quitting after a panic", () => {
             turn([
               ...bash(
                 "bd update t-1 --claim",
-                Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+                Effect.asVoid(Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true }))),
               ),
               step(
                 Effect.sync(() => {

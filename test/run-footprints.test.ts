@@ -6,6 +6,7 @@ import { Effect, Fiber } from "effect"
 import { Log } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -62,7 +63,7 @@ const until = (logged: Logged, pattern: RegExp): Effect.Effect<void> =>
 const works = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   options: {
     readonly files?: Readonly<Record<string, string>>
     readonly before?: Effect.Effect<void>
@@ -87,7 +88,7 @@ const works = (
   ])
 
 /** Claims `id`, files a question blocking it, and puts it back to open. */
-const asks = (world: World, id: string): SessionScript =>
+const asks = (world: World, id: TicketId): SessionScript =>
   filesQuestion(id, {
     claim: orDie(world.beads.update(id, { claim: true })),
     file: orDie(
@@ -99,7 +100,7 @@ const asks = (world: World, id: string): SessionScript =>
   })
 
 /** Closes every open question blocking `id`: the maintainer answering it. */
-const answers = (world: World, id: string): Effect.Effect<void> =>
+const answers = (world: World, id: TicketId): Effect.Effect<void> =>
   orDie(
     Effect.gen(function* () {
       const issue = yield* world.beads.show(id)
@@ -180,8 +181,8 @@ describe("the run's footprints", () => {
       seeds,
       footprint: true,
       scripts: (world, root, logged) => ({
-        "t-1": [works(world, root, "t-1", { after: until(logged, /skipping t-2/) })],
-        "t-2": [works(world, root, "t-2")],
+        "t-1": [works(world, root, "t-1" as TicketId, { after: until(logged, /skipping t-2/) })],
+        "t-2": [works(world, root, "t-2" as TicketId)],
       }),
     })
     expectExitCode(ran, 0)
@@ -199,8 +200,8 @@ describe("the run's footprints", () => {
       seeds,
       footprint: false,
       scripts: (world, root, logged) => ({
-        "t-1": [works(world, root, "t-1", { after: until(logged, /t-2 dispatching/) })],
-        "t-2": [works(world, root, "t-2")],
+        "t-1": [works(world, root, "t-1" as TicketId, { after: until(logged, /t-2 dispatching/) })],
+        "t-2": [works(world, root, "t-2" as TicketId)],
       }),
     })
     expectExitCode(ran, 0)
@@ -218,13 +219,13 @@ describe("the run's footprints", () => {
       footprint: true,
       scripts: (world, root, logged) => ({
         "t-1": [
-          works(world, root, "t-1", {
+          works(world, root, "t-1" as TicketId, {
             files: { "src/z.ts": "z\n" },
             after: until(logged, warning),
           }),
         ],
         "t-2": [
-          works(world, root, "t-2", {
+          works(world, root, "t-2" as TicketId, {
             files: { "src/z.ts": "z\n" },
             after: until(logged, warning),
           }),
@@ -247,16 +248,16 @@ describe("the run's footprints", () => {
       footprint: true,
       scripts: (world, root, logged) => ({
         "t-1": [
-          asks(world, "t-1"),
-          works(world, root, "t-1", { after: until(logged, /skipping t-3/) }),
+          asks(world, "t-1" as TicketId),
+          works(world, root, "t-1" as TicketId, { after: until(logged, /skipping t-3/) }),
         ],
         "t-2": [
-          works(world, root, "t-2", {
-            before: Effect.andThen(until(logged, /ASKED: t-1/), answers(world, "t-1")),
+          works(world, root, "t-2" as TicketId, {
+            before: Effect.andThen(until(logged, /ASKED: t-1/), answers(world, "t-1" as TicketId)),
             after: until(logged, /RESUMED: t-1/),
           }),
         ],
-        "t-3": [works(world, root, "t-3")],
+        "t-3": [works(world, root, "t-3" as TicketId)],
       }),
     })
     expectExitCode(ran, 0)

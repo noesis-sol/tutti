@@ -3,6 +3,7 @@
 // subscription and an API key, a narrow terminal; the figures of the analytics fixture's runs, the
 // same as docs/analytics.md's queries give over them (with the machine's duckdb, where it has one);
 // and a whole run's.
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -24,6 +25,7 @@ import { line } from "../src/run/log.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
 import { windowLabel } from "../src/ui/TitleLine.tsx"
@@ -259,7 +261,7 @@ describe("the figures' lines", () => {
   })
 })
 
-const row = (ticket: string): Row => ({
+const row = (ticket: TicketId): Row => ({
   ticket,
   label: ticket,
   title: "",
@@ -291,7 +293,7 @@ const ended = (figures: Figures, rows: ReadonlyArray<Row>, options = subscriptio
 
 describe("under the summary's totals", () => {
   test("the styled summary has them between the totals and the tickets, the estimate in its colour", () => {
-    const out = summary(ended(mnemos, [row("a")]), theme, 120)
+    const out = summary(ended(mnemos, [row("a" as TicketId)]), theme, 120)
     const lines = strip(out).split("\n")
     const time = lines.findIndex((each) => each.startsWith("  Time    "))
     expect(time).toBeGreaterThan(lines.findIndex((each) => each.includes("Completed")))
@@ -309,7 +311,7 @@ describe("under the summary's totals", () => {
   })
 
   test("on an API key the dollars are plain, and the Usage line is left out", () => {
-    const out = summary(ended(mnemos, [row("a")], apiKey), theme, 120)
+    const out = summary(ended(mnemos, [row("a" as TicketId)], apiKey), theme, 120)
     expect(strip(out)).toContain("  Spent   53M tokens (94% from the cache) · $44.75 · $1.24")
     expect(out).not.toContain(theme.styles.estimate.open)
     expect(strip(out)).not.toContain("Usage")
@@ -325,17 +327,17 @@ describe("under the summary's totals", () => {
 
   test("a narrow terminal cuts each line to its width, with …", () => {
     for (const width of [40, 52, 64]) {
-      const lines = strip(summary(ended(mnemos, [row("a")]), theme, width)).split("\n")
+      const lines = strip(summary(ended(mnemos, [row("a" as TicketId)]), theme, width)).split("\n")
       for (const each of lines) expect(Bun.stringWidth(each)).toBeLessThanOrEqual(width)
       const checks = lines.find((each) => each.startsWith("  Checks  ")) ?? ""
       expect(checks).toEndWith("…")
     }
-    const narrow = strip(summary(ended(mnemos, [row("a")]), theme, 40)).split("\n")
+    const narrow = strip(summary(ended(mnemos, [row("a" as TicketId)]), theme, 40)).split("\n")
     expect(narrow).toContain("  Time    63% queued · 19% held back (o…")
   })
 
   test("--plain gives the same lines without styles, under the totals", () => {
-    const plain = summaryLines({ ...ended(mnemos, [row("a")]), base: "main" })
+    const plain = summaryLines({ ...ended(mnemos, [row("a" as TicketId)]), base: "main" })
     expect(plain.slice(1, 6).map(String)).toEqual([
       "  Completed 1 · Set aside 0 · Needs you 0",
       "  Time    63% queued · 19% held back (overlap 15%) · 14% working · 2% merging",
@@ -348,9 +350,9 @@ describe("under the summary's totals", () => {
 
   test("the text is sanitised: a ticket ID's controls never reach the terminal", () => {
     const figures = figuresOf([[0, check("merge", "failed", 10, "evil\x1b[2J\nid")]])
-    const out = summary(ended(figures, [row("a")]), theme, 120)
+    const out = summary(ended(figures, [row("a" as TicketId)]), theme, 120)
     expect(out).not.toContain("\x1b[2J")
-    const plain = summaryLines({ ...ended(figures, [row("a")]), base: "main" })
+    const plain = summaryLines({ ...ended(figures, [row("a" as TicketId)]), base: "main" })
     for (const each of plain) {
       expect(each).not.toContain("\x1b")
       expect(each).not.toContain("\n")
@@ -478,14 +480,14 @@ describe("a whole run", () => {
     const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-figures-repo-")))
     const root = realpathSync(mkdtempSync(join(tmpdir(), "tutti-figures-worktrees-")))
     const finishes = (world: World): ReturnType<typeof claimsAndCloses> =>
-      claimsAndCloses("t-1", {
-        claim: Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+      claimsAndCloses("t-1" as TicketId, {
+        claim: Effect.asVoid(Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true }))),
         commit: Effect.asVoid(
           Effect.orDie(
             world.repository.commit(join(root, "t-1"), "Change (t-1)", { "t.txt": "x\n" }),
           ),
         ),
-        close: Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done"))),
+        close: Effect.asVoid(Effect.orDie(world.beads.close("t-1" as TicketId, "done"))),
       })
     const ran: Ran<Outcome> = await scenario(
       {

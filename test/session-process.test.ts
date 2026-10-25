@@ -19,6 +19,7 @@ import { withSessionProcess, withStderr } from "../src/agent/sessionProcess.ts"
 import { UsageProbe } from "../src/agent/UsageProbe.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { layer as organLayer } from "../src/organs/AgentSdkLanguageModel.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { processAlive } from "../src/services/processTree.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
@@ -186,9 +187,9 @@ describe("what Claude Code last wrote to stderr, in the reason its session faile
       (dir) =>
         Effect.gen(function* () {
           const agents = yield* AgentHost
-          yield* agents.start("t-1", sessionIn(dir))
-          yield* agents.send("t-1", { text: "go", from: "clientComposed" })
-          const found = yield* agents.state("t-1").pipe(
+          yield* agents.start("t-1" as TicketId, sessionIn(dir))
+          yield* agents.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+          const found = yield* agents.state("t-1" as TicketId).pipe(
             Stream.filter((each) => each._tag === "Gone"),
             Stream.runHead,
             Effect.timeout(Duration.seconds(10)),
@@ -206,7 +207,9 @@ describe("what Claude Code last wrote to stderr, in the reason its session faile
     const exit = await withHost(
       { stderrAtStart: "No conversation found with session ID 1111\n", exitAtStart: 1 },
       (dir) =>
-        Effect.flatMap(Effect.service(AgentHost), (agents) => agents.start("t-1", sessionIn(dir))),
+        Effect.flatMap(Effect.service(AgentHost), (agents) =>
+          agents.start("t-1" as TicketId, sessionIn(dir)),
+        ),
     )
     const error = failureOf(exit) as { _tag: string; reason: string }
     expect(error._tag).toBe("AgentStartFailed")

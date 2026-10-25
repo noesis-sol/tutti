@@ -10,14 +10,14 @@
 // and where it was written; it was discovered from the finished ticket. The log has the FILED line,
 // with the new ticket's ID, never the text, as a MESSAGE line has only its length.
 import { Data, Effect, SubscriptionRef } from "effect"
-import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import * as log from "./log.ts"
 import { Log } from "./log.ts"
 
 /** How a filing went: the ticket bd created, or why it didn't. */
 export type FileOutcome = Data.TaggedEnum<{
-  Filed: { readonly id: string; readonly title: string }
+  Filed: { readonly id: TicketId; readonly title: string }
   NotFiled: { readonly why: string }
 }>
 
@@ -27,7 +27,7 @@ export const FileOutcome = Data.taggedEnum<FileOutcome>()
 export interface TicketFiling {
   readonly uuid: string
   /** The finished ticket whose view it was written in. */
-  readonly from: string
+  readonly from: TicketId
   readonly outcome: FileOutcome
 }
 
@@ -58,7 +58,7 @@ export const descriptionOf = (text: string, from: string): string =>
  * is the NotFiled's why.
  */
 export const fileTicket = (
-  request: { readonly from: string; readonly text: string; readonly uuid: string },
+  request: { readonly from: TicketId; readonly text: string; readonly uuid: string },
   filings: SubscriptionRef.SubscriptionRef<ReadonlyArray<TicketFiling>>,
 ): Effect.Effect<void, never, Beads | Log> =>
   Effect.gen(function* () {

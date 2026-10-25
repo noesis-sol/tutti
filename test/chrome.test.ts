@@ -1,6 +1,7 @@
 // Claude in Chrome (§ 4.6): built into Claude Code, which turns it on by itself once it is set up,
 // past strict MCP config. Sessions get --chrome when workers.mcp_servers chooses claude-in-chrome,
 // --no-chrome otherwise: workers and the interview as the project chose, the probe and organs never.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -28,6 +29,7 @@ import {
 import { mcpSteps } from "../src/init/workers.ts"
 import { organOptions } from "../src/organs/AgentSdkLanguageModel.ts"
 import { type Started, startBlock } from "../src/run/startup.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 
@@ -44,7 +46,7 @@ const off = { "no-chrome": null }
 const worker = (servers: ChosenServers) =>
   workerOptions({
     config,
-    ticket: "tutti-abc.1",
+    ticket: "tutti-abc.1" as TicketId,
     worktree: "/work/project-tutti/tutti-abc.1",
     prompt: { text: "You work on TICKET_ID.", file: null },
     servers,

@@ -7,7 +7,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { budgets, type FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -36,18 +36,18 @@ const most = 3 * budgets.beforeFastForward
 /** Ticket a, finished on top of main: a.txt committed on tutti/a, closed, Working. */
 const finished = Effect.gen(function* () {
   const repository = yield* Repository
-  const worktree = yield* (yield* Worktrees).prepare("a")
+  const worktree = yield* (yield* Worktrees).prepare("a" as TicketId)
   yield* (yield* Git).addWorktree(repository.dir, worktree.path, {
     branch: worktree.branch,
     base: "main",
   })
   yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
-  yield* (yield* Beads).close("a", "done")
+  yield* (yield* Beads).close("a" as TicketId, "done")
   const ledger = yield* Ledger
-  yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-  yield* ledger.transition("a", Move.Dispatched())
+  yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+  yield* ledger.transition("a" as TicketId, Move.Dispatched())
   return {
-    id: "a",
+    id: "a" as TicketId,
     title: "Ticket a",
     branch: worktree.branch,
     worktree: worktree.path,
@@ -93,7 +93,7 @@ const merge = (byHand: "branch" | "base") =>
       yield* queue.offer(a)
       yield* queue.settled
       return {
-        phase: (yield* (yield* Ledger).current).tickets.get("a")?.phase,
+        phase: (yield* (yield* Ledger).current).tickets.get("a" as TicketId)?.phase,
         stop: (yield* queue.state).stop?.why,
         main: yield* repository.tree("main"),
         commits,

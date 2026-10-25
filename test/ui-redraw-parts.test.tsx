@@ -3,6 +3,7 @@
 // nothing; a card is drawn anew whole only when it changes, and a spinner's tick draws its head's
 // line alone; one ticker each for the clock and the spinner, on the shell's clock and interval,
 // runs while anything draws them.
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { Profiler } from "react"
@@ -12,6 +13,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, type Inputs, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { App, Root } from "../src/ui/App.tsx"
 import { SelectionLook, selectionLookOf } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -37,9 +39,9 @@ const inputsOf = (titles: readonly [string, string], state: WorkerState): Inputs
   ledger: {
     tickets: new Map(
       titles.map((title, i) => [
-        `t-${i + 1}`,
+        `t-${i + 1}` as TicketId,
         {
-          ticket: `t-${i + 1}`,
+          ticket: `t-${i + 1}` as TicketId,
           title,
           phase: TicketPhase.Working(),
           since: began,
@@ -126,7 +128,12 @@ describe("a worker's view", () => {
     const first = project(inputsOf(["Title of t-1", "Title of t-2"], WS.Idle({ at: began })))
     const view = external(first)
     const intervals = fakeIntervals()
-    const shell = shellOf(view, Screen.Worker({ ticket: "t-1" }), { at: began }, intervals)
+    const shell = shellOf(
+      view,
+      Screen.Worker({ ticket: "t-1" as TicketId }),
+      { at: began },
+      intervals,
+    )
     let commits = 0
     await withRender(
       <Profiler id="view" onRender={() => commits++}>

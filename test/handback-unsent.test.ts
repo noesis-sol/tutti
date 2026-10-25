@@ -4,6 +4,7 @@
 // is aborted, so that the next run merges its ticket again and hands its conflicts back, and the
 // closing line says it was never sent. Also give's path where the worker leaves the limit without its
 // hand-back as its session ends, and the hold's keep with the hold off.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -16,6 +17,7 @@ import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { ScreenInputs } from "../src/run/screen.ts"
 import { make as makeUsageHold, neverHanded } from "../src/run/usageLimit.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
@@ -73,7 +75,7 @@ const folder = (name: string) =>
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   files: Files,
   first: ReadonlyArray<Step> = [],
 ): SessionScript =>
@@ -135,7 +137,7 @@ const untilLogged = (pattern: RegExp) =>
   })
 
 /** Waits, in real time, until `id` is claimed: the run has dispatched it. */
-const untilClaimed = (world: World, id: string) =>
+const untilClaimed = (world: World, id: TicketId) =>
   Effect.orDie(
     Effect.gen(function* () {
       for (let i = 0; i < 2000; i++) {
@@ -289,10 +291,14 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
       // a's check passes; the one on b rebased onto a fails; c's passes.
       checks: { fast: [passed("fast"), failing] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { "a.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+        a: [
+          works(world, places, "a" as TicketId, { "a.txt": "a\n" }, [
+            step(untilClaimed(world, "b" as TicketId)),
+          ]),
+        ],
         b: [
           [
-            ...works(world, places, "b", { "b.txt": "b\n" }, [
+            ...works(world, places, "b" as TicketId, { "b.txt": "b\n" }, [
               step(untilOnMain(world, { "a.txt": "a\n" })),
             ]),
             // c lands while b fixes its check, in the file b's fix commits as the limit hits, when
@@ -305,7 +311,9 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
           ],
         ],
         c: [
-          works(world, places, "c", { "fix.txt": "c\n" }, [step(Effect.promise(() => released))]),
+          works(world, places, "c" as TicketId, { "fix.txt": "c\n" }, [
+            step(Effect.promise(() => released)),
+          ]),
         ],
       }),
     })
@@ -318,7 +326,7 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
       "  b's worker is at the usage limit: it is handed its conflicts to resolve once the limit lifts, the wait not counting toward the 20m",
     ])
     expect(closing(ran)).toBe(
-      `USAGE_LIMIT: the five-hour limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets; ${neverHanded({ id: "b", mode: "resolving" })}`,
+      `USAGE_LIMIT: the five-hour limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets; ${neverHanded({ id: "b" as TicketId, mode: "resolving" })}`,
     )
     // Only the fix was sent: the conflicts never were, and the rebase is undone for the next run.
     expect(composed(ran)).toHaveLength(1)
@@ -333,10 +341,14 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
       // a's check passes; the one on b's resolution fails.
       checks: { fast: [passed("fast"), failing] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { "shared.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+        a: [
+          works(world, places, "a" as TicketId, { "shared.txt": "a\n" }, [
+            step(untilClaimed(world, "b" as TicketId)),
+          ]),
+        ],
         b: [
           [
-            ...works(world, places, "b", { "shared.txt": "b\n" }, [
+            ...works(world, places, "b" as TicketId, { "shared.txt": "b\n" }, [
               step(untilOnMain(world, { "shared.txt": "a\n" })),
             ]),
             // The limit resets in seven hours, later than --usage-limit-wait's six.
@@ -355,7 +367,7 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
       /^ {2}FIXING: /,
       "  b's worker is at the usage limit: it is handed its failed check to fix once the limit lifts, the wait not counting toward the 20m",
     ])
-    expect(closing(ran)).toEndWith(`; ${neverHanded({ id: "b", mode: "fixing" })}`)
+    expect(closing(ran)).toEndWith(`; ${neverHanded({ id: "b" as TicketId, mode: "fixing" })}`)
     expect(composed(ran)).toHaveLength(1)
     expect(ran.rebasing).toBe(false)
     expect(ran.on).toBe("tutti/b")
@@ -367,10 +379,14 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
       checks: { fast: [passed("fast"), failing] },
       dashboard: true,
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { "shared.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+        a: [
+          works(world, places, "a" as TicketId, { "shared.txt": "a\n" }, [
+            step(untilClaimed(world, "b" as TicketId)),
+          ]),
+        ],
         b: [
           [
-            ...works(world, places, "b", { "shared.txt": "b\n" }, [
+            ...works(world, places, "b" as TicketId, { "shared.txt": "b\n" }, [
               step(untilOnMain(world, { "shared.txt": "a\n" })),
             ]),
             ...limitedTurn(
@@ -393,7 +409,7 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
     expectLog(ran, [
       "  b's worker is at the usage limit: it is handed its failed check to fix once the limit lifts, the wait not counting toward the 20m",
       /^USAGE_LIMIT: nothing else runs; waiting for the five-hour limit to reset at /,
-      `INTERRUPTED: quit from the dashboard; b's session is saved for the next run; ${neverHanded({ id: "b", mode: "fixing" })}`,
+      `INTERRUPTED: quit from the dashboard; b's session is saved for the next run; ${neverHanded({ id: "b" as TicketId, mode: "fixing" })}`,
     ])
     expect(composed(ran)).toHaveLength(1)
     expect(ran.log).not.toContain("USAGE_LIMIT lifted")
@@ -474,10 +490,14 @@ describe("a hand-back kept for the reset", () => {
       // a's check passes; the one on b's resolution fails; the one on b's fix passes.
       checks: { fast: [passed("fast"), failing] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { "shared.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+        a: [
+          works(world, places, "a" as TicketId, { "shared.txt": "a\n" }, [
+            step(untilClaimed(world, "b" as TicketId)),
+          ]),
+        ],
         b: [
           [
-            ...works(world, places, "b", { "shared.txt": "b\n" }, [
+            ...works(world, places, "b" as TicketId, { "shared.txt": "b\n" }, [
               step(untilOnMain(world, { "shared.txt": "a\n" })),
             ]),
             ...limitedTurn(
@@ -528,7 +548,7 @@ describe("the usage-limit hold's keep", () => {
           wakeUp: Effect.void,
           show: () => Effect.void,
         })
-        expect(yield* hold.atReset.keep("b", "fixing", "fix it")).toBeNull()
+        expect(yield* hold.atReset.keep("b" as TicketId, "fixing", "fix it")).toBeNull()
         expect(yield* hold.handBacks).toEqual(new Set())
         const usage = yield* UsageLimits
         yield* usage.report(
@@ -538,14 +558,14 @@ describe("the usage-limit hold's keep", () => {
           yield* Effect.promise(() => Bun.sleep(2))
         }
         expect(yield* hold.held).toBe(true)
-        expect(yield* hold.atReset.keep("b", "resolving", "resolve it")).not.toBeNull()
-        expect(yield* hold.handBacks).toEqual(new Set(["b"]))
-        expect(yield* hold.unsent).toEqual(new Map([["b", "resolving"]]))
+        expect(yield* hold.atReset.keep("b" as TicketId, "resolving", "resolve it")).not.toBeNull()
+        expect(yield* hold.handBacks).toEqual(new Set(["b" as TicketId]))
+        expect(yield* hold.unsent).toEqual(new Map([["b" as TicketId, "resolving"]]))
         expect(yield* hold.handBacks).toEqual(new Set())
         // Taken back, it is neither sent at the reset nor taken back again.
         yield* advance("2 hours")
         yield* untilLogged(/^USAGE_LIMIT lifted$/)
-        expect(yield* hold.atReset.takeBack("b")).toBe(false)
+        expect(yield* hold.atReset.takeBack("b" as TicketId)).toBe(false)
       }).pipe(Effect.provide(Ledger.layer)),
     )
     expect(ran.exit._tag).toBe("Success")
@@ -553,13 +573,13 @@ describe("the usage-limit hold's keep", () => {
   })
 
   test("names each hand-back never sent, and a rebase that could not be aborted", () => {
-    expect(neverHanded({ id: "b", mode: "resolving" })).toBe(
+    expect(neverHanded({ id: "b" as TicketId, mode: "resolving" })).toBe(
       "b's worker, at the usage limit, was never handed its conflicts to resolve: its rebase is aborted, for the next run to merge b again",
     )
-    expect(neverHanded({ id: "b", mode: "fixing" })).toBe(
+    expect(neverHanded({ id: "b" as TicketId, mode: "fixing" })).toBe(
       "b's worker, at the usage limit, was never handed its failed check to fix: the next run merges b again",
     )
-    expect(neverHanded({ id: "b", mode: "resolving", stuck: "/w/b" })).toBe(
+    expect(neverHanded({ id: "b" as TicketId, mode: "resolving", stuck: "/w/b" })).toBe(
       "b's worker, at the usage limit, was never handed its conflicts to resolve, and its rebase could not be aborted, so /w/b is left mid-rebase",
     )
   })

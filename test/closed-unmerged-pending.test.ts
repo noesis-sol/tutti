@@ -11,7 +11,7 @@ import { Finished, Move, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { unmergedBlockers } from "../src/run/settle.ts"
 import { requeueWaiting } from "../src/run/work.ts"
-import { Beads, type Dependency, type Issue } from "../src/services/Beads.ts"
+import { Beads, type Dependency, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { run as runs, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import type { Seed } from "../src/testing/Beads.ts"
@@ -57,11 +57,11 @@ const deleteBranch = (repo: string, path: string, branch: string) =>
     yield* git.deleteBranch(repo, branch, { force: true })
   })
 
-const warned = (ran: Ran<unknown>, id: string): number =>
+const warned = (ran: Ran<unknown>, id: TicketId): number =>
   ran.log.filter((each) => each === closedUnmergedLine(id, "main")).length
 
 /** A link of `type` to ticket `id`, as bd show gives it, with its status. */
-const link = (id: string, type: string, status = "closed"): Dependency => ({
+const link = (id: TicketId, type: string, status = "closed"): Dependency => ({
   id,
   type,
   issue: { id, status, labels: [] } as unknown as Issue,
@@ -72,7 +72,7 @@ describe("unmergedBlockers", () => {
     ...emptyState,
     tickets: new Map([
       [
-        "done",
+        "done" as TicketId,
         {
           ticket: "done",
           phase: TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
@@ -83,13 +83,17 @@ describe("unmergedBlockers", () => {
 
   test("counts a closed blocker git finds off the base, as the holds do", () => {
     const issue = {
-      dependencies: [link("t-1", "blocks"), link("t-2", "blocks"), link("t-3", "discovered-from")],
+      dependencies: [
+        link("t-1" as TicketId, "blocks"),
+        link("t-2" as TicketId, "blocks"),
+        link("t-3" as TicketId, "discovered-from"),
+      ],
     } as unknown as Issue
     const branches = new Map([
       ["t-1", "tutti/t-1 is not on main"],
       ["t-3", "tutti/t-3 is not on main"],
     ])
-    expect(unmergedBlockers(issue, state, branches)).toEqual(["t-1"])
+    expect(unmergedBlockers(issue, state, branches)).toEqual(["t-1" as TicketId])
     expect(unmergedBlockers(issue, state)).toEqual([])
   })
 })
@@ -144,15 +148,15 @@ describe("WAITS_FOR_MERGE on a blocker closed by hand, its branch not merged", (
       scripts: (world) => ({
         "t-2": [
           turn([
-            runs(orDie(world.beads.update("t-2", { claim: true }))),
-            runs(orDie(world.beads.addDependency("t-2", "t-1"))),
+            runs(orDie(world.beads.update("t-2" as TicketId, { claim: true }))),
+            runs(orDie(world.beads.addDependency("t-2" as TicketId, "t-1" as TicketId))),
           ]),
         ],
       }),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-2": "Waiting" })
-    expect(warned(ran, "t-1")).toBe(1)
+    expect(warned(ran, "t-1" as TicketId)).toBe(1)
     expectLog(ran, [
       /t-2 dispatching/,
       "  WAITS_FOR_MERGE: t-2 waits for t-1 to merge; its worker stopped with nothing done, so it is back in the queue until it does; worktree and branch removed",
@@ -170,9 +174,12 @@ describe("WAITS_FOR_MERGE on a blocker closed by hand, its branch not merged", (
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const path = yield* offMain(where.repo)
-        yield* ledger.transition("t-2", Move.Ready(), { title: "t-2" })
-        yield* ledger.transition("t-2", Move.Dispatched())
-        yield* ledger.transition("t-2", Move.WaitsForMerge({ blockers: ["t-1"] }))
+        yield* ledger.transition("t-2" as TicketId, Move.Ready(), { title: "t-2" })
+        yield* ledger.transition("t-2" as TicketId, Move.Dispatched())
+        yield* ledger.transition(
+          "t-2" as TicketId,
+          Move.WaitsForMerge({ blockers: ["t-1" as TicketId] }),
+        )
         const branches = yield* closedBranches(where)
         const held = yield* requeueWaiting(branches)
         yield* deleteBranch(where.repo, path, "tutti/t-1")
@@ -181,7 +188,7 @@ describe("WAITS_FOR_MERGE on a blocker closed by hand, its branch not merged", (
       }).pipe(Effect.provide(Ledger.layer)),
     )
     expect(resultOf(ran)).toEqual({ held: [], freed: ["t-2"] })
-    expect(warned(ran, "t-1")).toBe(1)
+    expect(warned(ran, "t-1" as TicketId)).toBe(1)
   })
 })
 
@@ -213,7 +220,7 @@ describe("DEFERRED_FREE with a blocker closed by hand, its branch not merged", (
         return { held, freed: yield* listed() }
       }),
     )
-    expect(resultOf(ran)).toEqual({ held: [], freed: ["k-1"] })
+    expect(resultOf(ran)).toEqual({ held: [], freed: ["k-1" as TicketId] })
     expect(ran.log.some((each) => each.includes("CLOSED_UNMERGED"))).toBe(false)
   })
 
@@ -226,7 +233,7 @@ describe("DEFERRED_FREE with a blocker closed by hand, its branch not merged", (
     })
     expectExitCode(held, 0)
     expect(held.log.some((each) => each.includes("DEFERRED_FREE"))).toBe(false)
-    expect(warned(held, "t-1")).toBe(1)
+    expect(warned(held, "t-1" as TicketId)).toBe(1)
 
     const freed = await runOf({
       tickets: [],

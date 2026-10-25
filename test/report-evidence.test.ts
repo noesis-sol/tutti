@@ -19,7 +19,7 @@ import {
   followUpWidth,
 } from "../src/run/reportEvidence.ts"
 import { finish, run } from "../src/run/run.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, CheckNotRun, CheckTimedOut } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
@@ -47,7 +47,7 @@ const failed = (failingLines: ReadonlyArray<string>, lastLines: ReadonlyArray<st
   })
 
 const failure = (over: Partial<FailedCheck> = {}): FailedCheck => ({
-  id: "t-1",
+  id: "t-1" as TicketId,
   branch: "tutti/t-1",
   base: "main",
   onto: "abcdef0123456789",
@@ -122,7 +122,7 @@ describe("what the check said of a ticket set aside after its check failed", () 
   })
 })
 
-const entry = (ticket: string, phase: TicketPhase): Entry => ({
+const entry = (ticket: TicketId, phase: TicketPhase): Entry => ({
   ticket,
   title: ticket,
   phase,
@@ -138,10 +138,13 @@ const entry = (ticket: string, phase: TicketPhase): Entry => ({
 describe("the failed checks' section", () => {
   test("names the tickets still set aside for their check, in the order they were set aside", () => {
     const entries = new Map([
-      ["a", entry("a", TicketPhase.Review({ why: "CHECKS_FAILED" }))],
-      ["b", entry("b", TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc" }) }))],
-      ["c", entry("c", TicketPhase.Review({ why: "CHECKS_FAILED" }))],
-      ["d", entry("d", TicketPhase.Review({ why: "DIRTY_WORKTREE" }))],
+      ["a", entry("a" as TicketId, TicketPhase.Review({ why: "CHECKS_FAILED" }))],
+      [
+        "b",
+        entry("b" as TicketId, TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc" }) })),
+      ],
+      ["c", entry("c" as TicketId, TicketPhase.Review({ why: "CHECKS_FAILED" }))],
+      ["d", entry("d" as TicketId, TicketPhase.Review({ why: "DIRTY_WORKTREE" }))],
     ])
     const failures = new Map([
       ["c", "c: failed"],
@@ -159,14 +162,16 @@ describe("the failed checks' section", () => {
   })
 
   test("is left out when no ticket is set aside for its check", () => {
-    const entries = new Map([["a", entry("a", TicketPhase.Review({ why: "OFF_BRANCH" }))]])
+    const entries = new Map([
+      ["a", entry("a" as TicketId, TicketPhase.Review({ why: "OFF_BRANCH" }))],
+    ])
     expect(failedChecksSection(entries, new Map([["a", "a: failed"]]))).toEqual([])
     expect(failedChecksSection(new Map(), new Map())).toEqual([])
   })
 })
 
 const issue = (over: Partial<Issue>): Issue => ({
-  id: "x-1",
+  id: "x-1" as TicketId,
   title: "A follow-up",
   description: "",
   design: "",
@@ -190,26 +195,26 @@ describe("the follow-ups filed outside a scoped run", () => {
 
   test("are those created since the second the run started, outside its scope, and no question", () => {
     const open = [
-      issue({ id: "x-1" }),
-      issue({ id: "x-2", createdAt: "2026-10-20T08:59:59Z" }),
-      issue({ id: "e-1.2", createdAt: "2026-10-20T09:10:00Z" }),
-      issue({ id: "x-3", labels: ["human"], createdAt: "2026-10-20T09:10:00Z" }),
-      issue({ id: "x-4", createdAt: "yesterday" }),
-      issue({ id: "x-5", createdAt: "2026-10-20T09:30:00+00:00" }),
+      issue({ id: "x-1" as TicketId }),
+      issue({ id: "x-2" as TicketId, createdAt: "2026-10-20T08:59:59Z" }),
+      issue({ id: "e-1.2" as TicketId, createdAt: "2026-10-20T09:10:00Z" }),
+      issue({ id: "x-3" as TicketId, labels: ["human"], createdAt: "2026-10-20T09:10:00Z" }),
+      issue({ id: "x-4" as TicketId, createdAt: "yesterday" }),
+      issue({ id: "x-5" as TicketId, createdAt: "2026-10-20T09:30:00+00:00" }),
     ]
     const filed = filedOutside(open, new Set(["e-1", "e-1.2"]), started)
-    expect(filed.map((each) => each.id)).toEqual(["x-1", "x-5"])
+    expect(filed.map((each) => each.id)).toEqual(["x-1" as TicketId, "x-5" as TicketId])
   })
 
   test("each is said with its title, type, status, links and description", () => {
     const said = followUpSaid(
       issue({
-        id: "x-5",
+        id: "x-5" as TicketId,
         title: "Cache the parse",
         type: "bug",
         status: "open",
         description: "The parse runs\ntwice.",
-        dependencies: [{ id: "e-1.1", type: "discovered-from" }],
+        dependencies: [{ id: "e-1.1" as TicketId, type: "discovered-from" }],
       }),
     )
     expect(said).toBe(
@@ -317,7 +322,7 @@ const sectionOf = (input: string, title: string): string | undefined => {
 const works = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   options: { readonly between?: SessionScript; readonly files?: Record<string, string> } = {},
 ): SessionScript =>
   turn(
@@ -359,9 +364,12 @@ describe("the reviewer of a whole run", () => {
       // a, on top of main, passes; b, rebased onto it, fails.
       checks: { fast: [passed("fast"), failed(["src/b/b.test.ts:3: expected 1"])] },
       scripts: (world, root) => ({
-        a: [works(world, root, "a", { files: { "a.txt": "a\n" } })],
+        a: [works(world, root, "a" as TicketId, { files: { "a.txt": "a\n" } })],
         b: [
-          works(world, root, "b", { between: [sleep("1 minute")], files: { "src/b/b.ts": "b\n" } }),
+          works(world, root, "b" as TicketId, {
+            between: [sleep("1 minute")],
+            files: { "src/b/b.ts": "b\n" },
+          }),
         ],
       }),
       during: Effect.gen(function* () {
@@ -387,13 +395,13 @@ describe("the reviewer of a whole run", () => {
 
   test("of a scoped run is told the follow-ups filed in it outside its scope", async () => {
     const ran = await reviewed({
-      config: { ticket: "e-1" },
+      config: { ticket: "e-1" as TicketId },
       backlog: backlog().epic("e-1", ["e-1.1"]).ticket("x-1", { title: "Filed before the run" })
         .seeds,
       tickets: ["e-1.1"],
       scripts: (world, root) => ({
         "e-1.1": [
-          works(world, root, "e-1.1", {
+          works(world, root, "e-1.1" as TicketId, {
             between: [
               ...bash(
                 'bd create --title "Cache the parse" --deps discovered-from:e-1.1',
@@ -402,7 +410,7 @@ describe("the reviewer of a whole run", () => {
                     world.beads.create({
                       title: "Cache the parse",
                       description: "Found while parsing.",
-                      discoveredFrom: ["e-1.1"],
+                      discoveredFrom: ["e-1.1" as TicketId],
                     }),
                   ),
                 ),
@@ -431,7 +439,7 @@ describe("the reviewer of a whole run", () => {
     const ran = await reviewed({
       backlog: backlog().ticket("t-1").seeds,
       tickets: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [works(world, root, "t-1")] }),
+      scripts: (world, root) => ({ "t-1": [works(world, root, "t-1" as TicketId)] }),
     })
     const input = inputOf(ran)
     expect(input).toContain("## Tickets still ready")

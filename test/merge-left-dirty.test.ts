@@ -3,6 +3,7 @@
 // the ticket aside, DIRTY_WORKTREE (merge.ts's setAsideLeftDirty): the check passed on files that
 // won't merge, and git would refuse to remove the worktree after the merge. Each scenario is a
 // whole run under TestClock.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { join } from "node:path"
 import { Effect, Fiber } from "effect"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
@@ -33,7 +35,7 @@ const check = "scripts/check-fast.sh"
 const defaults = appConfig().settings
 
 /** Claims its ticket, commits `files` and closes it, as a worker does. */
-const works = (world: World, root: string, id: string, files: Files): SessionScript =>
+const works = (world: World, root: string, id: TicketId, files: Files): SessionScript =>
   turn(
     [
       ...bash(
@@ -144,7 +146,7 @@ describe("a check that passes but leaves tracked files changed", () => {
   test("sets the ticket aside, DIRTY_WORKTREE, its worktree kept and main unchanged", async () => {
     const ran = await runs({
       fast: (world) => [passesWriting(world, { "a.txt": "formatted\n" })],
-      turns: (world, root) => [works(world, root, "a", { "a.txt": "a\n" })],
+      turns: (world, root) => [works(world, root, "a" as TicketId, { "a.txt": "a\n" })],
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { a: "Review" })
@@ -165,7 +167,7 @@ describe("a check that passes but leaves tracked files changed", () => {
   test("an untracked file it leaves is no uncommitted change: the ticket merges", async () => {
     const ran = await runs({
       fast: (world) => [passesWriting(world, { "coverage.txt": "92%\n" })],
-      turns: (world, root) => [works(world, root, "a", { "a.txt": "a\n" })],
+      turns: (world, root) => [works(world, root, "a" as TicketId, { "a.txt": "a\n" })],
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { a: "Done" })
@@ -179,7 +181,7 @@ describe("a check that passes but leaves tracked files changed", () => {
       fast: (world) => [fails(), passesWriting(world, { "a.txt": "formatted\n" })],
       turns: (world, root) => [
         [
-          ...works(world, root, "a", { "a.txt": "a\n" }),
+          ...works(world, root, "a" as TicketId, { "a.txt": "a\n" }),
           ...fixes(world, root, "a", { "fix.txt": "fixed\n" }),
         ],
       ],

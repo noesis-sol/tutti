@@ -16,7 +16,7 @@ import type { RunView } from "../src/run/runView.ts"
 import { make, type QueueShown } from "../src/run/schedule.ts"
 import { unclosedIn } from "../src/run/scope.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
-import type { Beads, Issue } from "../src/services/Beads.ts"
+import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { writeRunFile } from "../src/services/Worktrees.ts"
 import {
@@ -37,7 +37,7 @@ import { advance, type Env, expectExitCode, type Scripts, scenario, type World }
 // it draws from as they change, the stops say `· stopping`, the probe's session shows as a card.
 
 /** An open task named `id`, with `fields` over it. */
-const issue = (id: string, fields: Partial<Issue> = {}): Issue => ({
+const issue = (id: TicketId, fields: Partial<Issue> = {}): Issue => ({
   id,
   title: id,
   description: "",
@@ -62,35 +62,43 @@ const filter = { excludeTypes: ["chore"] }
 describe("the tickets the queue draws from", () => {
   test("are those not closed the run takes: no question, no epic, no excluded type", () => {
     const open = [
-      issue("t-1"),
-      issue("t-2", { status: "in_progress" }),
-      issue("e", { type: "epic" }),
-      issue("c", { type: "chore" }),
-      issue("q", { labels: ["human"] }),
+      issue("t-1" as TicketId),
+      issue("t-2" as TicketId, { status: "in_progress" }),
+      issue("e" as TicketId, { type: "epic" }),
+      issue("c" as TicketId, { type: "chore" }),
+      issue("q" as TicketId, { labels: ["human"] }),
     ]
     expect(unclosedIn(open, null, filter)).toBe(2)
   })
 
   test("in a scoped run, are its ticket and its descendants", () => {
     const open = [
-      issue("e", { type: "epic" }),
-      issue("e.1", { parent: "e" }),
-      issue("e.2", { parent: "e" }),
-      issue("e.2.1", { parent: "e.2" }),
-      issue("other"),
-      issue("o.1", { parent: "other" }),
+      issue("e" as TicketId, { type: "epic" }),
+      issue("e.1" as TicketId, { parent: "e" as TicketId }),
+      issue("e.2" as TicketId, { parent: "e" as TicketId }),
+      issue("e.2.1" as TicketId, { parent: "e.2" as TicketId }),
+      issue("other" as TicketId),
+      issue("o.1" as TicketId, { parent: "other" as TicketId }),
     ]
-    expect(unclosedIn(open, "e", filter)).toBe(3)
-    expect(unclosedIn(open, "e.2", filter)).toBe(2)
-    expect(unclosedIn(open, "o.1", filter)).toBe(1)
+    expect(unclosedIn(open, "e" as TicketId, filter)).toBe(3)
+    expect(unclosedIn(open, "e.2" as TicketId, filter)).toBe(2)
+    expect(unclosedIn(open, "o.1" as TicketId, filter)).toBe(1)
   })
 
   test("in a scope, count no more than without one, whatever parents tickets name", () => {
-    const ids = ["a", "b", "c", "d", "e"]
+    const ids = ["a", "b", "c", "d", "e"].map((id) => id as TicketId)
     const tickets = fc.uniqueArray(
       fc.record({
         id: fc.constantFrom(...ids),
-        parent: fc.option(fc.oneof(fc.constantFrom(...ids), fc.string()), { nil: undefined }),
+        parent: fc.option(
+          fc.oneof(
+            fc.constantFrom(...ids),
+            fc.string().map((id) => id as TicketId),
+          ),
+          {
+            nil: undefined,
+          },
+        ),
         type: fc.constantFrom("task", "epic", "chore"),
       }),
       { selector: (each) => each.id },
@@ -201,7 +209,7 @@ const untilLogged = (pattern: RegExp) =>
 const finishesAfter = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   gate?: Deferred.Deferred<void>,
 ): SessionScript =>
   claimsAndCloses(id, {
@@ -294,9 +302,9 @@ describe("the run's dashboard", () => {
       ],
       concurrent: 2,
       scripts: (world, root) => ({
-        "t-1": [finishesAfter(world, root, "t-1", gates["t-1"])],
-        s: [finishesAfter(world, root, "s", gates.s)],
-        "t-2": [finishesAfter(world, root, "t-2", gates["t-2"])],
+        "t-1": [finishesAfter(world, root, "t-1" as TicketId, gates["t-1"])],
+        s: [finishesAfter(world, root, "s" as TicketId, gates.s)],
+        "t-2": [finishesAfter(world, root, "t-2" as TicketId, gates["t-2"])],
       }),
       during: (view) =>
         Effect.gen(function* () {
@@ -336,8 +344,8 @@ describe("the run's dashboard", () => {
       seeds: [{ id: "t-1" }, { id: "t-2" }],
       concurrent: 1,
       scripts: (world, root, repo) => ({
-        "t-1": [givesUp, finishesAfter(world, root, "t-1")],
-        "t-2": [givesUp, finishesAfter(world, root, "t-2")],
+        "t-1": [givesUp, finishesAfter(world, root, "t-1" as TicketId)],
+        "t-2": [givesUp, finishesAfter(world, root, "t-2" as TicketId)],
         [probeWorker]: [
           turn([
             step(Deferred.await(probeGate)),

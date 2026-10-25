@@ -27,7 +27,7 @@ import { settingsGlobMatch } from "../src/run/glob.ts"
 import { overlapHold } from "../src/run/holds.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -128,7 +128,7 @@ describe("a shared file", () => {
   test("links nothing in tutti plan", () => {
     const open = ["a", "b"].map(
       (id, i): Issue => ({
-        id,
+        id: id as TicketId,
         title: id,
         description: "Keep test/FEATURES.md current.",
         design: "",

@@ -27,6 +27,7 @@ import { tools } from "../src/agent/tools.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { allowAll, layer as attentionLayer, denyAll } from "../src/testing/Attention.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
@@ -89,7 +90,7 @@ const openRequests = (n: number) =>
 
 /** Asks `ticket`'s canUseTool for `tool` with `input`, and waits until the request is open. */
 const ask = (
-  ticket: string,
+  ticket: TicketId,
   tool: string,
   input: Record<string, unknown>,
   options: Parameters<CanUseTool>[2] = sdkOptions(),
@@ -129,7 +130,7 @@ describe("Attention: each answer's SDK result", () => {
   test("Allow sends the input back as updatedInput, user_temporary", async () => {
     const result = await run(
       Effect.gen(function* () {
-        const { result, request } = yield* ask("tut-1", "Bash", bash)
+        const { result, request } = yield* ask("tut-1" as TicketId, "Bash", bash)
         yield* answer(request, { _tag: "Allow" })
         return yield* settled(result)
       }),
@@ -145,7 +146,7 @@ describe("Attention: each answer's SDK result", () => {
     const options = sdkOptions({ suggestions: [bashRule(bash.command), addDirectories, setMode] })
     const result = await run(
       Effect.gen(function* () {
-        const { result, request } = yield* ask("tut-1", "Bash", bash, options)
+        const { result, request } = yield* ask("tut-1" as TicketId, "Bash", bash, options)
         expect(allowsForRun(request)).toBe(true)
         yield* answer(request, { _tag: "AllowForRun" })
         return yield* settled(result)
@@ -169,7 +170,7 @@ describe("Attention: each answer's SDK result", () => {
   test("Deny sends tutti's message, user_reject, never interrupt", async () => {
     const result = await run(
       Effect.gen(function* () {
-        const { result, request } = yield* ask("tut-1", "Bash", bash)
+        const { result, request } = yield* ask("tut-1" as TicketId, "Bash", bash)
         yield* answer(request, { _tag: "Deny" })
         return yield* settled(result)
       }),
@@ -184,7 +185,7 @@ describe("Attention: each answer's SDK result", () => {
   test("Deny with a reason adds the reason to the message", async () => {
     const result = await run(
       Effect.gen(function* () {
-        const { result, request } = yield* ask("tut-1", "Bash", bash)
+        const { result, request } = yield* ask("tut-1" as TicketId, "Bash", bash)
         yield* answer(request, { _tag: "Deny", reason: "use the build script" })
         return yield* settled(result)
       }),
@@ -216,7 +217,9 @@ describe("Attention: each answer's SDK result", () => {
     ]
     const result = await run(
       Effect.gen(function* () {
-        const { result, request } = yield* ask("tut-1", "AskUserQuestion", { questions })
+        const { result, request } = yield* ask("tut-1" as TicketId, "AskUserQuestion", {
+          questions,
+        })
         expect(request.kind._tag).toBe("Question")
         yield* answer(request, { _tag: "Choose", answers: ["Blue", "an extra large"] })
         return yield* settled(result)
@@ -235,14 +238,14 @@ describe("Attention: each answer's SDK result", () => {
     const outcome = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const plain = yield* ask("tut-1", "Write", { file_path: "notes.txt" })
+        const plain = yield* ask("tut-1" as TicketId, "Write", { file_path: "notes.txt" })
         const suppressed = yield* ask(
-          "tut-1",
+          "tut-1" as TicketId,
           "Bash",
           bash,
           sdkOptions({ suggestions: [bashRule(bash.command)], suppressAlwaysAllowRule: true }),
         )
-        const question = yield* ask("tut-1", "AskUserQuestion", {
+        const question = yield* ask("tut-1" as TicketId, "AskUserQuestion", {
           questions: [{ question: "Q?", options: [{ label: "A" }, { label: "B" }] }],
         })
         const exits = [
@@ -264,13 +267,13 @@ describe("Attention: several requests per worker", () => {
     const seen = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const a = yield* ask("tut-1", "Bash", { command: "one" })
-        const b = yield* ask("tut-1", "Bash", { command: "two" })
-        const other = yield* ask("tut-2", "Bash", { command: "elsewhere" })
-        const c = yield* ask("tut-1", "Bash", { command: "three" })
-        const first = yield* attention.openFor("tut-1").pipe(Stream.runHead)
+        const a = yield* ask("tut-1" as TicketId, "Bash", { command: "one" })
+        const b = yield* ask("tut-1" as TicketId, "Bash", { command: "two" })
+        const other = yield* ask("tut-2" as TicketId, "Bash", { command: "elsewhere" })
+        const c = yield* ask("tut-1" as TicketId, "Bash", { command: "three" })
+        const first = yield* attention.openFor("tut-1" as TicketId).pipe(Stream.runHead)
         yield* answer(b.request, { _tag: "Allow" })
-        const after = yield* attention.openFor("tut-1").pipe(Stream.runHead)
+        const after = yield* attention.openFor("tut-1" as TicketId).pipe(Stream.runHead)
         const all = yield* attention.current
         yield* answer(a.request, { _tag: "Deny" })
         yield* answer(c.request, { _tag: "Deny" })
@@ -289,7 +292,7 @@ describe("Attention: several requests per worker", () => {
     )
     expect(seen.first).toEqual(["one", "two", "three"])
     expect(seen.after).toEqual(["one", "three"])
-    expect(seen.all).toEqual(["tut-1", "tut-2", "tut-1"])
+    expect(seen.all).toEqual(["tut-1" as TicketId, "tut-2" as TicketId, "tut-1" as TicketId])
     expect(seen.behaviours).toEqual(["deny", "allow", "deny", "deny"])
     expect(seen.left).toBe(0)
   })
@@ -298,7 +301,7 @@ describe("Attention: several requests per worker", () => {
     const request = await run(
       Effect.gen(function* () {
         const { request } = yield* ask(
-          "tut-1",
+          "tut-1" as TicketId,
           "Bash",
           { command: "rm -rf $T/*\u001b]52;c;aGk=\u0007" },
           sdkOptions({
@@ -342,19 +345,19 @@ describe("Attention: rules allowed for this run", () => {
       Effect.gen(function* () {
         const attention = yield* Attention
         const first = yield* ask(
-          "tut-1",
+          "tut-1" as TicketId,
           "Bash",
           bash,
           sdkOptions({ suggestions: [bashRule(bash.command), setMode] }),
         )
         yield* answer(first.request, { _tag: "AllowForRun" })
         yield* settled(first.result)
-        const canUseTool = yield* attention.request("tut-2", openFibers())
+        const canUseTool = yield* attention.request("tut-2" as TicketId, openFibers())
         const later = yield* settled(
           canUseTool("Bash", bash, sdkOptions({ suggestions: [bashRule(bash.command)] })),
         )
         const sibling = yield* ask(
-          "tut-2",
+          "tut-2" as TicketId,
           "Bash",
           { command: "touch another-file.txt" },
           sdkOptions({ suggestions: [bashRule("touch another-file.txt")] }),
@@ -366,7 +369,7 @@ describe("Attention: rules allowed for this run", () => {
           open,
           siblingId: sibling.request.id,
           log: yield* texts,
-          tally: yield* attention.tally("tut-2"),
+          tally: yield* attention.tally("tut-2" as TicketId),
         }
       }),
     )
@@ -397,7 +400,7 @@ describe("Attention: rules allowed for this run", () => {
         const attention = yield* Attention
         const project: PermissionUpdate = { ...bashRule("make"), destination: "projectSettings" }
         const first = yield* ask(
-          "tut-1",
+          "tut-1" as TicketId,
           "Bash",
           { command: "make" },
           sdkOptions({ suggestions: [project] }),
@@ -405,7 +408,7 @@ describe("Attention: rules allowed for this run", () => {
         yield* answer(first.request, { _tag: "AllowForRun" })
         const result = yield* settled(first.result)
         const held = yield* ask(
-          "tut-3",
+          "tut-3" as TicketId,
           "Bash",
           { command: "make" },
           sdkOptions({ suggestions: [bashRule("make")], defaultToNo: true }),
@@ -428,7 +431,7 @@ describe("Attention: stale answers and withdrawn requests", () => {
   test("an answer to a request no longer open fails NotOpen and changes nothing", async () => {
     const seen = await run(
       Effect.gen(function* () {
-        const { result, request } = yield* ask("tut-1", "Bash", bash)
+        const { result, request } = yield* ask("tut-1" as TicketId, "Bash", bash)
         yield* answer(request, { _tag: "Allow" })
         const again = yield* Effect.exit(answer(request, { _tag: "Deny" }))
         const unknown = yield* Effect.exit(
@@ -446,7 +449,7 @@ describe("Attention: stale answers and withdrawn requests", () => {
       Effect.gen(function* () {
         const attention = yield* Attention
         const options = sdkOptions()
-        const { result, request } = yield* ask("tut-1", "Bash", bash, options)
+        const { result, request } = yield* ask("tut-1" as TicketId, "Bash", bash, options)
         options.controller.abort()
         const outcome = yield* settled(result)
         const late = yield* Effect.exit(answer(request, { _tag: "Allow" }))
@@ -456,7 +459,7 @@ describe("Attention: stale answers and withdrawn requests", () => {
           late,
           events: ofKind(yield* records, "attention_answered"),
           log: yield* texts,
-          tally: yield* attention.tally("tut-1"),
+          tally: yield* attention.tally("tut-1" as TicketId),
         }
       }),
     )
@@ -478,7 +481,7 @@ describe("Attention: stale answers and withdrawn requests", () => {
     const seen = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const canUseTool = yield* attention.request("tut-1", openFibers())
+        const canUseTool = yield* attention.request("tut-1" as TicketId, openFibers())
         const outcome = yield* settled(canUseTool("Bash", bash, options))
         return { outcome, open: (yield* attention.current).length }
       }),
@@ -500,7 +503,7 @@ describe("Attention: elicitations", () => {
   const elicit = (request: ElicitationRequest, controller = new AbortController()) =>
     Effect.gen(function* () {
       const attention = yield* Attention
-      const onElicitation = yield* attention.elicitation("tut-1", openFibers())
+      const onElicitation = yield* attention.elicitation("tut-1" as TicketId, openFibers())
       const result = onElicitation(request, { signal: controller.signal, requestId: "x" })
       const open = yield* openRequests(1)
       return { result, request: open[0] as AttentionRequest, controller }
@@ -578,21 +581,21 @@ describe("Attention: the record", () => {
       Effect.gen(function* () {
         const attention = yield* Attention
         const permission = yield* ask(
-          "tut-1",
+          "tut-1" as TicketId,
           "Bash",
           { command: "rm -rf build" },
           sdkOptions({ decisionReason: "held", defaultToNo: true }),
         )
         yield* TestClock.adjust("90 seconds")
         yield* answer(permission.request, { _tag: "Deny", reason: "not yet" }, "answer_command")
-        const question = yield* ask("tut-1", "AskUserQuestion", {
+        const question = yield* ask("tut-1" as TicketId, "AskUserQuestion", {
           questions: [{ question: "Which?", options: [{ label: "A" }, { label: "B" }] }],
         })
         yield* answer(question.request, { _tag: "Choose", answers: ["B"] })
         return {
           log: yield* texts,
           events: yield* records,
-          tally: yield* attention.tally("tut-1"),
+          tally: yield* attention.tally("tut-1" as TicketId),
         }
       }),
     )
@@ -641,7 +644,7 @@ describe("Attention's test layer", () => {
     const results = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const canUseTool = yield* attention.request("tut-1", openFibers())
+        const canUseTool = yield* attention.request("tut-1" as TicketId, openFibers())
         const allowed = yield* settled(canUseTool("Bash", bash, sdkOptions()))
         const chosen = yield* settled(
           canUseTool(
@@ -669,8 +672,8 @@ describe("Attention's test layer", () => {
     const results = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const canUseTool = yield* attention.request("tut-1", openFibers())
-        const onElicitation = yield* attention.elicitation("tut-1", openFibers())
+        const canUseTool = yield* attention.request("tut-1" as TicketId, openFibers())
+        const onElicitation = yield* attention.elicitation("tut-1" as TicketId, openFibers())
         return {
           denied: yield* settled(canUseTool("Bash", bash, sdkOptions())),
           declined: yield* Effect.promise(() =>
@@ -753,7 +756,9 @@ describe("Attention: reading what the worker wrote", () => {
   test("AskUserQuestion without readable questions is asked as a permission", async () => {
     const kind = await run(
       Effect.gen(function* () {
-        const { request } = yield* ask("tut-1", "AskUserQuestion", { questions: "which?" })
+        const { request } = yield* ask("tut-1" as TicketId, "AskUserQuestion", {
+          questions: "which?",
+        })
         yield* answer(request, { _tag: "Deny" })
         return request.kind._tag
       }),

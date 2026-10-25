@@ -1,6 +1,7 @@
 // One text model for the dashboard and what is printed outside it: a look is a style of the theme's,
 // built once per theme, and a line of segments is drawn by the renderer or painted as ANSI. The
 // summary prints the dashboard's own tickets table, every row of it.
+
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
 import fc from "fast-check"
@@ -8,6 +9,7 @@ import { initSummary } from "../src/print/initSummary.ts"
 import { type Summary, summary } from "../src/print/summary.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { boxed, paint, type Segments, seg, wrap } from "../src/ui/line.tsx"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { makeTheme, orchestra, roles } from "../src/ui/theme.ts"
@@ -109,7 +111,7 @@ describe("paint", () => {
   })
 })
 
-const row = (ticket: string, phase: TicketPhase, note: string): Row => ({
+const row = (ticket: TicketId, phase: TicketPhase, note: string): Row => ({
   ticket,
   label: ticket,
   title: note,
@@ -130,9 +132,16 @@ const ended = (rows: ReadonlyArray<Row>): Summary => ({
 
 describe("the summary's tickets", () => {
   const rows = [
-    row("tut-1", TicketPhase.Done({ outcome: Finished.NoChange() }), "abc1234 merged into main"),
-    { ...row("tut-2", TicketPhase.Deferred({ why: "" }), "gave up"), verdict: "retry after tut-1" },
-    row("tut-3", TicketPhase.Working(), "Three"),
+    row(
+      "tut-1" as TicketId,
+      TicketPhase.Done({ outcome: Finished.NoChange() }),
+      "abc1234 merged into main",
+    ),
+    {
+      ...row("tut-2" as TicketId, TicketPhase.Deferred({ why: "" }), "gave up"),
+      verdict: "retry after tut-1",
+    },
+    row("tut-3" as TicketId, TicketPhase.Working(), "Three"),
   ]
 
   test("are the dashboard's table, every row and no blank one", () => {
@@ -149,7 +158,7 @@ describe("the summary's tickets", () => {
 
   test("every row is shown, however many", () => {
     const many = Array.from({ length: 30 }, (_, i) =>
-      row(`tut-${i}`, TicketPhase.Done({ outcome: Finished.NoChange() }), "merged"),
+      row(`tut-${i}` as TicketId, TicketPhase.Done({ outcome: Finished.NoChange() }), "merged"),
     )
     const out = summary(ended(many), theme, 80).replace(sgr, "")
     expect(out).not.toContain("earlier tickets")

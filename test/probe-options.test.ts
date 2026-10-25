@@ -7,6 +7,7 @@ import { withSessionProcess } from "../src/agent/sessionProcess.ts"
 import { unusedTools } from "../src/agent/unusedTools.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { efforts, permissionModes } from "../src/project/settings.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { testEnv } from "./env.ts"
 
@@ -105,7 +106,7 @@ describe("probeOptions", () => {
             ...worker
           } = workerOptions({
             config,
-            ticket: "tutti-abc.1",
+            ticket: "tutti-abc.1" as TicketId,
             worktree: "/work/project-tutti/tutti-abc.1",
             prompt: { text: "You work on TICKET_ID.", file: null },
             servers: { servers: [], note: null },

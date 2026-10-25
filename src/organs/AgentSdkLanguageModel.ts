@@ -53,6 +53,7 @@ import { chromeArgs } from "../agent/mcp.ts"
 import { turnLimit } from "../agent/reading.ts"
 import { organCloseLimit } from "../agent/sessionProcess.ts"
 import { endedOnLimit } from "../agent/UsageLimits.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { type Cost, OrganCost } from "./OrganCost.ts"
 
 const module = "AgentSdkLanguageModel"
@@ -62,7 +63,7 @@ export interface OrganCallConfig {
   /** The organ's name, for its cost line: `triage`. */
   readonly organ: string
   /** The ticket the call is about, for its `organ` record; none when it is about no ticket. */
-  readonly ticket?: string
+  readonly ticket?: TicketId
   /** The model; Claude Code's default when absent. */
   readonly model?: string
   readonly effort?: EffortLevel
@@ -217,7 +218,7 @@ export const subtypeOf = (error: AiError.AiError): string | undefined => {
 }
 
 /** The result's cost, for OrganCost. */
-export const costOf = (organ: string, result: SDKResultMessage, ticket?: string): Cost => ({
+export const costOf = (organ: string, result: SDKResultMessage, ticket?: TicketId): Cost => ({
   organ,
   ...(ticket === undefined ? {} : { ticket }),
   costUsd: result.total_cost_usd ?? 0,

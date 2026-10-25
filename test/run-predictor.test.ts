@@ -7,6 +7,7 @@ import { Organs } from "../src/organs/Organs.ts"
 import { Log } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type SessionScript, run as step, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -58,7 +59,7 @@ const until = (logged: Logged, pattern: RegExp): Effect.Effect<void> =>
 const works = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   after?: Effect.Effect<void>,
 ): SessionScript =>
   turn([
@@ -164,9 +165,9 @@ describe("the run's predictor", () => {
       concurrent: 2,
       files: ["src/a.ts"],
       scripts: (world, root, logged) => ({
-        "t-1": [works(world, root, "t-1", until(logged, /skipping t-3/))],
-        "t-2": [works(world, root, "t-2", until(logged, /t-3 footprint predicted/))],
-        "t-3": [works(world, root, "t-3")],
+        "t-1": [works(world, root, "t-1" as TicketId, until(logged, /skipping t-3/))],
+        "t-2": [works(world, root, "t-2" as TicketId, until(logged, /t-3 footprint predicted/))],
+        "t-3": [works(world, root, "t-3" as TicketId)],
       }),
     })
     expectExitCode(ran, 0)
@@ -187,7 +188,7 @@ describe("the run's predictor", () => {
       seeds: backlog().ticket("t-1", { title: "Make the greeting friendlier" }).seeds,
       concurrent: 1,
       files: ["src/a.ts"],
-      scripts: (world, root) => ({ "t-1": [works(world, root, "t-1")] }),
+      scripts: (world, root) => ({ "t-1": [works(world, root, "t-1" as TicketId)] }),
     })
     expectExitCode(ran, 0)
     const { calls, kept } = value(ran)

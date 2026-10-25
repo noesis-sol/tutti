@@ -1,7 +1,9 @@
 // A URL elicitation in the worker view's panel (§ 4.5): its URL above the buttons, whole, so that
 // you see where Open URL goes before you press it, as the dashboard's card shows it.
+
 import { describe, expect, test } from "bun:test"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { PanelBox, panelParts } from "../src/ui/worker/Panel.tsx"
 import { renderFrame } from "./render.ts"
@@ -10,7 +12,7 @@ const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noC
 
 const elicitation = (url: string | undefined): AttentionRequest => ({
   id: "r1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Elicitation",
     server: "linear",

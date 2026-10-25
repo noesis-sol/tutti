@@ -12,7 +12,7 @@ import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { limitDeferralNote } from "../src/run/settle.ts"
 import { resetText } from "../src/run/told.ts"
-import { Beads, type Status } from "../src/services/Beads.ts"
+import { Beads, type Status, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -88,7 +88,7 @@ const runs = (
  * Claims its ticket, defers it, and ends its turn on the limit resetting at `at` (seconds): a
  * worker that took the limit for a reason it can't finish.
  */
-const defersAtLimit = (world: World, id: string, at: number): SessionScript => {
+const defersAtLimit = (world: World, id: TicketId, at: number): SessionScript => {
   // Its wait, system/init and running, then its turn's end on the limit.
   const limited = hitsUsageLimit(at)
   return [
@@ -103,7 +103,7 @@ const defersAtLimit = (world: World, id: string, at: number): SessionScript => {
 }
 
 /** Told to carry on, it notes the ticket's status in `seen`, commits and closes it, not claiming. */
-const carriesOn = (world: World, root: string, id: string, seen: Array<Status>): SessionScript =>
+const carriesOn = (world: World, root: string, id: TicketId, seen: Array<Status>): SessionScript =>
   turn([
     runStep(
       Effect.orDie(world.beads.show(id)).pipe(
@@ -135,13 +135,18 @@ describe("a ticket deferred as its worker stops at the usage limit", () => {
     const ran = await runs(
       ["t-1"],
       (world, root) => ({
-        "t-1": [[...defersAtLimit(world, "t-1", hour), ...carriesOn(world, root, "t-1", seen)]],
+        "t-1": [
+          [
+            ...defersAtLimit(world, "t-1" as TicketId, hour),
+            ...carriesOn(world, root, "t-1" as TicketId, seen),
+          ],
+        ],
       }),
       Effect.gen(function* () {
         yield* untilLogged(/^USAGE_LIMIT: nothing else runs/)
         yield* untilLogged(/t-1: its worker deferred it as it stopped at the usage limit/)
         const beads = yield* Beads
-        held = yield* beads.show("t-1")
+        held = yield* beads.show("t-1" as TicketId)
         yield* advance("2 hours")
       }),
     )
@@ -160,14 +165,18 @@ describe("a ticket deferred as its worker stops at the usage limit", () => {
         (each) =>
           each._tag === "Message" &&
           each.ticket === "t-1" &&
-          String(each.message.message.content) === resetText("t-1"),
+          String(each.message.message.content) === resetText("t-1" as TicketId),
       ),
     ).toHaveLength(1)
   })
 
   test("a deferral its worker makes in a turn that ends cleanly still sets the ticket aside", async () => {
     const ran = await runs(["t-1"], (world) => ({
-      "t-1": [defers("t-1", { defer: Effect.asVoid(Effect.orDie(world.beads.defer("t-1"))) })],
+      "t-1": [
+        defers("t-1" as TicketId, {
+          defer: Effect.asVoid(Effect.orDie(world.beads.defer("t-1" as TicketId))),
+        }),
+      ],
     }))
     expectPhases(ran, { "t-1": "Deferred" })
     expect(ran.log.some((text) => text.includes("back in progress"))).toBe(false)

@@ -1,5 +1,6 @@
 // The environment probe lifts only its own stop (§ 4.9): BLOCKED and TICKET_LIMIT, raised while it
 // waited on a worker waiting on you, stay after it passes, and end the run with their exit code.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -9,6 +10,7 @@ import { probeFile, probeWorker } from "../src/run/environment.ts"
 import { addStop, blockedStop, noStops, stopFor, swapStop } from "../src/run/holds.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { writeRunFile } from "../src/services/Worktrees.ts"
 import { bash, canUseTool, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
@@ -53,8 +55,8 @@ const passes = (minutes: number) =>
 
 describe("the stops the probe keeps", () => {
   const environment = stopFor("ENVIRONMENT", "the machine; check the machine, then restart")
-  const blocked = blockedStop("t-3", "Bash(rm -rf build)")
-  const limit = stopFor("TICKET_LIMIT", "t-3 still working after 6m", { ticket: "t-3" })
+  const blocked = blockedStop("t-3" as TicketId, "Bash(rm -rf build)")
+  const limit = stopFor("TICKET_LIMIT", "t-3 still working after 6m", { ticket: "t-3" as TicketId })
   const raised = addStop(addStop(addStop(noStops, environment), blocked), limit)
 
   test("a pass lifts only the probe's stop, the next one first", () => {

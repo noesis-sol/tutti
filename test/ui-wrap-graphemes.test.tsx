@@ -1,10 +1,12 @@
 // The one wrap and cut every view takes (src/ui/line.tsx): they split text between graphemes, so a
 // flag or an emoji joined by ZWJ is never broken, and a tab is spaces before anything is measured,
 // so that a tab in a panel's text keeps the frame's right border where it is.
+
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { renderMarkdown } from "../src/print/markdown.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { boxed, cut, fit, type Segments, seg, tabWidth, widthOf, wrap } from "../src/ui/line.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { PanelBox, panelParts } from "../src/ui/worker/Panel.tsx"
@@ -166,7 +168,7 @@ describe("a frame around text with tabs", () => {
 
   const request: AttentionRequest = {
     id: "r1",
-    ticket: "t-1",
+    ticket: "t-1" as TicketId,
     kind: {
       _tag: "Question",
       questions: [

@@ -3,6 +3,7 @@
 // context gauge's amounts and colours; compactions once there has been one; the warning near a
 // limit; a narrow pane dropping its parts in order; the two-space gaps; and the breakdown a click
 // on the line opens.
+
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
 import { Effect } from "effect"
@@ -13,6 +14,7 @@ import { TicketPhase } from "../src/run/phase.ts"
 import type { Resources } from "../src/run/resources.ts"
 import { emptyStatus, project, type Usage } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { workerMemory } from "../src/ui/LoadLine.tsx"
 import { type Segments, widthOf } from "../src/ui/line.tsx"
@@ -47,7 +49,7 @@ const memory = 0.8 * 1024 ** 3
 
 /** A worker 6m53s on its ticket, 1.2M tokens in, its context 126k of 200k. */
 const resources = (over: Partial<Resources> = {}): Resources => ({
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   took: began,
   spent: {
     costUsd: 1.84,
@@ -258,9 +260,9 @@ describe("in the worker view", () => {
     ledger: {
       tickets: new Map([
         [
-          "t-1",
+          "t-1" as TicketId,
           {
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             title: "Title of t-1",
             phase: TicketPhase.Working(),
             since: began,
@@ -306,7 +308,7 @@ describe("in the worker view", () => {
       <Root
         value={{
           view: external(view),
-          screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+          screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
           commands: Effect.runSync(makeCommands),
           appearance: external<Appearance>("dark"),
           themeOf,

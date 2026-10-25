@@ -1,5 +1,6 @@
 // The run's status publishes only what changes (showOn), and RunView's projection sanitises each
 // ledger entry's texts once: each publish projects the whole view.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Ref, Result, type Scope, Stream, SubscriptionRef } from "effect"
 import { TestClock } from "effect/testing"
@@ -9,6 +10,7 @@ import type { Log } from "../src/run/log.ts"
 import { Move } from "../src/run/phase.ts"
 import { emptyStatus, project, type Status, showOn } from "../src/run/runView.ts"
 import { same } from "../src/run/same.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { sanitizeLine } from "../src/ui/sanitize.ts"
@@ -139,17 +141,20 @@ describe("a ledger entry's texts", () => {
         const ledger = yield* Ledger
         // A ticket has a row from its dispatch.
         for (const cause of [Move.Ready(), Move.Dispatched()]) {
-          const next = yield* ledger.transition("a", cause, { title: "First" })
-          if (Result.isFailure(next)) throw new Error(next.failure.phaseBug("a"))
+          const next = yield* ledger.transition("a" as TicketId, cause, { title: "First" })
+          if (Result.isFailure(next)) throw new Error(next.failure.phaseBug("a" as TicketId))
         }
         const state = yield* ledger.current
         const status = { ...emptyStatus, branch: "main", concurrency: 1 }
         const inputs = { workers: new Map(), requests: [], status }
         const first = project({ ...inputs, ledger: state })
         const again = project({ ...inputs, ledger: state }, first)
-        const entry = state.tickets.get("a")
+        const entry = state.tickets.get("a" as TicketId)
         if (entry === undefined) throw new Error("no entry for a")
-        const renamed = new Map(state.tickets).set("a", { ...entry, title: renamedTitle })
+        const renamed = new Map(state.tickets).set("a" as TicketId, {
+          ...entry,
+          title: renamedTitle,
+        })
         const second = project({ ...inputs, ledger: { ...state, tickets: renamed } }, first)
         return { first, again, second }
       }),

@@ -24,7 +24,7 @@ import type { ContextUsage } from "../agent/contextUsage.ts"
 import type { LatestAction } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { formatDuration } from "../project/configFile.ts"
-import type { Issue } from "../services/Beads.ts"
+import type { Issue, TicketId } from "../services/Beads.ts"
 import { shortHash } from "../services/Git.ts"
 import type { Motion, Shown, Tone } from "../ui/marks.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
@@ -89,7 +89,7 @@ export interface Status {
   /** Where finished tickets land. */
   readonly branch: string
   /** The ticket a scoped run (`--ticket`) works on; null for none. */
-  readonly scope: string | null
+  readonly scope: TicketId | null
   /** When the run began, in epoch milliseconds, for its run time. */
   readonly began: number
   /** How many workers may run at once. */
@@ -118,7 +118,7 @@ export interface Status {
    * open or a conflict hand-back waiting (§ 4.3): the run stays open for them, showing the end-of-run
    * box; null when it isn't so.
    */
-  readonly endOfRun: ReadonlyArray<string> | null
+  readonly endOfRun: ReadonlyArray<TicketId> | null
   readonly solo: Solo | null
   /** How many other tutti and orchestra runs share the machine, as the last look found them. */
   readonly shared: number
@@ -239,7 +239,7 @@ export interface Totals {
  */
 export interface Row extends Shown {
   /** Its ticket's ID, the key the run's commands take; draw `label` instead. */
-  readonly ticket: string
+  readonly ticket: TicketId
   /** Its ticket's ID as drawn: a worker files tickets, so it is sanitised (§ 7.10). */
   readonly label: string
   readonly title: string
@@ -320,7 +320,7 @@ export const ticketText = (issue: Issue): TicketText => {
 /** A card, for a ticket with work under way. */
 export interface Card {
   /** Its ticket's ID, the key the run's commands take; draw `label` instead. */
-  readonly ticket: string
+  readonly ticket: TicketId
   /** Its ticket's ID as drawn: a worker files tickets, so it is sanitised (§ 7.10). */
   readonly label: string
   readonly title: string
@@ -376,7 +376,7 @@ export interface Waiting {
 
 export interface WindDownView {
   /** Each ticket running when the wind-down began, in that order. */
-  readonly marks: ReadonlyArray<{ readonly ticket: string; readonly mark: WindDownMark }>
+  readonly marks: ReadonlyArray<{ readonly ticket: TicketId; readonly mark: WindDownMark }>
   /** How many of them still run. */
   readonly running: number
 }
@@ -713,7 +713,8 @@ const probeCard = (
 ): Card => {
   const phase = TicketPhase.Working()
   return {
-    ticket: probeLabel,
+    // No ticket has the probe's label, which its card is known by.
+    ticket: probeLabel as TicketId,
     label: probeLabel,
     title: probeLabel,
     worker: 0,
@@ -777,7 +778,7 @@ const latestOf = (action: LatestAction | undefined): LatestAction | null =>
   action === undefined ? null : { text: sanitizeLine(action.text), denied: action.denied }
 
 /** A card's memory from `load`, for its worker on `ticket`: none when the reading has none. */
-const memoryOf = (load: Reading | null, ticket: string): { readonly memory?: number } => {
+const memoryOf = (load: Reading | null, ticket: TicketId): { readonly memory?: number } => {
   const memory = load?.workers.get(ticket)
   return memory === undefined ? {} : { memory }
 }

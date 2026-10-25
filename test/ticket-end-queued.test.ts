@@ -1,6 +1,7 @@
 // A ticket the run took up and left back in the queue as it ends (Waiting for a merge, a probe or
 // a setup, Queued or HeldBack after it was requeued) gets its `ticket_end` at the run's end, with
 // outcome `queued` (§ 10): no RunEnded moves it, but its workers' cost and time are its own.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,6 +16,7 @@ import { Move } from "../src/run/phase.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { run } from "../src/run/run.ts"
 import { Spending } from "../src/run/spending.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -81,23 +83,32 @@ describe("the ledger's ticket_end for the tickets left in the queue", () => {
     const records = await inLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        const move = (ticket: string, cause: Move) =>
+        const move = (ticket: TicketId, cause: Move) =>
           ledger.transition(ticket, cause, { title: ticket })
-        for (const id of ["w", "s", "q", "h", "d"]) {
+        for (const id of [
+          "w" as TicketId,
+          "s" as TicketId,
+          "q" as TicketId,
+          "h" as TicketId,
+          "d" as TicketId,
+        ]) {
           yield* move(id, Move.Ready())
           yield* move(id, Move.Dispatched())
         }
-        yield* move("n", Move.Ready())
-        yield* (yield* Spending).message("w", { session: "s-w", message: resultMessage(0.25, 40) })
+        yield* move("n" as TicketId, Move.Ready())
+        yield* (yield* Spending).message("w" as TicketId, {
+          session: "s-w",
+          message: resultMessage(0.25, 40),
+        })
         yield* TestClock.adjust(30_000)
-        yield* move("w", Move.WaitsForMerge({ blockers: ["t-9"] }))
-        yield* move("s", Move.SetupFailed())
-        yield* move("q", Move.WaitsForMerge({ blockers: ["t-9"] }))
-        yield* move("q", Move.Requeued())
-        yield* move("h", Move.WaitsForMerge({ blockers: ["t-9"] }))
-        yield* move("h", Move.Requeued())
-        yield* move("h", Move.Held({ why: "overlap" }))
-        yield* move("d", Move.NoChange())
+        yield* move("w" as TicketId, Move.WaitsForMerge({ blockers: ["t-9" as TicketId] }))
+        yield* move("s" as TicketId, Move.SetupFailed())
+        yield* move("q" as TicketId, Move.WaitsForMerge({ blockers: ["t-9" as TicketId] }))
+        yield* move("q" as TicketId, Move.Requeued())
+        yield* move("h" as TicketId, Move.WaitsForMerge({ blockers: ["t-9" as TicketId] }))
+        yield* move("h" as TicketId, Move.Requeued())
+        yield* move("h" as TicketId, Move.Held({ why: "overlap" }))
+        yield* move("d" as TicketId, Move.NoChange())
         yield* TestClock.adjust(10_000)
         yield* ledger.endQueued
       }),
@@ -126,7 +137,7 @@ describe("the ledger's ticket_end for the tickets left in the queue", () => {
     const records = await inLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition("a", Move.Ready(), { title: "a" })
+        yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "a" })
         yield* ledger.endQueued
       }),
     )
@@ -143,7 +154,7 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
 const givesUp: SessionScript = turn([], result("Every command was refused."))
 
 /** Claims its ticket, links `blocker` as blocking it and stops with it open and nothing done. */
-const needs = (world: World, id: string, blocker: string): SessionScript =>
+const needs = (world: World, id: TicketId, blocker: TicketId): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -174,7 +185,7 @@ describe("a run that ends with tickets waiting", () => {
         worktrees: { root },
         scripts: (world) => ({
           "t-1": [givesUp],
-          "t-2": [needs(world, "t-2", "t-1")],
+          "t-2": [needs(world, "t-2" as TicketId, "t-1" as TicketId)],
           "t-3": [givesUp],
         }),
       },
@@ -232,11 +243,14 @@ describe("quitting at once with a ticket waiting", () => {
         scripts: (world) => ({
           "t-1": [
             turn([
-              ...bash(`bd update t-1 --claim`, orDie(world.beads.update("t-1", { claim: true }))),
+              ...bash(
+                `bd update t-1 --claim`,
+                orDie(world.beads.update("t-1" as TicketId, { claim: true })),
+              ),
               sleep("1 hour"),
             ]),
           ],
-          "t-2": [needs(world, "t-2", "t-1")],
+          "t-2": [needs(world, "t-2" as TicketId, "t-1" as TicketId)],
         }),
       },
       Effect.gen(function* () {

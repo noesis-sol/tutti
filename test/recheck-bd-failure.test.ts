@@ -6,7 +6,7 @@ import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -31,7 +31,7 @@ const elsewhere = new CheckFailed({
 })
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -56,10 +56,10 @@ const moveMain = Effect.gen(function* () {
   yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
 })
 
-const phaseOf = (state: State, id: string) => state.tickets.get(id)?.phase._tag
+const phaseOf = (state: State, id: TicketId) => state.tickets.get(id)?.phase._tag
 
 /** Waits until ticket `id` is in `phase`. */
-const until = (id: string, phase: PhaseTag) =>
+const until = (id: TicketId, phase: PhaseTag) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(
@@ -77,13 +77,13 @@ const setAside = (body: (queue: MergeQueue) => Effect.Effect<void, unknown, Env 
     { backlog: backlog().ticket("a").seeds, checks: { fast: [elsewhere] } },
     Effect.gen(function* () {
       const queue = yield* makeQueue(options)
-      const a = yield* finished("a", { "a/a.go": "a\n" })
+      const a = yield* finished("a" as TicketId, { "a/a.go": "a\n" })
       yield* moveMain
       yield* queue.offer(a)
-      yield* until("a", "Review")
+      yield* until("a" as TicketId, "Review")
       yield* body(queue)
       yield* queue.settled
-      return phaseOf(yield* (yield* Ledger).current, "a")
+      return phaseOf(yield* (yield* Ledger).current, "a" as TicketId)
     }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<
       PhaseTag | undefined,
       unknown,
@@ -135,8 +135,10 @@ describe("bd failing as the run looks for the tickets due a recheck", () => {
         // The look for a hand merge asks first, then the recheck.
         yield* (yield* Backlog).fail("show", { id: "a", times: 2 })
         expect(yield* queue.recheck).toEqual([])
-        expect((yield* queue.rechecks.waiting).map((each) => each.ticket.id)).toEqual(["a"])
-        expect(yield* queue.rechecks.rechecked("a")).toBe(false)
+        expect((yield* queue.rechecks.waiting).map((each) => each.ticket.id)).toEqual([
+          "a" as TicketId,
+        ])
+        expect(yield* queue.rechecks.rechecked("a" as TicketId)).toBe(false)
         expect(yield* queue.recheck).toEqual(["a"])
       }),
     )

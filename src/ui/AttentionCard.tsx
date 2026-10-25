@@ -13,6 +13,7 @@ import { type InputRenderable, RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useSyncExternalStore } from "react"
 import type { Card, ShownRequest } from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
 import {
   type Answering,
   type AnswerKey,
@@ -231,7 +232,7 @@ export const ReasonBox = ({
   label,
 }: {
   readonly requestId: string
-  readonly ticket: string
+  readonly ticket: TicketId
   /** The ticket's ID as drawn (§ 7.10). */
   readonly label: string
 }) => {

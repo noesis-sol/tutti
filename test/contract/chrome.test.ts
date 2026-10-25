@@ -3,6 +3,7 @@
 // MCP config, so workers get --no-chrome unless workers.mcp_servers chooses claude-in-chrome. Each
 // test starts one session with a worker's options in a fresh temp folder and reads its first
 // system/init. The test with Chrome on runs only where Claude Code has Chrome set up.
+
 import { expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
@@ -13,6 +14,7 @@ import { paneVariable } from "../../src/agent/env.ts"
 import { type ChosenServers, checkInit, chromeServer, noServersNote } from "../../src/agent/mcp.ts"
 import { type WorkerCallbacks, workerOptions } from "../../src/agent/options.ts"
 import { defaultSettings } from "../../src/cli/AppConfig.ts"
+import type { TicketId } from "../../src/services/Beads.ts"
 import { appConfig } from "../../src/testing/AppConfig.ts"
 import { live } from "../gates.ts"
 
@@ -71,7 +73,7 @@ const firstInit = async (servers: ChosenServers): Promise<SDKSystemMessage> => {
     options: {
       ...workerOptions({
         config,
-        ticket: "contract-chrome",
+        ticket: "contract-chrome" as TicketId,
         worktree: dir,
         prompt: null,
         servers,

@@ -1,5 +1,6 @@
 // The end-of-run box keeps to its room (D19, § 7.2): the tickets table gives up rows for it first,
 // then the box names fewer workers, the rest as `+N more`, and what `q` does is always drawn.
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import fc from "fast-check"
@@ -9,6 +10,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { conflictWaits, emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { endOfRunLines, endOfRunText } from "../src/ui/EndOfRunBox.tsx"
 import { widthOf } from "../src/ui/line.tsx"
@@ -24,7 +26,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const now = began + 67_000
 
 const entryOf = (
-  ticket: string,
+  ticket: TicketId,
   worker: number | null,
   phase: TicketPhase,
   row: number,
@@ -41,7 +43,7 @@ const entryOf = (
   tallies: emptyTallies,
 })
 
-const permission = (ticket: string, summary: string): AttentionRequest => ({
+const permission = (ticket: TicketId, summary: string): AttentionRequest => ({
   id: `r-${ticket}`,
   ticket,
   kind: { _tag: "Permission", tool: "Bash", input: { command: summary }, suggestions: [], summary },
@@ -50,15 +52,23 @@ const permission = (ticket: string, summary: string): AttentionRequest => ({
   createdAt: began,
 })
 
-const waiters = ["tut-9a1", "tut-7k2", "tut-3fx", "tut-5qe", "tut-8mw"]
-const done = ["tut-dwv", "tut-a01", "tut-a02", "tut-a03", "tut-a04", "tut-a05"]
+const waiters = [
+  "tut-9a1" as TicketId,
+  "tut-7k2" as TicketId,
+  "tut-3fx" as TicketId,
+  "tut-5qe" as TicketId,
+  "tut-8mw" as TicketId,
+]
+const done = ["tut-dwv", "tut-a01", "tut-a02", "tut-a03", "tut-a04", "tut-a05"].map(
+  (id) => id as TicketId,
+)
 
 /** Six tickets merged and five workers waiting on permissions with long summaries. */
 const viewOf = (): RunView =>
   project({
     ledger: {
       tickets: new Map([
-        ...done.map((ticket, row): [string, Entry] => [
+        ...done.map((ticket, row): [TicketId, Entry] => [
           ticket,
           entryOf(
             ticket,
@@ -67,7 +77,7 @@ const viewOf = (): RunView =>
             row,
           ),
         ]),
-        ...waiters.map((ticket, i): [string, Entry] => [
+        ...waiters.map((ticket, i): [TicketId, Entry] => [
           ticket,
           entryOf(ticket, i + 1, TicketPhase.Working(), done.length + i),
         ]),

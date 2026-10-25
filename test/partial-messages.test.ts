@@ -1,10 +1,12 @@
 // Partial messages (`stream_event`, § 4.4) are cheap to pass on: each is read as Partial without
 // being looked into, and folded into its state only while an api_retry holds, the one thing it
 // changes.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Layer, SubscriptionRef } from "effect"
 import { makeWorkers } from "../src/agent/AgentHost.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
@@ -30,7 +32,7 @@ const emitted = (before: ReadonlyArray<SDKMessage>, partials: ReadonlyArray<SDKM
     Effect.scoped(
       Effect.gen(function* () {
         const workers = yield* makeWorkers()
-        const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
+        const entry = yield* workers.open("t-1" as TicketId, { session: "s-1", resumed: false })
         for (const message of before) yield* workers.emit(entry, "s-1", message)
         const worker = yield* SubscriptionRef.get(entry.worker)
         const seen: Array<string> = []

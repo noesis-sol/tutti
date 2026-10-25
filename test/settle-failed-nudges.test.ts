@@ -1,6 +1,7 @@
 // A worker whose turn failed on an API error settles Failed (§ 4.2), and the per-ticket fiber reads
 // its ticket as for an idle one (§ 4.3): unsteered, its ticket still in progress, it is told to
 // continue twice, and then, after the idle grace, the run holds with PAUSED.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -17,13 +18,14 @@ import { idleGrace } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { nudgeText } from "../src/run/told.ts"
 import { type Worked, work } from "../src/run/work.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { apiErrorResult, run, turn } from "../src/testing/AgentHost.ts"
 import { Repository } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import { advance, backlog, type Env, expectLog, type Ran, scenario, type World } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 
 /** A server error the API retries didn't get past: the turn's result, with is_error. */

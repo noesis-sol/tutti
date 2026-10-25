@@ -14,6 +14,7 @@ import { basename, dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer } from "effect"
 import fc from "fast-check"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git, GitWriter, type Sha } from "../src/services/Git.ts"
 import {
   BadTicketId,
@@ -45,7 +46,13 @@ const withWorktrees = <A, E>(use: (worktrees: Worktrees["Service"]) => Effect.Ef
 
 describe("ticket IDs", () => {
   test("plain Beads IDs are taken", () => {
-    for (const id of ["tutti-nrg", "tutti-nrg.2.12", "bd-a1b2", "x_y-Z9", "tut-9a1"]) {
+    for (const id of [
+      "tutti-nrg" as TicketId,
+      "tutti-nrg.2.12" as TicketId,
+      "bd-a1b2" as TicketId,
+      "x_y-Z9" as TicketId,
+      "tut-9a1" as TicketId,
+    ]) {
       expect(ticketIdProblem(id)).toBeUndefined()
     }
     fc.assert(
@@ -91,13 +98,16 @@ describe("ticket IDs", () => {
   test("an ID taken names a folder directly under the worktree root, and no other", () => {
     const root = "/work/project-tutti"
     fc.assert(
-      fc.property(fc.string({ unit: "binary", maxLength: 24 }), (id) => {
-        if (ticketIdProblem(id) !== undefined) return
-        const path = join(root, id)
-        expect(dirname(path)).toBe(root)
-        expect(basename(path)).toBe(id)
-        expect(branchOf(id)).toBe(`tutti/${id}`)
-      }),
+      fc.property(
+        fc.string({ unit: "binary", maxLength: 24 }).map((id) => id as TicketId),
+        (id) => {
+          if (ticketIdProblem(id) !== undefined) return
+          const path = join(root, id)
+          expect(dirname(path)).toBe(root)
+          expect(basename(path)).toBe(id)
+          expect(branchOf(id)).toBe(`tutti/${id}`)
+        },
+      ),
       { numRuns: 2000 },
     )
   })
@@ -111,16 +121,15 @@ describe("ticket IDs", () => {
     )
   })
 
-  test("prepare and remove refuse a bad ID with BadTicketId", async () => {
+  test("prepare refuses a bad ID with BadTicketId, making nothing of it", async () => {
     const calls: Array<WorktreeCall> = []
     const root = tempDir("tutti-ids-")
     const run = <A, E>(effect: Effect.Effect<A, E, Worktrees>) =>
       Effect.runPromise(Effect.exit(Effect.provide(effect, tempLayer({ root }, calls))))
-    for (const id of ["x-../../y", "x-a/b"]) {
+    for (const id of ["x-../../y" as TicketId, "x-a/b" as TicketId]) {
       const prepared = failure(await run(withWorktrees((w) => w.prepare(id))))
       expect(prepared).toBeInstanceOf(BadTicketId)
       expect(prepared).toMatchObject({ id, why: "IDs with path characters can't be run" })
-      expect(failure(await run(withWorktrees((w) => w.remove(id))))).toBeInstanceOf(BadTicketId)
     }
     expect(calls).toEqual([])
     expect(readdirSync(root)).toEqual([])
@@ -205,9 +214,9 @@ describe("the temp-folder layer", () => {
       Effect.provide(
         withWorktrees((w) =>
           Effect.gen(function* () {
-            const first = yield* w.prepare("t-1")
-            const second = yield* w.prepare("t-1")
-            yield* w.remove("t-1")
+            const first = yield* w.prepare("t-1" as TicketId)
+            const second = yield* w.prepare("t-1" as TicketId)
+            yield* w.remove("t-1" as TicketId)
             return [first, second]
           }),
         ),
@@ -215,7 +224,7 @@ describe("the temp-folder layer", () => {
       ),
     )
     expect(first).toEqual({
-      id: "t-1",
+      id: "t-1" as TicketId,
       branch: "tutti/t-1",
       path: join(root, "t-1"),
       reused: false,
@@ -225,9 +234,9 @@ describe("the temp-folder layer", () => {
     expect(second).toMatchObject({ reused: true, fresh: false, earlier })
     expect(existsSync(join(root, "t-1"))).toBe(false)
     expect(calls).toEqual([
-      { op: "prepare", id: "t-1" },
-      { op: "prepare", id: "t-1" },
-      { op: "remove", id: "t-1", force: false },
+      { op: "prepare", id: "t-1" as TicketId },
+      { op: "prepare", id: "t-1" as TicketId },
+      { op: "remove", id: "t-1" as TicketId, force: false },
     ])
   })
 })
@@ -255,9 +264,9 @@ const setUp = () => {
 slow.describe("worktrees in a real repository", () => {
   test("a new worktree is made at <root>/<id> on tutti/<id>, from the base", async () => {
     const { repo, root, run } = setUp()
-    const worktree = await run(withWorktrees((w) => w.prepare("demo-1")))
+    const worktree = await run(withWorktrees((w) => w.prepare("demo-1" as TicketId)))
     expect(worktree).toEqual({
-      id: "demo-1",
+      id: "demo-1" as TicketId,
       branch: "tutti/demo-1",
       path: join(root, "demo-1"),
       reused: false,
@@ -270,11 +279,11 @@ slow.describe("worktrees in a real repository", () => {
 
   test("a worktree an earlier attempt left is reused, with its commits and changes reported", async () => {
     const { repo, run } = setUp()
-    const first = await run(withWorktrees((w) => w.prepare("demo-1")))
+    const first = await run(withWorktrees((w) => w.prepare("demo-1" as TicketId)))
     repo.commit("demo-1: Half the work", { "half.txt": "half\n" }, first.path)
     repo.write({ "README.md": "# changed\n", "new.txt": "new\n" }, first.path)
 
-    const again = await run(withWorktrees((w) => w.prepare("demo-1")))
+    const again = await run(withWorktrees((w) => w.prepare("demo-1" as TicketId)))
     expect(again.path).toBe(first.path)
     expect(again.reused).toBe(true)
     expect(leftWork(again.earlier)).toBe(true)
@@ -287,11 +296,11 @@ slow.describe("worktrees in a real repository", () => {
 
   test("a branch left without its worktree is checked out again, with its commits reported", async () => {
     const { repo, root, run } = setUp()
-    const first = await run(withWorktrees((w) => w.prepare("demo-1")))
+    const first = await run(withWorktrees((w) => w.prepare("demo-1" as TicketId)))
     repo.commit("demo-1: Some work", { "work.txt": "work\n" }, first.path)
     repo.git(["worktree", "remove", "--force", first.path])
 
-    const again = await run(withWorktrees((w) => w.prepare("demo-1")))
+    const again = await run(withWorktrees((w) => w.prepare("demo-1" as TicketId)))
     expect(again).toMatchObject({ path: join(root, "demo-1"), reused: true, fresh: true })
     expect(again.earlier.commits.map((commit) => commit.subject)).toEqual(["demo-1: Some work"])
     expect(again.earlier.status).toEqual([])
@@ -303,7 +312,7 @@ slow.describe("worktrees in a real repository", () => {
     const worktree = await run(
       withWorktrees((w) =>
         Effect.gen(function* () {
-          const worktree = yield* w.prepare("demo-1")
+          const worktree = yield* w.prepare("demo-1" as TicketId)
           yield* w.writeRunFile(worktree.path, "check.log", "checked\n")
           yield* w.writeRunFile(worktree.path, "setup.log", "set up\n")
           return worktree
@@ -323,7 +332,7 @@ slow.describe("worktrees in a real repository", () => {
     const exit = await runExit(
       withWorktrees((w) =>
         Effect.gen(function* () {
-          const worktree = yield* w.prepare("demo-1")
+          const worktree = yield* w.prepare("demo-1" as TicketId)
           mkdirSync(join(worktree.path, ".tutti"))
           symlinkSync(outside, join(worktree.path, runFolder))
           yield* w.writeRunFile(worktree.path, "check.log", "checked\n")
@@ -339,7 +348,7 @@ slow.describe("worktrees in a real repository", () => {
     const worktree = await run(
       withWorktrees((w) =>
         Effect.gen(function* () {
-          const worktree = yield* w.prepare("demo-1")
+          const worktree = yield* w.prepare("demo-1" as TicketId)
           yield* w.writeRunFile(worktree.path, "check.log", "checked\n")
           return worktree
         }),
@@ -347,29 +356,31 @@ slow.describe("worktrees in a real repository", () => {
     )
     repo.commit("demo-1: Work", { "work.txt": "work\n" }, worktree.path)
     repo.git(["merge", "--ff-only", "--quiet", "tutti/demo-1"])
-    await run(withWorktrees((w) => w.remove("demo-1")))
+    await run(withWorktrees((w) => w.remove("demo-1" as TicketId)))
     expect(existsSync(join(root, "demo-1"))).toBe(false)
     expect(repo.git(["branch", "--list", "tutti/demo-1"])).toBe("")
     // Nothing left to remove is no failure.
-    await run(withWorktrees((w) => w.remove("demo-1")))
+    await run(withWorktrees((w) => w.remove("demo-1" as TicketId)))
   })
 
   test("an unmerged branch is kept unless removal is forced", async () => {
     const { repo, run, runExit } = setUp()
-    const worktree = await run(withWorktrees((w) => w.prepare("demo-1")))
+    const worktree = await run(withWorktrees((w) => w.prepare("demo-1" as TicketId)))
     repo.commit("demo-1: Unmerged", { "work.txt": "work\n" }, worktree.path)
-    expect(failure(await runExit(withWorktrees((w) => w.remove("demo-1"))))).toMatchObject({
+    expect(
+      failure(await runExit(withWorktrees((w) => w.remove("demo-1" as TicketId)))),
+    ).toMatchObject({
       _tag: "GitFailed",
       op: "branch -d",
     })
     expect(repo.git(["branch", "--list", "tutti/demo-1"])).not.toBe("")
-    await run(withWorktrees((w) => w.remove("demo-1", { force: true })))
+    await run(withWorktrees((w) => w.remove("demo-1" as TicketId, { force: true })))
     expect(repo.git(["branch", "--list", "tutti/demo-1"])).toBe("")
   })
 
   test("a bad ID makes nothing", async () => {
     const { repo, root, runExit } = setUp()
-    const exit = await runExit(withWorktrees((w) => w.prepare("x-../../y")))
+    const exit = await runExit(withWorktrees((w) => w.prepare("x-../../y" as TicketId)))
     expect(failure(exit)).toBeInstanceOf(BadTicketId)
     expect(existsSync(root)).toBe(false)
     expect(repo.git(["branch", "--list", "tutti/*"])).toBe("")
@@ -381,13 +392,16 @@ slow.describe("worktrees in a real repository", () => {
     () => {
       const repo = makeRepo()
       fc.assert(
-        fc.property(fc.string({ unit: "grapheme", minLength: 1, maxLength: 12 }), (id) => {
-          if (ticketIdProblem(id) !== undefined) return
-          const result = Bun.spawnSync(["git", "check-ref-format", "--branch", branchOf(id)], {
-            cwd: repo.dir,
-          })
-          expect(result.exitCode).toBe(0)
-        }),
+        fc.property(
+          fc.string({ unit: "grapheme", minLength: 1, maxLength: 12 }).map((id) => id as TicketId),
+          (id) => {
+            if (ticketIdProblem(id) !== undefined) return
+            const result = Bun.spawnSync(["git", "check-ref-format", "--branch", branchOf(id)], {
+              cwd: repo.dir,
+            })
+            expect(result.exitCode).toBe(0)
+          },
+        ),
         { numRuns: 200 },
       )
     },

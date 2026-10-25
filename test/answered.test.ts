@@ -2,11 +2,13 @@
 // its push (Sent) until a message of its session, or an interrupt's receipt, says it no longer is,
 // and AgentHost.answered waits on that. A resume or a start between the send and the wait begins a
 // new session, with none of the sends before it outstanding: the wait ends at once.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Fiber, Layer, SubscriptionRef } from "effect"
 import { makeWorkers, type WorkerEntry, type Workers } from "../src/agent/AgentHost.ts"
 import { WorkerEvent } from "../src/agent/WorkerState.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
@@ -29,10 +31,10 @@ const waited = (then: (workers: Workers, entry: WorkerEntry) => Effect.Effect<vo
     Effect.scoped(
       Effect.gen(function* () {
         const workers = yield* makeWorkers()
-        const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
+        const entry = yield* workers.open("t-1" as TicketId, { session: "s-1", resumed: false })
         yield* workers.emit(entry, "s-1", sdk({ type: "system", subtype: "init" }))
         yield* workers.fold(entry, WorkerEvent.Sent({ session: "s-1", uuid }))
-        const fiber = yield* Effect.forkChild(workers.answered("t-1", uuid))
+        const fiber = yield* Effect.forkChild(workers.answered("t-1" as TicketId, uuid))
         yield* quiet
         const before = fiber.pollUnsafe() !== undefined
         yield* then(workers, entry)
@@ -103,14 +105,14 @@ describe("a send is answered", () => {
       workers.fold(entry, WorkerEvent.Ended({ session: "s-1", why: "it crashed" })),
     )
     expect(gone.after).toBe(true)
-    const ended = await waited((workers) => workers.forget("t-1"))
+    const ended = await waited((workers) => workers.forget("t-1" as TicketId))
     expect(ended.after).toBe(true)
   })
 
   test("not by a message of an earlier session", async () => {
     const done = await waited((workers, entry) =>
       Effect.gen(function* () {
-        yield* workers.open("t-1", { session: "s-2", resumed: true })
+        yield* workers.open("t-1" as TicketId, { session: "s-2", resumed: true })
         yield* workers.fold(entry, WorkerEvent.Sent({ session: "s-2", uuid: "u-2" }))
         yield* workers.emit(
           entry,
@@ -127,10 +129,10 @@ describe("a send is answered", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const workers = yield* makeWorkers()
-          const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
+          const entry = yield* workers.open("t-1" as TicketId, { session: "s-1", resumed: false })
           yield* workers.fold(entry, WorkerEvent.Sent({ session: "s-1", uuid }))
-          yield* workers.open("t-1", { session: "s-2", resumed: true })
-          const fiber = yield* Effect.forkChild(workers.answered("t-1", uuid))
+          yield* workers.open("t-1" as TicketId, { session: "s-2", resumed: true })
+          const fiber = yield* Effect.forkChild(workers.answered("t-1" as TicketId, uuid))
           yield* quiet
           return {
             answered: fiber.pollUnsafe() !== undefined,
@@ -150,7 +152,7 @@ describe("a send is answered", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const workers = yield* makeWorkers()
-          yield* workers.answered("nobody", uuid)
+          yield* workers.answered("nobody" as TicketId, uuid)
           return true
         }),
       ).pipe(

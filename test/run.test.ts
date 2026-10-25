@@ -22,7 +22,7 @@ import {
 } from "../src/run/holds.ts"
 import { type Line, line } from "../src/run/log.ts"
 import { errorStop, type Outcome, panicStop, run } from "../src/run/run.ts"
-import { Beads, BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { Git, GitFailed } from "../src/services/Git.ts"
 import { StoreWriteFailed } from "../src/services/Store.ts"
 import {
@@ -58,7 +58,7 @@ const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-
 const start: ReadonlyArray<Line> = [line`START tutti 0.1.0-test`]
 
 /** What a ticket's worker's commands do to the in-memory Beads and git. */
-const commands = (world: World, root: string, id: string) => {
+const commands = (world: World, root: string, id: TicketId) => {
   const orDie = <A, E>(effect: Effect.Effect<A, E>) => Effect.asVoid(Effect.orDie(effect))
   return {
     claim: orDie(world.beads.update(id, { claim: true })),
@@ -70,7 +70,7 @@ const commands = (world: World, root: string, id: string) => {
 }
 
 /** Claims, commits and closes its ticket, as a worker does. */
-const finishes = (world: World, root: string, id: string): SessionScript =>
+const finishes = (world: World, root: string, id: TicketId): SessionScript =>
   claimsAndCloses(id, commands(world, root, id))
 
 interface Plan {
@@ -138,7 +138,7 @@ describe("a plain run", () => {
       tickets: ["t-1"],
       setup: {
         backlog: backlog().ticket("t-1", { title: "One ticket" }).seeds,
-        scripts: (world, root) => ({ "t-1": [finishes(world, root, "t-1")] }),
+        scripts: (world, root) => ({ "t-1": [finishes(world, root, "t-1" as TicketId)] }),
       },
     })
     expectExitCode(ran, 0)
@@ -163,9 +163,9 @@ describe("a plain run", () => {
     const ran = await runs({
       tickets: ["e-1.1"],
       setup: {
-        config: { ticket: "e-1" },
+        config: { ticket: "e-1" as TicketId },
         backlog: backlog().epic("e-1", ["e-1.1"]).ticket("other").seeds,
-        scripts: (world, root) => ({ "e-1.1": [finishes(world, root, "e-1.1")] }),
+        scripts: (world, root) => ({ "e-1.1": [finishes(world, root, "e-1.1" as TicketId)] }),
       },
     })
     expectExitCode(ran, 0)
@@ -180,8 +180,8 @@ describe("a plain run", () => {
         config: { settings: { ...appConfig().settings, concurrent: 1 } },
         backlog: backlog().ticket("t-1").ticket("t-2").seeds,
         scripts: (world, root) => ({
-          "t-1": [finishes(world, root, "t-1")],
-          "t-2": [finishes(world, root, "t-2")],
+          "t-1": [finishes(world, root, "t-1" as TicketId)],
+          "t-2": [finishes(world, root, "t-2" as TicketId)],
         }),
       },
     })
@@ -205,7 +205,7 @@ describe("attention in plain mode", () => {
         policy: waitForTest,
         backlog: backlog().ticket("t-1", { title: "One ticket" }).seeds,
         scripts: (world, root) => {
-          const c = commands(world, root, "t-1")
+          const c = commands(world, root, "t-1" as TicketId)
           return {
             "t-1": [
               turn([
@@ -274,7 +274,7 @@ describe("the drain", () => {
         config: { settings: { ...appConfig().settings, concurrent: 1 } },
         backlog: backlog().ticket("t-1").ticket("t-2").seeds,
         scripts: (world, root) => {
-          const c = commands(world, root, "t-1")
+          const c = commands(world, root, "t-1" as TicketId)
           const asked = Queue.offer(drains, { on: true, how: "by SIGUSR1" })
           return {
             "t-1": [
@@ -285,7 +285,7 @@ describe("the drain", () => {
                 ...bash("bd close t-1", c.close),
               ]),
             ],
-            "t-2": [finishes(world, root, "t-2")],
+            "t-2": [finishes(world, root, "t-2" as TicketId)],
           }
         },
       },
@@ -303,7 +303,7 @@ describe("the drain", () => {
 
   test("the DRAIN line's words, as orchestra's", () => {
     expect(drainWords([])).toEqual(["stopping now, as nothing is running", "", ""])
-    expect(String(drainLine(["b", "a"], "from the dashboard"))).toBe(
+    expect(String(drainLine(["b" as TicketId, "a" as TicketId], "from the dashboard"))).toBe(
       "DRAIN: stopping after the 2 running tickets finish (a, b): no new tickets will start, asked from the dashboard",
     )
   })
@@ -328,7 +328,7 @@ describe("stops and exit codes", () => {
       USAGE_LIMIT: 8,
       INTERRUPTED: 130,
     })
-    const stop = (error: Parameters<typeof errorStop>[1]) => errorStop("t-1", error)
+    const stop = (error: Parameters<typeof errorStop>[1]) => errorStop("t-1" as TicketId, error)
     expect(
       stop(
         new GitFailed({
@@ -345,7 +345,7 @@ describe("stops and exit codes", () => {
     expect(stop(new StoreWriteFailed({ file: "state.json", reason: "disk full" }))).toEqual(
       expect.objectContaining({ why: "STATE_UNWRITABLE", code: 4 }),
     )
-    expect(panicStop("t-1", new Error("boom\nat …"))).toEqual(
+    expect(panicStop("t-1" as TicketId, new Error("boom\nat …"))).toEqual(
       expect.objectContaining({ why: "PANIC", code: 4, text: "PANIC: t-1's fiber: boom" }),
     )
   })
@@ -371,7 +371,7 @@ describe("stops and exit codes", () => {
       setup: {
         backlog: backlog().ticket("t-1").seeds,
         scripts: (world, root) => {
-          const c = commands(world, root, "t-1")
+          const c = commands(world, root, "t-1" as TicketId)
           // Gone, resumed once, and gone again.
           return {
             "t-1": [[...turn([step(c.claim)]).slice(0, -2), gone("exit 1")], [gone("exit 1")]],
@@ -397,7 +397,7 @@ describe("stops and exit codes", () => {
       setup: {
         backlog: backlog().ticket("t-1").seeds,
         scripts: (world, root) => {
-          const c = commands(world, root, "t-1")
+          const c = commands(world, root, "t-1" as TicketId)
           const stray = Effect.flatMap(Repository, (repository) =>
             repository.write(repository.dir, { "stray.txt": "x\n" }),
           ).pipe(Effect.provideService(Repository, world.repository))
@@ -425,7 +425,7 @@ describe("stops and exit codes", () => {
       tickets: ["t-1"],
       setup: {
         backlog: backlog().ticket("t-1").seeds,
-        scripts: (world, root) => ({ "t-1": [finishes(world, root, "t-1")] }),
+        scripts: (world, root) => ({ "t-1": [finishes(world, root, "t-1" as TicketId)] }),
       },
       before: () => Effect.flatMap(Repository, (repository) => repository.fail("merge --ff-only")),
       // Read after the refusal, the branch has left the base where it is: it doesn't fast-forward.
@@ -458,7 +458,7 @@ describe("stops and exit codes", () => {
       tickets: ["t-1"],
       setup: {
         backlog: backlog().ticket("t-1").seeds,
-        scripts: (world, root) => ({ "t-1": [finishes(world, root, "t-1")] }),
+        scripts: (world, root) => ({ "t-1": [finishes(world, root, "t-1" as TicketId)] }),
       },
       before: (repo) =>
         Effect.flatMap(Repository, (repository) =>

@@ -4,6 +4,7 @@
 // to resolve_timeout again; the line ending a hand-back past it says how much more it was given.
 // Whole runs under TestClock: the dashboard shown for the run to read the machine's load, or plain
 // output with the run holding at --machine-workers.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -13,6 +14,7 @@ import { type Kernel, type Levels, Load, type LoadSource, pressing } from "../sr
 import { line } from "../src/run/log.ts"
 import { type ProcessCheck, Processes } from "../src/run/machine.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   awaitInterrupt,
@@ -77,7 +79,7 @@ const folder = (name: string) =>
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   files: Files,
   first: ReadonlyArray<Step> = [],
 ): SessionScript =>
@@ -127,7 +129,7 @@ const logged = (pattern: RegExp) =>
   })
 
 /** Waits, in real time, until `id` is claimed: the run has dispatched it. */
-const untilClaimed = (world: World, id: string) =>
+const untilClaimed = (world: World, id: TicketId) =>
   Effect.orDie(
     Effect.gen(function* () {
       for (let i = 0; i < 2000; i++) {
@@ -156,16 +158,16 @@ const untilOnMain = (world: World, files: Files) =>
  */
 const conflicting = (world: World, places: Places, then: Effect.Effect<void>): Scripts => ({
   a: [
-    works(world, places, "a", { "shared.txt": "a\n" }, [
-      step(untilClaimed(world, "b")),
+    works(world, places, "a" as TicketId, { "shared.txt": "a\n" }, [
+      step(untilClaimed(world, "b" as TicketId)),
       step(then),
     ]),
   ],
-  c: [works(world, places, "c", { "c.txt": "c\n" }, [sleep("30 minutes")])],
-  d: [works(world, places, "d", { "d.txt": "d\n" })],
+  c: [works(world, places, "c" as TicketId, { "c.txt": "c\n" }, [sleep("30 minutes")])],
+  d: [works(world, places, "d" as TicketId, { "d.txt": "d\n" })],
   b: [
     [
-      ...works(world, places, "b", { "shared.txt": "b\n" }, [
+      ...works(world, places, "b" as TicketId, { "shared.txt": "b\n" }, [
         step(untilOnMain(world, { "shared.txt": "a\n" })),
       ]),
       ...interruptedTurn,

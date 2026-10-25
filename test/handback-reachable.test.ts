@@ -3,6 +3,7 @@
 // spinner), so that its view opens by click or Tab and Enter; and with a dashboard the run waits for it
 // as for a worker waiting on you, the end-of-run box naming it, until it is handed over or the
 // box's `q` ends the run, leaving it Blocked.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -31,6 +32,7 @@ import {
   type RunView,
 } from "../src/run/runView.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   canUseTool,
@@ -57,7 +59,7 @@ const withLedger = <A>(effect: Effect.Effect<A, never, Ledger>): Promise<A> =>
   Effect.runPromise(Effect.provide(effect, Layer.orDie(ledgerLayer())))
 
 /** Takes `ticket` from the ready queue to its merge: Merging, its worker numbered. */
-const toMerging = (ticket: string) =>
+const toMerging = (ticket: TicketId) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.transition(ticket, Move.Ready(), { title: `Ticket ${ticket}` })
@@ -66,37 +68,37 @@ const toMerging = (ticket: string) =>
     yield* ledger.transition(ticket, Move.ItsTurn())
   })
 
-const workerOf = (state: State, ticket: string) => state.tickets.get(ticket)?.worker
+const workerOf = (state: State, ticket: TicketId) => state.tickets.get(ticket)?.worker
 
 describe("the ledger", () => {
   test("a ticket Blocked with its hand-back waiting keeps its worker's number", async () => {
     const seen = await withLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* toMerging("a")
+        yield* toMerging("a" as TicketId)
         // As notHandedBack does: the hand-back kept first, then the ticket Blocked on it.
-        yield* ledger.handBackWaits("a")
-        yield* ledger.transition("a", Move.Block({ why: conflict }))
+        yield* ledger.handBackWaits("a" as TicketId)
+        yield* ledger.transition("a" as TicketId, Move.Block({ why: conflict }))
         const blocked = yield* ledger.current
         // Another ticket started meanwhile doesn't take a's number.
-        yield* ledger.transition("b", Move.Ready(), { title: "Ticket b" })
-        yield* ledger.transition("b", Move.Dispatched())
+        yield* ledger.transition("b" as TicketId, Move.Ready(), { title: "Ticket b" })
+        yield* ledger.transition("b" as TicketId, Move.Dispatched())
         const meanwhile = yield* ledger.current
-        yield* ledger.transition("a", Move.HandedOver({ place: 1 }))
+        yield* ledger.transition("a" as TicketId, Move.HandedOver({ place: 1 }))
         const handed = yield* ledger.current
         return { blocked, meanwhile, handed }
       }),
     )
-    const a = seen.blocked.tickets.get("a") as Entry
+    const a = seen.blocked.tickets.get("a" as TicketId) as Entry
     expect(a.phase).toEqual(TicketPhase.Blocked({ why: conflict }))
     expect(a.worker).toBe(1)
     expect(handBackWaits(a)).toBe(true)
     expect(keepsWorker(a)).toBe(true)
     expect(showsCard(a)).toBe(true)
-    expect(workerOf(seen.meanwhile, "a")).toBe(1)
-    expect(workerOf(seen.meanwhile, "b")).toBe(2)
+    expect(workerOf(seen.meanwhile, "a" as TicketId)).toBe(1)
+    expect(workerOf(seen.meanwhile, "b" as TicketId)).toBe(2)
     // Handed over, back in the merge queue with the same number; the hand-back no longer waits.
-    const after = seen.handed.tickets.get("a") as Entry
+    const after = seen.handed.tickets.get("a" as TicketId) as Entry
     expect(after.phase).toEqual(TicketPhase.ToMerge({ place: 1 }))
     expect(after.worker).toBe(1)
     expect(after.handBack).toBe(false)
@@ -107,12 +109,12 @@ describe("the ledger", () => {
     const state = await withLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* toMerging("a")
-        yield* ledger.transition("a", Move.Block({ why: conflict }))
+        yield* toMerging("a" as TicketId)
+        yield* ledger.transition("a" as TicketId, Move.Block({ why: conflict }))
         return yield* ledger.current
       }),
     )
-    const a = state.tickets.get("a") as Entry
+    const a = state.tickets.get("a" as TicketId) as Entry
     expect(a.worker).toBeNull()
     expect(keepsWorker(a)).toBe(false)
     expect(showsCard(a)).toBe(false)
@@ -122,19 +124,19 @@ describe("the ledger", () => {
     const state = await withLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* toMerging("a")
-        yield* ledger.transition("a", Move.Block({ why: conflict }))
-        yield* ledger.handBackWaits("a")
+        yield* toMerging("a" as TicketId)
+        yield* ledger.transition("a" as TicketId, Move.Block({ why: conflict }))
+        yield* ledger.handBackWaits("a" as TicketId)
         return yield* ledger.current
       }),
     )
-    expect(workerOf(state, "a")).toBe(1)
+    expect(workerOf(state, "a" as TicketId)).toBe(1)
   })
 })
 
 /** a, Blocked on its conflict with its hand-back waiting, worker 1; b at work as worker 2. */
 const blockedEntry: Entry = {
-  ticket: "a",
+  ticket: "a" as TicketId,
   title: "Title of a",
   phase: TicketPhase.Blocked({ why: conflict }),
   since: 0,
@@ -154,7 +156,7 @@ const ledgerOf = (...entries: ReadonlyArray<Entry>): State => ({
   bugs: [],
 })
 
-const viewOf = (ledger: State, endOfRun: ReadonlyArray<string> | null): RunView =>
+const viewOf = (ledger: State, endOfRun: ReadonlyArray<TicketId> | null): RunView =>
   project({
     ledger,
     workers: new Map(),
@@ -167,7 +169,7 @@ describe("RunView", () => {
     const view = viewOf(ledgerOf(blockedEntry), null)
     expect(view.cards).toHaveLength(1)
     const card = view.cards[0]
-    expect(card?.ticket).toBe("a")
+    expect(card?.ticket).toBe("a" as TicketId)
     expect(card?.worker).toBe(1)
     expect(card?.status).toBe(handBackStatus)
     expect(card?.status).toBe("conflict waits for you")
@@ -182,7 +184,7 @@ describe("RunView", () => {
   })
 
   test("names it in the end-of-run box", () => {
-    const view = viewOf(ledgerOf(blockedEntry), ["a"])
+    const view = viewOf(ledgerOf(blockedEntry), ["a" as TicketId])
     expect(view.endOfRun).toEqual([{ ticket: "a", asks: [conflictWaits] }])
     expect(endOfRunText(view.endOfRun ?? [])).toBe(
       "Everything else is done. 1 worker waits for you: a (a merge conflict waits for you)",
@@ -190,7 +192,7 @@ describe("RunView", () => {
     // Handed over, it is no longer named.
     const handed = viewOf(
       ledgerOf({ ...blockedEntry, phase: TicketPhase.ToMerge({ place: 1 }), handBack: false }),
-      ["a"],
+      ["a" as TicketId],
     )
     expect(handed.endOfRun).toBeNull()
   })
@@ -199,10 +201,10 @@ describe("RunView", () => {
 describe("the screen's commands", () => {
   test("open the Blocked ticket's view by its ticket", () => {
     const current = { ledger: ledgerOf({ ...blockedEntry, steered: false }), requests: [] }
-    const opened = resolve(UiCommand.OpenWorker({ ticket: "a" }), current)
+    const opened = resolve(UiCommand.OpenWorker({ ticket: "a" as TicketId }), current)
     expect(Result.isSuccess(opened) && opened.success.ticket).toBe("a")
     // Release and messages reach its worker though you have released it meanwhile.
-    const released = resolve(UiCommand.Release({ ticket: "a" }), current)
+    const released = resolve(UiCommand.Release({ ticket: "a" as TicketId }), current)
     expect(Result.isSuccess(released)).toBe(true)
   })
 })
@@ -230,11 +232,11 @@ const scripts = (world: World, repo: string, root: string) => {
     wait,
     init(),
     sessionState("running"),
-    run(orDie(world.beads.update("a", { claim: true }))),
+    run(orDie(world.beads.update("a" as TicketId, { claim: true }))),
     canUseTool("Bash", { command: "ls" }),
     run(orDie(world.repository.commit(repo, "Land something else", { "a.txt": "main's a\n" }))),
     run(orDie(world.repository.commit(worktree, "Do a (a)", { "a.txt": "a\n" }))),
-    run(orDie(world.beads.close("a", "done"))),
+    run(orDie(world.beads.close("a" as TicketId, "done"))),
     result("Closed a."),
     wait,
     init(),
@@ -333,7 +335,7 @@ const steered = (
       yield* until("a's request", () => Effect.map(requestOf, (request) => request !== undefined))
       yield* send(
         UiCommand.SendMessage({
-          ticket: "a",
+          ticket: "a" as TicketId,
           text: "Keep it small",
           uuid: "11111111-2222-4333-8444-555555555555" as MessageUuid,
         }),
@@ -356,7 +358,7 @@ const steered = (
         yield* Effect.promise(() => Bun.sleep(3))
       }
       const endedThen = fiber.pollUnsafe() !== undefined
-      yield* send(UiCommand.OpenWorker({ ticket: "a" }))
+      yield* send(UiCommand.OpenWorker({ ticket: "a" as TicketId }))
       const opened = yield* SubscriptionRef.get(inputs.screen)
       yield* send(UiCommand.CloseWorker())
       yield* finish(send)
@@ -381,14 +383,14 @@ const expectWaiting = (seen: Seen) => {
   expect(card?.motion).toBe("idle")
   expect(dashboardHint(seen.waiting, false).map((key) => key.keys)).toContain("q")
   expect(seen.endedThen).toBe(false)
-  expect(seen.opened).toEqual(Screen.Worker({ ticket: "a" }))
+  expect(seen.opened).toEqual(Screen.Worker({ ticket: "a" as TicketId }))
 }
 
 describe("with a dashboard, the run waits for a hand-back waiting", () => {
   test("until you hand it over: the worker resolves the conflict and a merges", async () => {
     const ran = await steered((send) =>
       Effect.gen(function* () {
-        yield* send(UiCommand.HandBackNow({ ticket: "a" }))
+        yield* send(UiCommand.HandBackNow({ ticket: "a" as TicketId }))
         for (let i = 0; i < 200; i++) {
           const lines = yield* texts
           if (lines.some((each) => each.startsWith("  a closed ("))) break

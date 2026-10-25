@@ -24,7 +24,7 @@
 import { Clock, Effect, Ref, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads, type BeadsError, beadsWhy, type Status } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, type Status, type TicketId } from "../services/Beads.ts"
 import { type Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { type TicketWorktree, Worktrees } from "../services/Worktrees.ts"
@@ -55,7 +55,7 @@ import type { Deferral, Triage } from "./triage.ts"
 export interface RunStop {
   readonly why: "PAUSED" | "SETUP_PROBLEM"
   readonly code: number
-  readonly ticket: string
+  readonly ticket: TicketId
   /** The line the run ends with for it, `PAUSED: …`; its HOLD line is the run's to say. */
   readonly line: Line
 }
@@ -97,7 +97,7 @@ export interface WorkOptions {
 }
 
 /** Its blockers, as the log names them: `a`, or `a, b`. */
-const named = (blockers: ReadonlyArray<string>): string => blockers.join(", ")
+const named = (blockers: ReadonlyArray<TicketId>): string => blockers.join(", ")
 
 /** Removes the ticket's worktree and branch: what the line saying so ends with. */
 const removeWorktree = (worker: StartedWorker, force: boolean) =>
@@ -106,9 +106,7 @@ const removeWorktree = (worker: StartedWorker, force: boolean) =>
     const { id, path, branch } = worker.worktree
     const removed = yield* Effect.result(worktrees.remove(id, { force }))
     if (Result.isSuccess(removed)) return line`worktree and branch removed`
-    const why =
-      removed.failure._tag === "BadTicketId" ? removed.failure.why : gitWhy(removed.failure)
-    return line`but ${Tag.cleanupFailed} for ${path} / ${branch}: ${why}`
+    return line`but ${Tag.cleanupFailed} for ${path} / ${branch}: ${gitWhy(removed.failure)}`
   })
 
 /** Closed with no change of its own: Done{noChange}, its worktree and branch removed. */
@@ -140,7 +138,7 @@ const noChange = (ticket: StartTicket, worker: StartedWorker, why: string, own: 
 const waitsForMerge = (
   ticket: StartTicket,
   worker: StartedWorker,
-  blockers: ReadonlyArray<string>,
+  blockers: ReadonlyArray<TicketId>,
   status: Status,
 ) =>
   Effect.gen(function* () {
@@ -485,7 +483,7 @@ export const leaveAside = (
  * Whether the ticket's worker has been UsageLimited (§ 4.12) since now, watched for the rest of
  * the scope: such a worker never counts toward the environment hold, and isn't triaged.
  */
-export const watchLimit = (ticket: string) =>
+export const watchLimit = (ticket: TicketId) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const limited = yield* Ref.make(false)

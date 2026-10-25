@@ -2,6 +2,7 @@
 // can't hold. A question request's questions, each picked one or several, or your own text; an
 // elicitation's fields from its requestedSchema; the Choose or Accept they send, the field still
 // missing a value, and the keys and clicks that drive it.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import fc from "fast-check"
@@ -12,6 +13,7 @@ import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import {
   answerOf,
@@ -56,7 +58,7 @@ const questions: ReadonlyArray<Question> = [
 
 const asked = (qs: ReadonlyArray<Question> = questions): AttentionRequest => ({
   id: "q1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: { _tag: "Question", questions: qs, input: { questions: qs } },
   displayName: "AskUserQuestion",
   defaultToNo: false,
@@ -66,7 +68,7 @@ const asked = (qs: ReadonlyArray<Question> = questions): AttentionRequest => ({
 
 const elicited = (requestedSchema: Readonly<Record<string, unknown>>): AttentionRequest => ({
   id: "e1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Elicitation",
     server: "tracker",
@@ -287,7 +289,7 @@ describe("the form's model", () => {
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
 
-const ledgerEntry = (ticket: string, worker: number): LedgerEntry => ({
+const ledgerEntry = (ticket: TicketId, worker: number): LedgerEntry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: TicketPhase.Working(),
@@ -303,7 +305,7 @@ const ledgerEntry = (ticket: string, worker: number): LedgerEntry => ({
 const viewOf = (requests: ReadonlyArray<AttentionRequest>): RunView =>
   project({
     ledger: {
-      tickets: new Map([["t-1", ledgerEntry("t-1", 1)]]),
+      tickets: new Map([["t-1" as TicketId, ledgerEntry("t-1" as TicketId, 1)]]),
       rows: 1,
       windDown: null,
       bugs: [],
@@ -384,7 +386,7 @@ const scene = async (
     <Root
       value={{
         view,
-        screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+        screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
         commands,
         appearance: external<Appearance>("dark"),
         themeOf,

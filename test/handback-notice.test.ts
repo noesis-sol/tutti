@@ -3,6 +3,7 @@
 // the screen's into the worker view, whose notice comes and goes with them; a whole run steered
 // from its screen shows the waiting hand-back, and stops showing it once you hand it over
 // (HandBackNow).
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -22,6 +23,7 @@ import { TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import {
   canUseTool,
@@ -43,7 +45,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { advance, backlog, type Env, type Ran, scenario, type World } from "./harness.ts"
 
-const stopOf = (id: string): RebaseStop => ({
+const stopOf = (id: TicketId): RebaseStop => ({
   ticket: { id, title: `Ticket ${id}`, branch: `tutti/${id}`, worktree: `/w/${id}` },
   onto: "abc" as Sha,
   fork: "def" as Sha,
@@ -66,13 +68,13 @@ describe("HandBacks' changes", () => {
             Effect.forkScoped,
           )
           yield* Effect.yieldNow
-          yield* handBacks.wait(stopOf("a"))
-          yield* handBacks.wait(stopOf("b"))
+          yield* handBacks.wait(stopOf("a" as TicketId))
+          yield* handBacks.wait(stopOf("b" as TicketId))
           // a's later hand-back replaces its earlier one, after b's.
-          yield* handBacks.wait(stopOf("a"))
-          yield* handBacks.take("b")
+          yield* handBacks.wait(stopOf("a" as TicketId))
+          yield* handBacks.take("b" as TicketId)
           // Nothing to take: no change.
-          yield* handBacks.take("c")
+          yield* handBacks.take("c" as TicketId)
           yield* Fiber.join(fiber)
           return all
         }),
@@ -120,7 +122,7 @@ describe("dashboard()", () => {
     const scope = Effect.runSync(Scope.make())
     try {
       const entry: Entry = {
-        ticket: "t-1",
+        ticket: "t-1" as TicketId,
         title: "Title of t-1",
         phase: TicketPhase.Working(),
         since: 0,
@@ -132,7 +134,12 @@ describe("dashboard()", () => {
         tallies: emptyTallies,
       }
       const view = project({
-        ledger: { tickets: new Map([["t-1", entry]]), rows: 1, windDown: null, bugs: [] },
+        ledger: {
+          tickets: new Map([["t-1" as TicketId, entry]]),
+          rows: 1,
+          windDown: null,
+          bugs: [],
+        },
         workers: new Map(),
         requests: [],
         status: { ...emptyStatus, version: "0.1.0", branch: "main", concurrency: 1 },
@@ -141,7 +148,9 @@ describe("dashboard()", () => {
         Effect.gen(function* () {
           return {
             view: yield* SubscriptionRef.make(view),
-            screen: yield* SubscriptionRef.make<Screen>(Screen.Worker({ ticket: "t-1" })),
+            screen: yield* SubscriptionRef.make<Screen>(
+              Screen.Worker({ ticket: "t-1" as TicketId }),
+            ),
             commands: yield* makeCommands,
             transcripts: yield* Transcripts,
             handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
@@ -195,10 +204,10 @@ const scripts = (world: World, repo: string, root: string) => {
     wait,
     init(),
     sessionState("running"),
-    run(orDie(world.beads.update("b", { claim: true }))),
+    run(orDie(world.beads.update("b" as TicketId, { claim: true }))),
     canUseTool("Bash", { command: "ls" }),
     run(orDie(world.repository.commit(join(root, "b"), "Do b (b)", { "b.txt": "b\n" }))),
-    run(orDie(world.beads.close("b", "done"))),
+    run(orDie(world.beads.close("b" as TicketId, "done"))),
     result("Closed b."),
     sessionState("idle"),
   ]
@@ -206,11 +215,11 @@ const scripts = (world: World, repo: string, root: string) => {
     wait,
     init(),
     sessionState("running"),
-    run(orDie(world.beads.update("a", { claim: true }))),
+    run(orDie(world.beads.update("a" as TicketId, { claim: true }))),
     canUseTool("Bash", { command: "ls" }),
     run(orDie(world.repository.commit(repo, "Land something else", { "a.txt": "main's a\n" }))),
     run(orDie(world.repository.commit(worktree, "Do a (a)", { "a.txt": "a\n" }))),
-    run(orDie(world.beads.close("a", "done"))),
+    run(orDie(world.beads.close("a" as TicketId, "done"))),
     result("Closed a."),
     wait,
     init(),
@@ -309,7 +318,7 @@ describe("the run feeds the screen the hand-backs waiting", () => {
         }
         yield* send(
           UiCommand.SendMessage({
-            ticket: "a",
+            ticket: "a" as TicketId,
             text: "Keep it small",
             uuid: "11111111-2222-4333-8444-555555555555" as MessageUuid,
           }),
@@ -323,7 +332,7 @@ describe("the run feeds the screen the hand-backs waiting", () => {
         yield* until("a's hand-back to wait", () =>
           Effect.map(SubscriptionRef.get(inputs.handBacks), (all) => all.includes("a")),
         )
-        yield* send(UiCommand.HandBackNow({ ticket: "a" }))
+        yield* send(UiCommand.HandBackNow({ ticket: "a" as TicketId }))
         const merged = (ticket: string) =>
           Effect.map(texts, (lines) =>
             lines.some((each) => each.startsWith(`  ${ticket} closed (`)),

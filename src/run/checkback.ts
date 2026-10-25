@@ -40,7 +40,7 @@ import { Data, Effect, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads } from "../services/Beads.ts"
+import { Beads, type TicketId } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { attemptAt, leftAt, restoreBranch } from "./branch.ts"
@@ -57,7 +57,6 @@ import {
   rejectResolution,
   workerAway,
 } from "./handback.ts"
-
 import { usageHolds } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { branchOn, detail, fixing, Log, line } from "./log.ts"
@@ -130,15 +129,15 @@ export interface Carried {
  */
 export interface Fixes extends Counts {
   /** Keeps what the ticket's hand-back leaves for its next merge's check, in place of any. */
-  carry(id: string, carried: Carried): Effect.Effect<void>
+  carry(id: TicketId, carried: Carried): Effect.Effect<void>
   /** Takes what the ticket's hand-back left for its merge's check; undefined when nothing. */
-  carried(id: string): Effect.Effect<Carried | undefined>
+  carried(id: TicketId): Effect.Effect<Carried | undefined>
 }
 
 /** A run's check hand-backs: none yet. */
 export const makeFixes: Effect.Effect<Fixes> = Effect.gen(function* () {
   const counts = yield* makeCounts
-  const kept = yield* Ref.make<ReadonlyMap<string, Carried>>(new Map())
+  const kept = yield* Ref.make<ReadonlyMap<TicketId, Carried>>(new Map())
   return {
     ...counts,
     carry: (id, carried) => Ref.update(kept, (all) => new Map([...all, [id, carried]])),
@@ -155,7 +154,7 @@ export const makeFixes: Effect.Effect<Fixes> = Effect.gen(function* () {
 export const times = (n: number): string => (n === 1 ? "once" : n === 2 ? "twice" : `${n} times`)
 
 /** Whether the ticket's worker is at the account's usage limit. */
-const atLimit = (id: string): Effect.Effect<boolean, never, AgentHost> =>
+const atLimit = (id: TicketId): Effect.Effect<boolean, never, AgentHost> =>
   Effect.gen(function* () {
     const state = yield* Effect.result((yield* AgentHost).current(id))
     return Result.isSuccess(state) && state.success._tag === "UsageLimited"

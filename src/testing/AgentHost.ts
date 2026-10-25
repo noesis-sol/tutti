@@ -33,6 +33,7 @@ import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import { coresNote } from "../project/prompt.ts"
 import type { Settings } from "../project/settings.ts"
 import type { Log } from "../run/log.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { appConfig } from "./AppConfig.ts"
 import { layer as claudeCodeLayer, Sent, type SessionScript, Step } from "./ClaudeCode.ts"
 
@@ -48,9 +49,9 @@ export class Recording extends Context.Service<
     /** Everything, in order. */
     readonly all: Effect.Effect<ReadonlyArray<Sent>>
     /** What the ticket's worker was sent, in order. */
-    sentTo(ticket: string): Effect.Effect<ReadonlyArray<Sent>>
+    sentTo(ticket: TicketId): Effect.Effect<ReadonlyArray<Sent>>
     /** The messages the ticket's worker was sent, in order. */
-    messages(ticket: string): Effect.Effect<ReadonlyArray<SDKUserMessage>>
+    messages(ticket: TicketId): Effect.Effect<ReadonlyArray<SDKUserMessage>>
     /** The names of each requires list the run took from a merge (takeRequires), in order. */
     readonly requires: Effect.Effect<ReadonlyArray<ReadonlyArray<string>>>
   }
@@ -91,7 +92,7 @@ export interface Options {
    */
   readonly cancelAsync?: "refuse" | "notQueued"
   /** The process each ticket's Claude Code would have while its session runs: none by default. */
-  readonly processes?: ReadonlyMap<string, number>
+  readonly processes?: ReadonlyMap<TicketId, number>
   /**
    * How long a closed session's Claude Code takes to exit, on the Clock, which `close` and `end`
    * wait for: none by default. The wait holds no other ticket's start, resume or close, as the live
@@ -134,7 +135,7 @@ const configOf = (base: AppConfigValue, options: Options): AppConfigValue => {
 const fileSystem = FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
 
 /** Whether the ticket's worker has a session open: one that hasn't been closed or gone. */
-const isOpen = (host: AgentHost["Service"], ticket: string) =>
+const isOpen = (host: AgentHost["Service"], ticket: TicketId) =>
   Effect.map(
     Effect.option(host.current(ticket)),
     (state) => Option.isSome(state) && state.value._tag !== "Closed" && state.value._tag !== "Gone",
@@ -157,7 +158,7 @@ export const layer = (
       const drawn = yield* Ref.make(0)
       const draw = Ref.updateAndGet(drawn, (k) => k + 1)
       // The tickets whose starts and resumes are under way, by the session ID each opens, in order.
-      const opening = new Map<string, Array<{ readonly ticket: string }>>()
+      const opening = new Map<string, Array<{ readonly ticket: TicketId }>>()
 
       const record = (item: Sent) => Effect.sync(() => void sent.push(item))
 
@@ -196,7 +197,7 @@ export const layer = (
 
       // Runs `start`, a start or resume of the ticket's session `sessionId`, its session opened
       // playing the ticket's next script.
-      const opened = <A, E>(ticket: string, sessionId: string, start: Effect.Effect<A, E>) =>
+      const opened = <A, E>(ticket: TicketId, sessionId: string, start: Effect.Effect<A, E>) =>
         Effect.suspend(() => {
           const entry = { ticket }
           const each = opening.get(sessionId) ?? []
@@ -560,7 +561,7 @@ export interface Effects {
 export const checkCommand = "scripts/check-fast.sh"
 
 /** Claims its ticket, edits, runs the check, commits and closes the ticket. */
-export const claimsAndCloses = (ticket: string, effects: Effects = {}): SessionScript =>
+export const claimsAndCloses = (ticket: TicketId, effects: Effects = {}): SessionScript =>
   turn(
     [
       ...bash(`bd update ${ticket} --claim`, effects.claim),
@@ -573,7 +574,7 @@ export const claimsAndCloses = (ticket: string, effects: Effects = {}): SessionS
   )
 
 /** Claims its ticket, notes why it can't finish and defers it. */
-export const defers = (ticket: string, effects: Effects = {}): SessionScript =>
+export const defers = (ticket: TicketId, effects: Effects = {}): SessionScript =>
   turn(
     [
       ...bash(`bd update ${ticket} --claim`, effects.claim),
@@ -584,7 +585,7 @@ export const defers = (ticket: string, effects: Effects = {}): SessionScript =>
   )
 
 /** Claims its ticket, files a question for the maintainer, and puts its ticket back to open. */
-export const filesQuestion = (ticket: string, effects: Effects = {}): SessionScript =>
+export const filesQuestion = (ticket: TicketId, effects: Effects = {}): SessionScript =>
   turn(
     [
       ...bash(`bd update ${ticket} --claim`, effects.claim),

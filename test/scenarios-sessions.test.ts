@@ -21,7 +21,7 @@ import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { answeredText, goneText, nudgeText, resumedText } from "../src/run/told.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
 import {
@@ -77,7 +77,7 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
   Effect.asVoid(Effect.orDie(effect))
 
 /** What a ticket's worker's commands do to the in-memory Beads and Git. */
-const commands = (world: World, places: Places, id: string) => ({
+const commands = (world: World, places: Places, id: TicketId) => ({
   claim: bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
   commit: bash(
     `git commit -am "Change (${id})"`,
@@ -89,7 +89,7 @@ const commands = (world: World, places: Places, id: string) => ({
 })
 
 /** Waits, in real time, until `id`'s worker has claimed it, or closed it: the run dispatched it. */
-const untilClaimed = (world: World, id: string) =>
+const untilClaimed = (world: World, id: TicketId) =>
   Effect.orDie(
     Effect.gen(function* () {
       for (let i = 0; i < 2000; i++) {
@@ -116,7 +116,7 @@ const sleepsAs = (asleep: Set<string>, id: string, duration: Duration.Input) =>
 const finishes = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   first: ReadonlyArray<SessionScript[number]> = [],
 ): SessionScript => {
   const c = commands(world, places, id)
@@ -127,7 +127,7 @@ const finishes = (
 const atWork = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   meanwhile: ReadonlyArray<SessionScript[number]> = [],
 ): SessionScript =>
   turn([...commands(world, places, id).claim, ...meanwhile, awaitInterrupt], interruptedResult)
@@ -392,19 +392,21 @@ describe("quit mid-run, and the next run", () => {
       scripts: (world, places) => ({
         // Resumed, a takes a minute and b two, so c merges first in the next run, then a, then b.
         a: [
-          atWork(world, places, "a"),
-          finishes(world, places, "a", [sleepsAs(asleep, "a", "1 minute")]),
+          atWork(world, places, "a" as TicketId),
+          finishes(world, places, "a" as TicketId, [sleepsAs(asleep, "a", "1 minute")]),
         ],
         // b asks once c is dispatched, so that all three are dispatched before its request.
         b: [
-          atWork(world, places, "b", [step(untilClaimed(world, "c")), rm]),
-          finishes(world, places, "b", [
+          atWork(world, places, "b" as TicketId, [step(untilClaimed(world, "c" as TicketId)), rm]),
+          finishes(world, places, "b" as TicketId, [
             sleepsAs(asleep, "b", "2 minutes"),
             rm,
             ...bash("rm -rf build"),
           ]),
         ],
-        c: [finishes(world, places, "c", commands(world, places, "c").claim)],
+        c: [
+          finishes(world, places, "c" as TicketId, commands(world, places, "c" as TicketId).claim),
+        ],
       }),
       // main moves on while c runs, so its merge rebases it and checks it.
       before: () =>
@@ -484,7 +486,7 @@ describe("quit mid-run, and the next run", () => {
 
     // The second run: a and b resumed and told to carry on, c merged after its check.
     expectRun(second, 0, { a: "Done", b: "Done", c: "Done" })
-    for (const id of ["a", "b"]) {
+    for (const id of ["a" as TicketId, "b" as TicketId]) {
       expect(sessionsOf(second, id)).toEqual([`Resumed ${first.state.tickets[id]?.session}`])
       expect(textsOf(second, id)).toEqual([resumedText(id, "quit")])
     }
@@ -523,7 +525,7 @@ describe("quit mid-run, and the next run", () => {
 
 describe("an asked ticket", () => {
   test("answered between runs: the next run resumes its worker, told so, and it merges", async () => {
-    let question = ""
+    let question = "" as TicketId
     const ran = await runs({
       backlog: backlog().ticket("t", { title: "Pick a way" }).seeds,
       worktrees: ["t"],
@@ -533,20 +535,24 @@ describe("an asked ticket", () => {
           // It files a question for you, blocking its ticket, and puts the ticket back to open.
           turn(
             [
-              ...commands(world, places, "t").claim,
+              ...commands(world, places, "t" as TicketId).claim,
               ...bash(
                 'bd create --type=task --labels human --deps blocks:t --title "Which way?"',
                 orDie(
                   Effect.andThen(
-                    world.beads.create({ title: "Which way?", labels: ["human"], blocks: ["t"] }),
-                    world.beads.update("t", { status: "open" }),
+                    world.beads.create({
+                      title: "Which way?",
+                      labels: ["human"],
+                      blocks: ["t" as TicketId],
+                    }),
+                    world.beads.update("t" as TicketId, { status: "open" }),
                   ),
                 ),
               ),
             ],
             result("Asked about t."),
           ),
-          finishes(world, places, "t"),
+          finishes(world, places, "t" as TicketId),
         ],
       }),
       first: {},
@@ -554,7 +560,7 @@ describe("an asked ticket", () => {
       between: () =>
         Effect.gen(function* () {
           const saved = (yield* (yield* Store).state).tickets.t?.metadata[questionKey]
-          question = String(saved)
+          question = String(saved) as TicketId
           yield* (yield* Beads).close(question, "The left one.")
         }),
       second: {},
@@ -580,7 +586,9 @@ describe("an asked ticket", () => {
 
     expectRun(second, 0, { t: "Done" })
     expect(sessionsOf(second, "t")).toEqual([`Resumed ${first.state.tickets.t?.session}`])
-    expect(textsOf(second, "t")).toEqual([answeredText({ id: "t", question, title: "Which way?" })])
+    expect(textsOf(second, "t")).toEqual([
+      answeredText({ id: "t" as TicketId, question, title: "Which way?" }),
+    ])
     expect(records(second, "resumed")).toEqual([
       expect.objectContaining({ ticket: "t", why: "answered" }),
     ])
@@ -605,7 +613,11 @@ describe("a worker gone", () => {
       worktrees: ["t"],
       policy: allowAll,
       scripts: (world, places) => ({
-        t: [goes(commands(world, places, "t").claim), goes([]), finishes(world, places, "t")],
+        t: [
+          goes(commands(world, places, "t" as TicketId).claim),
+          goes([]),
+          finishes(world, places, "t" as TicketId),
+        ],
       }),
       first: { during: () => passes("3 minutes") },
       second: {},
@@ -616,7 +628,7 @@ describe("a worker gone", () => {
     const session = first.state.tickets.t?.session
     // Gone once: resumed with the same session and told to carry on. Gone again: not resumed.
     expect(sessionsOf(first, "t")).toEqual([`Started ${session}`, `Resumed ${session}`])
-    expect(textsOf(first, "t").slice(1)).toEqual([goneText("t")])
+    expect(textsOf(first, "t").slice(1)).toEqual([goneText("t" as TicketId)])
     expect(records(first, "resumed")).toEqual([
       expect.objectContaining({ ticket: "t", session, why: "gone" }),
     ])
@@ -631,7 +643,7 @@ describe("a worker gone", () => {
     // The next run resumes it again, and it finishes.
     expectRun(second, 0, { t: "Done" })
     expect(sessionsOf(second, "t")).toEqual([`Resumed ${session}`])
-    expect(textsOf(second, "t")).toEqual([resumedText("t", "PAUSED")])
+    expect(textsOf(second, "t")).toEqual([resumedText("t" as TicketId, "PAUSED")])
     expectLines(second, [resumedLine("t", "PAUSED"), closedLine("t")])
     expect(second.state.tickets).toEqual({})
   }, 30_000)
@@ -648,16 +660,16 @@ describe("the end of a run while a worker waits on you (D19)", () => {
       scripts: (world, places) => ({
         // a asks once b is dispatched, so that both are dispatched before its request.
         a: [
-          finishes(world, places, "a", [
-            ...commands(world, places, "a").claim,
-            step(untilClaimed(world, "b")),
+          finishes(world, places, "a" as TicketId, [
+            ...commands(world, places, "a" as TicketId).claim,
+            step(untilClaimed(world, "b" as TicketId)),
             rm,
           ]),
-          finishes(world, places, "a", [rm, ...bash("rm -rf build")]),
+          finishes(world, places, "a" as TicketId, [rm, ...bash("rm -rf build")]),
         ],
         b: [
-          finishes(world, places, "b", [
-            ...commands(world, places, "b").claim,
+          finishes(world, places, "b" as TicketId, [
+            ...commands(world, places, "b" as TicketId).claim,
             sleepsAs(asleep, "b", "1 minute"),
           ]),
         ],
@@ -701,7 +713,7 @@ describe("the end of a run while a worker waits on you (D19)", () => {
 
     expectRun(second, 0, { a: "Done" })
     expect(sessionsOf(second, "a")).toEqual([`Resumed ${first.state.tickets.a?.session}`])
-    expect(textsOf(second, "a")).toEqual([resumedText("a", "waiting on you")])
+    expect(textsOf(second, "a")).toEqual([resumedText("a" as TicketId, "waiting on you")])
     const again = records(second, "attention").filter((record) => record.ticket === "a")
     expect(again).toHaveLength(1)
     expect(again[0]?.request).not.toBe(asked[0]?.request)
@@ -721,13 +733,13 @@ describe("a steered worker", () => {
       scripts: (world, places) => ({
         a: [
           [
-            ...turn([...commands(world, places, "a").claim, sleep("1 minute")]),
+            ...turn([...commands(world, places, "a" as TicketId).claim, sleep("1 minute")]),
             // Its answer to your message, with the ticket still in progress; then it goes.
             ...turn([]),
             sleep("1 minute"),
             gone("the process exited"),
           ],
-          finishes(world, places, "a"),
+          finishes(world, places, "a" as TicketId),
         ],
       }),
       first: {
@@ -737,9 +749,9 @@ describe("a steered worker", () => {
             const recording = yield* Recording
             yield* until(
               "a's prompt",
-              Effect.map(recording.messages("a"), (sent) => sent.length > 0),
+              Effect.map(recording.messages("a" as TicketId), (sent) => sent.length > 0),
             )
-            yield* command(UiCommand.SendMessage({ ticket: "a", text: mine, uuid }))
+            yield* command(UiCommand.SendMessage({ ticket: "a" as TicketId, text: mine, uuid }))
             yield* passes("3 minutes")
           }),
       },
@@ -751,8 +763,8 @@ describe("a steered worker", () => {
     expectLines(first, ["  STEERED: a"])
     // Your message only: no continue nudge, and no carry-on once its session went.
     expect(textsOf(first, "a").slice(1)).toEqual([mine])
-    expect(textsOf(first, "a")).not.toContain(nudgeText("a"))
-    expect(textsOf(first, "a")).not.toContain(goneText("a"))
+    expect(textsOf(first, "a")).not.toContain(nudgeText("a" as TicketId))
+    expect(textsOf(first, "a")).not.toContain(goneText("a" as TicketId))
     expect(sessionsOf(first, "a")).toHaveLength(1)
     expect(records(first, "resumed")).toEqual([])
     expect(suspendedOf(first)).toEqual(["a PAUSED"])
@@ -766,7 +778,7 @@ describe("a steered worker", () => {
     // The next run is the run's again: it resumes the worker and tells it to carry on.
     expectRun(second, 0, { a: "Done" })
     expect(sessionsOf(second, "a")).toEqual([`Resumed ${first.state.tickets.a?.session}`])
-    expect(textsOf(second, "a")).toEqual([resumedText("a", "PAUSED")])
+    expect(textsOf(second, "a")).toEqual([resumedText("a" as TicketId, "PAUSED")])
     expect(second.log.some((text) => text.includes("STEERED"))).toBe(false)
     expectLines(second, [resumedLine("a", "PAUSED"), closedLine("a")])
   }, 30_000)

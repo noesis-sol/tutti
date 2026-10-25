@@ -25,6 +25,7 @@
 // permit, spans the move, so a merge's `over` doesn't wait on an offer that waits on the ledger.
 import { Effect, Ref, Semaphore } from "effect"
 import type { MessageUuid } from "../agent/AgentHost.ts"
+import type { TicketId } from "../services/Beads.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger, showsCard } from "./ledger.ts"
 import { detail, type Log } from "./log.ts"
@@ -43,15 +44,15 @@ export const holdsMessages = (phase: TicketPhase): boolean =>
   phase._tag === "ToMerge" || phase._tag === "Merging"
 
 /** The line a message held says: its length, never its text, as its MESSAGE line will. */
-export const heldLine = (id: string, text: string, phase: TicketPhase) =>
+export const heldLine = (id: TicketId, text: string, phase: TicketPhase) =>
   detail`your message to ${id}'s worker (${lengthOf(text)} characters) is held, as ${id} ${phase._tag === "Merging" ? "is merging" : "waits to merge"}: tutti sends it once the merge is over, so that its branch doesn't move under its check`
 
 /** The line the messages held for a worker that finished as its merge ended say. */
-export const notSentLine = (id: string, count: number) =>
+export const notSentLine = (id: TicketId, count: number) =>
   detail`${count === 1 ? "your message" : `your ${count} messages`} held for ${id}'s worker ${count === 1 ? "was" : "were"} not sent: its merge is over, and its worker has finished`
 
 /** The line the messages held for a worker you interrupted say. */
-export const cancelledLine = (id: string, count: number) =>
+export const cancelledLine = (id: TicketId, count: number) =>
   detail`${count === 1 ? "your message" : `your ${count} messages`} held for ${id}'s worker ${count === 1 ? "is" : "are"} cancelled by your interrupt: ${count === 1 ? "it is" : "they are"} not sent`
 
 /** The messages held for merging tickets' workers. */
@@ -60,28 +61,28 @@ export interface Held {
    * Holds your message to the ticket's worker when its ticket waits to merge or merges, its worker
    * steered first: whether it did. One that isn't held is for steer.ts to send.
    */
-  hold(ticket: string, message: HeldMessage): Effect.Effect<boolean, never, SteerEnv>
+  hold(ticket: TicketId, message: HeldMessage): Effect.Effect<boolean, never, SteerEnv>
   /**
    * Holds your message as `hold` does, or sends it to the ticket's worker as steer.ts does, its
    * ticket's phase read and the message sent under one permit: no ticket goes to merge between.
    */
-  holdOrSend(ticket: string, message: HeldMessage): Effect.Effect<void, never, SteerEnv>
+  holdOrSend(ticket: TicketId, message: HeldMessage): Effect.Effect<void, never, SteerEnv>
   /**
    * Runs `effect`, which moves the ticket into the merge queue, the ticket marked going meanwhile:
    * a message `holdOrSend` decided to send is sent before it, and one after it is held. A move the
    * ledger refused leaves the ticket where it was: what was held meanwhile goes as at `over`.
    */
   entering<A, E, R>(
-    ticket: string,
+    ticket: TicketId,
     effect: Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E, R | SteerEnv>
   /**
    * The ticket's merge is over: its held messages are sent if it keeps its card, and dropped with a
    * line saying so if it doesn't. A ticket still waiting to merge or merging keeps them held.
    */
-  over(ticket: string): Effect.Effect<void, never, SteerEnv>
+  over(ticket: TicketId): Effect.Effect<void, never, SteerEnv>
   /** Cancels the ticket's held messages, as you interrupted its worker: none of them is sent. */
-  cancel(ticket: string): Effect.Effect<void, never, Log | EventStream>
+  cancel(ticket: TicketId): Effect.Effect<void, never, Log | EventStream>
   /** The messages held now, by ticket. */
   readonly messages: Effect.Effect<ReadonlyMap<string, ReadonlyArray<HeldMessage>>>
 }
@@ -93,7 +94,7 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
   // The tickets going into the merge queue, their phases not moved yet (`entering`).
   const going = yield* Ref.make<ReadonlySet<string>>(new Set())
   // Holds the message when its ticket's phase does, or it is going, under the permit its caller took.
-  const holding = (ticket: string, message: HeldMessage) =>
+  const holding = (ticket: TicketId, message: HeldMessage) =>
     Effect.gen(function* () {
       const entry = (yield* (yield* Ledger).current).tickets.get(ticket)
       if (entry === undefined) return false

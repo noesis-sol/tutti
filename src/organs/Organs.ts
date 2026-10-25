@@ -18,6 +18,7 @@ import { Context, DateTime, Duration, Effect, Layer, Schema } from "effect"
 import { type AiError, LanguageModel } from "effect/ai"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type Line, Log, line, Tag } from "../run/log.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { timeoutAwake } from "../services/Wake.ts"
 import { limitOf, OrganCall, type OrganReads, subtypeOf } from "./AgentSdkLanguageModel.ts"
 import { evidenceId, fromTheRun, type InputPart, renderInput, systemPrompt } from "./evidence.ts"
@@ -161,7 +162,7 @@ export class Organs extends Context.Service<
     ask<A>(
       organ: Organ<A>,
       input: ReadonlyArray<InputPart>,
-      about?: { readonly ticket?: string },
+      about?: { readonly ticket?: TicketId },
     ): Effect.Effect<A, OrganError>
   }
 >()("tutti/organs/Organs") {
@@ -180,7 +181,7 @@ export class Organs extends Context.Service<
           ask: <A>(
             organ: Organ<A>,
             input: ReadonlyArray<InputPart>,
-            about: { readonly ticket?: string } = {},
+            about: { readonly ticket?: TicketId } = {},
           ) =>
             Effect.gen(function* () {
               if (yield* hold.held) {

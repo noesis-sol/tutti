@@ -3,12 +3,13 @@ import { Result } from "effect"
 import fc from "fast-check"
 import { countsUnder, Move, TicketPhase, transition, WaitFor, waitShown } from "../src/run/phase.ts"
 import { phaseSaid } from "../src/run/report.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
 const waiting = (wait: WaitFor) => TicketPhase.Waiting({ for: wait })
 
 describe("what a Waiting ticket waits for", () => {
   test("a blocker named setup or probe is a blocker, not the setup or the probe", () => {
-    for (const id of ["setup", "probe", "setup problem"]) {
+    for (const id of ["setup" as TicketId, "probe" as TicketId, "setup problem" as TicketId]) {
       const phase = waiting(WaitFor.Blockers({ ids: [id] }))
       expect(countsUnder(phase)).toEqual([])
       expect(phaseSaid(phase)).toBe(`Waiting (back in the queue until ${id} merges)`)
@@ -19,15 +20,15 @@ describe("what a Waiting ticket waits for", () => {
   test("its worker's blockers, each of them", () => {
     const moved = transition(
       TicketPhase.Working(),
-      Move.WaitsForMerge({ blockers: ["tut-b1", "tut-b2"] }),
+      Move.WaitsForMerge({ blockers: ["tut-b1" as TicketId, "tut-b2" as TicketId] }),
     )
     expect(Result.isSuccess(moved) && moved.success).toEqual(
-      waiting(WaitFor.Blockers({ ids: ["tut-b1", "tut-b2"] })),
+      waiting(WaitFor.Blockers({ ids: ["tut-b1" as TicketId, "tut-b2" as TicketId] })),
     )
   })
 
   test("the event stream's why: the blockers' IDs, or setup, probe or setup problem", () => {
-    expect(waitShown(WaitFor.Blockers({ ids: ["a", "b"] }))).toBe("a, b")
+    expect(waitShown(WaitFor.Blockers({ ids: ["a" as TicketId, "b" as TicketId] }))).toBe("a, b")
     expect(waitShown(WaitFor.Setup())).toBe("setup")
     expect(waitShown(WaitFor.Probe())).toBe("probe")
     expect(waitShown(WaitFor.SetupProblem())).toBe("setup problem")
@@ -47,7 +48,7 @@ describe("what a Waiting ticket waits for", () => {
 
   test("any list of blockers is shown as their IDs", () => {
     fc.assert(
-      fc.property(fc.array(fc.string()), (ids) => {
+      fc.property(fc.array(fc.string().map((id) => id as TicketId)), (ids) => {
         expect(waitShown(WaitFor.Blockers({ ids }))).toBe(ids.join(", "))
       }),
     )

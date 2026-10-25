@@ -14,6 +14,7 @@ import { BunFileSystem } from "@effect/platform-bun"
 import { Effect, Exit, type FileSystem, Layer, type Schema } from "effect"
 import fc from "fast-check"
 import { phaseNames } from "../src/run/events.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   emptyState,
   parseState,
@@ -78,13 +79,13 @@ describe("state.json", () => {
         repo,
         Effect.gen(function* () {
           const store = yield* Store
-          yield* store.saveSession("demo-1", session)
-          yield* store.suspend("demo-1", "PAUSED", "Working")
-          yield* store.setMetadata("demo-1", "attempts", 2)
-          yield* store.saveSession("demo-2", { ...session, branch: "wt/demo-2" })
-          yield* store.suspend("demo-2", "asked", "Asked")
-          yield* store.saveSession("demo-3", { ...session, branch: "wt/demo-3" })
-          yield* store.remove("demo-3")
+          yield* store.saveSession("demo-1" as TicketId, session)
+          yield* store.suspend("demo-1" as TicketId, "PAUSED", "Working")
+          yield* store.setMetadata("demo-1" as TicketId, "attempts", 2)
+          yield* store.saveSession("demo-2" as TicketId, { ...session, branch: "wt/demo-2" })
+          yield* store.suspend("demo-2" as TicketId, "asked", "Asked")
+          yield* store.saveSession("demo-3" as TicketId, { ...session, branch: "wt/demo-3" })
+          yield* store.remove("demo-3" as TicketId)
         }),
       ),
     )
@@ -119,8 +120,8 @@ describe("state.json", () => {
         Effect.gen(function* () {
           const store = yield* Store
           const found = yield* store.state
-          yield* store.resumed("demo-1")
-          return { found, resumed: yield* store.ticket("demo-1") }
+          yield* store.resumed("demo-1" as TicketId)
+          return { found, resumed: yield* store.ticket("demo-1" as TicketId) }
         }),
         { stamp: later },
       ),
@@ -185,7 +186,7 @@ describe("state.json", () => {
 describe("the single writer", () => {
   test("concurrent updates are committed one at a time, and none is lost", async () => {
     const repo = newRepo()
-    const tickets = Array.from({ length: 200 }, (_, index) => `demo-${index}`)
+    const tickets = Array.from({ length: 200 }, (_, index) => `demo-${index}` as TicketId)
     const state = value(
       await withStore(
         repo,
@@ -227,7 +228,7 @@ describe("the single writer", () => {
         repo,
         Effect.gen(function* () {
           const store = yield* Store
-          yield* store.saveSession("demo-1", session)
+          yield* store.saveSession("demo-1" as TicketId, session)
           // The run hasn't ended: what a run started after a crash here would read.
           return yield* readState(repo)
         }),
@@ -247,7 +248,7 @@ describe("the single writer", () => {
             throw new Error("bug")
           }),
         )
-        yield* store.saveSession("demo-1", session)
+        yield* store.saveSession("demo-1" as TicketId, session)
         return thrown
       }),
     )
@@ -262,7 +263,7 @@ describe("atomic writes", () => {
     value(
       await withStore(
         repo,
-        Effect.flatMap(Store, (store) => store.saveSession("demo-1", session)),
+        Effect.flatMap(Store, (store) => store.saveSession("demo-1" as TicketId, session)),
       ),
     )
     // What a crash between the write and the rename leaves: the new state written in full beside
@@ -277,7 +278,7 @@ describe("atomic writes", () => {
         Effect.gen(function* () {
           const store = yield* Store
           const found = yield* store.state
-          yield* store.saveSession("demo-3", session)
+          yield* store.saveSession("demo-3" as TicketId, session)
           return found
         }),
       ),
@@ -295,10 +296,10 @@ describe("atomic writes", () => {
         repo,
         Effect.gen(function* () {
           const store = yield* Store
-          yield* store.saveSession("demo-1", session)
+          yield* store.saveSession("demo-1" as TicketId, session)
           // No temporary file can be made beside state.json.
           chmodSync(folder, 0o555)
-          const failed = yield* Effect.flip(store.saveSession("demo-2", session))
+          const failed = yield* Effect.flip(store.saveSession("demo-2" as TicketId, session))
           chmodSync(folder, 0o755)
           return { failed, state: yield* store.state }
         }),
@@ -348,18 +349,18 @@ describe("the in-memory layer", () => {
     const state = Effect.runSync(
       Effect.gen(function* () {
         const store = yield* Store
-        yield* store.saveSession("demo-1", session)
-        yield* store.setMetadata("demo-1", "a", "x")
-        yield* store.setMetadata("demo-1", "b", [1, 2])
-        yield* store.unsetMetadata("demo-1", "a")
-        yield* store.suspend("demo-1", "waiting on you", "Working")
-        yield* store.saveSession("demo-2", session)
-        yield* store.remove("demo-2")
+        yield* store.saveSession("demo-1" as TicketId, session)
+        yield* store.setMetadata("demo-1" as TicketId, "a", "x")
+        yield* store.setMetadata("demo-1" as TicketId, "b", [1, 2])
+        yield* store.unsetMetadata("demo-1" as TicketId, "a")
+        yield* store.suspend("demo-1" as TicketId, "waiting on you", "Working")
+        yield* store.saveSession("demo-2" as TicketId, session)
+        yield* store.remove("demo-2" as TicketId)
         return {
-          metadata: yield* store.metadata("demo-1"),
-          ticket: yield* store.ticket("demo-1"),
-          gone: yield* store.ticket("demo-2"),
-          none: yield* store.metadata("demo-9"),
+          metadata: yield* store.metadata("demo-1" as TicketId),
+          ticket: yield* store.ticket("demo-1" as TicketId),
+          gone: yield* store.ticket("demo-2" as TicketId),
+          none: yield* store.metadata("demo-9" as TicketId),
         }
       }).pipe(Effect.provide(memoryLayer())),
     )
@@ -384,7 +385,7 @@ describe("the in-memory layer", () => {
       tickets: { "demo-1": { ...session, resumes: 1, metadata: {} } },
     }
     const ticket = Effect.runSync(
-      Effect.flatMap(Store, (store) => store.ticket("demo-1")).pipe(
+      Effect.flatMap(Store, (store) => store.ticket("demo-1" as TicketId)).pipe(
         Effect.provide(memoryLayer(initial)),
       ),
     )

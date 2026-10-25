@@ -17,6 +17,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Layer } from "effect"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { outputTo } from "../src/run/check.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, Checks, checkLogName } from "../src/services/Checks.ts"
 import { exec } from "../src/services/exec.ts"
 import { runFolder } from "../src/services/Worktrees.ts"
@@ -51,7 +52,7 @@ const check = (worktree: string, fast = "echo checked; echo said >&2") =>
     Effect.gen(function* () {
       const ran = yield* Effect.scoped(
         Effect.gen(function* () {
-          const to = yield* outputTo({ id: "a", worktree }, checkLogName, "the check's")
+          const to = yield* outputTo({ id: "a" as TicketId, worktree }, checkLogName, "the check's")
           return yield* Effect.exit((yield* Checks).fast({ cwd: worktree, ...to }))
         }),
       )

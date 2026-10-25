@@ -8,7 +8,7 @@ import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { fixPrompt } from "../src/run/told.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, CheckTimedOut } from "../src/services/Checks.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -90,7 +90,7 @@ const fixingRecords = (ran: Ran<unknown>, id = "a") =>
   )
 
 /** Waits until the ticket is in `tag`. */
-const until = (id: string, tag: PhaseTag) =>
+const until = (id: TicketId, tag: PhaseTag) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(
@@ -100,7 +100,7 @@ const until = (id: string, tag: PhaseTag) =>
   })
 
 /** The ticket's phase once it is in `tag`. */
-const phaseIn = (id: string, tag: PhaseTag) =>
+const phaseIn = (id: TicketId, tag: PhaseTag) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const found = yield* ledger.changes.pipe(
@@ -144,7 +144,7 @@ const resolves = (world: World, id: string, files: Files) =>
  * A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed in Beads,
  * Working in the ledger, its session started and saved, and its worker idle.
  */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -208,7 +208,7 @@ const merged = (
     { backlog: backlog().ticket("a").seeds, ...setup, scripts },
     withQueue((queue) =>
       Effect.gen(function* () {
-        const ticket = yield* finished("a", { "a.txt": "a\n" })
+        const ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
         yield* moveMain(hooks.landed)
         yield* hooks.before ?? Effect.void
         const during = yield* Effect.forkChild(hooks.during ?? Effect.void)
@@ -298,7 +298,7 @@ describe("a fix accepted", () => {
       {
         landed: { "a.txt": "main's a\n" },
         during: Effect.gen(function* () {
-          fixingPhase = yield* phaseIn("a", "Fixing")
+          fixingPhase = yield* phaseIn("a" as TicketId, "Fixing")
         }),
       },
     )
@@ -391,7 +391,7 @@ describe("the attempts used up", () => {
       }),
       {
         during: Effect.gen(function* () {
-          yield* until("a", "Fixing")
+          yield* until("a" as TicketId, "Fixing")
           failedAt = yield* (yield* Repository).head("tutti/a")
         }),
         after: (ticket) =>
@@ -422,7 +422,7 @@ describe("the attempts used up", () => {
       () => ({ a: [finishedSession([wait, init(), sessionState("running"), sleep("2 hours")])] }),
       {
         during: Effect.gen(function* () {
-          yield* until("a", "Fixing")
+          yield* until("a" as TicketId, "Fixing")
           yield* advance("20 minutes")
         }),
       },
@@ -534,7 +534,7 @@ describe("a failure not handed back", () => {
 
 describe("the prompt", () => {
   const stop: HandedCheck = {
-    ticket: { id: "a", title: "A", branch: "tutti/a", worktree: "/w/a" },
+    ticket: { id: "a" as TicketId, title: "A", branch: "tutti/a", worktree: "/w/a" },
     onto: "1111111111" as Sha,
     fork: "0000000000" as Sha,
     head: "2222222222" as Sha,

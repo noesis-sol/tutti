@@ -1,9 +1,11 @@
 // A permission request's whole input in the worker view's panel (§ 4.5): drawn by its tool, wrapped
 // to the pane's width and never cut. A Bash command keeps its lines, an Edit shows its diff, a Write
 // its path and content, another tool its fields.
+
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { type Segments, widthOf } from "../src/ui/line.tsx"
 import { permissionLines } from "../src/ui/requestInput.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -14,7 +16,7 @@ const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noC
 
 const permission = (tool: string, input: Record<string, unknown>): AttentionRequest => ({
   id: "r1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: { _tag: "Permission", tool, input, suggestions: [], summary: "" },
   displayName: tool,
   description: "Clean up and report",

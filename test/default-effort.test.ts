@@ -17,6 +17,7 @@ import {
 import { noFlags } from "../src/cli/flags.ts"
 import { decodeConfig } from "../src/project/configFile.ts"
 import { efforts, Settings } from "../src/project/settings.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 
 const file = ".tutti/settings.json"
@@ -37,7 +38,7 @@ const effortsOf = (config: AppConfigValue) => {
   return {
     worker: workerOptions({
       ...shared,
-      ticket: "tutti-abc.1",
+      ticket: "tutti-abc.1" as TicketId,
       worktree: "/work/project-tutti/tutti-abc.1",
       prompt: null,
       servers: { servers: [], note: null },

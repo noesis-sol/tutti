@@ -2,6 +2,7 @@
 // (Log's writeWith, and the lines a ledger transition is given), so the two files give
 // happenings in one order however many fibers write at once. Written as two calls, a line then a
 // record in one fiber and a record then a line in another, they came out in two orders.
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -11,6 +12,7 @@ import { EventStream, eventsFile } from "../src/run/eventstream.ts"
 import { Ledger, make as makeLedger } from "../src/run/ledger.ts"
 import { detail, Log, line, logFile } from "../src/run/log.ts"
 import { Move } from "../src/run/phase.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Captured, layer as capturedEvents } from "../src/testing/EventStream.ts"
 import { layer as capturedLog, texts } from "../src/testing/Log.ts"
 
@@ -77,7 +79,7 @@ describe("a happening's line and record", () => {
             const text = detail`n${i}`
             return i % 2 === 0
               ? Effect.asVoid(
-                  ledger.transition(`t-${i}`, Move.Ready(), {
+                  ledger.transition(`t-${i}` as TicketId, Move.Ready(), {
                     beside: [{ kind: "info", ticket: `t-${i}`, text }],
                     lines: [text],
                   }),
@@ -96,8 +98,8 @@ describe("a happening's line and record", () => {
   test("a transition the machine doesn't have logs neither its lines nor its records", async () => {
     const program = Effect.gen(function* () {
       const ledger = yield* Ledger
-      yield* ledger.transition("t-1", Move.Ready())
-      const again = yield* ledger.transition("t-1", Move.Ready(), {
+      yield* ledger.transition("t-1" as TicketId, Move.Ready())
+      const again = yield* ledger.transition("t-1" as TicketId, Move.Ready(), {
         beside: [{ kind: "info", ticket: "t-1", text: detail`t-1 queued again` }],
         lines: [detail`t-1 queued again`],
       })

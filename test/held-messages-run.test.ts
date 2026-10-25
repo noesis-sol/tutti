@@ -1,6 +1,7 @@
 // Messages held while their ticket merges, through the run's one consumer (held.ts, § 4.3): the
 // screen's SendMessage to the worker of a ticket whose check runs is held, not sent; Interrupt
 // cancels what is held; and once the ticket has merged, what is still held is not sent.
+
 import { expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -13,6 +14,7 @@ import { line, Tag } from "../src/run/log.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { init, result, run, sessionState, wait } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -65,7 +67,7 @@ test("SendMessage during a merge is held, Interrupt cancels it, and once merged 
             wait,
             init(),
             sessionState("running"),
-            run(Effect.asVoid(Effect.orDie(world.beads.update("a", { claim: true })))),
+            run(Effect.asVoid(Effect.orDie(world.beads.update("a" as TicketId, { claim: true })))),
             run(
               Effect.asVoid(
                 Effect.orDie(
@@ -81,7 +83,7 @@ test("SendMessage during a merge is held, Interrupt cancels it, and once merged 
                 ),
               ),
             ),
-            run(Effect.asVoid(Effect.orDie(world.beads.close("a", "done")))),
+            run(Effect.asVoid(Effect.orDie(world.beads.close("a" as TicketId, "done")))),
             result("Closed a."),
             sessionState("idle"),
           ],
@@ -124,9 +126,17 @@ test("SendMessage during a merge is held, Interrupt cancels it, and once merged 
           yield* Effect.promise(() => Bun.sleep(10))
         })
       yield* until("a's check", () => Deferred.isDone(checking))
-      yield* send(UiCommand.SendMessage({ ticket: "a", text: first, uuid: "u-1" as MessageUuid }))
-      yield* send(UiCommand.Interrupt({ ticket: "a" }))
-      yield* send(UiCommand.SendMessage({ ticket: "a", text: second, uuid: "u-2" as MessageUuid }))
+      yield* send(
+        UiCommand.SendMessage({ ticket: "a" as TicketId, text: first, uuid: "u-1" as MessageUuid }),
+      )
+      yield* send(UiCommand.Interrupt({ ticket: "a" as TicketId }))
+      yield* send(
+        UiCommand.SendMessage({
+          ticket: "a" as TicketId,
+          text: second,
+          uuid: "u-2" as MessageUuid,
+        }),
+      )
       yield* Deferred.succeed(gate, undefined)
       for (let i = 0; i < 3; i++) {
         yield* advance("1 minute")
@@ -140,10 +150,10 @@ test("SendMessage during a merge is held, Interrupt cancels it, and once merged 
   const merging = TicketPhase.Merging({ step: "check" })
   expectLog(ran, [
     `  ${Tag.steered}: a`,
-    heldLine("a", first, merging),
-    cancelledLine("a", 1),
-    heldLine("a", second, merging),
-    notSentLine("a", 1),
+    heldLine("a" as TicketId, first, merging),
+    cancelledLine("a" as TicketId, 1),
+    heldLine("a" as TicketId, second, merging),
+    notSentLine("a" as TicketId, 1),
   ])
   expect(ran.log.some((each) => each.startsWith(`  ${Tag.message}:`))).toBe(false)
   expect(ran.log.some((each) => each.includes(first) || each.includes(second))).toBe(false)

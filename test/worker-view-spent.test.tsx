@@ -12,7 +12,7 @@ import { TicketPhase } from "../src/run/phase.ts"
 import type { Resources } from "../src/run/resources.ts"
 import { emptyStatus, project, ticketText } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { spentLines } from "../src/ui/ResourceLine.tsx"
 import { panelLines } from "../src/ui/TicketHead.tsx"
@@ -52,7 +52,7 @@ const context = {
 
 /** A ticket longer than the panel shows: thirty notes, a line each. */
 const issue: Issue = {
-  id: "t-1",
+  id: "t-1" as TicketId,
   title: "Title of t-1",
   description: "The first line of the description.",
   design: "",
@@ -96,9 +96,9 @@ const view = project({
   ledger: {
     tickets: new Map([
       [
-        "t-1",
+        "t-1" as TicketId,
         {
-          ticket: "t-1",
+          ticket: "t-1" as TicketId,
           title: "Title of t-1",
           issue,
           phase: TicketPhase.Working(),
@@ -139,7 +139,7 @@ const scene = (body: (rendered: Rendered, commands: Commands) => Promise<void>) 
     <Root
       value={{
         view: external(view),
-        screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+        screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
         commands,
         appearance: external<Appearance>("dark"),
         themeOf,
@@ -257,7 +257,7 @@ describe("Spent in the whole ticket", () => {
 describe("the panel's height with Spent", () => {
   test("Spent's lines and the one over them count, up to the cap", () => {
     const resources: Resources = {
-      ticket: "t-1",
+      ticket: "t-1" as TicketId,
       took: began,
       spent,
       runTokens: 10_000_000,

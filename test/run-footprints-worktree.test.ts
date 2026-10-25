@@ -6,6 +6,7 @@ import { Effect, Fiber } from "effect"
 import { Log } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, type SessionScript, run as step, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -35,7 +36,12 @@ const until = (logged: { texts: Effect.Effect<ReadonlyArray<string>> }, pattern:
   })
 
 /** Claims `id`, commits src/z.ts in its worktree under `root`, waits for `after`, closes it. */
-const works = (world: World, root: string, id: string, after: Effect.Effect<void>): SessionScript =>
+const works = (
+  world: World,
+  root: string,
+  id: TicketId,
+  after: Effect.Effect<void>,
+): SessionScript =>
   turn([
     ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
     ...bash(
@@ -69,8 +75,8 @@ describe("the run's footprints, in a ticket's own worktree", () => {
         git: { dir: repo },
         worktrees: { root: elsewhere },
         scripts: (world: World) => ({
-          "t-1": [works(world, elsewhere, "t-1", until(logged, warning))],
-          "t-2": [works(world, elsewhere, "t-2", until(logged, warning))],
+          "t-1": [works(world, elsewhere, "t-1" as TicketId, until(logged, warning))],
+          "t-2": [works(world, elsewhere, "t-2" as TicketId, until(logged, warning))],
         }),
       },
       Effect.gen(function* () {

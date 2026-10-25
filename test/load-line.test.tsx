@@ -1,6 +1,7 @@
 // The dashboard's load line and each worker's memory in Current (orchestra 0.8.5, src/ui/LoadLine.tsx):
 // fake readings for each colour, on macOS and Linux, a narrow pane, RunView's projection of a
 // reading, and a whole run reading a fake machine while it shows the dashboard.
+
 import { describe, expect, test } from "bun:test"
 import { realpathSync } from "node:fs"
 import { mkdtemp } from "node:fs/promises"
@@ -32,6 +33,7 @@ import {
 } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -173,7 +175,7 @@ const reading = (workers: ReadonlyMap<string, number>, kernel: Partial<Kernel> =
   levels: green,
 })
 
-const entry = (ticket: string, worker: number): Entry => ({
+const entry = (ticket: TicketId, worker: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: TicketPhase.Working(),
@@ -196,8 +198,8 @@ const viewOf = (load: Reading | null, status: Partial<Status> = {}): RunView =>
   project({
     ledger: {
       tickets: new Map([
-        ["tut-1", entry("tut-1", 1)],
-        ["tut-2", entry("tut-2", 2)],
+        ["tut-1" as TicketId, entry("tut-1" as TicketId, 1)],
+        ["tut-2" as TicketId, entry("tut-2" as TicketId, 2)],
       ]),
       rows: 2,
       windDown: null,
@@ -244,8 +246,8 @@ describe("RunView", () => {
       {
         ledger: {
           tickets: new Map([
-            ["tut-1", entry("tut-1", 1)],
-            ["tut-2", entry("tut-2", 2)],
+            ["tut-1" as TicketId, entry("tut-1" as TicketId, 1)],
+            ["tut-2" as TicketId, entry("tut-2" as TicketId, 2)],
           ]),
           rows: 2,
           windDown: null,
@@ -336,20 +338,20 @@ describe("the run", () => {
         backlog: [{ id: "t-1" }],
         git: { dir: repo },
         worktrees: { root },
-        processes: new Map([["t-1", 9001]]),
+        processes: new Map([["t-1" as TicketId, 9001]]),
         scripts: (world) => ({
           "t-1": [
-            claimsAndCloses("t-1", {
+            claimsAndCloses("t-1" as TicketId, {
               claim: Effect.andThen(
                 Deferred.await(gate),
-                Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+                Effect.asVoid(Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true }))),
               ),
               commit: Effect.asVoid(
                 Effect.orDie(
                   world.repository.commit(join(root, "t-1"), "Change (t-1)", { "t-1.txt": "x\n" }),
                 ),
               ),
-              close: Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done"))),
+              close: Effect.asVoid(Effect.orDie(world.beads.close("t-1" as TicketId, "done"))),
             }),
           ],
         }),

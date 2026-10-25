@@ -9,7 +9,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { aheadKey } from "../src/run/mergetrain.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -34,7 +34,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 }
 
 /** A ticket its worker finished: a commit naming it on tutti/<id>, closed, Working. */
-const finished = (id: string) =>
+const finished = (id: TicketId) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -87,13 +87,13 @@ const leftMarked = (
       const repository = yield* Repository
       const store = yield* Store
       const queue = yield* makeQueue({ repo: repository.dir, base: "main" })
-      const a = yield* finished("a")
-      const b = yield* finished("b")
+      const a = yield* finished("a" as TicketId)
+      const b = yield* finished("b" as TicketId)
       const orig = yield* repository.head(b.branch)
       const onto = yield* repository.head(a.branch)
       yield* git.rebase(b.worktree, onto)
       const head = yield* repository.head(b.branch)
-      yield* store.setMetadata("b", aheadKey, mark({ orig, onto, head }))
+      yield* store.setMetadata("b" as TicketId, aheadKey, mark({ orig, onto, head }))
       yield* before(b, orig)
       yield* queue.offer(b)
       yield* queue.settled
@@ -102,7 +102,7 @@ const leftMarked = (
         head,
         phases: tagsOf(yield* (yield* Ledger).current),
         main: yield* repository.tree("main"),
-        mark: (yield* store.metadata("b"))[aheadKey],
+        mark: (yield* store.metadata("b" as TicketId))[aheadKey],
       }
     }).pipe(Effect.scoped, Effect.provide(Ledger.layer)),
   )

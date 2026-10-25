@@ -2,19 +2,21 @@
 // Tag gathers the log's words. A nudge, the carry-on of a resumed session, the reset of a usage
 // limit, and the hand-backs of a merge's conflicts and failed check, each starting `tutti: `. A
 // ticket's first message, with the facts of its start, is start.ts's firstMessage.
+
+import type { TicketId } from "../services/Beads.ts"
 import { type Commit, shortHash } from "../services/Git.ts"
 import { failedHow, saidOf } from "./check.ts"
 import type { HandedCheck } from "./checkback.ts"
 import type { HandBackMode, RebaseStop } from "./handback.ts"
 
 /** The continue nudge (settle.ts), to a worker idle with its ticket still in progress. */
-export const nudgeText = (id: string): string =>
+export const nudgeText = (id: TicketId): string =>
   `tutti: your ticket ${id} is still in progress. Continue; if something blocks you, ask or ` +
   "defer as your instructions say."
 
 /** What a worker whose question is answered (asked.ts) is told as its session is resumed. */
 export const answeredText = (a: {
-  readonly id: string
+  readonly id: TicketId
   /** The question's ID. */
   readonly question: string
   /** The question's title. */
@@ -24,12 +26,12 @@ export const answeredText = (a: {
   `${a.question}, then carry on with ${a.id} as your instructions say.`
 
 /** What a worker whose session went (§ 4.8) is told as it is resumed. */
-export const goneText = (id: string): string =>
+export const goneText = (id: TicketId): string =>
   `tutti: your session ended unexpectedly with ${id} still in progress, and this is it resumed. ` +
   `Carry on with ${id} where you left off, as your instructions say.`
 
 /** What a suspended worker is told as the next run resumes its session (carry.ts). */
-export const resumedText = (id: string, why: string, facts: ReadonlyArray<string> = []): string =>
+export const resumedText = (id: TicketId, why: string, facts: ReadonlyArray<string> = []): string =>
   [
     `tutti: the last run ended (${why}) while you were working on ${id}, and interrupted you; ` +
       `this run resumes your session. Carry on with ${id} where you left off, as your ` +
@@ -38,7 +40,7 @@ export const resumedText = (id: string, why: string, facts: ReadonlyArray<string
   ].join("\n\n")
 
 /** The message a worker waiting for the usage limit (usageLimit.ts) is sent once it has reset. */
-export const resetText = (id: string): string =>
+export const resetText = (id: TicketId): string =>
   `tutti: the account's usage limit has reset. Carry on with your ticket ${id} where you left off.`
 
 /**
@@ -47,7 +49,7 @@ export const resetText = (id: string): string =>
  * tells it.
  */
 export const resetHandBackText = (
-  id: string,
+  id: TicketId,
   branch: string,
   mode: HandBackMode,
   base: string,

@@ -9,6 +9,7 @@ import { Transcripts } from "../src/agent/Transcripts.ts"
 import { settled } from "../src/agent/WorkerState.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { Spending } from "../src/run/spending.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { result, turn } from "../src/testing/AgentHost.ts"
 import { backlog, scenario } from "./harness.ts"
 
@@ -63,11 +64,13 @@ describe("a session started anew", () => {
           message: resultMessage(1, usage(13, 200)),
         })
         const host = yield* AgentHost
-        yield* host.start("t-1", { sessionId: "s-1", cwd: "/w/t-1" })
-        yield* host.send("t-1", { text: "Work on t-1.", from: "clientComposed" })
-        yield* host.state("t-1").pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
-        yield* host.end("t-1")
-        return yield* (yield* Spending).ofTicket("t-1")
+        yield* host.start("t-1" as TicketId, { sessionId: "s-1", cwd: "/w/t-1" })
+        yield* host.send("t-1" as TicketId, { text: "Work on t-1.", from: "clientComposed" })
+        yield* host
+          .state("t-1" as TicketId)
+          .pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
+        yield* host.end("t-1" as TicketId)
+        return yield* (yield* Spending).ofTicket("t-1" as TicketId)
       }),
     )
     if (ran.exit._tag !== "Success") throw new Error(`the scenario failed: ${String(ran.exit)}`)

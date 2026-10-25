@@ -3,6 +3,7 @@
 // new list and checks it again before the next ticket starts. What is still missing stops the run
 // REQUIREMENTS_MISSING, exit 2, the running tickets finishing first (a HOLD line); the workers
 // started from then on are told the list as it is now.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -14,6 +15,7 @@ import type { Requirement } from "../src/project/settings.ts"
 import { line } from "../src/run/log.ts"
 import { sameRequires } from "../src/run/requires.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -54,7 +56,7 @@ interface Places {
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   options: { readonly files?: Files; readonly first?: SessionScript } = {},
 ): SessionScript =>
   turn(
@@ -177,8 +179,8 @@ describe("the requires list a merge changes", () => {
       tickets: ["a", "b"],
       chain: true,
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: requiring([license]) })],
-        b: [works(world, places, "b")],
+        a: [works(world, places, "a" as TicketId, { files: requiring([license]) })],
+        b: [works(world, places, "b" as TicketId)],
       }),
     })
     expectExitCode(ran, 2)
@@ -202,11 +204,11 @@ describe("the requires list a merge changes", () => {
       chain: true,
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             files: requiring([{ name: "shell", check: "true", install: "false" }]),
           }),
         ],
-        b: [works(world, places, "b")],
+        b: [works(world, places, "b" as TicketId)],
       }),
     })
     expectExitCode(ran, 0)
@@ -230,10 +232,10 @@ describe("the requires list a merge changes", () => {
       blockedBy: { c: ["a"] },
       settings: () => ({ concurrent: 2 }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: requiring([license]) })],
+        a: [works(world, places, "a" as TicketId, { files: requiring([license]) })],
         // b finishes once the run holds for it.
-        b: [works(world, places, "b", { first: [step(Deferred.await(held))] })],
-        c: [works(world, places, "c")],
+        b: [works(world, places, "b" as TicketId, { first: [step(Deferred.await(held))] })],
+        c: [works(world, places, "c" as TicketId)],
       }),
       during: Effect.forkChild(
         Effect.ensuring(Effect.ignore(untilLogged(/^HOLD: /)), Deferred.succeed(held, undefined)),
@@ -258,8 +260,8 @@ describe("the requires list a merge changes", () => {
       chain: true,
       requires: [shell],
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: requiring([shell]) })],
-        b: [works(world, places, "b")],
+        a: [works(world, places, "a" as TicketId, { files: requiring([shell]) })],
+        b: [works(world, places, "b" as TicketId)],
       }),
     })
     expectExitCode(ran, 0)
@@ -274,12 +276,12 @@ describe("the requires list a merge changes", () => {
       chain: true,
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             // Two entries named alike: the settings don't decode.
             files: requiring([license, license]),
           }),
         ],
-        b: [works(world, places, "b")],
+        b: [works(world, places, "b" as TicketId)],
       }),
     })
     expectExitCode(ran, 0)
@@ -299,7 +301,7 @@ describe("the requires list a worker is told", () => {
     const prompt = { text: "You work on TICKET_ID.", file: null }
     const options = workerOptions({
       config: { ...config, settings: { ...config.settings, requires: [license] } },
-      ticket: "t-1",
+      ticket: "t-1" as TicketId,
       worktree: "/work/project-tutti/t-1",
       prompt,
       servers: { servers: [], note: null },

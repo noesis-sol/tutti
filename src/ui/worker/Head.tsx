@@ -3,6 +3,7 @@
 // its title in bold.
 import { useEffect, useRef } from "react"
 import type { Card } from "../../run/runView.ts"
+import type { TicketId } from "../../services/Beads.ts"
 import { headOf, statusLook } from "../Card.tsx"
 import { finishedWords } from "../Composer.tsx"
 import { clickable } from "../click.ts"
@@ -71,7 +72,7 @@ export const WorkerHead = ({
   width,
   counted,
 }: {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly card: Card | undefined
   readonly finished: boolean
   readonly leave: () => void

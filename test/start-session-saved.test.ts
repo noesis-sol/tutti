@@ -1,5 +1,6 @@
 // A start saves its session once Claude Code has made it, as the session's first system/init says
 // (§ 4.8): one interrupted or failed before then ends the session and leaves none to resume.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -8,11 +9,12 @@ import { Deferred, Effect, Exit, Fiber } from "effect"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import { type Start, type StartTicket, start } from "../src/run/start.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Store, type TicketRecord } from "../src/services/Store.ts"
 import { init, type SessionScript, run as step, wait } from "../src/testing/AgentHost.ts"
 import { advance, backlog, expectLog, type Ran, scenario } from "./harness.ts"
 
-const t1: StartTicket = { id: "t-1", title: "One ticket", metadata: {} }
+const t1: StartTicket = { id: "t-1" as TicketId, title: "One ticket", metadata: {} }
 
 /** What became of the start, and what state.json had on the ticket after it. */
 interface Begun {
@@ -48,21 +50,21 @@ const starting = (
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const store = yield* Store
-        yield* store.saveSession("t-1", {
+        yield* store.saveSession("t-1" as TicketId, {
           session: "earlier",
           worktree: join(root, "t-1"),
           branch: "tutti/t-1",
         })
         // Suspended by a run whose carry-over this one kept, as when bd couldn't show it.
-        yield* store.suspend("t-1", "quit", "Stopped")
-        yield* ledger.transition("t-1", Move.Ready(), { title: t1.title })
-        yield* ledger.transition("t-1", Move.Dispatched())
+        yield* store.suspend("t-1" as TicketId, "quit", "Stopped")
+        yield* ledger.transition("t-1" as TicketId, Move.Ready(), { title: t1.title })
+        yield* ledger.transition("t-1" as TicketId, Move.Dispatched())
         const started = yield* Effect.forkChild(start(t1, "main"))
         yield* Deferred.await(taken)
         yield* then(started)
         return {
           start: yield* Fiber.await(started),
-          record: yield* store.ticket("t-1"),
+          record: yield* store.ticket("t-1" as TicketId),
         } satisfies Begun
       }).pipe(Effect.provide(Ledger.layer)),
     ),

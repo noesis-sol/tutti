@@ -1,10 +1,12 @@
 // A ticket's hand-backs count by their cause (§ 10): a second check hand-back in a row, Fixing to
 // Fixing, counts as one more fix, as one from Resolving to Fixing does.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as spendingLayer } from "../src/testing/Spending.ts"
@@ -17,10 +19,10 @@ const moved = (causes: ReadonlyArray<Move>) =>
       for (const cause of causes) {
         yield* Effect.andThen(
           TestClock.adjust(1000),
-          ledger.transition("t-1", cause, { title: "T" }),
+          ledger.transition("t-1" as TicketId, cause, { title: "T" }),
         )
       }
-      yield* ledger.transition("t-1", Move.FastForwarded({ commit: "abc1234" }), {
+      yield* ledger.transition("t-1" as TicketId, Move.FastForwarded({ commit: "abc1234" }), {
         beside: [{ kind: "closed", ticket: "t-1", title: "T", text: "  t-1 closed" }],
       })
       return yield* (yield* Captured).records

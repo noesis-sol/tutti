@@ -1,6 +1,7 @@
 // Whole runs with a ticket merged by hand, and the tickets a run keeps from their recheck
 // (handMerged.ts, recheck.ts's dropRechecks), and a carried-over ticket dropped as merged by hand
 // (carry.ts).
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -8,6 +9,7 @@ import { join } from "node:path"
 import { Deferred, Effect, Fiber } from "effect"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import type { TicketRecord } from "../src/services/Store.ts"
@@ -53,7 +55,7 @@ interface Places {
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   options: { readonly files?: Files; readonly first?: SessionScript } = {},
 ): SessionScript =>
   turn(
@@ -163,9 +165,9 @@ describe("a ticket set aside and merged by hand while the run goes on", () => {
       tickets: ["a", "b", "c"],
       checks: { fast: [fails] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: { "a.txt": "a\n" } })],
-        b: [works(world, places, "b")],
-        c: [works(world, places, "c", { first: [step(Deferred.await(found))] })],
+        a: [works(world, places, "a" as TicketId, { files: { "a.txt": "a\n" } })],
+        b: [works(world, places, "b" as TicketId)],
+        c: [works(world, places, "c" as TicketId, { first: [step(Deferred.await(found))] })],
       }),
       during: (places) =>
         Effect.gen(function* () {
@@ -199,13 +201,13 @@ describe("a run that stops", () => {
       tickets: ["a", "c"],
       checks: { fast: [fails] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a")],
+        a: [works(world, places, "a" as TicketId)],
         c: [
           [
             ...turn([
               ...bash(
                 "bd update c --claim",
-                Effect.asVoid(Effect.orDie(world.beads.update("c", { claim: true }))),
+                Effect.asVoid(Effect.orDie(world.beads.update("c" as TicketId, { claim: true }))),
               ),
               step(Deferred.await(aside)),
             ]).slice(0, -2),
@@ -272,7 +274,7 @@ describe("a carried-over ticket dropped as merged by hand", () => {
     expectLog(ran, [
       /^ {2}t-1, carried over from the last run, is dropped: tutti\/t-1 is on main already \([0-9a-f]{7} Change \(t-1\)\); worktree and branch removed$/,
     ])
-    expect(ran.worktreeCalls).toContainEqual({ op: "remove", id: "t-1", force: false })
+    expect(ran.worktreeCalls).toContainEqual({ op: "remove", id: "t-1" as TicketId, force: false })
   })
 
   test("with uncommitted changes, keeps its worktree and branch, saying so", async () => {

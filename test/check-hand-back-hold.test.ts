@@ -2,6 +2,7 @@
 // orchestra's sayNoMore and whyNotFixCheck have it: a stop holds the run (PAUSED, BLOCKED,
 // TICKET_LIMIT, ENVIRONMENT, …), the usage limit holds it, or it winds down. The ticket is set
 // aside at once, its line saying `not handed back to its worker: the run holds (<stop>)`.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -11,6 +12,7 @@ import { addStop, noMoreWork, noStops, openGate, type Stops, stopFor } from "../
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, gone, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
@@ -54,7 +56,7 @@ const fails = () =>
   })
 
 /** Claims its ticket, and after `takes` commits a change and closes it. */
-const works = (world: World, root: string, id: string, takes: Duration.Input): SessionScript =>
+const works = (world: World, root: string, id: TicketId, takes: Duration.Input): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -69,7 +71,7 @@ const works = (world: World, root: string, id: string, takes: Duration.Input): S
   )
 
 /** Claims its ticket and, after `takes`, is gone; resumed, gone again at once: PAUSED. */
-const isGoneTwice = (world: World, id: string, takes: Duration.Input) => [
+const isGoneTwice = (world: World, id: TicketId, takes: Duration.Input) => [
   [
     ...turn([
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -135,8 +137,8 @@ describe("a failed check while the run holds", () => {
         worktrees: { root },
         checks: { fast: [fails()] },
         scripts: (world: World) => ({
-          a: isGoneTwice(world, "a", "1 minute"),
-          b: [works(world, root, "b", "5 minutes")],
+          a: isGoneTwice(world, "a" as TicketId, "1 minute"),
+          b: [works(world, root, "b" as TicketId, "5 minutes")],
         }),
       },
       Effect.gen(function* () {

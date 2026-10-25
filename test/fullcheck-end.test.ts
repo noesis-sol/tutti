@@ -1,5 +1,6 @@
 // A failed full check's last 40 lines, in the log, the reviewer's evidence and the run report after
 // the reviewer's text, as orchestra's; and the FLAKY warnings of a full check that passed.
+
 import { describe, expect, test } from "bun:test"
 import {
   existsSync,
@@ -26,6 +27,7 @@ import {
 import type { Line } from "../src/run/log.ts"
 import { reportsDir } from "../src/run/report.ts"
 import { finish, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, CheckOutput } from "../src/services/Checks.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
@@ -64,7 +66,7 @@ const config = (setup = false): Partial<AppConfigValue> => {
 }
 
 /** Claims, commits and closes its ticket, as a worker does. */
-const finishes = (world: World, root: string, id: string) =>
+const finishes = (world: World, root: string, id: TicketId) =>
   claimsAndCloses(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     commit: Effect.asVoid(
@@ -96,7 +98,7 @@ const reviewed = async (checks: ChecksScript, setup = false): Promise<Ran<Review
       worktrees: { root },
       backlog: backlog().ticket("t-1").seeds,
       checks,
-      scripts: (world) => ({ "t-1": [finishes(world, root, "t-1")] }),
+      scripts: (world) => ({ "t-1": [finishes(world, root, "t-1" as TicketId)] }),
     },
     Effect.gen(function* () {
       const git = yield* Git
@@ -262,7 +264,7 @@ const failedWith = (end: ReadonlyArray<string>, suite = "e2e"): FullChecked => (
   suite,
   output: "/repo/.tutti/run/check-full.log",
   end,
-  ticket: "t-9",
+  ticket: "t-9" as TicketId,
   filed: "filed t-9",
   text: "  FULL_CHECK_FAILED: …" as Line,
 })

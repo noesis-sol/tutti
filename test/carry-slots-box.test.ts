@@ -1,6 +1,7 @@
 // A carried-over worker waiting for a slot beside one waiting on you (§ 5's Scheduling, D19): the
 // run takes it up once the slot frees, so the end-of-run box isn't shown meanwhile, though the
 // worker in the slot is all that runs and it waits on you.
+
 import { expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -11,6 +12,7 @@ import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import type { RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import type { TicketRecord } from "../src/services/Store.ts"
 import { bash, canUseTool, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
@@ -37,7 +39,7 @@ const saved = (root: string, id: string): TicketRecord => ({
 const finishes = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   first: ReadonlyArray<SessionScript[number]>,
 ): SessionScript =>
   turn(
@@ -76,8 +78,12 @@ test("no end-of-run box while a carried-over worker waits for the slot of one wa
       policy: waitForTest,
       state: { version: 1, tickets: { "t-1": saved(root, "t-1"), "t-2": saved(root, "t-2") } },
       scripts: (world: World) => ({
-        "t-1": [finishes(world, root, "t-1", [canUseTool("Bash", { command: "rm -rf build" })])],
-        "t-2": [finishes(world, root, "t-2", [])],
+        "t-1": [
+          finishes(world, root, "t-1" as TicketId, [
+            canUseTool("Bash", { command: "rm -rf build" }),
+          ]),
+        ],
+        "t-2": [finishes(world, root, "t-2" as TicketId, [])],
       }),
     },
     Effect.gen(function* () {

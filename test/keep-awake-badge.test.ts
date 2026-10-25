@@ -1,6 +1,7 @@
 // The title line's ` keep awake ` badge (§ 7.2, § 7.11): after the version while the run's
 // --keep-awake command holds the machine awake (keepAwake.ts's `holding`, run.ts's keepingAwake,
 // Status.keepAwake), a pill in the keepAwake role, the first thing a narrow pane gives up.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { Banner, type RunView, type TitleView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -141,17 +143,17 @@ describe("the run's dashboard", () => {
         worktrees: { root },
         scripts: (world) => ({
           "t-1": [
-            claimsAndCloses("t-1", {
+            claimsAndCloses("t-1" as TicketId, {
               claim: Effect.andThen(
                 Deferred.await(gate),
-                Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+                Effect.asVoid(Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true }))),
               ),
               commit: Effect.asVoid(
                 Effect.orDie(
                   world.repository.commit(join(root, "t-1"), "Change (t-1)", { "t-1.txt": "x\n" }),
                 ),
               ),
-              close: Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done"))),
+              close: Effect.asVoid(Effect.orDie(world.beads.close("t-1" as TicketId, "done"))),
             }),
           ],
         }),

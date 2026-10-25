@@ -2,6 +2,7 @@
 // own clock and spinner, so that a turn draws them alone, not the title, the totals and the table
 // over them; below the minimum size and behind the end-of-run box, where no spinner is drawn, none
 // turns.
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
@@ -10,6 +11,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Waiting } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable, type ShellValue, spinnerTick } from "../src/ui/useRunView.ts"
@@ -23,9 +25,9 @@ const viewOf = (state: WorkerState, waiting: ReadonlyArray<Waiting> | null = nul
     ledger: {
       tickets: new Map([
         [
-          "t-1",
+          "t-1" as TicketId,
           {
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             title: "Title of t-1",
             phase: TicketPhase.Working(),
             since: began,

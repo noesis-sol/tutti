@@ -7,7 +7,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -33,7 +33,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 }
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -58,7 +58,7 @@ test("a commit on the base between the read and the rebase is rebased onto in th
     Effect.gen(function* () {
       const git = yield* Git
       const repository = yield* Repository
-      const a = yield* finished("a", { "a.ts": "a\n" })
+      const a = yield* finished("a" as TicketId, { "a.ts": "a\n" })
       yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
       const read = yield* repository.head("main")
       // Each rebase's target; the first is preceded by a commit to main by hand, changing bun.lock.
@@ -82,7 +82,7 @@ test("a commit on the base between the read and the rebase is rebased onto in th
         read,
         byHand,
         targets,
-        phase: (yield* (yield* Ledger).current).tickets.get("a")?.phase,
+        phase: (yield* (yield* Ledger).current).tickets.get("a" as TicketId)?.phase,
         main: yield* repository.head("main"),
         files: Object.fromEntries(yield* repository.tree("main")),
       }

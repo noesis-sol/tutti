@@ -9,7 +9,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import { Move } from "../src/run/phase.ts"
 import { end, ledgerView, line, unmergedLabel } from "../src/run/scope.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -30,7 +30,7 @@ const run = <A, E>(seeds: ReadonlyArray<Seed>, effect: Effect.Effect<A, E, Env>)
   )
 
 /** The scope line for `root`, from the backlog and the ledger as they are. */
-const endOf = (root: string) =>
+const endOf = (root: TicketId) =>
   Effect.gen(function* () {
     const state = yield* (yield* Ledger).current
     return line(yield* end(yield* Beads, root, ledgerView(state), { excludeTypes: [] }))
@@ -51,9 +51,9 @@ describe("SCOPE_OPEN for a follow-up", () => {
         // r.1's worker filed r.2 and closed r.1, which now waits to merge.
         const ledger = yield* Ledger
         for (const cause of [Move.Ready(), Move.Dispatched(), Move.Verified({ place: 1 })]) {
-          yield* ledger.transition("r.1", cause)
+          yield* ledger.transition("r.1" as TicketId, cause)
         }
-        return yield* endOf("r")
+        return yield* endOf("r" as TicketId)
       }),
     )
     expect(result).toBe(
@@ -70,7 +70,7 @@ describe("SCOPE_OPEN for a follow-up", () => {
         { id: "t" },
         { id: "t.1", parent: "t", dependencies: filedBy("x") },
       ],
-      endOf("t"),
+      endOf("t" as TicketId),
     )
     expect(result).toBe(
       "SCOPE_OPEN: t: 1 of its 1 subticket not done: " +
@@ -85,7 +85,7 @@ describe("SCOPE_OPEN for a follow-up", () => {
         { id: "t", dependencies: filedBy("x") },
         { id: "t.1", parent: "t", status: "closed" },
       ],
-      endOf("t"),
+      endOf("t" as TicketId),
     )
     expect(result).toBe(
       "SCOPE_OPEN: t: its 1 subticket is merged, " +
@@ -100,7 +100,7 @@ describe("SCOPE_OPEN for a follow-up", () => {
         { id: "t" },
         { id: "t.1", parent: "t", dependencies: filedBy("x") },
       ],
-      endOf("t"),
+      endOf("t" as TicketId),
     )
     expect(result).toBe("SCOPE_OPEN: t: 1 of its 1 subticket not done: t.1 (not started)")
   })

@@ -45,6 +45,7 @@ import {
 import { timestamp } from "../run/localTime.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { sanitize } from "../ui/sanitize.ts"
 import { type Answer, Attention, type AttentionRequest, answersOf } from "./Attention.ts"
 
@@ -519,7 +520,7 @@ export const serve = (
       })
 
     // Refuses the answer to `id`: says why, for the command and the log, and removes it.
-    const refuse = (id: string, reason: string, ticket?: string) =>
+    const refuse = (id: string, reason: string, ticket?: TicketId) =>
       Effect.gen(function* () {
         removeUnder(repo, refusedFile(id))
         yield* Effect.ignore(

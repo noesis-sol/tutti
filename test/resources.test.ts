@@ -2,6 +2,7 @@
 // the five-hour window's rise over the run and a ticket's estimated share of it, the context usage
 // a session answers, Spending's sums as they change, the hosts' contexts, and a whole run's
 // resources on its RunView.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -19,6 +20,7 @@ import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
 import { Spending, type Sums } from "../src/run/spending.ts"
 import { riseStep } from "../src/run/usageWindows.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   claimsAndCloses,
@@ -153,7 +155,7 @@ describe("a ticket's share of the window", () => {
       },
     }
     const inputs = {
-      ticket: "t-1",
+      ticket: "t-1" as TicketId,
       took: 5,
       compactions: 1,
       sums,
@@ -166,7 +168,7 @@ describe("a ticket's share of the window", () => {
     expect(on.window?.share).toBeCloseTo(0.02)
     expect(allTokens(on.spent.tokens)).toBe(10)
     expect(resourcesOf({ ...inputs, subscription: false }).window).toBeNull()
-    expect(resourcesOf({ ...inputs, ticket: "t-2", sums: noSums }).spent.turns).toBe(0)
+    expect(resourcesOf({ ...inputs, ticket: "t-2" as TicketId, sums: noSums }).spent.turns).toBe(0)
   })
 })
 
@@ -245,8 +247,8 @@ describe("Spending's sums", () => {
         const spending = yield* Spending
         const fiber = yield* spending.sums.pipe(Stream.take(3), Stream.runCollect, Effect.forkChild)
         yield* Effect.yieldNow
-        yield* spending.message("t-1", { session: "s-1", message: resultOf(0.5, 100) })
-        yield* spending.message("t-2", { session: "s-2", message: resultOf(0.25, 10) })
+        yield* spending.message("t-1" as TicketId, { session: "s-1", message: resultOf(0.5, 100) })
+        yield* spending.message("t-2" as TicketId, { session: "s-2", message: resultOf(0.25, 10) })
         return [...(yield* Fiber.join(fiber))]
       }).pipe(Effect.provide(spendingLayer().pipe(Layer.provideMerge(eventsLayer())))),
     )
@@ -262,15 +264,15 @@ describe("the hosts' contexts", () => {
     const seen = await Effect.runPromise(
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" })
-        yield* host.send("t-1", { text: "Work on t-1", from: "clientComposed" })
+        yield* host.start("t-1" as TicketId, { sessionId: "s-1", cwd: "/work/t-1" })
+        yield* host.send("t-1" as TicketId, { text: "Work on t-1", from: "clientComposed" })
         const measured = yield* host.contexts.pipe(
-          Stream.filter((all) => all.has("t-1")),
+          Stream.filter((all) => all.has("t-1" as TicketId)),
           Stream.runHead,
         )
-        yield* host.end("t-1")
+        yield* host.end("t-1" as TicketId)
         const after = yield* host.contexts.pipe(Stream.runHead)
-        return { measured: Option.getOrUndefined(measured)?.get("t-1"), after }
+        return { measured: Option.getOrUndefined(measured)?.get("t-1" as TicketId), after }
       }).pipe(
         Effect.provide(
           hostLayer({ "t-1": [script] }).pipe(
@@ -282,7 +284,7 @@ describe("the hosts' contexts", () => {
       ),
     )
     expect(seen.measured).toMatchObject({ tokens: 126_000, window: 200_000, percentage: 63 })
-    expect(Option.getOrUndefined(seen.after)?.has("t-1")).toBe(false)
+    expect(Option.getOrUndefined(seen.after)?.has("t-1" as TicketId)).toBe(false)
   })
 })
 
@@ -304,14 +306,16 @@ describe("a run on a subscription", () => {
         git: { dir: repo },
         worktrees: { root },
         scripts: (world) => {
-          const steps = claimsAndCloses("t-1", {
-            claim: Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+          const steps = claimsAndCloses("t-1" as TicketId, {
+            claim: Effect.asVoid(
+              Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true })),
+            ),
             commit: Effect.asVoid(
               Effect.orDie(
                 world.repository.commit(join(root, "t-1"), "Change (t-1)", { "t-1.txt": "x\n" }),
               ),
             ),
-            close: Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done"))),
+            close: Effect.asVoid(Effect.orDie(world.beads.close("t-1" as TicketId, "done"))),
           })
           // Its turn's result spends, then the session answers how full its context is.
           const script: SessionScript = [

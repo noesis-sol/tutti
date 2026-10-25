@@ -12,7 +12,7 @@ import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
 import { fit } from "../src/run/sessions.ts"
 import { untilSettled } from "../src/run/settle.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -23,7 +23,7 @@ import { Repository } from "../src/testing/Git.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { backlog, scenario } from "./harness.ts"
 
-const worker = "t-1"
+const worker = "t-1" as TicketId
 
 const text = (words: string) =>
   ({
@@ -253,7 +253,7 @@ describe("fit, as a ticket's part in the run ends", () => {
 
   const back: ReadonlyArray<readonly [string, Move]> = [
     ["asked", Move.FiledQuestion({ question: "t-2" })],
-    ["waiting for a merge", Move.WaitsForMerge({ blockers: ["t-0"] })],
+    ["waiting for a merge", Move.WaitsForMerge({ blockers: ["t-0" as TicketId] })],
   ]
   for (const [what, cause] of back) {
     test(`${what}: its session closed, its worker kept for the resume`, async () => {

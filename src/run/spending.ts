@@ -14,6 +14,7 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Context, Effect, Layer, Option, Predicate, Stream, SubscriptionRef } from "effect"
 import { noCost, OrganCost } from "../organs/OrganCost.ts"
+import type { TicketId } from "../services/Beads.ts"
 import type { Event, Tokens, TokensByModel } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 
@@ -166,7 +167,7 @@ export class Spending extends Context.Service<
      * Any other message is nothing to it.
      */
     message(
-      ticket: string,
+      ticket: TicketId,
       sent: { readonly session: string; readonly message: SDKMessage },
     ): Effect.Effect<void>
     /** Whether the run has seen a result of the session, or was told its totals. */
@@ -177,7 +178,7 @@ export class Spending extends Context.Service<
      */
     seed(session: string, result: SDKMessage): Effect.Effect<void>
     /** What the ticket's workers' turns spent in the run so far. */
-    ofTicket(ticket: string): Effect.Effect<Spent>
+    ofTicket(ticket: TicketId): Effect.Effect<Spent>
     /** What every worker's turns spent in the run so far. */
     readonly total: Effect.Effect<Spent>
     /** What each ticket's and every worker's turns spent so far: now, then after each result. */
@@ -196,7 +197,7 @@ export class Spending extends Context.Service<
       }>({ sessions: new Map(), tickets: new Map(), total: nothingSpent })
 
       const message = (
-        ticket: string,
+        ticket: TicketId,
         { session, message }: { readonly session: string; readonly message: SDKMessage },
       ) =>
         Effect.gen(function* () {

@@ -1,10 +1,12 @@
 // A request's long input in the worker view's panel (tutti-x4wu): wrapped once a request and width,
 // apart from its selection and focused button, and drawn only as far as its room shows it, the
 // wheel moving that window.
+
 import { describe, expect, test } from "bun:test"
 import type { BaseRenderable } from "@opentui/core"
 import { useState } from "react"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import type { Segments } from "../src/ui/line.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { PanelBox, panelInput, panelParts, usePanelParts } from "../src/ui/worker/Panel.tsx"
@@ -15,7 +17,7 @@ const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noC
 /** A Write of `count` numbered lines. */
 const write = (count: number): AttentionRequest => ({
   id: "r1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Permission",
     tool: "Write",

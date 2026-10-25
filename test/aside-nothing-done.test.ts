@@ -1,6 +1,7 @@
 // A ticket set aside as its worker settled with nothing done (no commits beyond the base, a clean
 // worktree) has its worktree and branch removed once triage has its evidence; one with commits or
 // changes keeps both, for review (aside.ts, as orchestra 0.8.1's dropNothingDone).
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -17,6 +18,7 @@ import { makeRechecks } from "../src/run/recheck.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import type { Deferral, Triage } from "../src/run/triage.ts"
 import { type Worked, work } from "../src/run/work.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git, GitFailed } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { run, type SessionScript, turn } from "../src/testing/AgentHost.ts"
@@ -32,7 +34,7 @@ import {
   type World,
 } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 const tiny = backlog().ticket(id, { title: "One ticket" })
 

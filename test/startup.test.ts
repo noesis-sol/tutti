@@ -31,7 +31,7 @@ import {
   StartupFailed,
   startBlock,
 } from "../src/run/startup.ts"
-import { Beads, BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -556,7 +556,7 @@ describe("the START block", () => {
   })
 
   test("carries the scope, the MCP servers, the billing and mode in effect, memory and warnings", () => {
-    const config = TestAppConfig.appConfig({ ticket: "tut-7" }, "/work/project")
+    const config = TestAppConfig.appConfig({ ticket: "tut-7" as TicketId }, "/work/project")
     const lines = block(
       started({
         config: {

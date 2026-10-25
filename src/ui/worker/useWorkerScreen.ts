@@ -4,6 +4,7 @@
 // keys and buttons send: a message, Ctrl+X's interrupt and its question, Release, Hand it the
 // conflict now, File as ticket, and leaving the view. The pieces in Head, Story and Panel take
 // plain props from it.
+
 import { useEffect, useRef } from "react"
 import { MessageUuid } from "../../agent/AgentHost.ts"
 import { settled as hasSettled } from "../../agent/WorkerState.ts"
@@ -11,6 +12,7 @@ import { UiCommand } from "../../run/commands.ts"
 import { holdsMessages } from "../../run/held.ts"
 import type { Resources } from "../../run/resources.ts"
 import type { Card } from "../../run/runView.ts"
+import type { TicketId } from "../../services/Beads.ts"
 import { fileWords, finishedWords, interruptCommands } from "../Composer.tsx"
 import { useFilingDesk } from "../filingDesk.tsx"
 import { useCommands } from "../keyCommands.ts"
@@ -62,7 +64,7 @@ export interface WorkerScreen {
 }
 
 /** The worker of `viewed`'s view, and what its keys and buttons send. */
-export const useWorkerScreen = (viewed: string): WorkerScreen => {
+export const useWorkerScreen = (viewed: TicketId): WorkerScreen => {
   // Its card alone: another worker's card or the load changing doesn't draw the view anew.
   const found = useRunViewPart((view) => view.cards.find((each) => each.ticket === viewed))
   const command = useCommand()

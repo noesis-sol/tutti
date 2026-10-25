@@ -2,6 +2,7 @@
 // environment hold (§ 4.9, § 5 item 11): its worker stopped with nothing done, but because it
 // started too early, not because the machine fails. It neither adds to the row of tickets failing
 // at once nor ends it.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -9,6 +10,7 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -31,7 +33,7 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
 const givesUp: SessionScript = turn([], result("Every command was refused."))
 
 /** Claims its ticket, links `blocker` as blocking it and stops with it open and nothing done. */
-const needs = (world: World, id: string, blocker: string): SessionScript =>
+const needs = (world: World, id: TicketId, blocker: TicketId): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -82,7 +84,7 @@ describe("the environment hold and WAITS_FOR_MERGE", () => {
     // any other settling, it would end the row and t-3 would hold nothing.
     const ran = await runs(["t-1", "t-2", "t-3"], (world) => ({
       "t-1": [givesUp],
-      "t-2": [needs(world, "t-2", "t-1")],
+      "t-2": [needs(world, "t-2" as TicketId, "t-1" as TicketId)],
       "t-3": [givesUp],
     }))
     expectExitCode(ran, 7)

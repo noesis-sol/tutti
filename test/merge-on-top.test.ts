@@ -13,7 +13,7 @@ import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
 import { failedCheckSaid } from "../src/run/reportEvidence.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -42,7 +42,7 @@ const defaults = appConfig().settings
 type Settings = typeof defaults
 
 /** Claims its ticket, commits `files` and closes it, as a worker does. */
-const works = (world: World, root: string, id: string, files: Files): SessionScript =>
+const works = (world: World, root: string, id: TicketId, files: Files): SessionScript =>
   turn(
     [
       ...bash(
@@ -161,7 +161,7 @@ const closedLine =
 describe("a branch on top of the base already", () => {
   test("is checked before it merges: the check runs once, and a merges", async () => {
     const ran = await runs({
-      turns: (world, root) => [works(world, root, "a", { "a.txt": "a\n" })],
+      turns: (world, root) => [works(world, root, "a" as TicketId, { "a.txt": "a\n" })],
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done" })
@@ -184,7 +184,7 @@ describe("a branch on top of the base already", () => {
       checks: { fast: [fails()] },
       turns: (world, root) => [
         [
-          ...works(world, root, "a", { "a.txt": "a\n" }),
+          ...works(world, root, "a" as TicketId, { "a.txt": "a\n" }),
           ...fixes(world, root, "a", { "fix.txt": "fixed\n" }),
         ],
       ],
@@ -226,7 +226,7 @@ describe("a branch on top of the base already", () => {
     const ran = await runs({
       settings: (settings) => ({ merge: { ...settings.merge, check_hand_backs: 0 } }),
       checks: { fast: [fails()] },
-      turns: (world, root) => [works(world, root, "a", { "a.txt": "a\n" })],
+      turns: (world, root) => [works(world, root, "a" as TicketId, { "a.txt": "a\n" })],
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Review" })
@@ -254,7 +254,7 @@ describe("a branch on top of the base already", () => {
       settings: (settings) => ({
         checks: { ...settings.checks, setup: { command: setup, files: ["bun.lock"] } },
       }),
-      turns: (world, root) => [works(world, root, "a", { "bun.lock": "left-pad 2\n" })],
+      turns: (world, root) => [works(world, root, "a" as TicketId, { "bun.lock": "left-pad 2\n" })],
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done" })
@@ -270,7 +270,7 @@ describe("a branch on top of the base already", () => {
       settings: (settings) => ({
         checks: { ...settings.checks, fast: { ...settings.checks.fast, command: null } },
       }),
-      turns: (world, root) => [works(world, root, "a", { "a.txt": "a\n" })],
+      turns: (world, root) => [works(world, root, "a" as TicketId, { "a.txt": "a\n" })],
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done" })
@@ -285,7 +285,7 @@ describe("a branch on top of the base already", () => {
           [
             ...bash(
               "bd update a --claim",
-              Effect.asVoid(Effect.orDie(world.beads.update("a", { claim: true }))),
+              Effect.asVoid(Effect.orDie(world.beads.update("a" as TicketId, { claim: true }))),
             ),
             ...bash(
               'git commit -am "Add and take out a.txt (a)"',
@@ -302,7 +302,10 @@ describe("a branch on top of the base already", () => {
                 ),
               ),
             ),
-            ...bash("bd close a", Effect.asVoid(Effect.orDie(world.beads.close("a", "done")))),
+            ...bash(
+              "bd close a",
+              Effect.asVoid(Effect.orDie(world.beads.close("a" as TicketId, "done"))),
+            ),
           ],
           result("Closed a."),
         ),
@@ -334,18 +337,18 @@ const mergesOnTop = (script: (ticket: FinishedTicket) => Effect.Effect<void, unk
     },
     Effect.gen(function* () {
       const repository = yield* Repository
-      const worktree = yield* (yield* Worktrees).prepare("a")
+      const worktree = yield* (yield* Worktrees).prepare("a" as TicketId)
       yield* (yield* Git).addWorktree(repository.dir, worktree.path, {
         branch: worktree.branch,
         base: "main",
       })
       yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
-      yield* (yield* Beads).close("a", "done")
+      yield* (yield* Beads).close("a" as TicketId, "done")
       const ledger = yield* Ledger
-      yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-      yield* ledger.transition("a", Move.Dispatched())
+      yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+      yield* ledger.transition("a" as TicketId, Move.Dispatched())
       const ticket = {
-        id: "a",
+        id: "a" as TicketId,
         title: "Ticket a",
         branch: worktree.branch,
         worktree: worktree.path,
@@ -355,7 +358,7 @@ const mergesOnTop = (script: (ticket: FinishedTicket) => Effect.Effect<void, unk
       yield* queue.offer(ticket)
       yield* queue.settled
       return {
-        phase: (yield* ledger.current).tickets.get("a")?.phase,
+        phase: (yield* ledger.current).tickets.get("a" as TicketId)?.phase,
         main: yield* repository.tree("main"),
       }
     }).pipe(Effect.provide(Ledger.layer)),
@@ -399,7 +402,7 @@ describe("a branch on top of the base with uncommitted changes in its worktree",
 describe("what the reviewer is told of a check failed on top of the base", () => {
   test("says the branch was on top of the base, not rebased", () => {
     const said = failedCheckSaid({
-      id: "t-1",
+      id: "t-1" as TicketId,
       branch: "tutti/t-1",
       base: "main",
       onto: "abcdef0123",

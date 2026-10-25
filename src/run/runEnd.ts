@@ -4,6 +4,7 @@
 // decide reads that, and nothing else. limitedOnly reads, for the usage-limit hold, whether nothing
 // runs but workers waiting for the limit.
 import { Data } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import { waitedFor } from "./holdsGate.ts"
 import { type Entry, handBackWaits } from "./ledger.ts"
 import { isSettled, type QueueState } from "./mergequeue.ts"
@@ -13,13 +14,13 @@ export interface Look {
   /** Nothing was merging as the look began: a merge that ended during it has the run look again. */
   readonly mergedBefore: boolean
   /** The tickets the scheduler runs, after the fill. */
-  readonly running: ReadonlySet<string>
+  readonly running: ReadonlySet<TicketId>
   /** The ledger's tickets, after the fill. */
-  readonly tickets: ReadonlyMap<string, Pick<Entry, "ticket" | "phase" | "handBack">>
+  readonly tickets: ReadonlyMap<TicketId, Pick<Entry, "ticket" | "phase" | "handBack">>
   /** The tickets whose workers went past --ticket-limit: the run doesn't wait for them. */
-  readonly overLimit: ReadonlySet<string>
+  readonly overLimit: ReadonlySet<TicketId>
   /** The tickets of the open requests, oldest request first. */
-  readonly asking: ReadonlyArray<string>
+  readonly asking: ReadonlyArray<TicketId>
   /** Whether the run would take a ticket now, given a free slot. */
   readonly canTake: boolean
   /**
@@ -53,7 +54,7 @@ export type End = Data.TaggedEnum<{
   /** The run ends; `asked` when the end-of-run box's `q` ended it. */
   Done: { readonly asked: boolean }
   /** Everything else done, the run waits for these workers to be answered or handed over (D19). */
-  WaitOnYou: { readonly tickets: ReadonlyArray<string> }
+  WaitOnYou: { readonly tickets: ReadonlyArray<TicketId> }
   /** Everything else done, the run waits for the usage limit's reset. */
   WaitForReset: Record<never, never>
 }>
@@ -65,9 +66,9 @@ export const End = Data.taggedEnum<End>()
  * those with an open request, oldest first, those past their ticket limit left out; then, with a
  * dashboard, those a conflict hand-back waits for (§ 4.3).
  */
-export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<string> } => {
+export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<TicketId> } => {
   const asking = new Set(look.asking)
-  const aside = new Set<string>()
+  const aside = new Set<TicketId>()
   const busy = [...look.running].filter((ticket) => {
     const entry = look.tickets.get(ticket)
     if (entry === undefined || entry.phase._tag !== "Working") return true
@@ -104,7 +105,7 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<s
 }
 
 /** The workers the end-of-run box names, with a dashboard and everything else done; null for none. */
-export const endOfRunBox = (look: Look): ReadonlyArray<string> | null => {
+export const endOfRunBox = (look: Look): ReadonlyArray<TicketId> | null => {
   const { done, waiting } = whatsLeft(look)
   return done && waiting.length > 0 && look.dashboard ? waiting : null
 }
@@ -130,11 +131,11 @@ export const decide = (snapshot: Snapshot): End => {
 /** What limitedOnly reads, after a look. */
 export interface LimitedOnly {
   /** The tickets whose workers are at the usage limit. */
-  readonly limited: ReadonlySet<string>
+  readonly limited: ReadonlySet<TicketId>
   /** The tickets whose hand-backs wait for their workers to leave the limit. */
-  readonly handBacks: ReadonlySet<string>
+  readonly handBacks: ReadonlySet<TicketId>
   /** The tickets whose workers went past --ticket-limit. */
-  readonly overLimit: ReadonlySet<string>
+  readonly overLimit: ReadonlySet<TicketId>
   /** The ledger's tickets. */
   readonly tickets: Iterable<Pick<Entry, "ticket" | "phase">>
   /** The merge queue's state. */

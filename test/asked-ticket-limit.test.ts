@@ -15,7 +15,7 @@ import type { Outcome } from "../src/run/run.ts"
 import { run } from "../src/run/run.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { type Worked, work } from "../src/run/work.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, filesQuestion, result, sleep, run as step, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -31,7 +31,7 @@ import {
   type World,
 } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 const defaults = appConfig().settings
 
@@ -203,7 +203,10 @@ describe("a worker resumed once its question is answered", () => {
           "t-2": [
             turn(
               [
-                ...bash("bd update t-2 --claim", orDie(world.beads.update("t-2", { claim: true }))),
+                ...bash(
+                  "bd update t-2 --claim",
+                  orDie(world.beads.update("t-2" as TicketId, { claim: true })),
+                ),
                 step(answers(world)),
                 sleep("2 minutes"),
                 ...bash(
@@ -212,7 +215,7 @@ describe("a worker resumed once its question is answered", () => {
                     world.repository.commit(join(root, "t-2"), "Change (t-2)", { "b.txt": "b\n" }),
                   ),
                 ),
-                ...bash("bd close t-2", orDie(world.beads.close("t-2", "done"))),
+                ...bash("bd close t-2", orDie(world.beads.close("t-2" as TicketId, "done"))),
               ],
               result("Closed t-2."),
             ),

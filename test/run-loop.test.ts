@@ -1,5 +1,6 @@
 // The run's loop on its own (look.ts), over stub parts: each look, what it decides, and the probe
 // once nothing is left; and limitedOnly (runEnd.ts), which the usage-limit hold reads at each look.
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
@@ -11,8 +12,9 @@ import { emptyQueue, type QueueState } from "../src/run/mergequeue.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { limitedOnly } from "../src/run/runEnd.ts"
 import type { Wake } from "../src/run/wakes.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
-const entry = (ticket: string, phase: TicketPhase): Entry => ({
+const entry = (ticket: TicketId, phase: TicketPhase): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase,
@@ -25,7 +27,7 @@ const entry = (ticket: string, phase: TicketPhase): Entry => ({
   tallies: emptyTallies,
 })
 
-const request = (ticket: string): AttentionRequest => ({
+const request = (ticket: TicketId): AttentionRequest => ({
   id: `r-${ticket}`,
   ticket,
   kind: { _tag: "Permission", tool: "Bash", input: {}, suggestions: [], summary: "ls" },
@@ -40,12 +42,12 @@ const merged = TicketPhase.Done({ outcome: { _tag: "NoChange" } })
 /** What the stub parts read, changed by the test between the loop's waits. */
 interface World {
   tickets: ReadonlyArray<Entry>
-  running: ReadonlyArray<string>
-  asking: ReadonlyArray<string>
+  running: ReadonlyArray<TicketId>
+  asking: ReadonlyArray<TicketId>
   stops: Stops
   usageHeld: boolean
   merges: QueueState
-  limited: ReadonlyArray<string>
+  limited: ReadonlyArray<TicketId>
   /** The reasons each look takes, in turn; none recorded once they run out. */
   woken: Array<ReadonlySet<Wake>>
   /** What the usage-limit hold's look gives. */
@@ -196,12 +198,15 @@ describe("the run's loop", () => {
   })
 
   test("a busy look waits for the next wake and looks again", async () => {
-    const calls = await runLoop(world({ tickets: [entry("t-1", working)], running: ["t-1"] }), [
-      (w) => {
-        w.tickets = [entry("t-1", merged)]
-        w.running = []
-      },
-    ])
+    const calls = await runLoop(
+      world({ tickets: [entry("t-1" as TicketId, working)], running: ["t-1" as TicketId] }),
+      [
+        (w) => {
+          w.tickets = [entry("t-1" as TicketId, merged)]
+          w.running = []
+        },
+      ],
+    )
     expect(calls).toEqual([
       "fill",
       "usage look not alone",
@@ -223,7 +228,11 @@ describe("the run's loop", () => {
 
   test("with a worker waiting on you, a dashboard shows the box and waits for its q", async () => {
     const calls = await runLoop(
-      world({ tickets: [entry("t-1", working)], running: ["t-1"], asking: ["t-1"] }),
+      world({
+        tickets: [entry("t-1" as TicketId, working)],
+        running: ["t-1" as TicketId],
+        asking: ["t-1" as TicketId],
+      }),
       [
         (w) => {
           w.endAsked = true
@@ -246,9 +255,9 @@ describe("the run's loop", () => {
   test("a command acted on meanwhile has it look again, the box's q still asked", async () => {
     const calls = await runLoop(
       world({
-        tickets: [entry("t-1", working)],
-        running: ["t-1"],
-        asking: ["t-1"],
+        tickets: [entry("t-1" as TicketId, working)],
+        running: ["t-1" as TicketId],
+        asking: ["t-1" as TicketId],
         endAsked: true,
         endAfters: [false],
       }),
@@ -264,14 +273,14 @@ describe("the run's loop", () => {
   test("plain, a worker waiting on you holds the run only until a stop", async () => {
     const calls = await runLoop(
       world({
-        tickets: [entry("t-1", working)],
-        running: ["t-1"],
-        asking: ["t-1"],
+        tickets: [entry("t-1" as TicketId, working)],
+        running: ["t-1" as TicketId],
+        asking: ["t-1" as TicketId],
         dashboard: false,
       }),
       [
         (w) => {
-          w.stops = [stopFor("BLOCKED", "t-1 waits on you", { ticket: "t-1" })]
+          w.stops = [stopFor("BLOCKED", "t-1 waits on you", { ticket: "t-1" as TicketId })]
         },
       ],
     )
@@ -292,7 +301,12 @@ describe("the run's loop", () => {
   test("a usage limit it can't wait for stops everything and ends the run at once", async () => {
     const limit = stopFor("USAGE_LIMIT", "the limit resets too late")
     const calls = await runLoop(
-      world({ tickets: [entry("t-1", working)], running: ["t-1"], limited: ["t-1"], limit }),
+      world({
+        tickets: [entry("t-1" as TicketId, working)],
+        running: ["t-1" as TicketId],
+        limited: ["t-1" as TicketId],
+        limit,
+      }),
     )
     expect(calls).toEqual([
       "fill",
@@ -338,28 +352,34 @@ describe("limitedOnly", () => {
     })
 
   test("workers at the limit alone, with nothing merging, are all that runs", () => {
-    expect(read({ limited: new Set(["a"]), tickets: [entry("a", working)] })).toBe(true)
+    expect(
+      read({ limited: new Set(["a" as TicketId]), tickets: [entry("a" as TicketId, working)] }),
+    ).toBe(true)
   })
 
   test("another ticket running, or a merge under way or due, is not", () => {
-    const tickets = [entry("a", working), entry("b", working)]
-    expect(read({ limited: new Set(["a"]), tickets })).toBe(false)
-    expect(read({ merges: { ...emptyQueue, merging: "c" } })).toBe(false)
-    expect(read({ merges: { ...emptyQueue, waiting: ["c"] } })).toBe(false)
+    const tickets = [entry("a" as TicketId, working), entry("b" as TicketId, working)]
+    expect(read({ limited: new Set(["a" as TicketId]), tickets })).toBe(false)
+    expect(read({ merges: { ...emptyQueue, merging: "c" as TicketId } })).toBe(false)
+    expect(read({ merges: { ...emptyQueue, waiting: ["c" as TicketId] } })).toBe(false)
   })
 
   test("a worker past its ticket limit is not waited for", () => {
-    expect(read({ overLimit: new Set(["a"]), tickets: [entry("a", working)] })).toBe(true)
+    expect(
+      read({ overLimit: new Set(["a" as TicketId]), tickets: [entry("a" as TicketId, working)] }),
+    ).toBe(true)
   })
 
   test("a hand-back's worker at the limit waits for it only once its hand-back does", () => {
     const tickets = [
-      entry("a", TicketPhase.Resolving({ attempt: 1 })),
-      entry("b", TicketPhase.Fixing({ attempt: 1, afterResolution: false })),
+      entry("a" as TicketId, TicketPhase.Resolving({ attempt: 1 })),
+      entry("b" as TicketId, TicketPhase.Fixing({ attempt: 1, afterResolution: false })),
     ]
-    const merges = { ...emptyQueue, resolving: ["a", "b"] }
-    const limited = new Set(["a", "b"])
-    expect(read({ limited, tickets, merges, handBacks: new Set(["a", "b"]) })).toBe(true)
-    expect(read({ limited, tickets, merges, handBacks: new Set(["a"]) })).toBe(false)
+    const merges = { ...emptyQueue, resolving: ["a" as TicketId, "b" as TicketId] }
+    const limited = new Set(["a" as TicketId, "b" as TicketId])
+    expect(
+      read({ limited, tickets, merges, handBacks: new Set(["a" as TicketId, "b" as TicketId]) }),
+    ).toBe(true)
+    expect(read({ limited, tickets, merges, handBacks: new Set(["a" as TicketId]) })).toBe(false)
   })
 })

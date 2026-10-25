@@ -1,6 +1,7 @@
 // Opening an MCP URL elicitation's URL (§ 4.5): the opener chosen per platform and session, which
 // URLs the browser is asked to open, the desktop's command run with the URL, copying when it can't
 // open, and Open URL on a card, which opens the URL with a toast before it answers Accept.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,6 +16,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle, urlToOpen } from "../src/ui/attentionKeys.ts"
 import type { Clipboard, Where } from "../src/ui/clipboard.ts"
@@ -207,7 +209,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
 const elicitation = (id: string, mode: "form" | "url"): AttentionRequest => ({
   id,
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Elicitation",
     server: "docs",
@@ -238,9 +240,9 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest>): RunView =>
     ledger: {
       tickets: new Map([
         [
-          "t-1",
+          "t-1" as TicketId,
           {
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             title: "Title of t-1",
             phase: TicketPhase.Working(),
             since: began,

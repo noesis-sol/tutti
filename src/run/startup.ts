@@ -34,7 +34,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
 import { readmeStaleLine } from "../project/requires.ts"
 import { retiredIn, settingsFile } from "../project/settings.ts"
-import { Beads, type BeadsError, HumanLabel } from "../services/Beads.ts"
+import { Beads, type BeadsError, HumanLabel, type TicketId } from "../services/Beads.ts"
 import { Git, gitTooOld } from "../services/Git.ts"
 import { checkoutChanges } from "../services/gitStatus.ts"
 import { lenientKey } from "../services/lenient.ts"
@@ -283,7 +283,7 @@ const beadsReason = (error: BeadsError): string => {
  * Why a run can't be scoped to ticket `id` (--ticket), or null: the ticket must be one bd shows,
  * open, and work rather than a question for the maintainer, as orchestra's scopeProblem has it.
  */
-const scopeProblem = (id: string) =>
+const scopeProblem = (id: TicketId) =>
   Effect.gen(function* () {
     const bd = yield* Beads
     const shown = yield* Effect.result(bd.show(id))
@@ -314,7 +314,7 @@ const checkBeads = <R>(
   repo: string,
   beads: Layer.Layer<Beads, never, R>,
   notSetUp: boolean,
-  ticket: string | null,
+  ticket: TicketId | null,
 ) =>
   Effect.gen(function* () {
     const read = yield* Effect.result(

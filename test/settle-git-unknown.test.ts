@@ -2,6 +2,7 @@
 // left nothing (§ 4.3). When git can't read its worktree, that check reads as work left in it, as the
 // check for a ticket set aside does: the ticket is set aside with its worktree kept, and the error
 // logged, rather than its fiber failing and the run holding with GIT_FAILED.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,12 +16,13 @@ import { Move } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { type Worked, work } from "../src/run/work.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { run, turn } from "../src/testing/AgentHost.ts"
 import { type Fault, Repository } from "../src/testing/Git.ts"
 import { backlog, type Env, expectLog, type Ran, scenario, type World } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 
 /** A merge queue that only puts the ticket in line, ToMerge. */
@@ -60,7 +62,7 @@ const working = (path: string, fault: Fault): Promise<Ran<Worked>> => {
         [id]: [
           turn([
             step((w) => w.beads.update(id, { claim: true }))(world),
-            step((w) => w.beads.addDependency(id, "t-0"))(world),
+            step((w) => w.beads.addDependency(id, "t-0" as TicketId))(world),
             step((w) => w.beads.update(id, { status: "open" }))(world),
             step((w) => w.repository.fail("log", { dir: path, ...fault }))(world),
           ]),

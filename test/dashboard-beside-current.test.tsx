@@ -5,6 +5,7 @@
 // as it leaves Current; the end-of-run box in Current's place leaves every row in. The compact list
 // lines up its numbers, IDs, statuses and times as columns, so that the titles start at one column.
 // A ticket to merge is `◼`, and `◷` stays for one waiting on another.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Result, type Scope } from "effect"
 import { TestClock } from "effect/testing"
@@ -18,6 +19,7 @@ import type { Log } from "../src/run/log.ts"
 import { Finished, Move, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, rowStatus, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { Root } from "../src/ui/App.tsx"
@@ -56,7 +58,7 @@ const titles: Readonly<Record<string, string>> = {
 }
 
 /** Moves `ticket` by each of `causes` in turn, failing the test on an invalid one. */
-const go = (ticket: string, ...causes: ReadonlyArray<Move>) =>
+const go = (ticket: TicketId, ...causes: ReadonlyArray<Move>) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     for (const [i, cause] of causes.entries()) {
@@ -115,7 +117,7 @@ const tableOf = (frame: Frame): ReadonlyArray<string> => {
   return lines.slice(from + 2, to).filter((line) => /[a-z]/.test(line))
 }
 
-const permission = (id: string, ticket: string): AttentionRequest => ({
+const permission = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -133,19 +135,19 @@ const permission = (id: string, ticket: string): AttentionRequest => ({
 describe("the tickets table beside Current", () => {
   test("a ticket is shown once a frame as it goes through Current and comes to an end", async () => {
     const tickets = Object.keys(titles)
-    const steps: ReadonlyArray<readonly [string, ReadonlyArray<Move>]> = [
-      ["tut-a1", dispatched],
-      ["tut-b2", dispatched],
-      ["tut-c3", dispatched],
-      ["tut-a1", [Move.Verified({ place: 1 })]],
-      ["tut-b2", [Move.Defer({ why: "BAD_TICKET_ID" })]],
-      ["tut-a1", [Move.ItsTurn()]],
-      ["tut-c3", [Move.Verified({ place: 1 })]],
-      ["tut-a1", [Move.FastForwarded({ commit: "abc1234def" })]],
-      ["tut-d4", dispatched],
-      ["tut-c3", [Move.ItsTurn()]],
-      ["tut-c3", [Move.Block({ why: "MERGE_CONFLICT" })]],
-      ["tut-d4", [Move.Aside({ why: "OFF_BRANCH" })]],
+    const steps: ReadonlyArray<readonly [TicketId, ReadonlyArray<Move>]> = [
+      ["tut-a1" as TicketId, dispatched],
+      ["tut-b2" as TicketId, dispatched],
+      ["tut-c3" as TicketId, dispatched],
+      ["tut-a1" as TicketId, [Move.Verified({ place: 1 })]],
+      ["tut-b2" as TicketId, [Move.Defer({ why: "BAD_TICKET_ID" })]],
+      ["tut-a1" as TicketId, [Move.ItsTurn()]],
+      ["tut-c3" as TicketId, [Move.Verified({ place: 1 })]],
+      ["tut-a1" as TicketId, [Move.FastForwarded({ commit: "abc1234def" })]],
+      ["tut-d4" as TicketId, dispatched],
+      ["tut-c3" as TicketId, [Move.ItsTurn()]],
+      ["tut-c3" as TicketId, [Move.Block({ why: "MERGE_CONFLICT" })]],
+      ["tut-d4" as TicketId, [Move.Aside({ why: "OFF_BRANCH" })]],
     ]
     const views = await run(
       Effect.gen(function* () {
@@ -184,19 +186,23 @@ describe("the tickets table beside Current", () => {
   test("a row comes in under the others as its ticket leaves Current, whatever its phase", async () => {
     const view = await run(
       Effect.gen(function* () {
-        yield* go("tut-a1", ...dispatched)
-        yield* go("tut-b2", ...dispatched)
-        yield* go("tut-c3", ...dispatched)
-        yield* go("tut-b2", Move.Defer({ why: "BAD_TICKET_ID" }))
-        yield* go("tut-a1", Move.WaitsForMerge({ blockers: ["tut-c3"] }))
+        yield* go("tut-a1" as TicketId, ...dispatched)
+        yield* go("tut-b2" as TicketId, ...dispatched)
+        yield* go("tut-c3" as TicketId, ...dispatched)
+        yield* go("tut-b2" as TicketId, Move.Defer({ why: "BAD_TICKET_ID" }))
+        yield* go("tut-a1" as TicketId, Move.WaitsForMerge({ blockers: ["tut-c3" as TicketId] }))
         return viewOf(yield* (yield* Ledger).current)
       }),
     )
     // c, still working, keeps the place it was picked up in; b and a follow as they left Current.
-    expect(view.rows.map((row) => row.ticket)).toEqual(["tut-c3", "tut-b2", "tut-a1"])
+    expect(view.rows.map((row) => row.ticket)).toEqual([
+      "tut-c3" as TicketId,
+      "tut-b2" as TicketId,
+      "tut-a1" as TicketId,
+    ])
     expect(rowsBesideCurrent(view.rows, view.cards).map((row) => row.ticket)).toEqual([
-      "tut-b2",
-      "tut-a1",
+      "tut-b2" as TicketId,
+      "tut-a1" as TicketId,
     ])
   })
 
@@ -209,7 +215,7 @@ describe("the tickets table beside Current", () => {
       TicketPhase.Resolving({ attempt: 1 }),
       TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
       TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
-      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }),
+      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x" as TicketId] }) }),
       TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
       TicketPhase.Review({ why: "CHECKS_FAILED" }),
       TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
@@ -228,7 +234,7 @@ describe("the tickets table beside Current", () => {
         (tickets) => {
           const entries = tickets.map(
             (t, i): Entry => ({
-              ticket: `t-${i}`,
+              ticket: `t-${i}` as TicketId,
               title: `title ${i}`,
               phase: t.phase,
               since: began,
@@ -261,15 +267,17 @@ describe("the tickets table beside Current", () => {
   test("with the end-of-run box in Current's place, the running tickets keep their rows", async () => {
     const ledger = await run(
       Effect.gen(function* () {
-        yield* go("tut-a1", ...dispatched)
-        yield* go("tut-b2", ...dispatched, Move.Defer({ why: "BAD_TICKET_ID" }))
+        yield* go("tut-a1" as TicketId, ...dispatched)
+        yield* go("tut-b2" as TicketId, ...dispatched, Move.Defer({ why: "BAD_TICKET_ID" }))
         return yield* (yield* Ledger).current
       }),
     )
-    const requests = [permission("r1", "tut-a1")]
+    const requests = [permission("r1", "tut-a1" as TicketId)]
     const beside = await draw(viewOf(ledger, { requests }))
     expect(tableOf(beside)).toEqual([expect.stringContaining("tut-b2")])
-    const ending = await draw(viewOf(ledger, { requests, status: { endOfRun: ["tut-a1"] } }))
+    const ending = await draw(
+      viewOf(ledger, { requests, status: { endOfRun: ["tut-a1" as TicketId] } }),
+    )
     expect(tableOf(ending)).toEqual([
       expect.stringContaining("■ allow?    │ tut-a1"),
       expect.stringContaining("↷ deferred  │ tut-b2"),
@@ -279,7 +287,7 @@ describe("the tickets table beside Current", () => {
 
 describe("the compact Current list's columns", () => {
   test("numbers, IDs, statuses and times line up, the times right-aligned", () => {
-    const entry = (ticket: string, worker: number, phase: TicketPhase, ago: number): Entry => ({
+    const entry = (ticket: TicketId, worker: number, phase: TicketPhase, ago: number): Entry => ({
       ticket,
       title: `Title of ${ticket}`,
       phase,
@@ -292,10 +300,10 @@ describe("the compact Current list's columns", () => {
       tallies: emptyTallies,
     })
     const entries = [
-      entry("tut-kco", 1, TicketPhase.Merging({ step: "check" }), 42_000),
-      entry("tut-zq4b", 2, TicketPhase.Working(), 391_000),
-      entry("tut-9a1", 3, TicketPhase.ToMerge({ place: 2 }), 3_900_000),
-      entry("t-1", 12, TicketPhase.Working(), 5_000),
+      entry("tut-kco" as TicketId, 1, TicketPhase.Merging({ step: "check" }), 42_000),
+      entry("tut-zq4b" as TicketId, 2, TicketPhase.Working(), 391_000),
+      entry("tut-9a1" as TicketId, 3, TicketPhase.ToMerge({ place: 2 }), 3_900_000),
+      entry("t-1" as TicketId, 12, TicketPhase.Working(), 5_000),
     ]
     const view = viewOf(
       { tickets: new Map(entries.map((e) => [e.ticket, e])), rows: 13, windDown: null, bugs: [] },
@@ -346,7 +354,7 @@ describe("the compact Current list's columns", () => {
         (cards) => {
           const entries = cards.map(
             (c, i): Entry => ({
-              ticket: `id-${i}-${c.id}`,
+              ticket: `id-${i}-${c.id}` as TicketId,
               title: `title-${i}`,
               phase: c.phase,
               since: now - c.ago,
@@ -393,10 +401,12 @@ describe("the square for a ticket to merge", () => {
     const join = (status: Shown) => `${marks[status.mark]} ${status.word}`
     expect(join(rowStatus(TicketPhase.ToMerge({ place: 1 })))).toBe("◼ to merge")
     expect(
-      join(rowStatus(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-a1"] }) }))),
+      join(
+        rowStatus(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-a1" as TicketId] }) })),
+      ),
     ).toBe("◷ waiting")
     const entry: Entry = {
-      ticket: "tut-a1",
+      ticket: "tut-a1" as TicketId,
       title: "Open the property model",
       phase: TicketPhase.ToMerge({ place: 1 }),
       since: began,
@@ -408,7 +418,7 @@ describe("the square for a ticket to merge", () => {
       tallies: emptyTallies,
     }
     const view = viewOf({
-      tickets: new Map([["tut-a1", entry]]),
+      tickets: new Map([["tut-a1" as TicketId, entry]]),
       rows: 1,
       windDown: null,
       bugs: [],

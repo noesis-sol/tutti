@@ -2,11 +2,13 @@
 // no emoji, and each meaning its own glyph. Today's glyphs fall short in places, listed here as
 // known exceptions until the curated set of the worker-view design (tutti-cxgo D7) replaces them;
 // a new mark must not add to them. Not tested: shapes that differ but look alike, ■ and ◼.
+
 import { describe, expect, test } from "bun:test"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import { type Entry, emptyTallies, type State } from "../src/run/ledger.ts"
 import { type Activity, activities, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { lookOf, type Mark, marks, motionTones } from "../src/ui/marks.ts"
 import { makeTheme, orchestra, type StyleName } from "../src/ui/theme.ts"
 import { workersDoing } from "./activity.ts"
@@ -99,7 +101,7 @@ const phases: ReadonlyArray<readonly [TicketPhase, Activity]> = [
     TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
     TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
     TicketPhase.Asked({ question: "q-1" }),
-    TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["t-0"] }) }),
+    TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["t-0" as TicketId] }) }),
     TicketPhase.Deferred({ why: "gave up" }),
     TicketPhase.Review({ why: "CHECKS_FAILED" }),
     TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
@@ -107,7 +109,7 @@ const phases: ReadonlyArray<readonly [TicketPhase, Activity]> = [
   ].map(atStart),
 ]
 
-const entry = (ticket: string, phase: TicketPhase, row: number): Entry => ({
+const entry = (ticket: TicketId, phase: TicketPhase, row: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase,
@@ -136,7 +138,7 @@ describe("a row's status", () => {
   })
 
   test("is the table's own, worked out as RunView is projected and kept while unchanged", () => {
-    const entries = phases.map(([phase], i) => entry(`t-${i}`, phase, i))
+    const entries = phases.map(([phase], i) => entry(`t-${i}` as TicketId, phase, i))
     const { workers, requests } = workersDoing(
       phases.flatMap(([phase, activity], i) =>
         phase._tag === "Working" ? [[`t-${i}`, activity] as const] : [],

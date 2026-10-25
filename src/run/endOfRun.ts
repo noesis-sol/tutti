@@ -11,7 +11,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { type Section, section } from "../organs/evidence.ts"
 import { Ending, type Summary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads } from "../services/Beads.ts"
+import { Beads, type TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
@@ -81,25 +81,25 @@ export const doneLine = (n: number, how: "drained" | "limit" | "empty"): Line =>
  */
 const closedByRun = (
   beads: Beads["Service"],
-  root: string,
+  root: TicketId,
   state: State,
-): Effect.Effect<ReadonlySet<string>> =>
+): Effect.Effect<ReadonlySet<TicketId>> =>
   beads.show(root).pipe(
-    Effect.map((issue): ReadonlySet<string> => {
+    Effect.map((issue): ReadonlySet<TicketId> => {
       const after = issue.status === "closed" ? closedAfter(issue.closeReason) : undefined
       return after !== undefined && state.tickets.get(after)?.phase._tag === "Done"
         ? new Set([root])
         : new Set()
     }),
-    Effect.orElseSucceed((): ReadonlySet<string> => new Set()),
+    Effect.orElseSucceed((): ReadonlySet<TicketId> => new Set()),
   )
 
 /** What the end's suspending left. */
 export interface Suspended {
   /** The tickets whose sessions were saved, for the next run to resume. */
-  readonly saved: ReadonlyArray<string>
+  readonly saved: ReadonlyArray<TicketId>
   /** The tickets left handed back to their workers, their hand-backs sent. */
-  readonly handedBack: ReadonlyArray<string>
+  readonly handedBack: ReadonlyArray<TicketId>
   /** What the closing line says of the hand-backs kept for the usage limit's reset, never sent. */
   readonly neverSent: ReadonlyArray<string>
 }
@@ -129,10 +129,10 @@ export interface EndOfRun {
    */
   suspend(how: {
     readonly quit: Quitting | null
-    readonly over: ReadonlySet<string>
-    readonly asking: ReadonlySet<string>
+    readonly over: ReadonlySet<TicketId>
+    readonly asking: ReadonlySet<TicketId>
     readonly stops: Stops
-    readonly open: Effect.Effect<ReadonlyArray<string>>
+    readonly open: Effect.Effect<ReadonlyArray<TicketId>>
   }): Effect.Effect<Suspended>
   /**
    * The run's figures as its records have them so far: the summary's, and the styled summary's
@@ -200,7 +200,7 @@ export const make = (options: {
           quit === null
             ? null
             : Quitting.$match(quit, { Quit: () => "quit", Panic: ({ stop }) => stop.why })
-        const whyOf = (entry: { readonly ticket: string; readonly phase: TicketPhase }) =>
+        const whyOf = (entry: { readonly ticket: TicketId; readonly phase: TicketPhase }) =>
           entry.phase._tag === "Working" && over.has(entry.ticket)
             ? "TICKET_LIMIT"
             : entry.phase._tag === "Working" && asking.has(entry.ticket)
@@ -227,9 +227,9 @@ export const make = (options: {
             }),
           )
         }
-        const suspended: Array<{ readonly ticket: string; readonly because: string }> = []
-        const saved: Array<string> = []
-        const handedBack: Array<string> = []
+        const suspended: Array<{ readonly ticket: TicketId; readonly because: string }> = []
+        const saved: Array<TicketId> = []
+        const handedBack: Array<TicketId> = []
         for (const entry of (yield* ledger.current).tickets.values()) {
           const { ticket, phase } = entry
           const move = stopsAtEnd(phase)

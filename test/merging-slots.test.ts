@@ -2,6 +2,7 @@
 // until it merges (§ 5 item 5, orchestra 0.8.5's orchestra-z8lr): a ready ticket overlapping its
 // footprint waits for it, and a solo ticket for it to merge. Up to `concurrent` tickets merge, or
 // wait to merge, without a slot; beyond that, each takes one until a merge ends.
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { Duration, Effect, Fiber } from "effect"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll, slotsTaken } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import type { State } from "../src/services/Store.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
@@ -43,7 +45,7 @@ const touching = (...files: ReadonlyArray<string>) => ({ metadata: { files } })
 const works = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   options: { readonly files?: Files; readonly takes?: Duration.Input } = {},
 ): SessionScript =>
   turn(
@@ -187,13 +189,23 @@ describe("a ticket past its work", () => {
         .ticket("e", { priority: 6 }),
       checks: { fast: [passed("fast"), slowCheck("10 minutes"), slowCheck("5 minutes")] },
       scripts: (world, root) => ({
-        x: [works(world, root, "x")],
-        b: [works(world, root, "b", { takes: "1 minute" })],
-        a: [works(world, root, "a", { takes: "2 minutes", files: { "src/a.ts": "a2\n" } })],
-        o: [works(world, root, "o")],
-        c: [works(world, root, "c", { takes: "3 minutes", files: { "src/c.ts": "c2\n" } })],
-        d: [works(world, root, "d", { takes: "20 minutes" })],
-        e: [works(world, root, "e")],
+        x: [works(world, root, "x" as TicketId)],
+        b: [works(world, root, "b" as TicketId, { takes: "1 minute" })],
+        a: [
+          works(world, root, "a" as TicketId, {
+            takes: "2 minutes",
+            files: { "src/a.ts": "a2\n" },
+          }),
+        ],
+        o: [works(world, root, "o" as TicketId)],
+        c: [
+          works(world, root, "c" as TicketId, {
+            takes: "3 minutes",
+            files: { "src/c.ts": "c2\n" },
+          }),
+        ],
+        d: [works(world, root, "d" as TicketId, { takes: "20 minutes" })],
+        e: [works(world, root, "e" as TicketId)],
       }),
       lasts: "23 minutes",
     })
@@ -238,9 +250,9 @@ describe("a ticket past its work", () => {
         .ticket("s", { priority: 2, labels: ["solo"] }),
       checks: { fast: [passed("fast"), slowCheck("10 minutes")] },
       scripts: (world, root) => ({
-        x: [works(world, root, "x")],
-        b: [works(world, root, "b", { takes: "1 minute" })],
-        s: [works(world, root, "s")],
+        x: [works(world, root, "x" as TicketId)],
+        b: [works(world, root, "b" as TicketId, { takes: "1 minute" })],
+        s: [works(world, root, "s" as TicketId)],
       }),
       lasts: "12 minutes",
     })
@@ -285,8 +297,8 @@ describe("a ticket past its work", () => {
           yield* repository.commit(repo, "Elsewhere", { "README.md": "tutti 2\n" })
         }),
       scripts: (world, root) => ({
-        o: [works(world, root, "o")],
-        n: [works(world, root, "n")],
+        o: [works(world, root, "o" as TicketId)],
+        n: [works(world, root, "n" as TicketId)],
       }),
       lasts: "11 minutes",
     })

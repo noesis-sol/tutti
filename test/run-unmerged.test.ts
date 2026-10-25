@@ -6,7 +6,7 @@ import { Effect, Exit, Fiber } from "effect"
 import { type Outcome, run } from "../src/run/run.ts"
 import { unmergedLabel } from "../src/run/scope.ts"
 import { forkKey, stillUnmerged } from "../src/run/unmerged.ts"
-import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, type SessionScript } from "../src/testing/AgentHost.ts"
 import type { Seed } from "../src/testing/Beads.ts"
@@ -44,7 +44,7 @@ const branchWith = (repo: string, branch: string, message: string, files: Files)
   })
 
 /** Labels the closed ticket `unmerged`, as an earlier run left it, its fork noted. */
-const leftUnmerged = (repo: string, id: string, branch = `tutti/${id}`) =>
+const leftUnmerged = (repo: string, id: TicketId, branch = `tutti/${id}`) =>
   Effect.gen(function* () {
     const beads = yield* Beads
     yield* beads.setMetadata(id, forkKey, yield* (yield* Git).mergeBase(repo, "main", branch))
@@ -93,7 +93,7 @@ const runs = (plan: Plan): Promise<Ran<Outcome>> => {
 }
 
 /** What a ticket's worker's commands do to the in-memory Beads and git. */
-const commands = (world: World, root: string, id: string) => {
+const commands = (world: World, root: string, id: TicketId) => {
   const orDie = <A, E>(effect: Effect.Effect<A, E>) => Effect.asVoid(Effect.orDie(effect))
   return {
     claim: orDie(world.beads.update(id, { claim: true })),
@@ -114,11 +114,11 @@ describe("the run and the unmerged label", () => {
       before: (repo) =>
         Effect.gen(function* () {
           yield* branchWith(repo, "wt/t-1", "Do it (t-1)", { "t-1.txt": "1\n" })
-          yield* leftUnmerged(repo, "t-1", "wt/t-1")
+          yield* leftUnmerged(repo, "t-1" as TicketId, "wt/t-1")
           yield* (yield* Git).fastForward(repo, "wt/t-1")
         }),
       scripts: (world, root) => ({
-        "t-2": [claimsAndCloses("t-2", commands(world, root, "t-2"))],
+        "t-2": [claimsAndCloses("t-2" as TicketId, commands(world, root, "t-2" as TicketId))],
       }),
     })
     expectExitCode(ran, 0)
@@ -139,7 +139,7 @@ describe("the run and the unmerged label", () => {
       before: (repo) =>
         Effect.gen(function* () {
           yield* branchWith(repo, "tutti/t-1", "Do it (t-1)", { "t-1.txt": "1\n" })
-          yield* leftUnmerged(repo, "t-1")
+          yield* leftUnmerged(repo, "t-1" as TicketId)
           yield* moveMain(repo, "Something else", { "else.txt": "x\n" })
         }),
       scripts: () => ({}),
@@ -158,7 +158,7 @@ describe("the run and the unmerged label", () => {
       tickets: ["t-1"],
       backlog: backlog().ticket("t-1").seeds,
       scripts: (world, root) => ({
-        "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))],
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
       }),
       around: (running) =>
         Effect.gen(function* () {
@@ -195,7 +195,7 @@ describe("the run and the unmerged label", () => {
       backlog: backlog().ticket("t-1").seeds,
       before: () => Effect.flatMap(Repository, (repository) => repository.fail("merge --ff-only")),
       scripts: (world, root) => ({
-        "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))],
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
       }),
       // Read after the refusal, the branch has left the base where it is: it doesn't fast-forward.
       around: (running) =>
@@ -242,7 +242,7 @@ describe("stillUnmerged, for the Nothing to run box", () => {
         git: { dir: repo },
       },
       Effect.gen(function* () {
-        for (const id of ["a", "b"]) {
+        for (const id of ["a" as TicketId, "b" as TicketId]) {
           yield* branchWith(repo, `tutti/${id}`, `Do it (${id})`, { [`${id}.txt`]: `${id}\n` })
           yield* leftUnmerged(repo, id)
         }
@@ -251,7 +251,7 @@ describe("stillUnmerged, for the Nothing to run box", () => {
       }),
     )
     if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
-    expect([...ran.exit.value]).toEqual(["b"])
+    expect([...ran.exit.value]).toEqual(["b" as TicketId])
     expect(issueOf(ran, "a").labels).toEqual([unmergedLabel])
     expect(ran.log).toEqual([])
   })

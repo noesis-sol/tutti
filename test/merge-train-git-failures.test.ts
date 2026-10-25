@@ -10,7 +10,7 @@ import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { aheadJson, aheadKey, putBackLeft, type RebasedAhead } from "../src/run/mergetrain.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { makeSetUps } from "../src/run/setup.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -59,7 +59,7 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
    * tutti/<id> with a commit of its own, rebased onto tutti/a by a killed run's train, and marked
    * so in state.json; `conflict`: its rebase stopped on a conflict, the run killed during it.
    */
-  const leftRebased = (id: string, conflict = false) =>
+  const leftRebased = (id: TicketId, conflict = false) =>
     Effect.gen(function* () {
       const git = yield* Git
       const repository = yield* Repository
@@ -87,7 +87,7 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
    * `before` leaves branches rebased, putBackLeft runs, and `after` looks at what it left.
    */
   const killed = <A, B>(
-    ids: ReadonlyArray<string>,
+    ids: ReadonlyArray<TicketId>,
     before: Effect.Effect<A, unknown, Env>,
     after: (left: A) => Effect.Effect<B, unknown, Env>,
   ): Promise<Ran<{ readonly left: A; readonly after: B; readonly debug: ReadonlyArray<string> }>> =>
@@ -117,18 +117,18 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
     )
 
   /** The ticket's mark in state.json. */
-  const markOf = (id: string) =>
+  const markOf = (id: TicketId) =>
     Effect.flatMap(Store, (store) =>
       Effect.map(store.metadata(id), (metadata) => metadata[aheadKey]),
     )
 
   test("skips one whose branch git can't find, with a debug line, and goes on to the next", async () => {
     const ran = await killed(
-      ["b", "c"],
+      ["b" as TicketId, "c" as TicketId],
       Effect.gen(function* () {
-        const b = yield* leftRebased("b")
+        const b = yield* leftRebased("b" as TicketId)
         // c's mark names a branch that no longer exists.
-        yield* (yield* Store).updateTicket("c", (record) => ({
+        yield* (yield* Store).updateTicket("c" as TicketId, (record) => ({
           ...record,
           worktree: `${root}/c`,
           branch: "tutti/c",
@@ -136,7 +136,7 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
         }))
         return b
       }),
-      () => Effect.all({ b: markOf("b"), c: markOf("c") }),
+      () => Effect.all({ b: markOf("b" as TicketId), c: markOf("c" as TicketId) }),
     )
     const { left: b, after, debug } = resultOf(ran)
     // git rev-parse --verify --quiet says nothing of a branch it can't find.
@@ -151,9 +151,9 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
 
   test("aborts the rebase of one killed during it, its branch where its worker left it", async () => {
     const ran = await killed(
-      ["b"],
+      ["b" as TicketId],
       Effect.gen(function* () {
-        const b = yield* leftRebased("b", true)
+        const b = yield* leftRebased("b" as TicketId, true)
         return { ...b, rebasing: yield* (yield* Git).rebaseInProgress(b.worktree) }
       }),
       (b) =>
@@ -163,7 +163,7 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
             rebasing: yield* (yield* Git).rebaseInProgress(b.worktree),
             branch: yield* repository.head("tutti/b"),
             checkedOut: yield* repository.head("HEAD", b.worktree),
-            mark: yield* markOf("b"),
+            mark: yield* markOf("b" as TicketId),
           }
         }),
     )
@@ -180,17 +180,17 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
 
   test("says REBASE_FAILED, naming its worktree, when git can't put it back", async () => {
     const ran = await killed(
-      ["b"],
+      ["b" as TicketId],
       Effect.gen(function* () {
         const repository = yield* Repository
-        const b = yield* leftRebased("b")
+        const b = yield* leftRebased("b" as TicketId)
         yield* repository.fail("reset --hard", { dir: b.worktree })
         return { ...b, head: yield* repository.head("tutti/b") }
       }),
       () =>
         Effect.all({
           branch: Effect.flatMap(Repository, (repository) => repository.head("tutti/b")),
-          mark: markOf("b"),
+          mark: markOf("b" as TicketId),
         }),
     )
     const { left, after } = resultOf(ran)
@@ -204,7 +204,7 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
 })
 
 /** A ticket its worker finished: a commit naming it on tutti/<id>, closed, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -270,7 +270,7 @@ interface Merged {
  */
 const inLine = (
   plan: {
-    readonly ids?: ReadonlyArray<string>
+    readonly ids?: ReadonlyArray<TicketId>
     readonly train?: number
     readonly checks: (reach: Reach) => ReadonlyArray<Scripted>
     readonly files?: Readonly<Record<string, Files>>
@@ -278,7 +278,7 @@ const inLine = (
   body: (queue: MergeQueue) => Effect.Effect<void, unknown, Env | Ledger | Scope.Scope> = (queue) =>
     Effect.asVoid(queue.settled),
 ) => {
-  const ids = plan.ids ?? ["a", "b"]
+  const ids = plan.ids ?? ["a" as TicketId, "b" as TicketId]
   const reach = { tickets: {} } as Reach
   let seeds = backlog()
   for (const id of ids) seeds = seeds.ticket(id)
@@ -309,7 +309,7 @@ const inLine = (
         phases: tagsOf(yield* (yield* Ledger).current),
         before,
         after,
-        mark: (yield* (yield* Store).metadata("b"))[aheadKey],
+        mark: (yield* (yield* Store).metadata("b" as TicketId))[aheadKey],
         main: yield* repository.tree("main"),
         calls: yield* repository.calls,
       } satisfies Merged
@@ -384,7 +384,7 @@ describe("a ticket checked ahead of its turn", () => {
     const cStarted = Deferred.makeUnsafe<void>()
     const cStopped = Deferred.makeUnsafe<void>()
     const ran = await inLine({
-      ids: ["a", "b", "c"],
+      ids: ["a" as TicketId, "b" as TicketId, "c" as TicketId],
       train: 2,
       checks: () =>
         each((id, nth) => {

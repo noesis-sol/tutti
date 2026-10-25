@@ -34,6 +34,7 @@ import {
   writeFileUnder,
 } from "../native/libc.ts"
 import { phaseNames } from "../run/events.ts"
+import type { TicketId } from "./Beads.ts"
 
 /** The carry-over file, relative to the project's top (§ 9.1). */
 export const stateFile = join(".tutti", "run", "state.json")
@@ -105,6 +106,10 @@ export const State = Schema.Struct({
 
 export type State = Schema.Schema.Type<typeof State>
 
+/** The state's tickets, each with its ID: state.json keeps them by ID. */
+export const ticketsIn = (state: State): ReadonlyArray<readonly [TicketId, TicketRecord]> =>
+  Object.entries(state.tickets).map(([id, record]) => [id as TicketId, record] as const)
+
 /** The state before any run has written one. */
 export const emptyState: State = { version: stateVersion, tickets: {} }
 
@@ -150,7 +155,7 @@ export class Store extends Context.Service<
      */
     readonly previousRun: RunStamp | undefined
     /** What the last committed state has on the ticket, if anything. */
-    ticket(id: string): Effect.Effect<TicketRecord | undefined>
+    ticket(id: TicketId): Effect.Effect<TicketRecord | undefined>
     /** Applies `change` to the state and commits it, returning once the result is on disk. */
     update(change: (state: State) => State): Effect.Effect<State, StoreWriteFailed>
     /**
@@ -158,22 +163,30 @@ export class Store extends Context.Service<
      * commits it; `undefined` removes the ticket.
      */
     updateTicket(
-      id: string,
+      id: TicketId,
       change: (ticket: TicketRecord) => TicketRecord | undefined,
     ): Effect.Effect<void, StoreWriteFailed>
     /** Saves the session a ticket is about to start, with its worktree and branch (§ 4.8). */
-    saveSession(id: string, start: SessionStart): Effect.Effect<void, StoreWriteFailed>
+    saveSession(id: TicketId, start: SessionStart): Effect.Effect<void, StoreWriteFailed>
     /** Saves why the ticket's session was suspended, and the phase it left the run in. */
-    suspend(id: string, why: SuspendedWhy, phase: PhaseName): Effect.Effect<void, StoreWriteFailed>
+    suspend(
+      id: TicketId,
+      why: SuspendedWhy,
+      phase: PhaseName,
+    ): Effect.Effect<void, StoreWriteFailed>
     /** Counts one more resume of the ticket's session, which is in a run again. */
-    resumed(id: string): Effect.Effect<void, StoreWriteFailed>
+    resumed(id: TicketId): Effect.Effect<void, StoreWriteFailed>
     /** Forgets the ticket: merged, or dropped. */
-    remove(id: string): Effect.Effect<void, StoreWriteFailed>
+    remove(id: TicketId): Effect.Effect<void, StoreWriteFailed>
     /** The run's metadata for the ticket. */
-    metadata(id: string): Effect.Effect<Readonly<Record<string, Schema.Json>>>
+    metadata(id: TicketId): Effect.Effect<Readonly<Record<string, Schema.Json>>>
     /** Sets one key of the ticket's metadata, keeping the others. */
-    setMetadata(id: string, key: string, value: Schema.Json): Effect.Effect<void, StoreWriteFailed>
-    unsetMetadata(id: string, key: string): Effect.Effect<void, StoreWriteFailed>
+    setMetadata(
+      id: TicketId,
+      key: string,
+      value: Schema.Json,
+    ): Effect.Effect<void, StoreWriteFailed>
+    unsetMetadata(id: TicketId, key: string): Effect.Effect<void, StoreWriteFailed>
   }
 >()("tutti/services/Store") {
   /**
@@ -396,7 +409,7 @@ const commitWrites =
     )
 
 const withTicket =
-  (id: string, change: (ticket: TicketRecord) => TicketRecord | undefined) =>
+  (id: TicketId, change: (ticket: TicketRecord) => TicketRecord | undefined) =>
   (state: State): State => {
     const { [id]: current, ...others } = state.tickets
     const next = change(current ?? emptyTicket)
@@ -412,9 +425,9 @@ export const makeStore = (
   update: (change: (state: State) => State) => Effect.Effect<State, StoreWriteFailed>,
   previousRun: RunStamp | undefined,
 ): Store["Service"] => {
-  const updateTicket = (id: string, change: (ticket: TicketRecord) => TicketRecord | undefined) =>
+  const updateTicket = (id: TicketId, change: (ticket: TicketRecord) => TicketRecord | undefined) =>
     Effect.asVoid(update(withTicket(id, change)))
-  const ticket = (id: string) =>
+  const ticket = (id: TicketId) =>
     Effect.map(state, (current) =>
       Object.hasOwn(current.tickets, id) ? current.tickets[id] : undefined,
     )

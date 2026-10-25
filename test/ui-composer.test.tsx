@@ -3,6 +3,7 @@
 // Esc leaving the composer before the view, Ctrl+X's question and its Interrupt, Ctrl+R and the
 // Release button, and the form roles it is drawn in. The scripted host sends a message with the
 // uuid the composer drew.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { TextareaRenderable } from "@opentui/core"
@@ -17,6 +18,7 @@ import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as hostLayer, Recording, turn } from "../src/testing/AgentHost.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -73,7 +75,7 @@ const itemsOf = (messages: ReadonlyArray<SDKMessage>): ReadonlyArray<Item> =>
     message,
   }))
 
-const ledgerEntry = (ticket: string, worker: number, steered: boolean): LedgerEntry => ({
+const ledgerEntry = (ticket: TicketId, worker: number, steered: boolean): LedgerEntry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: TicketPhase.Working(),
@@ -93,7 +95,7 @@ const idle = WS.Idle({ at: began })
 const viewOf = (state: WorkerState, steered = false): RunView =>
   project({
     ledger: {
-      tickets: new Map([["t-1", ledgerEntry("t-1", 1, steered)]]),
+      tickets: new Map([["t-1" as TicketId, ledgerEntry("t-1" as TicketId, 1, steered)]]),
       rows: 1,
       windDown: null,
       bugs: [],
@@ -130,7 +132,7 @@ const shellOf = (
   feed: TranscriptFeed,
 ): ShellValue => ({
   view,
-  screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+  screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
   commands,
   appearance: external<Appearance>("dark"),
   themeOf,
@@ -296,7 +298,7 @@ describe("the composer", () => {
         expect(taken(commands)).toEqual([])
         await press(rendered, "enter")
         const send = sentOf(taken(commands))
-        expect(send.ticket).toBe("t-1")
+        expect(send.ticket).toBe("t-1" as TicketId)
         expect(send.text).toBe("Please also\nadd tests")
         expect(send.uuid).toMatch(/^[0-9a-f-]{36}$/)
         // The field is empty again and keeps the focus; an idle worker queues nothing.
@@ -551,13 +553,13 @@ describe("the message's uuid", () => {
     const sent = await Effect.runPromise(
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" })
-        const returned = yield* host.send("t-1", {
+        yield* host.start("t-1" as TicketId, { sessionId: "s-1", cwd: "/work/t-1" })
+        const returned = yield* host.send("t-1" as TicketId, {
           text: "Please also add tests",
           from: "human",
           uuid,
         })
-        return { returned, messages: yield* (yield* Recording).messages("t-1") }
+        return { returned, messages: yield* (yield* Recording).messages("t-1" as TicketId) }
       }).pipe(
         Effect.provide(
           hostLayer({ "t-1": [turn([])] }, { checks: [] }).pipe(

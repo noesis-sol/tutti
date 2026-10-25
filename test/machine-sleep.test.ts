@@ -19,7 +19,7 @@ import { clock } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { keepAwakeHint, sleptFor, sleptLine, watchSleeps } from "../src/run/slept.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Checks } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -261,7 +261,7 @@ describe("commands and sessions across a sleep", () => {
       Effect.exit(
         Effect.gen(function* () {
           yield* asleepFromNow
-          return yield* (yield* Beads).show("demo-813")
+          return yield* (yield* Beads).show("demo-813" as TicketId)
         }).pipe(Effect.provide(layer)),
       ),
     )
@@ -308,18 +308,21 @@ describe("commands and sessions across a sleep", () => {
     const took = await Effect.runPromise(
       Effect.gen(function* () {
         const agents = yield* AgentHost
-        yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* agents.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* agents.state("t-1").pipe(
+        yield* agents.start("t-1" as TicketId, {
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          cwd: dir,
+        })
+        yield* agents.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* agents.state("t-1" as TicketId).pipe(
           Stream.takeUntil((state) => state._tag === "Working"),
           Stream.runDrain,
         )
         const { noted } = yield* Asleep
         const started = Date.now()
         yield* noted({ from: started, to: started + 1500 })
-        yield* Effect.ignore(agents.interrupt("t-1"))
+        yield* Effect.ignore(agents.interrupt("t-1" as TicketId))
         const took = Date.now() - started
-        yield* Effect.ignore(agents.close("t-1"))
+        yield* Effect.ignore(agents.close("t-1" as TicketId))
         return took
       }).pipe(Effect.provide(layer)),
     )
@@ -391,7 +394,7 @@ describe("what the run says of a sleep", () => {
 
 describe("a run across a sleep", () => {
   /** A worker that takes `takes` to commit and close its ticket. */
-  const takes = (world: World, root: string, id: string, takes: Duration.Input): SessionScript =>
+  const takes = (world: World, root: string, id: TicketId, takes: Duration.Input): SessionScript =>
     turn(
       [
         ...bash(
@@ -438,7 +441,9 @@ describe("a run across a sleep", () => {
         git: { dir: repo },
         worktrees: { root },
         policy: waitForTest,
-        scripts: (world: World) => ({ "t-1": [takes(world, root, "t-1", "90 minutes")] }),
+        scripts: (world: World) => ({
+          "t-1": [takes(world, root, "t-1" as TicketId, "90 minutes")],
+        }),
       },
       Effect.gen(function* () {
         const git = yield* Git

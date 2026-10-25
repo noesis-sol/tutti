@@ -8,7 +8,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -20,7 +20,7 @@ const check = "scripts/check-fast.sh"
 const defaults = appConfig().settings
 
 /** A ticket its worker finished: a commit naming it on tutti/<id>, closed, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -57,8 +57,8 @@ test("a train git could not put back after it changed nothing is put back in its
     Effect.gen(function* () {
       const queue = yield* makeQueue({ repo: "/repo", base: "main" })
       const repository = yield* Repository
-      const a = yield* finished("a", { "a.txt": "a\n" })
-      const b = yield* finished("b", { "a.txt": "a\n" })
+      const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+      const b = yield* finished("b" as TicketId, { "a.txt": "a\n" })
       yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
       // The train's put-back after its rebase onto tutti/a dropped b's commit fails.
       yield* repository.fail("reset --hard", { dir: b.worktree })

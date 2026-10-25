@@ -1,5 +1,6 @@
 // The run's notifications (§ 7.9, notices.ts): what each record of the event stream notifies, in
 // orchestra's words, the layer that sends them, and a whole run's notices.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -13,6 +14,7 @@ import { line } from "../src/run/log.ts"
 import { about, finished, notice, noticeWidth, notifying } from "../src/run/notices.ts"
 import type { PhaseTag } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -205,7 +207,7 @@ const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-
 const finishes = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   commands: ReadonlyArray<string>,
 ): SessionScript =>
   turn(
@@ -243,11 +245,13 @@ describe("a whole run", () => {
         git: { dir: repo },
         worktrees: { root },
         scripts: (world: World) => ({
-          "t-1": [finishes(world, root, "t-1", ["rm -rf build", "rm -rf dist"])],
+          "t-1": [finishes(world, root, "t-1" as TicketId, ["rm -rf build", "rm -rf dist"])],
           "t-2": [
-            defers("t-2", {
-              claim: Effect.asVoid(Effect.orDie(world.beads.update("t-2", { claim: true }))),
-              defer: Effect.asVoid(Effect.orDie(world.beads.defer("t-2"))),
+            defers("t-2" as TicketId, {
+              claim: Effect.asVoid(
+                Effect.orDie(world.beads.update("t-2" as TicketId, { claim: true })),
+              ),
+              defer: Effect.asVoid(Effect.orDie(world.beads.defer("t-2" as TicketId))),
             }),
           ],
         }),

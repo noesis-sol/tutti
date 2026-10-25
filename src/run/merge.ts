@@ -52,7 +52,7 @@
 import { Data, Effect, Result } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import type { CheckError, Checks } from "../services/Checks.ts"
 import {
   Git,
@@ -64,7 +64,7 @@ import {
 } from "../services/Git.ts"
 import { allChanges, checkoutChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
-import { type BadTicketId, cleanupWhy, Worktrees } from "../services/Worktrees.ts"
+import { Worktrees } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
 import { aheadKey, clearAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
@@ -122,7 +122,7 @@ import { unlabel } from "./unmerged.ts"
 
 /** A ticket its worker finished: closed, committed, its worktree clean and on its branch. */
 export interface FinishedTicket {
-  readonly id: string
+  readonly id: TicketId
   /** Its title as Beads gave it. */
   readonly title: string
   /** `tutti/<id>`. */
@@ -161,7 +161,7 @@ export interface MergeOptions {
    * ticket's: false, taking none, while a solo ticket runs or is next, no slot is free, or the
    * ticket holds one still (the scheduler's recheckSlot). Without it, a recheck takes no slot.
    */
-  readonly recheckSlot: (ticket: string, work: Effect.Effect<void>) => Effect.Effect<boolean>
+  readonly recheckSlot: (ticket: TicketId, work: Effect.Effect<void>) => Effect.Effect<boolean>
   /** The run's setups (setup.ts), which starting a ticket shares; the queue's own without it. */
   readonly setUps: SetUps
   /**
@@ -185,7 +185,7 @@ export type StopWhy = keyof typeof stopCodes
 export interface MergeStop {
   readonly why: StopWhy
   readonly code: number
-  readonly ticket: string
+  readonly ticket: TicketId
   /** The line the log has for it. */
   readonly line: Line
 }
@@ -255,14 +255,14 @@ export const allMerged = (n: number): string =>
   n === 1 ? "its 1 subticket is merged" : `all ${n} subtickets are merged`
 
 /** The reason an epic is closed with, as `after`, its last subticket, merged. */
-export const epicCloseReason = (n: number, after: string): string => {
+export const epicCloseReason = (n: number, after: TicketId): string => {
   const all = allMerged(n)
   return `${all[0]?.toUpperCase()}${all.slice(1)}; closed by tutti after ${after}`
 }
 
 /** The ticket whose merge closed the epic its close reason is, or undefined when tutti didn't. */
-export const closedAfter = (reason: string): string | undefined =>
-  /; closed by tutti after (\S+)$/.exec(reason)?.[1]
+export const closedAfter = (reason: string): TicketId | undefined =>
+  /; closed by tutti after (\S+)$/.exec(reason)?.[1] as TicketId | undefined
 
 /** Every service a merge uses. */
 export type MergeEnv =
@@ -1117,21 +1117,21 @@ export const mergeTurn = (
 /**
  * What removing a done ticket's worktree and branch came to (removeMerged): both gone (Removed);
  * left as they are, as its worktree has uncommitted changes to `files` (Changed) or git can't say
- * whether it has (Unreadable), which only `leaveChanged` asks; or git, or the ticket's ID, kept
- * them (Failed, CLEANUP_FAILED).
+ * whether it has (Unreadable), which only `leaveChanged` asks; or git kept them (Failed,
+ * CLEANUP_FAILED).
  */
 export type Cleanup = Data.TaggedEnum<{
   Removed: Record<never, never>
   Changed: { readonly files: ReadonlyArray<string> }
   Unreadable: { readonly error: GitError }
-  Failed: { readonly error: BadTicketId | GitError }
+  Failed: { readonly error: GitError }
 }>
 
 export const Cleanup = Data.taggedEnum<Cleanup>()
 
 /** A ticket done, as retire takes it: `worktree` is undefined when git has none on its branch. */
 export interface DoneTicket {
-  readonly id: string
+  readonly id: TicketId
   readonly title: string
   readonly branch: string
   readonly worktree: string | undefined
@@ -1156,7 +1156,7 @@ export const removeMerged = (
     const git = yield* Git
     const worktrees = yield* Worktrees
     const { id, branch, worktree: at } = ticket
-    const failed = (error: BadTicketId | GitError) => Cleanup.Failed({ error })
+    const failed = (error: GitError) => Cleanup.Failed({ error })
     if (at === undefined) {
       return yield* Effect.match(worktrees.remove(id), {
         onSuccess: () => Cleanup.Removed(),
@@ -1201,7 +1201,7 @@ export const cleanupFailed = (
     ticket.worktree === undefined ? ticket.branch : `${ticket.worktree} / ${ticket.branch}`
   const why =
     cleanup._tag === "Failed"
-      ? cleanupWhy(cleanup.error)
+      ? gitWhy(cleanup.error)
       : cleanup._tag === "Changed"
         ? line`its worktree has uncommitted changes to ${cleanup.files}`
         : line`git can't say whether its worktree has uncommitted changes: ${gitWhy(cleanup.error)}`
@@ -1277,7 +1277,7 @@ export const closeUnchanged = (
  * The epics `id` was the last subticket to merge under, closed, each then its own parent's. `read`:
  * what bd showed of it just before, if the caller asked; it is asked here without it.
  */
-export const closeEpics = (id: string, read?: Result.Result<Issue, BeadsError>) =>
+export const closeEpics = (id: TicketId, read?: Result.Result<Issue, BeadsError>) =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const beads = yield* Beads

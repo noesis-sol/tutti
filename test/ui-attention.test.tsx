@@ -3,6 +3,7 @@
 // answer naming the request drawn when the key was pressed; the 500 ms guard; `defaultToNo`, which
 // opens on Deny with no one-key allow; several requests in order; a stale answer's toast; the
 // Answer box of a compact card and Shift+D's reason box.
+
 import { describe, expect, test } from "bun:test"
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Queue } from "effect"
@@ -13,6 +14,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { attentionLines } from "../src/ui/AttentionCard.tsx"
 import {
@@ -37,7 +39,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
 const working = TicketPhase.Working()
 
-const entryOf = (ticket: string, worker: number, row: number): Entry => ({
+const entryOf = (ticket: TicketId, worker: number, row: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: working,
@@ -55,7 +57,10 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest>, workers = 2): RunView
   project({
     ledger: {
       tickets: new Map(
-        Array.from({ length: workers }, (_, i) => [`t-${i + 1}`, entryOf(`t-${i + 1}`, i + 1, i)]),
+        Array.from({ length: workers }, (_, i) => [
+          `t-${i + 1}` as TicketId,
+          entryOf(`t-${i + 1}` as TicketId, i + 1, i),
+        ]),
       ),
       rows: workers,
       windDown: null,
@@ -79,7 +84,7 @@ const runRule: PermissionUpdate = {
 
 const permission = (
   id: string,
-  ticket: string,
+  ticket: TicketId,
   over: Partial<AttentionRequest> & { readonly suggestions?: ReadonlyArray<PermissionUpdate> } = {},
 ): AttentionRequest => {
   const { suggestions, ...rest } = over
@@ -104,7 +109,7 @@ const permission = (
 
 const asked = (
   id: string,
-  ticket: string,
+  ticket: TicketId,
   questions: ReadonlyArray<Question> = [
     {
       question: "Which migration?",
@@ -124,7 +129,7 @@ const asked = (
 
 const elicitation = (
   id: string,
-  ticket: string,
+  ticket: TicketId,
   over: { readonly mode: "form" | "url"; readonly requestedSchema?: Record<string, unknown> },
 ): AttentionRequest => ({
   id,
@@ -250,12 +255,12 @@ const sameLook = (a: Look, b: Look) => {
 describe("the card", () => {
   test("grows to show its oldest request: its line, the summary and reason faint, the buttons", async () => {
     const requests = [
-      permission("r1", "t-2", {
+      permission("r1", "t-2" as TicketId, {
         decisionReason: "Path is outside allowed working directories",
         suggestions: [runRule],
       }),
-      permission("r2", "t-2"),
-      permission("r3", "t-2"),
+      permission("r2", "t-2" as TicketId),
+      permission("r3", "t-2" as TicketId),
     ]
     await scene(requests, async ({ rendered }) => {
       expect(currentOf(await rendered.capture())).toMatchInlineSnapshot(`
@@ -280,7 +285,7 @@ describe("the card", () => {
   })
 
   test("framed needsYou, the line in the text's colour, the rest faint, the buttons in the form roles", () => {
-    const card = viewOf([permission("r1", "t-1", { decisionReason: "held" })]).cards[0]
+    const card = viewOf([permission("r1", "t-1" as TicketId, { decisionReason: "held" })]).cards[0]
     if (card === undefined) throw new Error("no card")
     const lines = attentionLines(card, theme, [], { width: 60, highlighted: false, focus: 0 })
     const frame = lines[0]?.[0]?.look
@@ -294,12 +299,14 @@ describe("the card", () => {
   })
 
   test("a title stands for the line; the tool's name and the input's summary for what's missing", () => {
-    const titled = permission("r", "t", { title: "Claude wants to run: rm -rf build" })
+    const titled = permission("r", "t" as TicketId, { title: "Claude wants to run: rm -rf build" })
     expect(requestText(titled)).toEqual({ line: "Claude wants to run: rm -rf build", faint: [] })
-    const bare = permission("r", "t")
+    const bare = permission("r", "t" as TicketId)
     const { displayName: _, description: __, ...plain } = bare
     expect(requestText(plain)).toEqual({ line: "Bash: rm -rf build", faint: [] })
-    expect(requestText(permission("r", "t", { title: "Claude wants to clean up" }))).toEqual({
+    expect(
+      requestText(permission("r", "t" as TicketId, { title: "Claude wants to clean up" })),
+    ).toEqual({
       line: "Claude wants to clean up",
       faint: ["rm -rf build"],
     })
@@ -307,36 +314,48 @@ describe("the card", () => {
 
   test("the buttons of each kind; Allow for this run only with rules to keep, not suppressed", () => {
     const labels = (request: AttentionRequest) => buttonsOf(request).map((b) => b.label)
-    expect(labels(permission("r", "t"))).toEqual(["Deny", "Allow"])
-    expect(labels(permission("r", "t", { suggestions: [runRule] }))).toEqual([
+    expect(labels(permission("r", "t" as TicketId))).toEqual(["Deny", "Allow"])
+    expect(labels(permission("r", "t" as TicketId, { suggestions: [runRule] }))).toEqual([
       "Deny",
       "Allow",
       "Allow for this run",
     ])
     expect(
-      labels(permission("r", "t", { suggestions: [runRule], suppressAlwaysAllowRule: true })),
+      labels(
+        permission("r", "t" as TicketId, { suggestions: [runRule], suppressAlwaysAllowRule: true }),
+      ),
     ).toEqual(["Deny", "Allow"])
-    expect(labels(asked("q", "t"))).toEqual(["1 Keep the old", "2 Write a new"])
+    expect(labels(asked("q", "t" as TicketId))).toEqual(["1 Keep the old", "2 Write a new"])
     const two: Question = { question: "And?", options: [{ label: "x" }], multiSelect: false }
-    const first = asked("q", "t").kind
+    const first = asked("q", "t" as TicketId).kind
     if (first._tag !== "Question") throw new Error("not a question")
-    expect(labels(asked("q", "t", [...first.questions, two]))).toEqual(["Answer in view"])
-    expect(labels(asked("q", "t", [{ ...two, multiSelect: true }]))).toEqual(["Answer in view"])
-    expect(labels(elicitation("e", "t", { mode: "url" }))).toEqual(["Decline", "Open URL"])
+    expect(labels(asked("q", "t" as TicketId, [...first.questions, two]))).toEqual([
+      "Answer in view",
+    ])
+    expect(labels(asked("q", "t" as TicketId, [{ ...two, multiSelect: true }]))).toEqual([
+      "Answer in view",
+    ])
+    expect(labels(elicitation("e", "t" as TicketId, { mode: "url" }))).toEqual([
+      "Decline",
+      "Open URL",
+    ])
     expect(
       labels(
-        elicitation("e", "t", {
+        elicitation("e", "t" as TicketId, {
           mode: "form",
           requestedSchema: { type: "object", properties: { token: { type: "string" } } },
         }),
       ),
     ).toEqual(["Decline", "Answer in view"])
-    expect(labels(elicitation("e", "t", { mode: "form" }))).toEqual(["Decline", "Accept"])
+    expect(labels(elicitation("e", "t" as TicketId, { mode: "form" }))).toEqual([
+      "Decline",
+      "Accept",
+    ])
   })
 
   test("a question's options one a line; an elicitation's URL faint", async () => {
     await scene(
-      [asked("q1", "t-1"), elicitation("e1", "t-2", { mode: "url" })],
+      [asked("q1", "t-1" as TicketId), elicitation("e1", "t-2" as TicketId, { mode: "url" })],
       async ({ rendered }) => {
         expect(currentOf(await rendered.capture())).toMatchInlineSnapshot(`
           "
@@ -364,7 +383,7 @@ describe("the card", () => {
 
   test("cards keep their order; an attention card is taller, not moved", async () => {
     await scene(
-      [permission("r1", "t-1")],
+      [permission("r1", "t-1" as TicketId)],
       async ({ rendered }) => {
         const lines = linesOf(await rendered.capture())
         const heads = lines.flatMap((line) =>
@@ -374,7 +393,7 @@ describe("the card", () => {
       },
       { size: { width: 120, height: 40 }, workers: 4 },
     )
-    const view = viewOf([permission("r1", "t-1")], 4)
+    const view = viewOf([permission("r1", "t-1" as TicketId)], 4)
     const layout = layoutOf(view.cards, 120, 30)
     if (layout._tag !== "Cards") throw new Error("not cards")
     // The first row holds the attention card, as tall as its request; the second, two cards.
@@ -383,7 +402,7 @@ describe("the card", () => {
 
   test("in the compact layout, ■ allow?, and Enter opens its request in the Answer box", async () => {
     await scene(
-      [permission("r1", "t-3")],
+      [permission("r1", "t-3" as TicketId)],
       async ({ rendered, commands, clock }) => {
         const frame = await rendered.capture()
         expect(linesOf(frame).some((line) => line.includes("• t-3  ■ allow?"))).toBe(true)
@@ -407,8 +426,8 @@ describe("the card", () => {
 describe("answering by key", () => {
   test("d denies, a allows, r allows for this run: the oldest request is the target", async () => {
     const requests = [
-      permission("r1", "t-2", { suggestions: [runRule] }),
-      permission("r2", "t-1", { suggestions: [runRule] }),
+      permission("r1", "t-2" as TicketId, { suggestions: [runRule] }),
+      permission("r2", "t-1" as TicketId, { suggestions: [runRule] }),
     ]
     await scene(requests, async ({ view, commands, clock, rendered }) => {
       clock.pass(settle)
@@ -429,7 +448,7 @@ describe("answering by key", () => {
   })
 
   test("Enter presses the focused button, Deny at first; Tab and → move to Allow", async () => {
-    await scene([permission("r1", "t-1")], async ({ commands, clock, rendered }) => {
+    await scene([permission("r1", "t-1" as TicketId)], async ({ commands, clock, rendered }) => {
       clock.pass(settle)
       await press(rendered, "enter")
       expect(taken(commands)).toEqual([answerOf("r1", { _tag: "Deny" })])
@@ -437,12 +456,12 @@ describe("answering by key", () => {
       expect(taken(commands)).toEqual([answerOf("r1", { _tag: "Allow" })])
       // Past the last button, Tab goes on to the next card, whose Enter opens it.
       await press(rendered, "tab", "enter")
-      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-2" })])
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-2" as TicketId })])
     })
   })
 
   test("r answers nothing without rules to keep; a highlighted card that waits on nothing has no target", async () => {
-    await scene([permission("r1", "t-1")], async ({ commands, clock, rendered }) => {
+    await scene([permission("r1", "t-1" as TicketId)], async ({ commands, clock, rendered }) => {
       clock.pass(settle)
       await press(rendered, "r")
       expect(taken(commands)).toEqual([])
@@ -452,7 +471,7 @@ describe("answering by key", () => {
   })
 
   test("Shift+D denies with the reason typed in a small field; Esc closes it", async () => {
-    await scene([permission("r1", "t-1")], async ({ commands, clock, rendered }) => {
+    await scene([permission("r1", "t-1" as TicketId)], async ({ commands, clock, rendered }) => {
       clock.pass(settle)
       await press(rendered, "D")
       const frame = await rendered.capture()
@@ -472,11 +491,11 @@ describe("answering by key", () => {
 
   test("1–4 pick a question's option and Enter confirms; before a pick, Enter opens the card", async () => {
     await scene(
-      [asked("q1", "t-1")],
+      [asked("q1", "t-1" as TicketId)],
       async ({ commands, clock, rendered }) => {
         clock.pass(settle)
         await press(rendered, "enter")
-        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-1" })])
+        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-1" as TicketId })])
         await press(rendered, "2", "enter")
         expect(taken(commands)).toEqual([
           answerOf("q1", { _tag: "Choose", answers: ["Write a new"] }),
@@ -491,7 +510,7 @@ describe("answering by key", () => {
 
   test("an elicitation: d declines; Open URL accepts", async () => {
     await scene(
-      [elicitation("e1", "t-1", { mode: "url" })],
+      [elicitation("e1", "t-1" as TicketId, { mode: "url" })],
       async ({ commands, clock, rendered }) => {
         clock.pass(settle)
         await press(rendered, "d", "tab", "enter")
@@ -505,7 +524,7 @@ describe("answering by key", () => {
 })
 
 describe("defaultToNo", () => {
-  const held = permission("r1", "t-1", {
+  const held = permission("r1", "t-1" as TicketId, {
     defaultToNo: true,
     suppressAlwaysAllowRule: true,
     decisionReason: "held by the safety check",
@@ -543,7 +562,7 @@ describe("defaultToNo", () => {
   })
 
   test("r doesn't allow it for this run either, though it offers the button", async () => {
-    const asked = permission("r1", "t-1", { defaultToNo: true, suggestions: [runRule] })
+    const asked = permission("r1", "t-1" as TicketId, { defaultToNo: true, suggestions: [runRule] })
     expect(keyAnswer(asked, "r")).toBeNull()
     expect(buttonsOf(asked).map((b) => b.label)).toEqual(["Deny", "Allow", "Allow for this run"])
     await scene([asked], async ({ commands, clock, rendered }) => {
@@ -557,11 +576,11 @@ describe("defaultToNo", () => {
 
   test("Allow is never the focused default, whatever the request", () => {
     for (const request of [
-      permission("r", "t"),
+      permission("r", "t" as TicketId),
       held,
-      permission("r", "t", { suggestions: [runRule] }),
-      asked("q", "t"),
-      elicitation("e", "t", { mode: "url" }),
+      permission("r", "t" as TicketId, { suggestions: [runRule] }),
+      asked("q", "t" as TicketId),
+      elicitation("e", "t" as TicketId, { mode: "url" }),
     ]) {
       const focus = defaultFocus(request)
       const label = focus === null ? null : (buttonsOf(request)[focus]?.label ?? null)
@@ -572,7 +591,7 @@ describe("defaultToNo", () => {
 
 describe("the 500 ms guard", () => {
   test("input to a card is ignored for 500 ms after its request appears", async () => {
-    await scene([permission("r1", "t-1")], async ({ commands, clock, rendered }) => {
+    await scene([permission("r1", "t-1" as TicketId)], async ({ commands, clock, rendered }) => {
       await press(rendered, "a", "d", "enter", "D")
       clock.pass(settle - 1)
       await press(rendered, "a")
@@ -587,8 +606,8 @@ describe("the 500 ms guard", () => {
   })
 
   test("and again after it changes: the next request is guarded anew", async () => {
-    const first = permission("r1", "t-1")
-    const next = permission("r2", "t-1")
+    const first = permission("r1", "t-1" as TicketId)
+    const next = permission("r2", "t-1" as TicketId)
     await scene([first, next], async ({ view, commands, clock, rendered }) => {
       clock.pass(settle)
       await press(rendered, "a")
@@ -602,7 +621,7 @@ describe("the 500 ms guard", () => {
   })
 
   test("a click on a button too", async () => {
-    await scene([permission("r1", "t-1")], async ({ commands, clock, rendered }) => {
+    await scene([permission("r1", "t-1" as TicketId)], async ({ commands, clock, rendered }) => {
       const deny = where(await rendered.capture(), "[ Deny ]")
       await rendered.input((setup) => setup.mockMouse.click(deny.x + 2, deny.y))
       expect(taken(commands)).toEqual([])
@@ -615,7 +634,11 @@ describe("the 500 ms guard", () => {
 
 describe("several requests", () => {
   test("in order, the oldest shown with +N more, each answered as it is shown", async () => {
-    const requests = [permission("r1", "t-1"), permission("r2", "t-1"), permission("r3", "t-1")]
+    const requests = [
+      permission("r1", "t-1" as TicketId),
+      permission("r2", "t-1" as TicketId),
+      permission("r3", "t-1" as TicketId),
+    ]
     await scene(requests, async ({ view, commands, clock, rendered }) => {
       for (let i = 0; i < requests.length; i++) {
         const left = requests.slice(i)
@@ -631,7 +654,7 @@ describe("several requests", () => {
   })
 
   test("Tab moves through every card's buttons, then on to the next card", async () => {
-    const requests = [permission("r1", "t-1"), permission("r2", "t-2")]
+    const requests = [permission("r1", "t-1" as TicketId), permission("r2", "t-2" as TicketId)]
     await scene(requests, async ({ commands, clock, rendered }) => {
       clock.pass(settle)
       // Card 1's Deny (the target), its Allow, then card 2 on its Deny; Shift+Tab back to card 1,
@@ -659,8 +682,8 @@ describe("several requests", () => {
 
 describe("the answer names the request shown", () => {
   test("a key pressed as the request changes answers the one drawn, and a stale one toasts", async () => {
-    const first = permission("r1", "t-1")
-    const next = permission("r2", "t-1")
+    const first = permission("r1", "t-1" as TicketId)
+    const next = permission("r2", "t-1" as TicketId)
     await scene([first, next], async ({ view, commands, clock, rendered }) => {
       clock.pass(settle)
       // r1 is answered elsewhere and r2 shown in its place; the key, pressed before the screen
@@ -676,7 +699,7 @@ describe("the answer names the request shown", () => {
   })
 
   test("a click names the request of the card clicked", async () => {
-    const requests = [permission("r1", "t-1"), permission("r2", "t-2")]
+    const requests = [permission("r1", "t-1" as TicketId), permission("r2", "t-2" as TicketId)]
     await scene(requests, async ({ commands, clock, rendered }) => {
       clock.pass(settle)
       const frame = await rendered.capture()
@@ -688,7 +711,7 @@ describe("the answer names the request shown", () => {
       expect(taken(commands)).toEqual([answerOf("r2", { _tag: "Allow" })])
       // A click elsewhere on the card opens its worker.
       await rendered.input((setup) => setup.mockMouse.click(40, second))
-      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-2" })])
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-2" as TicketId })])
     })
   })
 })

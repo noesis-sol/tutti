@@ -2,6 +2,7 @@
 // `cancelled` answers it, and so does the interrupt's receipt or `cancel_async_message`, for a send
 // no message of the session says was cancelled. The per-ticket fiber then goes on to its next nudge
 // and PAUSED, rather than waiting on the nudge until the session ends.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -20,13 +21,14 @@ import { idleGrace } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { nudgeText } from "../src/run/told.ts"
 import { type Worked, work } from "../src/run/work.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { run, turn } from "../src/testing/AgentHost.ts"
 import { Repository } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import { advance, backlog, type Env, scenario, type World } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 
 /** A merge queue that only puts the ticket in line, ToMerge. */

@@ -20,7 +20,14 @@
 import { Data, Duration, Effect, Option, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
-import { Beads, type BeadsError, HumanLabel, type Issue, type Status } from "../services/Beads.ts"
+import {
+  Beads,
+  type BeadsError,
+  HumanLabel,
+  type Issue,
+  type Status,
+  type TicketId,
+} from "../services/Beads.ts"
 import { type Commit, Git, type GitError, gitWhy, type StatusEntry } from "../services/Git.ts"
 import { allChangeEntries, allChanges } from "../services/gitStatus.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
@@ -53,7 +60,7 @@ const isIdChar = (c: string): boolean => /^[A-Za-z0-9_]$/.test(c)
  * Whether a commit message names ticket `id` as a whole ID, as orchestra's namesID reads it: not
  * inside a longer one, such as `id3`, `xid`, `id-x` or the child `id.1`.
  */
-export const namesTicket = (message: string, id: string): boolean => {
+export const namesTicket = (message: string, id: TicketId): boolean => {
   if (id === "") return false
   for (let i = message.indexOf(id); i >= 0; i = message.indexOf(id, i + 1)) {
     const before = message[i - 1]
@@ -110,7 +117,7 @@ export const unmergedBlockers = (
   issue: Issue,
   state: State,
   branches: ReadonlyMap<string, string> = new Map(),
-): ReadonlyArray<string> =>
+): ReadonlyArray<TicketId> =>
   issue.dependencies
     .filter((dependency) => {
       if (dependency.type !== "blocks") return false
@@ -145,7 +152,7 @@ export type Reading = Data.TaggedEnum<{
   /** It waits on `question`, which its worker filed. */
   Asked: { readonly question: Issue }
   /** Its worker stopped with nothing done, having linked `blockers`, which haven't merged. */
-  WaitsForMerge: { readonly blockers: ReadonlyArray<string>; readonly status: Status }
+  WaitsForMerge: { readonly blockers: ReadonlyArray<TicketId>; readonly status: Status }
   /** Its worker deferred it; `nothingDone` as nothingDone says. */
   Deferred: { readonly nothingDone: boolean }
   /** Still in progress, with no question and no deferral. */
@@ -183,7 +190,7 @@ export const Settled = Data.taggedEnum<Settled>()
 export type SettleEnv = AgentHost | MergeEnv
 
 /** The worker's state once it has settled; a worker the host no longer knows is Gone. */
-export const untilSettled = (ticket: string): Effect.Effect<WorkerState, never, AgentHost> =>
+export const untilSettled = (ticket: TicketId): Effect.Effect<WorkerState, never, AgentHost> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const found = yield* host.state(ticket).pipe(
@@ -200,7 +207,7 @@ export const untilSettled = (ticket: string): Effect.Effect<WorkerState, never, 
  * Tells the worker to continue, the `n`th time, and waits until the nudge is no longer outstanding
  * (or the worker has gone); false when it couldn't be sent. Settling again is the caller's.
  */
-const nudge = (ticket: string, n: number) =>
+const nudge = (ticket: TicketId, n: number) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const logs = yield* Log
@@ -221,7 +228,7 @@ export const limitDeferralNote =
   "worker carries on after the reset"
 
 /** The ticket as bd show gives it, read again a few seconds later while bd fails. */
-const show = (id: string) =>
+const show = (id: TicketId) =>
   Effect.gen(function* () {
     const beads = yield* Beads
     return yield* retrying(beads.show(id), readAgain)
@@ -317,7 +324,7 @@ export const nothingDone = (path: string, base: string): Effect.Effect<boolean, 
  * fiber failing and the run holding with GIT_FAILED.
  */
 const leftNothing = (
-  id: string,
+  id: TicketId,
   path: string,
   base: string,
 ): Effect.Effect<boolean, never, Git | Log> =>
@@ -340,7 +347,7 @@ const idle = (state: WorkerState): state is Extract<WorkerState, { _tag: "Idle" 
  * it got going again before the grace ran out, or you released it, steered. The grace counts from
  * your last message to it, when that came later.
  */
-const grace = (ticket: string, at: number) =>
+const grace = (ticket: TicketId, at: number) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const ledger = yield* Ledger
@@ -374,7 +381,7 @@ const grace = (ticket: string, at: number) =>
  * deferred, the ticket is put back in progress, so that it waits for the reset in the hold and its
  * worker, told to carry on then, finds it as it left it.
  */
-const undeferAtLimit = (id: string) =>
+const undeferAtLimit = (id: TicketId) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const beads = yield* Beads

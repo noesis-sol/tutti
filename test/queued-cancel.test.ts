@@ -4,6 +4,7 @@
 // either way is no longer outstanding (§ 4.2), and one the CLI won't cancel runs. The scripted
 // AgentHost and the live host over the fake Claude Code (test/fixtures/fake-claude/claude.ts); § 13's
 // contract tests against the real SDK are in test/contract/sdk.test.ts.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -22,6 +23,7 @@ import type { WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   awaitInterrupt,
   coalescedTurn,
@@ -46,7 +48,7 @@ import { workersIn } from "./workerEnv.ts"
 type Env = AgentHost | Attention | Transcripts | Files | Log | EventStream
 
 /** Waits, at most 10 s, for the ticket's worker to reach a state with `tag`; the states seen. */
-const reaches = (ticket: string, tag: WorkerState["_tag"]) =>
+const reaches = (ticket: TicketId, tag: WorkerState["_tag"]) =>
   Effect.flatMap(AgentHost, (host) =>
     host.state(ticket).pipe(
       Stream.takeUntil((s) => s._tag === tag),
@@ -106,19 +108,19 @@ const interrupted = [
 const queueTwoAndInterrupt = (settled: WorkerState["_tag"]) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
-    yield* host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" })
-    yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-    yield* reaches("t-1", "Working")
-    const b = yield* host.send("t-1", { text: "And this.", from: "human" })
-    const c = yield* host.send("t-1", { text: "And that.", from: "human" })
-    const receipt = yield* host.interrupt("t-1")
-    const states = yield* reaches("t-1", settled)
+    yield* host.start("t-1" as TicketId, { sessionId: "s-1", cwd: "/work/t-1" })
+    yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+    yield* reaches("t-1" as TicketId, "Working")
+    const b = yield* host.send("t-1" as TicketId, { text: "And this.", from: "human" })
+    const c = yield* host.send("t-1" as TicketId, { text: "And that.", from: "human" })
+    const receipt = yield* host.interrupt("t-1" as TicketId)
+    const states = yield* reaches("t-1" as TicketId, settled)
     return {
       b,
       c,
       receipt,
       states: states.map((s) => s._tag),
-      sent: (yield* (yield* Recording).sentTo("t-1")).map((s) =>
+      sent: (yield* (yield* Recording).sentTo("t-1" as TicketId)).map((s) =>
         s._tag === "CancelAsync" ? [s._tag, s.uuid, s.cancelled] : [s._tag],
       ),
       ...(yield* transcript),
@@ -247,17 +249,17 @@ const noCancelQueued = { init: { capabilities: ["interrupt_receipt_v1"] } }
 const liveQueueTwoAndInterrupt = (log: string, settled: WorkerState["_tag"]) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
-    yield* host.start("t-1", {
+    yield* host.start("t-1" as TicketId, {
       sessionId: "11111111-1111-4111-8111-111111111111",
       cwd: join(log, ".."),
     })
-    yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-    yield* reaches("t-1", "Working")
-    const b = yield* host.send("t-1", { text: "And this.", from: "human" })
-    const c = yield* host.send("t-1", { text: "And that.", from: "human" })
+    yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+    yield* reaches("t-1" as TicketId, "Working")
+    const b = yield* host.send("t-1" as TicketId, { text: "And this.", from: "human" })
+    const c = yield* host.send("t-1" as TicketId, { text: "And that.", from: "human" })
     yield* fakeRead(log, 3)
-    const receipt = yield* host.interrupt("t-1")
-    const states = yield* reaches("t-1", settled)
+    const receipt = yield* host.interrupt("t-1" as TicketId)
+    const states = yield* reaches("t-1" as TicketId, settled)
     return {
       b,
       c,

@@ -1,6 +1,7 @@
 // What holds the run is one value (holds.ts's RunHolds): its stops, BLOCKED among them once per
 // ticket, the tickets past --ticket-limit, the machine's hold and the usage limit's view;
 // `· stopping`, the banners and the usage line are what it shows.
+
 import { describe, expect, test } from "bun:test"
 import * as fc from "fast-check"
 import {
@@ -22,6 +23,7 @@ import {
   withMachineHold,
 } from "../src/run/holds.ts"
 import type { UsageView } from "../src/run/usageLimit.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
 const usageHeld: UsageView = {
   usage: { utilization: 1, resetsAt: 1_000 },
@@ -45,31 +47,35 @@ describe("RunHolds", () => {
 
   test("BLOCKED is a stop, shown as one banner however many tickets it holds", () => {
     const held = raiseStop(
-      raiseStop(noHolds, blockedStop("a", "a question")),
-      blockedStop("b", "x"),
+      raiseStop(noHolds, blockedStop("a" as TicketId, "a question")),
+      blockedStop("b" as TicketId, "x"),
     )
-    expect([...blockedTickets(held)]).toEqual(["a", "b"])
+    expect([...blockedTickets(held)]).toEqual(["a" as TicketId, "b" as TicketId])
     expect(shownHolds(held).stopping).toBe(true)
     expect(words(held)).toEqual(["BLOCKED"])
   })
 
   test("lifting one ticket's BLOCKED is one call, and keeps the stops beside it", () => {
     const paused = stopFor("PAUSED", "t-3 paused")
-    const held = [blockedStop("a", "q"), paused, blockedStop("b", "q")].reduce(raiseStop, noHolds)
-    const lifted = liftBlocked(held, "a")
-    expect([...blockedTickets(lifted)]).toEqual(["b"])
+    const held = [
+      blockedStop("a" as TicketId, "q"),
+      paused,
+      blockedStop("b" as TicketId, "q"),
+    ].reduce(raiseStop, noHolds)
+    const lifted = liftBlocked(held, "a" as TicketId)
+    expect([...blockedTickets(lifted)]).toEqual(["b" as TicketId])
     expect(lifted.stops[0]).toBe(paused)
     expect(words(lifted)).toEqual(["BLOCKED"])
-    const none = liftBlocked(lifted, "b")
+    const none = liftBlocked(lifted, "b" as TicketId)
     expect(blockedTickets(none).size).toBe(0)
     expect(words(none)).toEqual([])
     expect(shownHolds(none).stopping).toBe(true)
   })
 
   test("a worker past its ticket limit raises its stop and counts over the limit", () => {
-    const stop = ticketLimitStop({ id: "t-1", limit: "2h", worktree: "/w/t-1" })
-    const over = pastTicketLimit(noHolds, "t-1", stop)
-    expect([...over.overLimit]).toEqual(["t-1"])
+    const stop = ticketLimitStop({ id: "t-1" as TicketId, limit: "2h", worktree: "/w/t-1" })
+    const over = pastTicketLimit(noHolds, "t-1" as TicketId, stop)
+    expect([...over.overLimit]).toEqual(["t-1" as TicketId])
     expect(over.stops[0]).toBe(stop)
     expect(shownHolds(over).stopping).toBe(true)
     expect(words(over)).toEqual([])
@@ -86,7 +92,7 @@ describe("RunHolds", () => {
       usage: usageHeld.usage,
       notice: usageHeld.notice,
     })
-    const blocked = raiseStop(held, blockedStop("a", "q"))
+    const blocked = raiseStop(held, blockedStop("a" as TicketId, "q"))
     expect(words(blocked)).toEqual(["BLOCKED", "USAGE_LIMIT", "MACHINE"])
     const free = showUsage(withMachineHold(blocked, false), usageFree)
     expect(shownHolds(free)).toEqual({
@@ -105,7 +111,7 @@ describe("RunHolds", () => {
   })
 
   test("quitting's stop goes first, and the run's end adds to its line", () => {
-    const blocked = raiseStop(noHolds, blockedStop("a", "q"))
+    const blocked = raiseStop(noHolds, blockedStop("a" as TicketId, "q"))
     const quit = stopFor("INTERRUPTED", "quit")
     const ended = changeStops(
       changeStops(blocked, (stops) => putFirst(stops, quit)),
@@ -115,12 +121,12 @@ describe("RunHolds", () => {
     expect<string>(stopsLine(ended.stops)).toBe(
       "INTERRUPTED: quit; t-1 never handed back; t-2 too; also BLOCKED >4min: a needs you: q",
     )
-    expect([...blockedTickets(ended)]).toEqual(["a"])
+    expect([...blockedTickets(ended)]).toEqual(["a" as TicketId])
   })
 
   // The holds, after any run of changes as run.ts makes them, against a model of what each keeps.
   test("BLOCKED is recorded once per ticket, and the banners follow the holds", () => {
-    const tickets = fc.constantFrom("a", "b", "c")
+    const tickets = fc.constantFrom("a", "b", "c").map((id) => id as TicketId)
     const change = fc.oneof(
       fc.record({ kind: fc.constant("trip" as const), ticket: tickets }),
       fc.record({ kind: fc.constant("lift" as const), ticket: tickets }),
@@ -132,8 +138,8 @@ describe("RunHolds", () => {
     fc.assert(
       fc.property(fc.array(change, { maxLength: 30 }), (changes) => {
         let holds = noHolds
-        const blocked = new Set<string>()
-        const over = new Set<string>()
+        const blocked = new Set<TicketId>()
+        const over = new Set<TicketId>()
         let others = 0
         let machine = false
         let usage = false

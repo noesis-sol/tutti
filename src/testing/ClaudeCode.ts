@@ -57,6 +57,7 @@ import {
   SessionFailed,
 } from "../agent/ClaudeCode.ts"
 import { stderrKept } from "../agent/sessionProcess.ts"
+import type { TicketId } from "../services/Beads.ts"
 
 /** A step of a scripted session. */
 export type Step = Data.TaggedEnum<{
@@ -122,40 +123,40 @@ export type SessionScript = ReadonlyArray<Step>
 
 /** What the scripted sessions and their host were sent, in order. */
 export type Sent = Data.TaggedEnum<{
-  Started: { readonly ticket: string; readonly session: Session }
-  Resumed: { readonly ticket: string; readonly session: Session }
+  Started: { readonly ticket: TicketId; readonly session: Session }
+  Resumed: { readonly ticket: TicketId; readonly session: Session }
   /** A message, as the SDK gets it: `client_composed`, or `origin: { kind: "human" }`. */
-  Message: { readonly ticket: string; readonly message: SDKUserMessage }
+  Message: { readonly ticket: TicketId; readonly message: SDKUserMessage }
   /**
    * A `cancel_async_message` request, sent after an interrupt for a message still queued, and its
    * answer: whether the message was dropped, or null when the CLI refused the request.
    */
   CancelAsync: {
-    readonly ticket: string
+    readonly ticket: TicketId
     readonly uuid: string
     readonly cancelled: boolean | null
   }
   /**
    * The interrupt's receipt, with the messages cancel_async_message cancelled under `cancelled`.
    */
-  Interrupted: { readonly ticket: string; readonly receipt: Receipt }
+  Interrupted: { readonly ticket: TicketId; readonly receipt: Receipt }
   /** A canUseTool call's answer. */
   Answered: {
-    readonly ticket: string
+    readonly ticket: TicketId
     readonly toolName: string
     readonly result: PermissionResult | null
   }
   /** An elicitation's answer. */
-  Elicited: { readonly ticket: string; readonly result: ElicitationResult | null }
-  Closed: { readonly ticket: string }
-  Ended: { readonly ticket: string }
+  Elicited: { readonly ticket: TicketId; readonly result: ElicitationResult | null }
+  Closed: { readonly ticket: TicketId }
+  Ended: { readonly ticket: TicketId }
 }>
 
 export const Sent = Data.taggedEnum<Sent>()
 
 /** What a session plays: the ticket it is for, and its steps. */
 export interface Played {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly steps: SessionScript
 }
 

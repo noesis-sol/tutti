@@ -1,6 +1,7 @@
 // state.json's ticket records across runs (§ 4.8): a ticket merged, closed with no change or
 // dropped WORKER_GONE is forgotten; one the run leaves otherwise keeps its record, with the phase
 // it left the run in; and the records a crashed run left unsuspended are carried over.
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -9,6 +10,7 @@ import { Effect, Fiber } from "effect"
 import { crashedWhy } from "../src/run/carry.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { resumedText } from "../src/run/told.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type RunStamp, type State, Store, type TicketRecord } from "../src/services/Store.ts"
 import {
@@ -116,7 +118,7 @@ const plainRun = async (plan: Plan): Promise<Ended> => {
 }
 
 /** What a ticket's worker's commands do to the in-memory Beads and git. */
-const commands = (world: World, root: string, id: string) => {
+const commands = (world: World, root: string, id: TicketId) => {
   const orDie = <A, E>(effect: Effect.Effect<A, E>) => Effect.asVoid(Effect.orDie(effect))
   return {
     claim: orDie(world.beads.update(id, { claim: true })),
@@ -154,7 +156,9 @@ describe("state.json: a ticket the run is done with", () => {
     const { ran, state } = await plainRun({
       backlog: backlog().ticket("t-1").seeds,
       worktrees: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done" })
@@ -166,7 +170,7 @@ describe("state.json: a ticket the run is done with", () => {
       backlog: backlog().ticket("t-1").seeds,
       worktrees: ["t-1"],
       scripts: (world, root) => ({
-        "t-1": [turn([...bash("bd close t-1", commands(world, root, "t-1").close)])],
+        "t-1": [turn([...bash("bd close t-1", commands(world, root, "t-1" as TicketId).close)])],
       }),
     })
     expectPhases(ran, { "t-1": "Done" })
@@ -180,7 +184,10 @@ describe("state.json: a ticket the run is done with", () => {
       worktrees: ["t-1"],
       scripts: (world, root) => ({
         "t-1": [
-          [...turn([runs(commands(world, root, "t-1").claim)]).slice(0, -2), gone("exit 1")],
+          [
+            ...turn([runs(commands(world, root, "t-1" as TicketId).claim)]).slice(0, -2),
+            gone("exit 1"),
+          ],
           [failStart("No conversation found with session ID")],
         ],
       }),
@@ -194,7 +201,9 @@ describe("state.json: a ticket the run is done with", () => {
     const { ran, state } = await plainRun({
       backlog: backlog().ticket("t-1").seeds,
       worktrees: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
       // main gets the same change while t-1 runs: the rebase drops its commit (closeUnchanged).
       before: (repo) =>
         Effect.asVoid(
@@ -213,8 +222,8 @@ describe("state.json: a ticket the run is done with", () => {
       backlog: backlog().ticket("t-1").seeds,
       worktrees: ["t-1"],
       scripts: (world, root) => {
-        const c = commands(world, root, "t-1")
-        return { "t-1": [defers("t-1", { claim: c.claim, defer: c.defer })] }
+        const c = commands(world, root, "t-1" as TicketId)
+        return { "t-1": [defers("t-1" as TicketId, { claim: c.claim, defer: c.defer })] }
       },
     })
     expectPhases(ran, { "t-1": "Deferred" })
@@ -226,7 +235,7 @@ describe("state.json: a ticket the run is done with", () => {
       backlog: backlog().ticket("t-1").seeds,
       worktrees: ["t-1"],
       scripts: (world, root) => {
-        const c = commands(world, root, "t-1")
+        const c = commands(world, root, "t-1" as TicketId)
         return { "t-1": [turn([runs(c.misnamed), runs(c.close)])] }
       },
     })
@@ -245,12 +254,14 @@ describe("state.json: what a crashed run left", () => {
       saved: (root) => ({ "t-1": crashRecord(root, "t-1") }),
       last: lastRun(endedPid()),
       worktrees: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done" })
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
-    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1", crashedWhy)])
+    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1" as TicketId, crashedWhy)])
     expectLog(ran, [
       /^ {2}RESUMED: t-1 was in progress as the last run crashed; resuming its session session-t-1 \(worktree .*t-1\)$/,
     ])
@@ -283,7 +294,9 @@ describe("state.json: what a crashed run left", () => {
       saved: (root) => ({ "t-1": crashRecord(root, "t-1") }),
       last: lastRun(endedPid()),
       worktrees: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
     })
     expectPhases(ran, { "t-1": "Done" })
     expect(carriedOver(ran)).toBe(false)
@@ -313,11 +326,13 @@ describe("state.json: what a crashed run left", () => {
       saved: (root) => ({ "t-1": crashRecord(root, "t-1") }),
       last: lastRun(process.pid),
       worktrees: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
     })
     expectPhases(ran, { "t-1": "Done" })
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
-    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1", crashedWhy)])
+    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1" as TicketId, crashedWhy)])
   })
 
   test("a record a run that ended left, with its phase, isn't taken for a crash's", async () => {

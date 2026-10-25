@@ -25,7 +25,7 @@ import { Data, Duration, Effect, Exit, Option, Stream } from "effect"
 import { AgentHost, type AgentStartFailed } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
-import type { Beads } from "../services/Beads.ts"
+import type { Beads, TicketId } from "../services/Beads.ts"
 import type { Checks } from "../services/Checks.ts"
 import {
   type Commit,
@@ -43,7 +43,6 @@ import {
   type RunFilesError,
   runFolder,
   type TicketWorktree,
-  ticketIdProblem,
   Worktrees,
 } from "../services/Worktrees.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
@@ -65,7 +64,7 @@ export interface StartTicket extends AsideTicket {
 
 /** A ticket's worker, started and sent its first message. */
 export interface StartedWorker {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly worktree: TicketWorktree
   /** The session's ID, saved in state.json once the session began. */
   readonly session: string
@@ -104,7 +103,7 @@ export const listedAtMost = 30
 
 /** What a ticket's first message is made from. */
 export interface FirstMessage {
-  readonly id: string
+  readonly id: TicketId
   /** `tutti/<id>`. */
   readonly branch: string
   /** Where finished tickets land. */
@@ -112,7 +111,7 @@ export interface FirstMessage {
   /** The time the ticket has (--ticket-limit); null: no limit. */
   readonly ticketLimit: Duration.Duration | null
   /** The ticket the run is scoped to (--ticket); null for the whole backlog. */
-  readonly scope: string | null
+  readonly scope: TicketId | null
   /** The spec the ticket comes from (see specOf); null when none. */
   readonly spec: string | null
   /** What an earlier attempt left on the branch. */
@@ -227,7 +226,7 @@ const shellWord = (word: string): string =>
   /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`
 
 /** Setting aside a ticket whose ID can't name its worktree and branch. */
-export const badTicketId = (id: string, why: string): Aside => ({
+export const badTicketId = (id: TicketId, why: string): Aside => ({
   note:
     `tutti: ${why}, so no worker was started on ${id}: a ticket's ID names its worktree folder ` +
     `and its branch tutti/<id>. Give it a plain ID (bd rename ${id} <new-id>), then bring it ` +
@@ -247,7 +246,7 @@ export const runFilesOutside = ({
   worktree,
   path,
 }: {
-  readonly id: string
+  readonly id: TicketId
   readonly worktree: string
   /** The link, relative to the worktree. */
   readonly path: string
@@ -275,7 +274,7 @@ export const startFailed = ({
   worktree,
   reason,
 }: {
-  readonly id: string
+  readonly id: TicketId
   readonly worktree: string
   readonly reason: string
 }): Aside => ({
@@ -323,7 +322,7 @@ class SetAsideBy extends Data.TaggedError("SetAsideBy")<{
 }> {}
 
 /** A run folder that can't be checked for another reason than a link: the start failed. */
-const runFolderFailed = (id: string, worktree: string, error: RunFilesError): SetAsideBy =>
+const runFolderFailed = (id: TicketId, worktree: string, error: RunFilesError): SetAsideBy =>
   new SetAsideBy({
     aside:
       error._tag === "RunFilesOutside"
@@ -357,8 +356,7 @@ export const start = (
     const host = yield* AgentHost
     const id = ticket.id
 
-    const why = ticketIdProblem(id)
-    if (why !== undefined) return yield* new SetAsideBy({ aside: badTicketId(id, why) })
+    // prepare checks the ID, once, before it makes a folder or a branch of it.
     const worktree = yield* worktrees
       .prepare(id)
       .pipe(

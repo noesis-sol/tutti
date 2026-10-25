@@ -1,10 +1,12 @@
 // The check note (§ 4.11): a worker's standing rules have it run a check once, its whole output kept
 // in .tutti/run/ and its exit status printed, rather than again to see what it said. The example is
 // the project's merge check (checks.fast.command) where it has one, and a placeholder where not.
+
 import { describe, expect, test } from "bun:test"
 import { workerOptions } from "../src/agent/options.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { checkNote, requiresNote, usageLimitNote, workerCheckLog } from "../src/project/prompt.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 
 const prompt = { text: "You work on TICKET_ID.", file: null }
@@ -23,7 +25,7 @@ const configWith = (command: string | null): AppConfigValue => {
 const rules = (command: string | null): string => {
   const options = workerOptions({
     config: configWith(command),
-    ticket: "bd-7",
+    ticket: "bd-7" as TicketId,
     worktree: "/w",
     prompt,
     servers: { servers: [], note: null },

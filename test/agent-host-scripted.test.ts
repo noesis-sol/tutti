@@ -9,6 +9,7 @@ import type { Transcripts } from "../src/agent/Transcripts.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   apiErrorResult,
   apiRetry,
@@ -72,7 +73,7 @@ const session = (sessionId = "s-1") => ({ sessionId, cwd: "/work/t-1" })
  * Watches the ticket's worker's state: a fiber collecting its first `n` states, already listening
  * when it is returned.
  */
-const watch = (ticket: string, n: number) =>
+const watch = (ticket: TicketId, n: number) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const listening = yield* Deferred.make<void>()
@@ -87,7 +88,7 @@ const watch = (ticket: string, n: number) =>
   })
 
 /** Starts the ticket's worker, sends it its first message, and gives its first `n` states. */
-const startAndWatch = (ticket: string, n: number) =>
+const startAndWatch = (ticket: TicketId, n: number) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     yield* host.start(ticket, session())
@@ -97,7 +98,7 @@ const startAndWatch = (ticket: string, n: number) =>
   })
 
 /** Watches the ticket's state, from now until it is Idle: a fiber with the states seen. */
-const untilIdle = (ticket: string) =>
+const untilIdle = (ticket: TicketId) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const listening = yield* Deferred.make<void>()
@@ -117,12 +118,12 @@ describe("the helper scripts drive WorkerState", () => {
   test("claims and closes its ticket with a commit", async () => {
     const did: Array<string> = []
     const note = (what: string) => Effect.sync(() => void did.push(what))
-    const script = claimsAndCloses("t-1", {
+    const script = claimsAndCloses("t-1" as TicketId, {
       claim: note("claim"),
       commit: note("commit"),
       close: note("close"),
     })
-    const states = await run({ "t-1": [script] }, startAndWatch("t-1", 7))
+    const states = await run({ "t-1": [script] }, startAndWatch("t-1" as TicketId, 7))
     expect(states).toEqual([
       WorkerState.Starting(),
       working,
@@ -136,12 +137,18 @@ describe("the helper scripts drive WorkerState", () => {
   })
 
   test("defers", async () => {
-    const states = await run({ "t-1": [defers("t-1")] }, startAndWatch("t-1", 3))
+    const states = await run(
+      { "t-1": [defers("t-1" as TicketId)] },
+      startAndWatch("t-1" as TicketId, 3),
+    )
     expect(states).toEqual([WorkerState.Starting(), working, WorkerState.Idle({ at: 0 })])
   })
 
   test("files a question", async () => {
-    const states = await run({ "t-1": [filesQuestion("t-1")] }, startAndWatch("t-1", 3))
+    const states = await run(
+      { "t-1": [filesQuestion("t-1" as TicketId)] },
+      startAndWatch("t-1" as TicketId, 3),
+    )
     expect(states).toEqual([WorkerState.Starting(), working, WorkerState.Idle({ at: 0 })])
   })
 
@@ -151,10 +158,10 @@ describe("the helper scripts drive WorkerState", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", session())
-        const states = yield* watch("t-1", 5)
-        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* host.state("t-1").pipe(
+        yield* host.start("t-1" as TicketId, session())
+        const states = yield* watch("t-1" as TicketId, 5)
+        yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* host.state("t-1" as TicketId).pipe(
           Stream.takeUntil((s) => s._tag === "NeedsYou"),
           Stream.runDrain,
         )
@@ -171,7 +178,7 @@ describe("the helper scripts drive WorkerState", () => {
       WorkerState.Idle({ at: 0 }),
     ])
     expect(done.open.map((r) => [r.ticket, r.defaultToNo, r.kind._tag])).toEqual([
-      ["t-1", true, "Permission"],
+      ["t-1" as TicketId, true, "Permission"],
     ])
     const answered = done.sent.find((s) => s._tag === "Answered")
     expect(answered).toMatchObject({
@@ -182,7 +189,10 @@ describe("the helper scripts drive WorkerState", () => {
   })
 
   test("hits the usage limit: Retrying, then UsageLimited until its reset", async () => {
-    const states = await run({ "t-1": [hitsUsageLimit(1_800_000_000)] }, startAndWatch("t-1", 5))
+    const states = await run(
+      { "t-1": [hitsUsageLimit(1_800_000_000)] },
+      startAndWatch("t-1" as TicketId, 5),
+    )
     expect(states).toEqual([
       WorkerState.Starting(),
       working,
@@ -200,8 +210,8 @@ describe("scripted cases", () => {
     const done = await run(
       { "t-1": [script] },
       Effect.gen(function* () {
-        const states = yield* startAndWatch("t-1", 5)
-        return { states, now: yield* (yield* AgentHost).current("t-1") }
+        const states = yield* startAndWatch("t-1" as TicketId, 5)
+        return { states, now: yield* (yield* AgentHost).current("t-1" as TicketId) }
       }),
     )
     // The result ends the turn; idle after it ends the worker's work.
@@ -231,14 +241,14 @@ describe("scripted cases", () => {
       { "t-1": [script] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session())
-        const states = yield* watch("t-1", 3)
-        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
+        yield* host.start("t-1" as TicketId, session())
+        const states = yield* watch("t-1" as TicketId, 3)
+        yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
         yield* TestClock.adjust("30 seconds")
-        expect(yield* host.current("t-1")).toEqual(working)
+        expect(yield* host.current("t-1" as TicketId)).toEqual(working)
         // b1 ends at 60 s; until the turn reporting it starts, 70 ms later, its report is to come.
         yield* TestClock.adjust("30 seconds")
-        expect(yield* host.current("t-1")).toEqual(working)
+        expect(yield* host.current("t-1" as TicketId)).toEqual(working)
         yield* TestClock.adjust("70 millis")
         return yield* Fiber.join(states)
       }),
@@ -248,7 +258,7 @@ describe("scripted cases", () => {
 
   test("only ambient tasks: Idle as the turn ends", async () => {
     const script = turn([backgroundTasks({ id: "watch", ambient: true })])
-    const states = await run({ "t-1": [script] }, startAndWatch("t-1", 3))
+    const states = await run({ "t-1": [script] }, startAndWatch("t-1" as TicketId, 3))
     expect(states).toEqual([WorkerState.Starting(), working, WorkerState.Idle({ at: 0 })])
   })
 
@@ -257,11 +267,16 @@ describe("scripted cases", () => {
       { "t-1": [[wait, init(), gone("the subprocess exited")], turn([])] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        const states = yield* startAndWatch("t-1", 3)
-        const send = yield* Effect.exit(host.send("t-1", { text: "Hello?", from: "human" }))
-        const interrupt = yield* Effect.exit(host.interrupt("t-1"))
-        const resumed = yield* watch("t-1", 4)
-        yield* host.resume("t-1", session(), { text: "Carry on.", from: "clientComposed" })
+        const states = yield* startAndWatch("t-1" as TicketId, 3)
+        const send = yield* Effect.exit(
+          host.send("t-1" as TicketId, { text: "Hello?", from: "human" }),
+        )
+        const interrupt = yield* Effect.exit(host.interrupt("t-1" as TicketId))
+        const resumed = yield* watch("t-1" as TicketId, 4)
+        yield* host.resume("t-1" as TicketId, session(), {
+          text: "Carry on.",
+          from: "clientComposed",
+        })
         return { states, send, interrupt, resumed: yield* Fiber.join(resumed) }
       }),
     )
@@ -288,22 +303,24 @@ describe("scripted cases", () => {
       { "t-1": [script] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session())
+        yield* host.start("t-1" as TicketId, session())
         yield* TestClock.adjust("1 hour")
-        expect(yield* host.current("t-1")).toEqual(WorkerState.Starting())
-        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* host.state("t-1").pipe(
+        expect(yield* host.current("t-1" as TicketId)).toEqual(WorkerState.Starting())
+        yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* host.state("t-1" as TicketId).pipe(
           Stream.takeUntil((s) => s._tag === "Working"),
           Stream.runDrain,
         )
         yield* TestClock.adjust("9 minutes")
-        expect(yield* host.current("t-1")).toEqual(working)
+        expect(yield* host.current("t-1" as TicketId)).toEqual(working)
         yield* TestClock.adjust("1 minute")
-        yield* host.state("t-1").pipe(
+        yield* host.state("t-1" as TicketId).pipe(
           Stream.takeUntil((s) => s._tag === "Idle"),
           Stream.runDrain,
         )
-        expect(yield* host.current("t-1")).toEqual(WorkerState.Idle({ at: 70 * 60_000 }))
+        expect(yield* host.current("t-1" as TicketId)).toEqual(
+          WorkerState.Idle({ at: 70 * 60_000 }),
+        )
       }),
     )
   })
@@ -315,9 +332,9 @@ describe("scripted cases", () => {
       { "t-1": [[failStart("the worktree is gone", "cwd_unavailable")]] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        const started = yield* Effect.flip(host.start("t-1", session()))
-        const now = yield* host.current("t-1")
-        const again = yield* Effect.flip(host.start("t-1", session("s-2")))
+        const started = yield* Effect.flip(host.start("t-1" as TicketId, session()))
+        const now = yield* host.current("t-1" as TicketId)
+        const again = yield* Effect.flip(host.start("t-1" as TicketId, session("s-2")))
         return { started, again, now }
       }),
     )
@@ -337,8 +354,8 @@ describe("scripted cases", () => {
       { "t-1": [turn([]), turn([])] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session())
-        return yield* Effect.flip(host.start("t-1", session("s-2")))
+        yield* host.start("t-1" as TicketId, session())
+        return yield* Effect.flip(host.start("t-1" as TicketId, session("s-2")))
       }),
     )
     expect(failed.reason).toBe("a session is already open")
@@ -351,8 +368,8 @@ describe("scripted cases", () => {
     const sent = await run(
       { "t-1": [script] },
       Effect.gen(function* () {
-        yield* startAndWatch("t-1", 3)
-        return yield* (yield* Recording).sentTo("t-1")
+        yield* startAndWatch("t-1" as TicketId, 3)
+        return yield* (yield* Recording).sentTo("t-1" as TicketId)
       }),
       allowAll,
     )
@@ -366,13 +383,13 @@ describe("what it was sent", () => {
       { "t-1": [turn([])] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session())
-        const first = yield* host.send("t-1", {
+        yield* host.start("t-1" as TicketId, session())
+        const first = yield* host.send("t-1" as TicketId, {
           text: "Your ticket is t-1.",
           from: "clientComposed",
         })
-        const second = yield* host.send("t-1", { text: "/context", from: "human" })
-        return { first, second, messages: yield* (yield* Recording).messages("t-1") }
+        const second = yield* host.send("t-1" as TicketId, { text: "/context", from: "human" })
+        return { first, second, messages: yield* (yield* Recording).messages("t-1" as TicketId) }
       }),
     )
     expect(done.first).not.toBe(done.second)
@@ -408,28 +425,31 @@ describe("what it was sent", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", session())
-        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* host.state("t-1").pipe(
+        yield* host.start("t-1" as TicketId, session())
+        yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* host.state("t-1" as TicketId).pipe(
           Stream.takeUntil((s) => s._tag === "NeedsYou"),
           Stream.runDrain,
         )
-        const queued = yield* host.send("t-1", { text: "And then this.", from: "human" })
-        const receipt = yield* host.interrupt("t-1")
-        const stopped = yield* host.state("t-1").pipe(
+        const queued = yield* host.send("t-1" as TicketId, {
+          text: "And then this.",
+          from: "human",
+        })
+        const receipt = yield* host.interrupt("t-1" as TicketId)
+        const stopped = yield* host.state("t-1" as TicketId).pipe(
           Stream.takeUntil((s) => s._tag === "Failed"),
           Stream.runLast,
         )
         const open = yield* attention.current
-        yield* host.close("t-1")
-        yield* host.close("t-1")
+        yield* host.close("t-1" as TicketId)
+        yield* host.close("t-1" as TicketId)
         return {
           queued,
           receipt,
           stopped,
           open,
-          now: yield* host.current("t-1"),
-          sent: yield* (yield* Recording).sentTo("t-1"),
+          now: yield* host.current("t-1" as TicketId),
+          sent: yield* (yield* Recording).sentTo("t-1" as TicketId),
         }
       }),
     )
@@ -465,15 +485,18 @@ describe("what it was sent", () => {
       { "t-1": [script] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session())
-        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* host.state("t-1").pipe(
+        yield* host.start("t-1" as TicketId, session())
+        yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* host.state("t-1" as TicketId).pipe(
           Stream.takeUntil((s) => s._tag === "NeedsYou"),
           Stream.runDrain,
         )
-        const queued = yield* host.send("t-1", { text: "And then this.", from: "human" })
-        const states = yield* untilIdle("t-1")
-        const receipt = yield* host.interrupt("t-1")
+        const queued = yield* host.send("t-1" as TicketId, {
+          text: "And then this.",
+          from: "human",
+        })
+        const states = yield* untilIdle("t-1" as TicketId)
+        const receipt = yield* host.interrupt("t-1" as TicketId)
         return {
           queued,
           receipt,
@@ -512,14 +535,17 @@ describe("what it was sent", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", session())
-        const first = yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* host.state("t-1").pipe(
+        yield* host.start("t-1" as TicketId, session())
+        const first = yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* host.state("t-1" as TicketId).pipe(
           Stream.takeUntil((s) => s._tag === "NeedsYou"),
           Stream.runDrain,
         )
-        const second = yield* host.send("t-1", { text: "Continue.", from: "clientComposed" })
-        const states = yield* untilIdle("t-1")
+        const second = yield* host.send("t-1" as TicketId, {
+          text: "Continue.",
+          from: "clientComposed",
+        })
+        const states = yield* untilIdle("t-1" as TicketId)
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         return {
           first,
@@ -553,17 +579,17 @@ describe("what it was sent", () => {
       { "t-1": [turn([...bash("bd update t-1 --claim")]), turn([])] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* startAndWatch("t-1", 3)
-        yield* host.close("t-1")
-        const resumed = yield* watch("t-1", 4)
-        yield* host.resume("t-1", session(), {
+        yield* startAndWatch("t-1" as TicketId, 3)
+        yield* host.close("t-1" as TicketId)
+        const resumed = yield* watch("t-1" as TicketId, 4)
+        yield* host.resume("t-1" as TicketId, session(), {
           text: "Your question is answered.",
           from: "clientComposed",
         })
         return {
           states: yield* Fiber.join(resumed),
           transcript: yield* (yield* Files).messages("t-1"),
-          sent: yield* (yield* Recording).sentTo("t-1"),
+          sent: yield* (yield* Recording).sentTo("t-1" as TicketId),
         }
       }),
     )
@@ -580,7 +606,7 @@ describe("what it was sent", () => {
       "Resumed",
       "Message",
     ])
-    expect(done.sent[3]).toEqual(Sent.Resumed({ ticket: "t-1", session: session() }))
+    expect(done.sent[3]).toEqual(Sent.Resumed({ ticket: "t-1" as TicketId, session: session() }))
     // The resumed session's message, its command_lifecycle, queued and started, the turn, and its
     // completed before idle.
     expect(done.transcript.slice(10).map((item) => [item.session, item.message.type])).toEqual([
@@ -606,19 +632,19 @@ describe("what it was sent", () => {
       { "t-1": [turn([])] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session())
+        yield* host.start("t-1" as TicketId, session())
         const listening = yield* Deferred.make<void>()
-        const states = yield* host.state("t-1").pipe(
+        const states = yield* host.state("t-1" as TicketId).pipe(
           Stream.tap(() => Deferred.succeed(listening, undefined)),
           Stream.runCollect,
           Effect.forkChild,
         )
         yield* Deferred.await(listening)
-        yield* host.end("t-1")
+        yield* host.end("t-1" as TicketId)
         return {
           states: yield* Fiber.join(states),
-          now: yield* Effect.flip(host.current("t-1")),
-          sent: yield* (yield* Recording).sentTo("t-1"),
+          now: yield* Effect.flip(host.current("t-1" as TicketId)),
+          sent: yield* (yield* Recording).sentTo("t-1" as TicketId),
         }
       }),
     )

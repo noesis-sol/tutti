@@ -12,7 +12,7 @@
 // and a commit on the base since the fork names it. The label is then removed. One that hasn't
 // merged is handed back, for carry-over to bring back ToMerge. git that can't tell keeps the label.
 import { Effect, Result } from "effect"
-import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { type Commit, Git, isHash, shortHash } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -29,7 +29,7 @@ import { unmergedLabel } from "./scope.ts"
 export const forkKey = "unmerged_fork"
 
 /** The branch orchestra's worker commits on (§ 11): a ticket orchestra labelled has its work there. */
-export const orchestraBranchOf = (id: string): string => `wt/${id}`
+export const orchestraBranchOf = (id: TicketId): string => `wt/${id}`
 
 /**
  * The commit the ticket's `unmerged_fork` holds, or undefined when it holds none, or something
@@ -47,7 +47,7 @@ const idChar = (c: string | undefined): boolean => c !== undefined && /^[A-Za-z0
  * Whether `message` names the ticket `id` as a whole ID, not inside a longer one: not `id3`,
  * `xid`, `id-x`, nor the child `id.1`.
  */
-export const namesTicket = (message: string, id: string): boolean => {
+export const namesTicket = (message: string, id: TicketId): boolean => {
   if (id === "") return false
   for (let at = message.indexOf(id); at !== -1; at = message.indexOf(id, at + 1)) {
     const before = message[at - 1]
@@ -63,7 +63,7 @@ export const namesTicket = (message: string, id: string): boolean => {
 }
 
 /** The newest of `commits` (newest first) naming the ticket, if any. */
-const naming = (commits: ReadonlyArray<Commit>, id: string): Commit | undefined =>
+const naming = (commits: ReadonlyArray<Commit>, id: TicketId): Commit | undefined =>
   commits.find((commit) => namesTicket(commit.message, id))
 
 /** What became of a labelled ticket's work: merged with `commit`, and the branch it is on. */
@@ -132,11 +132,11 @@ export interface LeftUnmerged {
  */
 export const stillUnmerged = (
   options: MergeTarget,
-): Effect.Effect<ReadonlySet<string>, BeadsError, Git | Beads> =>
+): Effect.Effect<ReadonlySet<TicketId>, BeadsError, Git | Beads> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const labelled = yield* beads.list({ status: "closed", labels: [unmergedLabel] })
-    const left = new Set<string>()
+    const left = new Set<TicketId>()
     for (const issue of labelled) {
       if ((yield* mergedSince(issue, options)).merged === undefined) left.add(issue.id)
     }
@@ -151,7 +151,7 @@ export const namedCommit = (commit: Commit): Line =>
  * Removes the ticket's label, warning with LABEL_FAILED when bd can't: as the run starts, for one
  * merged by hand, and as one carried over merges (merge.ts). Whether it did.
  */
-export const unlabel = (id: string) =>
+export const unlabel = (id: TicketId) =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const removed = yield* Effect.result(beads.removeLabel(id, unmergedLabel))
@@ -199,7 +199,7 @@ export const loadUnmerged = (
  * a later run takes only the branch's own commits for its merge. A fork that can't be found or
  * noted leaves the branch's tip alone for its own. Whether bd labelled it.
  */
-const label = (id: string, options: MergeTarget) =>
+const label = (id: TicketId, options: MergeTarget) =>
   Effect.gen(function* () {
     const git = yield* Git
     const beads = yield* Beads

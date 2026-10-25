@@ -5,6 +5,7 @@
 // the worker, not a detail of the phase. The run loop drives the machine; the
 // ledger, RunView, the log, the event stream and the report read it.
 import { Data, Result, Schema } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import type { Mark, Shown, Tone } from "../ui/marks.ts"
 import {
   type endingPhases,
@@ -29,7 +30,7 @@ export type MergeStep = (typeof mergeSteps)[number]
 /** What a Waiting ticket waits for. */
 export type WaitFor = Data.TaggedEnum<{
   /** Its blockers to merge: their IDs. Its worker stopped with nothing done, having linked them. */
-  Blockers: { readonly ids: ReadonlyArray<string> }
+  Blockers: { readonly ids: ReadonlyArray<TicketId> }
   /** A ticket to merge, or the probe to pass: its worktree's setup failed before its worker started. */
   Setup: Empty
   /** The environment probe to pass: an environment hold reopened it. */
@@ -138,7 +139,7 @@ export type Move = Data.TaggedEnum<{
   /** Its worker filed a question ticket that blocks it, then settled. */
   FiledQuestion: { readonly question: string }
   /** Its worker stopped with nothing done, having linked a blocker that hasn't merged. */
-  WaitsForMerge: { readonly blockers: ReadonlyArray<string> }
+  WaitsForMerge: { readonly blockers: ReadonlyArray<TicketId> }
   /** The setup failed in its worktree before its worker could start (SETUP_FAILED). */
   SetupFailed: Empty
   /** Its worker's first system/init showed a setup problem, which stopped the run (SETUP_PROBLEM). */
@@ -590,7 +591,7 @@ export class InvalidTransition extends Schema.TaggedError<InvalidTransition>()(
   }
 
   /** The log's line for it: `PHASE_BUG: <id> <from> → <to> (<move>)`. */
-  phaseBug(ticket: string): string {
+  phaseBug(ticket: TicketId): string {
     return `PHASE_BUG: ${ticket} ${this.message}`
   }
 }

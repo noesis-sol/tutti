@@ -1,6 +1,7 @@
 // An organ call refused for the account's usage limit puts the run's usage-limit hold on (§ 4.12),
 // as a worker's turn ending on it does: AgentSdkLanguageModel fails the call with
 // QuotaExhaustedError, carrying the limit's reset, and Organs reports it through OrganHold.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,6 +16,7 @@ import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { organHold } from "../src/run/usageLimit.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, type SessionScript, sleep } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -178,7 +180,7 @@ describe("the usage-limit hold from an organ", () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "tutti-organ-limit-worktrees-")))
     const tickets = ["t-1", "t-2", "t-3"]
     /** Claims, commits and closes its ticket, working `long` before it starts. */
-    const finishes = (world: World, id: string, long?: Duration.Input): SessionScript => {
+    const finishes = (world: World, id: TicketId, long?: Duration.Input): SessionScript => {
       const steps = claimsAndCloses(id, {
         claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
         commit: Effect.asVoid(
@@ -205,9 +207,9 @@ describe("the usage-limit hold from an organ", () => {
         git: { dir: repo },
         worktrees: { root },
         scripts: (world: World) => ({
-          "t-1": [finishes(world, "t-1", "3 hours")],
-          "t-2": [finishes(world, "t-2", "10 minutes")],
-          "t-3": [finishes(world, "t-3")],
+          "t-1": [finishes(world, "t-1" as TicketId, "3 hours")],
+          "t-2": [finishes(world, "t-2" as TicketId, "10 minutes")],
+          "t-3": [finishes(world, "t-3" as TicketId)],
         }),
       },
       Effect.gen(function* () {

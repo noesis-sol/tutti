@@ -21,6 +21,7 @@ import { join } from "node:path"
 import { Clock, Data, Effect, Predicate, Ref, Result, type Schema, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
+import type { TicketId } from "../services/Beads.ts"
 import {
   type CheckError,
   type CheckPassed,
@@ -103,7 +104,7 @@ export const recorded = <R>(
 
 /** The ticket a check is for. */
 export interface CheckedTicket {
-  readonly id: string
+  readonly id: TicketId
   /** Its worktree's folder, absolute. */
   readonly worktree: string
 }
@@ -147,7 +148,7 @@ export const saidOf = (error: CheckError): ReadonlyArray<string> =>
  * on a detail line for a worktree of no ticket's (`id` left out), as the full check's.
  */
 export const outputTo = (
-  ticket: Pick<CheckedTicket, "worktree"> & { readonly id?: string },
+  ticket: Pick<CheckedTicket, "worktree"> & { readonly id?: TicketId },
   name: string,
   whose: string,
 ): Effect.Effect<
@@ -227,7 +228,7 @@ export const uncheckedOf = (value: Schema.Json | undefined): Unchecked | undefin
  * check passes leaves the mark for the next run. A Store that can't be written leaves it unmarked.
  */
 export const markUnchecked = (
-  id: string,
+  id: TicketId,
   unchecked: Unchecked,
 ): Effect.Effect<void, never, Store> =>
   Effect.gen(function* () {
@@ -256,7 +257,7 @@ export const handedBackOf = (value: Schema.Json | undefined): boolean =>
  * Notes on the ticket's mark that its rebase's conflicts are handed back to its worker, the rebase
  * left in progress for it to resolve; the next rebase's mark drops it. Nothing without a mark.
  */
-export const markHandedBack = (id: string): Effect.Effect<void, never, Store> =>
+export const markHandedBack = (id: TicketId): Effect.Effect<void, never, Store> =>
   Effect.gen(function* () {
     const store = yield* Store
     const metadata = yield* store.metadata(id)
@@ -266,14 +267,14 @@ export const markHandedBack = (id: string): Effect.Effect<void, never, Store> =>
   })
 
 /** The ticket's mark, if its branch was rebased and hasn't been checked since. */
-export const uncheckedMark = (id: string): Effect.Effect<Unchecked | undefined, never, Store> =>
+export const uncheckedMark = (id: TicketId): Effect.Effect<Unchecked | undefined, never, Store> =>
   Effect.gen(function* () {
     const metadata = yield* (yield* Store).metadata(id)
     return uncheckedOf(Object.hasOwn(metadata, uncheckedKey) ? metadata[uncheckedKey] : undefined)
   })
 
 /** Clears the ticket's mark, its branch checked as it is now, if it has one. */
-export const clearUnchecked = (id: string): Effect.Effect<void, never, Store> =>
+export const clearUnchecked = (id: TicketId): Effect.Effect<void, never, Store> =>
   Effect.gen(function* () {
     const store = yield* Store
     if ((yield* uncheckedMark(id)) === undefined) return
@@ -283,9 +284,9 @@ export const clearUnchecked = (id: string): Effect.Effect<void, never, Store> =>
 /** The commits of the tickets' branches the merge check last passed on in a run. */
 export interface Passes {
   /** The ticket's branch's commit the check last passed on in this run, if it passed. */
-  at(id: string): Effect.Effect<string | undefined>
+  at(id: TicketId): Effect.Effect<string | undefined>
   /** The check passed on the ticket's branch at `commit`. */
-  set(id: string, commit: string): Effect.Effect<void>
+  set(id: TicketId, commit: string): Effect.Effect<void>
 }
 
 /** A run's passes: none yet. */

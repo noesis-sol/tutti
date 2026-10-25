@@ -5,11 +5,13 @@
 // (transcriptCommands, useTranscriptKeys).
 // Each view adds its own: the worker view the hand-back, Ctrl+X and Ctrl+R; the Interview view its
 // leave question.
+
 import type { MouseEvent, Renderable, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import type { Card, ShownRequest } from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { type Answering, type AnswerKey, optionKeys, useAnswering } from "./attentionKeys.ts"
 import { useSends } from "./Composer.tsx"
 import type { Command } from "./keyCommands.ts"
@@ -50,7 +52,7 @@ const noTranscript = external<TranscriptState>(emptyTranscript)
  * the top loads older items, keeping your place; the bottom follows the session.
  */
 export const useTranscriptWindow = (
-  ticket: string | undefined,
+  ticket: TicketId | undefined,
   underWay: boolean,
   holding = false,
   finished = false,

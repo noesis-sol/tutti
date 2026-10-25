@@ -22,7 +22,7 @@ import { type InitForm, init } from "../src/init/init.ts"
 import type { Suite } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -199,7 +199,10 @@ describe("init run again, after the test work is closed", () => {
     ]
 
     const again = await runInit(project, scratch, seeds)
-    expect(again.issues.map((issue) => issue.id)).toEqual(["app-1", "app-2"])
+    expect(again.issues.map((issue) => issue.id)).toEqual([
+      "app-1" as TicketId,
+      "app-2" as TicketId,
+    ])
     expect(again.lines).toContain(
       `• ticket  app-2 is closed: ${setUpTestsTitle}; init changed no runner, so not filed again`,
     )

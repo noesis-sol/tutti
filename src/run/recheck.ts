@@ -18,7 +18,7 @@
 import { posix } from "node:path"
 import { Deferred, Effect, Ref, Result, Stream } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
-import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
+import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git, type GitError, shortHash } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
@@ -49,17 +49,17 @@ export interface Rechecks {
   /** The tickets waiting to be checked once more, in the order they were set aside. */
   readonly waiting: Effect.Effect<ReadonlyArray<Recheck>>
   /** Whether the ticket has been taken up to be checked once more in this run. */
-  rechecked(id: string): Effect.Effect<boolean>
+  rechecked(id: TicketId): Effect.Effect<boolean>
   /** Keeps the ticket to be checked once more. */
   keep(recheck: Recheck): Effect.Effect<void>
   /** Takes the ticket out of those waiting, as checked once more; false when it wasn't waiting. */
-  take(id: string): Effect.Effect<boolean>
+  take(id: TicketId): Effect.Effect<boolean>
   /** Takes the ticket out of those waiting, not checked once more; false when it wasn't waiting. */
-  drop(id: string): Effect.Effect<boolean>
+  drop(id: TicketId): Effect.Effect<boolean>
   /** Takes every ticket out of those waiting, not checked once more: those that were. */
   readonly dropAll: Effect.Effect<ReadonlyArray<Recheck>>
   /** Keeps what the ticket's check said as it set the ticket aside, in place of what it said before. */
-  noteFailure(id: string, evidence: string): Effect.Effect<void>
+  noteFailure(id: TicketId, evidence: string): Effect.Effect<void>
   /** What the check said of each ticket it set aside, by ticket, in the order they were first. */
   readonly failures: Effect.Effect<ReadonlyMap<string, string>>
 }
@@ -232,7 +232,7 @@ const whyNot = (recheck: Recheck, issue: Issue, options: MergeTarget) =>
   })
 
 /** Waits until ticket `id` has left the merge queue (merged, set aside or blocked), or the merges stop. */
-const mergeOver = (queue: Pick<MergeQueue, "changes">, id: string) =>
+const mergeOver = (queue: Pick<MergeQueue, "changes">, id: TicketId) =>
   queue.changes.pipe(
     Stream.filter(
       (state) =>

@@ -11,7 +11,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -35,7 +35,7 @@ const setup = {
 }
 
 /** A ticket its worker finished on top of main, `<id>.txt` committed, closed, Working. */
-const finished = (id: string) =>
+const finished = (id: TicketId) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -75,7 +75,7 @@ interface Merged {
  * Finishes the tickets, merges `ahead` first when given, then merges `ticket` alone through a queue
  * of its own: the git calls and bd shows its merge made, counted.
  */
-const counted = (ticket: string, ahead?: string) =>
+const counted = (ticket: TicketId, ahead?: TicketId) =>
   scenario(
     setup,
     Effect.gen(function* () {
@@ -117,7 +117,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 // merged by hand): a diff after the merge's log, the base being where the fast-forward put it.
 describe("one merge's reads", () => {
   test("a branch on top of the base, checked and merged: 16 git calls and one bd show", async () => {
-    const merged = resultOf(await counted("a"))
+    const merged = resultOf(await counted("a" as TicketId))
     expect(merged.phase).toBe("Done")
     // Before each value was read once: 25, with 3 statuses, a rev-parse, a merge-base and a diff
     // more, and 2 bd shows; then 19, with a status and 2 rev-parses more.
@@ -134,7 +134,7 @@ describe("one merge's reads", () => {
   })
 
   test("a branch rebased onto the base that moved on, checked and merged: 21 and one", async () => {
-    const merged = resultOf(await counted("a", "b"))
+    const merged = resultOf(await counted("a" as TicketId, "b" as TicketId))
     expect(merged.phase).toBe("Done")
     // Before: 29, with 3 statuses, a merge-base and a diff more, and 2 bd shows; then 24, with a
     // status and 2 rev-parses more.

@@ -11,7 +11,7 @@ import type { Log } from "../src/run/log.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
-import type { Beads, Issue } from "../src/services/Beads.ts"
+import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -61,14 +61,14 @@ const t2After = (r: Seed, rechecked: boolean, withFootprints: boolean) =>
         },
       })
       // One checked once more waits in Review, its check failed, until it takes its slot.
-      if (!rechecked) yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
-      const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
+      if (!rechecked) yield* ledger.transition("r" as TicketId, Move.Unmerged({ place: 1 }))
+      const took = rechecked ? yield* schedule.recheckSlot("r" as TicketId, Effect.never) : false
       yield* schedule.fillTrying
       const state = yield* ledger.current
       return {
         took,
         started: yield* Ref.get(started),
-        t2: shown(state.tickets.get("t-2")?.phase),
+        t2: shown(state.tickets.get("t-2" as TicketId)?.phase),
         solo: (yield* texts).filter((text) => text.includes("solo")),
       }
     }),
@@ -125,16 +125,21 @@ const besideR = (rechecked: boolean) =>
         excludeTypes: ["epic"],
         start: { start: () => Effect.never },
       })
-      if (!rechecked) yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
-      const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
-      const r2 = yield* schedule.recheckSlot("r2", Effect.never)
-      const c = yield* schedule.carry("c", Effect.succeed(Effect.never))
+      if (!rechecked) yield* ledger.transition("r" as TicketId, Move.Unmerged({ place: 1 }))
+      const took = rechecked ? yield* schedule.recheckSlot("r" as TicketId, Effect.never) : false
+      const r2 = yield* schedule.recheckSlot("r2" as TicketId, Effect.never)
+      const c = yield* schedule.carry("c" as TicketId, Effect.succeed(Effect.never))
       return { took, r2, c, running: [...(yield* schedule.running)] }
     }),
   )
 
 test("a solo ticket checked once more keeps the next recheck and a carried worker out", async () => {
-  expect(await besideR(true)).toEqual({ took: true, r2: false, c: false, running: ["r"] })
+  expect(await besideR(true)).toEqual({
+    took: true,
+    r2: false,
+    c: false,
+    running: ["r" as TicketId],
+  })
 })
 
 test("a solo ticket past its work without a slot keeps a recheck and a carried worker out", async () => {
@@ -153,8 +158,8 @@ test("a solo ticket past its work without a slot keeps a carried worker out, bef
         excludeTypes: ["epic"],
         start: { start: () => Effect.never },
       })
-      yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
-      return yield* schedule.carry("c", Effect.succeed(Effect.never))
+      yield* ledger.transition("r" as TicketId, Move.Unmerged({ place: 1 }))
+      return yield* schedule.carry("c" as TicketId, Effect.succeed(Effect.never))
     }),
   )
   expect(carried).toBe(false)

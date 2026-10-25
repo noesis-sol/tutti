@@ -6,7 +6,13 @@
 // log; from the second it names the work the run left for a later one.
 import { Effect, Result } from "effect"
 import { type Section, section } from "../organs/evidence.ts"
-import { type Beads, type BeadsError, HumanLabel, type Issue } from "../services/Beads.ts"
+import {
+  type Beads,
+  type BeadsError,
+  HumanLabel,
+  type Issue,
+  type TicketId,
+} from "../services/Beads.ts"
 import { type CheckError, OutputBounds } from "../services/Checks.ts"
 import { Git, shortHash } from "../services/Git.ts"
 import { oneLine } from "../ui/oneLine.ts"
@@ -25,7 +31,7 @@ export const followUpWidth = 400
 
 /** What a failed check is said with: the ticket, where it ran, and what came of it. */
 export interface FailedCheck {
-  readonly id: string
+  readonly id: TicketId
   readonly branch: string
   readonly base: string
   /** The base's commit the branch was rebased onto, or is on top of. */
@@ -178,7 +184,7 @@ export const followUpSaid = (issue: Issue): string => {
  */
 export const followUpsSection = (
   beads: Beads["Service"],
-  scope: string,
+  scope: TicketId,
   started: number,
 ): Effect.Effect<ReadonlyArray<Section>> =>
   Effect.gen(function* () {

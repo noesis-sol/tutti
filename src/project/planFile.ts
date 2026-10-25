@@ -16,7 +16,7 @@
 import { posix } from "node:path"
 import { Effect, Predicate, Result, Schema } from "effect"
 import { soloLabel } from "../run/holds.ts"
-import { Beads, type BeadsError, beadsWhy, MetadataKey } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, MetadataKey, TicketId } from "../services/Beads.ts"
 
 /** The types a planned ticket can have. */
 export const ticketTypes = ["task", "feature", "bug", "chore"] as const
@@ -326,8 +326,8 @@ export const validatePlan = (
 
 /** A blocks link of a filed plan: ticket `blocked` waits for `blocker`, by bd ID and plan key. */
 export const PlanLink = Schema.Struct({
-  blocked: Schema.String,
-  blocker: Schema.String,
+  blocked: TicketId,
+  blocker: TicketId,
   blockedKey: Schema.String,
   blockerKey: Schema.String,
 })
@@ -335,7 +335,7 @@ export type PlanLink = typeof PlanLink.Type
 
 /** What was filed: its bd ID, its key in the plan (none for the epic) and its title. */
 export const FiledIssue = Schema.Struct({
-  id: Schema.String,
+  id: TicketId,
   key: Schema.NullOr(Schema.String),
   title: Schema.String,
 })
@@ -359,8 +359,8 @@ export class FilingFailed extends Schema.TaggedError<FilingFailed>()("FilingFail
 
 /** A filed plan: the epic's ID, and each ticket's by its key. */
 export interface FiledPlan {
-  readonly epic: string
-  readonly tickets: ReadonlyMap<string, string>
+  readonly epic: TicketId
+  readonly tickets: ReadonlyMap<string, TicketId>
 }
 
 /** Whether bd, failing with `error`, may have done what it was asked: not when it said it failed. */
@@ -378,7 +378,7 @@ export const filePlan = (plan: FeaturePlan): Effect.Effect<FiledPlan, FilingFail
     const stop = (
       what: string,
       error: BeadsError | string,
-      epic: string | null,
+      epic: TicketId | null,
       unlinked: ReadonlyArray<PlanLink> | null = null,
     ) =>
       new FilingFailed({
@@ -402,7 +402,7 @@ export const filePlan = (plan: FeaturePlan): Effect.Effect<FiledPlan, FilingFail
       })
       .pipe(Effect.mapError((error) => stop("the epic", error, null)))
     filed.push({ id: epic.id, key: null, title: plan.epic.title })
-    const ids = new Map<string, string>()
+    const ids = new Map<string, TicketId>()
     for (const t of plan.tickets) {
       const issue = yield* beads
         .create({
@@ -421,13 +421,15 @@ export const filePlan = (plan: FeaturePlan): Effect.Effect<FiledPlan, FilingFail
       ids.set(t.key, issue.id)
       filed.push({ id: issue.id, key: t.key, title: t.title })
     }
+    // Every key a ticket is blocked by is one of the plan's (validatePlan checks), filed above.
     const links: Array<PlanLink> = plan.tickets.flatMap((t) =>
-      t.blockedBy.map((b) => ({
-        blocked: ids.get(t.key) ?? t.key,
-        blocker: ids.get(b) ?? b,
-        blockedKey: t.key,
-        blockerKey: b,
-      })),
+      t.blockedBy.flatMap((b) => {
+        const blocked = ids.get(t.key)
+        const blocker = ids.get(b)
+        return blocked === undefined || blocker === undefined
+          ? []
+          : [{ blocked, blocker, blockedKey: t.key, blockerKey: b }]
+      }),
     )
     for (const [i, l] of links.entries()) {
       yield* beads

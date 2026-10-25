@@ -6,12 +6,13 @@
 import { Data, type Effect, Queue, Result, Schema } from "effect"
 import type { MessageUuid } from "../agent/AgentHost.ts"
 import type { Answer as AttentionAnswer, AttentionRequest } from "../agent/Attention.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { keepsWorker, type State } from "./ledger.ts"
 
 /** A command from the screen. */
 export type UiCommand = Data.TaggedEnum<{
   /** Open the worker view of the ticket's worker: the card's ticket, never a position (§ 7.2). */
-  OpenWorker: { readonly ticket: string }
+  OpenWorker: { readonly ticket: TicketId }
   /** Leave the worker view for the dashboard. */
   CloseWorker: Record<never, never>
   /** Answer the open attention request `requestId`. */
@@ -20,23 +21,23 @@ export type UiCommand = Data.TaggedEnum<{
    * Send your message to the ticket's worker, which becomes steered (§ 4.3), with the uuid the
    * composer drew for it: its `queued` mark waits for that send by it (§ 7.5).
    */
-  SendMessage: { readonly ticket: string; readonly text: string; readonly uuid: MessageUuid }
+  SendMessage: { readonly ticket: TicketId; readonly text: string; readonly uuid: MessageUuid }
   /** Interrupt the turn of the ticket's worker; it becomes steered. */
-  Interrupt: { readonly ticket: string }
+  Interrupt: { readonly ticket: TicketId }
   /** Hand a steered worker back to the run, and the conflict waiting for it, if one is (§ 4.3). */
-  Release: { readonly ticket: string }
+  Release: { readonly ticket: TicketId }
   /** Hand the ticket's steered worker the conflict waiting for it now (§ 4.3). */
-  HandBackNow: { readonly ticket: string }
+  HandBackNow: { readonly ticket: TicketId }
   /**
    * File what you wrote in the view of `from`, whose worker has finished, as a new ticket, under the
    * uuid the view drew: the screen's filings say how it went by it (fileTicket.ts, § 7.5).
    */
-  FileTicket: { readonly from: string; readonly text: string; readonly uuid: string }
+  FileTicket: { readonly from: TicketId; readonly text: string; readonly uuid: string }
   /**
    * Read the ticket's issue again with bd show, for its worker view's whole ticket (§ 7.5): the notes
    * added during the run show. The ledger keeps what bd gives on the ticket's entry.
    */
-  ReadTicket: { readonly ticket: string }
+  ReadTicket: { readonly ticket: TicketId }
   /** Stop after the current tickets: wind down. */
   Drain: Record<never, never>
   /** Take tickets again. */
@@ -87,7 +88,7 @@ export interface Current {
 // acts on the session: a send to one that has ended is dropped there.
 const withWorker = (
   command: UiCommand,
-  ticket: string,
+  ticket: TicketId,
   current: Current,
 ): Result.Result<Resolved, Stale> => {
   const entry = current.ledger.tickets.get(ticket)

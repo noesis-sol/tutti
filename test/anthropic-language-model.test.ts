@@ -2,6 +2,7 @@
 // src/organs/AnthropicProvider.ts as organs call it, through fetch, against a fake Messages API
 // served on a local port, so each request goes over HTTP as it would to api.anthropic.com. The
 // fake keeps each request and answers with a message, a stream of events, or an error.
+
 import { afterAll, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -23,6 +24,7 @@ import { section } from "../src/organs/evidence.ts"
 import { OrganCost } from "../src/organs/OrganCost.ts"
 import { make, type Organ, Organs } from "../src/organs/Organs.ts"
 import type { EventRecord } from "../src/run/events.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -137,7 +139,7 @@ const triage: Organ<typeof Verdict.Type> = make("triage", {
 })
 
 const ask = Effect.flatMap(Organs, (organs) =>
-  organs.ask(triage, [section("The worker", "tut-1 stopped.")], { ticket: "tut-1" }),
+  organs.ask(triage, [section("The worker", "tut-1 stopped.")], { ticket: "tut-1" as TicketId }),
 )
 
 const anthropic = { [providerVariable]: "anthropic", ANTHROPIC_API_KEY: "sk-ant-local" }

@@ -2,6 +2,7 @@
 // (sessionChecks.ts): a scripted initialize answer and the first system/init are checked as a run
 // checks them, a setup problem ending the worker Gone with `setup` and logged; a result with a
 // startup_failure_reason ends the worker; and a message tutti dies taking in is logged and skipped.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
@@ -14,6 +15,7 @@ import type { Transcripts } from "../src/agent/Transcripts.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   emit,
   layer as hostLayer,
@@ -57,11 +59,11 @@ const session = (sessionId = "s-1") => ({ sessionId, cwd: "/work/t-1" })
 /** Starts t-1, sends it a message and lets its script play: its state, the log and what it got. */
 const startsAndSends = Effect.gen(function* () {
   const host = yield* AgentHost
-  yield* host.start("t-1", session())
-  yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
+  yield* host.start("t-1" as TicketId, session())
+  yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
   yield* TestClock.adjust("1 second")
   return {
-    now: yield* host.current("t-1"),
+    now: yield* host.current("t-1" as TicketId),
     log: yield* texts,
     messages: (yield* (yield* Files).messages("t-1")).map(
       (item) => (item.message as unknown as Record<string, unknown>).type,
@@ -78,7 +80,7 @@ describe("the scripted AgentHost: the first system/init", () => {
     )
     const problem = notGivenProblem(["github"])
     expect(done.now).toEqual(WorkerState.Gone({ why: problem, setup: true }))
-    expect(done.log).toContain(setupLine("t-1", problem))
+    expect(done.log).toContain(setupLine("t-1" as TicketId, problem))
     // Nothing after the check plays.
     expect(done.messages).not.toContain("result")
   })
@@ -91,7 +93,7 @@ describe("the scripted AgentHost: the first system/init", () => {
     const done = await run({ "t-1": [turn([])] }, startsAndSends, { servers })
     const problem = missingProblem(["github"])
     expect(done.now).toEqual(WorkerState.Gone({ why: problem, setup: true }))
-    expect(done.log).toContain(setupLine("t-1", problem))
+    expect(done.log).toContain(setupLine("t-1" as TicketId, problem))
   })
 
   test("billing an API key beside the subscription login ends it over a setup problem", async () => {
@@ -99,7 +101,7 @@ describe("the scripted AgentHost: the first system/init", () => {
     const done = await run({ "t-1": [keyed] }, startsAndSends)
     const problem = apiKeyProblem("ANTHROPIC_API_KEY")
     expect(done.now).toEqual(WorkerState.Gone({ why: problem, setup: true }))
-    expect(done.log).toContain(setupLine("t-1", problem))
+    expect(done.log).toContain(setupLine("t-1" as TicketId, problem))
   })
 
   test("the same key is no problem when workers are billed to it", async () => {
@@ -120,13 +122,13 @@ describe("the scripted AgentHost: the first system/init", () => {
       { "t-1": [other], "t-2": [other] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        for (const ticket of ["t-1", "t-2"]) {
+        for (const ticket of ["t-1" as TicketId, "t-2" as TicketId]) {
           yield* host.start(ticket, { sessionId: `s-${ticket}`, cwd: `/work/${ticket}` })
           yield* host.send(ticket, { text: "Go.", from: "clientComposed" })
         }
         yield* TestClock.adjust("1 second")
         return {
-          states: [yield* host.current("t-1"), yield* host.current("t-2")],
+          states: [yield* host.current("t-1" as TicketId), yield* host.current("t-2" as TicketId)],
           log: yield* texts,
         }
       }),
@@ -143,22 +145,22 @@ describe("the scripted AgentHost: the initialize answer", () => {
       { "t-1": [[keyed, ...turn([])]] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        const uuid = yield* host.resume("t-1", session(), {
+        const uuid = yield* host.resume("t-1" as TicketId, session(), {
           text: "Go on.",
           from: "clientComposed",
         })
         return {
           uuid,
-          now: yield* host.current("t-1"),
+          now: yield* host.current("t-1" as TicketId),
           log: yield* texts,
-          sent: (yield* (yield* Recording).sentTo("t-1")).map((s) => s._tag),
+          sent: (yield* (yield* Recording).sentTo("t-1" as TicketId)).map((s) => s._tag),
         }
       }),
     )
     const problem = apiKeyProblem("ANTHROPIC_API_KEY")
     expect(done.uuid).toEqual(expect.any(String))
     expect(done.now).toEqual(WorkerState.Gone({ why: problem, setup: true }))
-    expect(done.log).toEqual([setupLine("t-1", problem)])
+    expect(done.log).toEqual([setupLine("t-1" as TicketId, problem)])
     expect(done.sent).toEqual(["Resumed"])
   })
 
@@ -168,13 +170,13 @@ describe("the scripted AgentHost: the initialize answer", () => {
       { "t-1": [[initialize({}, status), ...turn([])]] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session())
-        return { now: yield* host.current("t-1"), log: yield* texts }
+        yield* host.start("t-1" as TicketId, session())
+        return { now: yield* host.current("t-1" as TicketId), log: yield* texts }
       }),
     )
     const problem = notGivenProblem(["github"])
     expect(done.now).toEqual(WorkerState.Gone({ why: problem, setup: true }))
-    expect(done.log).toEqual([setupLine("t-1", problem)])
+    expect(done.log).toEqual([setupLine("t-1" as TicketId, problem)])
   })
 
   test("one that shows no problem lets the session play", async () => {
@@ -209,7 +211,7 @@ describe("the scripted AgentHost: what a session sends", () => {
       },
     })
     const done = await run({ "t-1": [[wait, init(), unreadable, result()]] }, startsAndSends)
-    expect(done.log).toEqual([skippedLine("t-1", broken)])
+    expect(done.log).toEqual([skippedLine("t-1" as TicketId, broken)])
     expect(done.messages).toContain("result")
     expect(done.now._tag).not.toBe("Gone")
   })

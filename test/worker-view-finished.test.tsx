@@ -2,6 +2,7 @@
 // merges and its card goes while the view shows it. The head says finished, without the last card's
 // status, steered or spinner, its clock stopped; the hint drops Enter send, Ctrl+X and Ctrl+R, which
 // do nothing then.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
@@ -12,6 +13,7 @@ import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { finishedWords } from "../src/ui/Composer.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -48,7 +50,7 @@ const items: ReadonlyArray<Item> = [
 ]
 
 const ledgerEntry: LedgerEntry = {
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   title: "Title of t-1",
   phase: TicketPhase.Working(),
   since: began,
@@ -64,7 +66,7 @@ const ledgerEntry: LedgerEntry = {
 const viewOf = (merged: boolean): RunView =>
   project({
     ledger: {
-      tickets: new Map(merged ? [] : [["t-1", ledgerEntry]]),
+      tickets: new Map(merged ? [] : [["t-1" as TicketId, ledgerEntry]]),
       rows: 1,
       windDown: null,
       bugs: [],
@@ -117,7 +119,7 @@ const scene = async (
     <Root
       value={{
         view,
-        screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+        screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
         commands,
         appearance: external<Appearance>("dark"),
         themeOf,

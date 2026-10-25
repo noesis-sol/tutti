@@ -1,6 +1,7 @@
 // A filing that outlives its view (§ 7.5, tutti-fgr2): leave a finished worker's view before bd
 // answers its Ctrl+T, and the toast still says how it went; reopen it, and the composer has the text
 // again, and Ctrl+T waits for the filing still under way.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Queue } from "effect"
@@ -12,6 +13,7 @@ import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { fileWords, finishedWords } from "../src/ui/Composer.tsx"
 import { makeFilingDesk } from "../src/ui/filingDesk.tsx"
@@ -50,7 +52,7 @@ const items: ReadonlyArray<Item> = [
 ]
 
 const ledgerEntry: LedgerEntry = {
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   title: "Title of t-1",
   phase: TicketPhase.Working(),
   since: began,
@@ -66,7 +68,7 @@ const ledgerEntry: LedgerEntry = {
 const viewOf = (merged: boolean): RunView =>
   project({
     ledger: {
-      tickets: new Map(merged ? [] : [["t-1", ledgerEntry]]),
+      tickets: new Map(merged ? [] : [["t-1" as TicketId, ledgerEntry]]),
       rows: 1,
       windDown: null,
       bugs: [],
@@ -114,7 +116,7 @@ const scene = async (
 ) => {
   const view = external(viewOf(false))
   const filings = external<ReadonlyArray<TicketFiling>>([])
-  const screen = external<Screen>(Screen.Worker({ ticket: "t-1" }))
+  const screen = external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId }))
   const commands = Effect.runSync(makeCommands)
   await withRender(
     <Root
@@ -164,7 +166,7 @@ const leave = (rendered: Rendered, screen: Settable<Screen>) =>
 
 /** Opens t-1's view again. */
 const reopen = async (rendered: Rendered, screen: Settable<Screen>): Promise<Frame> => {
-  await rendered.input(() => screen.set(Screen.Worker({ ticket: "t-1" })))
+  await rendered.input(() => screen.set(Screen.Worker({ ticket: "t-1" as TicketId })))
   return until(rendered, has(finishedWords("t-1").finished))
 }
 
@@ -174,7 +176,7 @@ const answer = (
   filings: Settable<ReadonlyArray<TicketFiling>>,
   uuid: string,
   outcome: FileOutcome,
-) => rendered.input(() => filings.set([{ uuid, from: "t-1", outcome }]))
+) => rendered.input(() => filings.set([{ uuid, from: "t-1" as TicketId, outcome }]))
 
 describe("a filing that outlives its view", () => {
   test("filed after you left: the toast still says so, and the view reopens empty", async () => {
@@ -183,7 +185,12 @@ describe("a filing that outlives its view", () => {
       await pressCtrlT(rendered)
       const uuid = filed(commands)[0]?.uuid ?? ""
       await leave(rendered, screen)
-      await answer(rendered, filings, uuid, FileOutcome.Filed({ id: "t-9", title: followUp }))
+      await answer(
+        rendered,
+        filings,
+        uuid,
+        FileOutcome.Filed({ id: "t-9" as TicketId, title: followUp }),
+      )
       const away = await until(rendered, has(fileWords.filed("t-9", followUp)))
       expect(away.chars).toContain(fileWords.filed("t-9", followUp))
 
@@ -226,7 +233,12 @@ describe("a filing that outlives its view", () => {
       await until(rendered, has(fileWords.already))
       expect(filed(commands)).toEqual([])
 
-      await answer(rendered, filings, uuid, FileOutcome.Filed({ id: "t-9", title: followUp }))
+      await answer(
+        rendered,
+        filings,
+        uuid,
+        FileOutcome.Filed({ id: "t-9" as TicketId, title: followUp }),
+      )
       frame = await until(rendered, has(fileWords.filed("t-9", followUp)))
       expect(frame.chars).toContain(fileWords.filed("t-9", followUp))
       expect(frame.chars).not.toContain(` > ${followUp}`)
@@ -247,29 +259,32 @@ describe("makeFilingDesk", () => {
   test("a filing pends till its uuid is answered, and is settled once", () => {
     const desk = makeFilingDesk()
     const { shown, store } = toasts()
-    desk.ask("t-1", { uuid: "u-1", text: "x" })
+    desk.ask("t-1" as TicketId, { uuid: "u-1", text: "x" })
     desk.settle([], store)
-    expect(desk.pending("t-1")).toEqual({ uuid: "u-1", text: "x" })
-    expect(desk.opening("t-1")).toBe("x")
+    expect(desk.pending("t-1" as TicketId)).toEqual({ uuid: "u-1", text: "x" })
+    expect(desk.opening("t-1" as TicketId)).toBe("x")
     const answered: ReadonlyArray<TicketFiling> = [
-      { uuid: "u-1", from: "t-1", outcome: FileOutcome.NotFiled({ why: "no" }) },
+      { uuid: "u-1", from: "t-1" as TicketId, outcome: FileOutcome.NotFiled({ why: "no" }) },
     ]
     desk.settle(answered, store)
     desk.settle(answered, store)
-    expect(desk.pending("t-1")).toBeUndefined()
+    expect(desk.pending("t-1" as TicketId)).toBeUndefined()
     expect(shown).toEqual([fileWords.notFiled("no")])
     // Refused with no view open, its text is given to the next opening only.
-    expect(desk.opening("t-1")).toBe("x")
-    expect(desk.opening("t-1")).toBe("")
+    expect(desk.opening("t-1" as TicketId)).toBe("x")
+    expect(desk.opening("t-1" as TicketId)).toBe("")
   })
 
   test("refused with its view open, the text isn't kept for later: the composer has it", () => {
     const desk = makeFilingDesk()
     const { store } = toasts()
-    desk.ask("t-1", { uuid: "u-1", text: "x" })
-    const detach = desk.attach("t-1", { current: null })
-    desk.settle([{ uuid: "u-1", from: "t-1", outcome: FileOutcome.NotFiled({ why: "no" }) }], store)
+    desk.ask("t-1" as TicketId, { uuid: "u-1", text: "x" })
+    const detach = desk.attach("t-1" as TicketId, { current: null })
+    desk.settle(
+      [{ uuid: "u-1", from: "t-1" as TicketId, outcome: FileOutcome.NotFiled({ why: "no" }) }],
+      store,
+    )
     detach()
-    expect(desk.opening("t-1")).toBe("")
+    expect(desk.opening("t-1" as TicketId)).toBe("")
   })
 })

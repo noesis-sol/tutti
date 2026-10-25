@@ -4,6 +4,7 @@
 // session's word that the account is under the limit lifts it with no probe. The probe's answer is
 // read from its turn's messages, and its live layer runs one isolated haiku turn, its cost an
 // organ call's.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -27,6 +28,7 @@ import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
 import { resetText } from "../src/run/told.ts"
 import { make as makeUsageHold } from "../src/run/usageLimit.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, hitsUsageLimit, type Sent } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -321,14 +323,14 @@ describe("a run whose probe is refused", () => {
     const repo = folder("repo")
     const root = folder("worktrees")
     const finishes = (world: World) =>
-      claimsAndCloses("t-1", {
-        claim: Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+      claimsAndCloses("t-1" as TicketId, {
+        claim: Effect.asVoid(Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true }))),
         commit: Effect.asVoid(
           Effect.orDie(
             world.repository.commit(join(root, "t-1"), "Change (t-1)", { "t-1.txt": "x\n" }),
           ),
         ),
-        close: Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done"))),
+        close: Effect.asVoid(Effect.orDie(world.beads.close("t-1" as TicketId, "done"))),
       })
     return scenario(
       {
@@ -381,7 +383,9 @@ describe("a run whose probe is refused", () => {
       "USAGE_LIMIT lifted",
       "  t-1: the usage limit has reset; its worker carries on",
     ])
-    expect(messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1"))).toHaveLength(1)
+    expect(
+      messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1" as TicketId)),
+    ).toHaveLength(1)
   })
 
   test("refused with no reset, with nothing else running, waits for the next try", async () => {
@@ -403,6 +407,8 @@ describe("a run whose probe is refused", () => {
       "USAGE_LIMIT lifted",
       "  t-1: the usage limit has reset; its worker carries on",
     ])
-    expect(messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1"))).toHaveLength(1)
+    expect(
+      messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1" as TicketId)),
+    ).toHaveLength(1)
   })
 })

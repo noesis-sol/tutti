@@ -12,7 +12,7 @@
 import { Cause, Effect, FiberSet, Queue, Ref, Result, type Scope } from "effect"
 import { type OrganError, Organs } from "../organs/Organs.ts"
 import { predictFiles } from "../organs/predictor.ts"
-import { Beads, beadsWhy, type Issue, MetadataKey } from "../services/Beads.ts"
+import { Beads, beadsWhy, type Issue, MetadataKey, type TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { RunFibers } from "./fibers.ts"
 import { branchFootprint, type Footprint, isEmpty, ticketFootprint } from "./footprint.ts"
@@ -31,10 +31,10 @@ export interface Predictor {
   queue(
     issues: ReadonlyArray<Issue>,
     repo: RepoFiles,
-    branch: (ticket: string) => Effect.Effect<ReadonlyArray<string>>,
+    branch: (ticket: TicketId) => Effect.Effect<ReadonlyArray<string>>,
   ): Effect.Effect<void>
   /** The files predicted in this run, by ticket. */
-  readonly predicted: Effect.Effect<ReadonlyMap<string, ReadonlyArray<string>>>
+  readonly predicted: Effect.Effect<ReadonlyMap<TicketId, ReadonlyArray<string>>>
   /** Stops the predictor, the guess under way aborted: the run takes no more tickets. */
   readonly interrupt: Effect.Effect<void>
 }
@@ -47,7 +47,7 @@ export interface Predictor {
 export const footprintOf = (
   issue: Issue,
   repo: RepoFiles,
-  predicted: ReadonlyMap<string, ReadonlyArray<string>>,
+  predicted: ReadonlyMap<TicketId, ReadonlyArray<string>>,
   branch: ReadonlyArray<string> = [],
 ): Footprint => {
   if (branch.length > 0) return branchFootprint(issue, branch, repo)
@@ -59,15 +59,15 @@ export const footprintOf = (
 }
 
 /** `  <id> footprint predicted: a.ts, b.ts`. */
-export const predictedLine = (id: string, files: ReadonlyArray<string>): Line =>
+export const predictedLine = (id: TicketId, files: ReadonlyArray<string>): Line =>
   detail`${id} footprint predicted: ${files}`
 
 /** `  <id> footprint not predicted: <why>`. */
-export const notPredictedLine = (id: string, why: string): Line =>
+export const notPredictedLine = (id: TicketId, why: string): Line =>
   detail`${id} footprint not predicted: ${why}`
 
 /** `  PREDICT_FAILED for <id>: <why>`. */
-export const predictFailedLine = (id: string, why: string): Line =>
+export const predictFailedLine = (id: TicketId, why: string): Line =>
   `  ${Tag.predictFailed} for ${line`${id}: ${why}`}` as Line
 
 /** Why the predictor gave no answer, on one line. */
@@ -94,7 +94,7 @@ export const make = (options: {
     const logs = yield* Log
     const queued = yield* Queue.unbounded<Issue>()
     const seen = new Set<string>()
-    const predicted = yield* Ref.make<ReadonlyMap<string, ReadonlyArray<string>>>(new Map())
+    const predicted = yield* Ref.make<ReadonlyMap<TicketId, ReadonlyArray<string>>>(new Map())
     const organs = yield* Organs
 
     const predict = (queuedIssue: Issue) =>

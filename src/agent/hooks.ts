@@ -19,6 +19,7 @@ import type {
   PreCompactHookInput,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Effect, FiberSet, Predicate } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import type { SessionFibers } from "./callbacks.ts"
 
 /** The hook events a worker's activity comes from. */
@@ -74,7 +75,7 @@ export interface Recorder {
 }
 
 /** The warning when recording a hook callback of `ticket`'s worker fails. */
-export const hookFailed = (ticket: string, event: string, cause: string): string =>
+export const hookFailed = (ticket: TicketId, event: string, cause: string): string =>
   `${ticket}'s ${event} hook failed to record: ${cause}`
 
 /**
@@ -83,7 +84,7 @@ export const hookFailed = (ticket: string, event: string, cause: string): string
  * is told of a failure to record; Effect's logger is by default.
  */
 export const activityHooks = (
-  ticket: string,
+  ticket: TicketId,
   recorder: Recorder,
   fibers: SessionFibers,
   warn: (message: string) => Effect.Effect<void> = (message) => Effect.logWarning(message),

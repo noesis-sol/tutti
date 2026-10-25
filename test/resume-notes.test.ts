@@ -2,6 +2,7 @@
 // message, as its session keeps the system prompt it recorded as it began (`snapshot: true`): when
 // a merge has changed the requires list since its session started (takeRequires), or when its
 // session began in an earlier run. One resumed with the notes it was given already is told nothing.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -19,6 +20,7 @@ import type { WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -97,7 +99,7 @@ const run = <A, E>(
 const session = (dir: string) => ({ sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
 
 /** Waits, at most 10 s, for the ticket's worker to be Idle. */
-const idle = (ticket: string) =>
+const idle = (ticket: TicketId) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const found = yield* host.state(ticket).pipe(
@@ -115,9 +117,9 @@ const idle = (ticket: string) =>
 const resume = (dir: string, text: string) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
-    yield* host.resume("t-1", session(dir), { text, from: "clientComposed" })
-    yield* idle("t-1")
-    yield* host.close("t-1")
+    yield* host.resume("t-1" as TicketId, session(dir), { text, from: "clientComposed" })
+    yield* idle("t-1" as TicketId)
+    yield* host.close("t-1" as TicketId)
   })
 
 /** The changing notes a worker of this test's run is given with the requires list `names`. */
@@ -137,10 +139,10 @@ describe("a resumed worker is told the standing rules' notes that changed", () =
     const log = await run(({ dir, log }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", { text: "first", from: "clientComposed" })
-        yield* idle("t-1")
-        yield* host.close("t-1")
+        yield* host.start("t-1" as TicketId, session(dir))
+        yield* host.send("t-1" as TicketId, { text: "first", from: "clientComposed" })
+        yield* idle("t-1" as TicketId)
+        yield* host.close("t-1" as TicketId)
         yield* resume(dir, "same list")
         yield* host.takeRequires(["jq"])
         yield* resume(dir, "new list")

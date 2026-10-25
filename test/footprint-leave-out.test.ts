@@ -25,7 +25,7 @@ import { footprintOf } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, footprintsOf, make } from "../src/run/schedule.ts"
 import { asksChange } from "../src/run/text.ts"
-import { type Issue, metadataList } from "../src/services/Beads.ts"
+import { type Issue, metadataList, type TicketId } from "../src/services/Beads.ts"
 import { Git, GitWriter, parseUnion } from "../src/services/Git.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
@@ -53,7 +53,7 @@ const ticket = (
 }
 
 /** An open issue with this description and more. */
-const issue = (id: string, priority: number, description: string, more: Partial<Issue> = {}) =>
+const issue = (id: TicketId, priority: number, description: string, more: Partial<Issue> = {}) =>
   ({
     id,
     title: id,
@@ -93,12 +93,12 @@ const shown = (links: ReadonlyArray<Link>) => links.map((l) => `${l.blocker}>${l
 
 describe("a ticket's notes", () => {
   test("name nothing of where it works", () => {
-    const noted = issue("t-1", 2, "Say hello.", {
+    const noted = issue("t-1" as TicketId, 2, "Say hello.", {
       notes: "Reopened: src/run/loop.ts fails in `Loop.merge`; see refreshBranch().",
     })
     expect(ticketFootprint(noted, plain)).toEqual(emptyFootprint)
     // Two tickets whose notes name one file and one function run side by side.
-    const other = issue("t-2", 2, "Say goodbye.", { notes: noted.notes })
+    const other = issue("t-2" as TicketId, 2, "Say goodbye.", { notes: noted.notes })
     expect(overlaps(ticketFootprint(noted, plain), ticketFootprint(other, plain))).toBe(false)
     // What the text names still counts.
     expect(ticketFootprint({ ...noted, design: "Fix src/run/loop.ts." }, plain).files).toEqual([
@@ -108,7 +108,10 @@ describe("a ticket's notes", () => {
 
   test("link nothing in tutti plan", () => {
     const notes = "Worked on src/run/loop.ts and Loop.merge()."
-    const open = [issue("a", 1, "Say hello.", { notes }), issue("b", 2, "Say goodbye.", { notes })]
+    const open = [
+      issue("a" as TicketId, 1, "Say hello.", { notes }),
+      issue("b" as TicketId, 2, "Say goodbye.", { notes }),
+    ]
     expect(planLinks(open, [], plain, () => "\n")).toEqual([])
   })
 })
@@ -152,8 +155,8 @@ describe("the files git merges by union", () => {
 
   test("link nothing in tutti plan", () => {
     const open = [
-      issue("a", 1, "Add an entry to CHANGELOG.md."),
-      issue("b", 2, "Add an entry to CHANGELOG.md."),
+      issue("a" as TicketId, 1, "Add an entry to CHANGELOG.md."),
+      issue("b" as TicketId, 2, "Add an entry to CHANGELOG.md."),
     ]
     expect(planLinks(open, [], union, () => "\n")).toEqual([])
     expect(shown(planLinks(open, [], plain, () => "\n"))).toEqual(["a>b:CHANGELOG.md"])
@@ -291,9 +294,9 @@ describe("a file two tickets share", () => {
 
   test("two tickets both only citing a document aren't linked by tutti plan", () => {
     const open = [
-      issue("a", 1, "Keep to the conventions per docs/guide.md."),
-      issue("b", 2, "Follow docs/guide.md's steps, as docs/guide.md says."),
-      issue("c", 3, "Update docs/guide.md with the new step."),
+      issue("a" as TicketId, 1, "Keep to the conventions per docs/guide.md."),
+      issue("b" as TicketId, 2, "Follow docs/guide.md's steps, as docs/guide.md says."),
+      issue("c" as TicketId, 3, "Update docs/guide.md with the new step."),
     ]
     expect(shown(planLinks(open, [], plain, () => "\n"))).toEqual([
       "b>c:docs/guide.md",
@@ -347,7 +350,7 @@ describe("a ticket with commits on its branch", () => {
   })
 
   test("footprintOf takes the branch's files over its text", () => {
-    const asIssue = issue("t-1", 2, reopened.description, {
+    const asIssue = issue("t-1" as TicketId, 2, reopened.description, {
       labels: reopened.labels,
       metadata: reopened.metadata,
       files: reopened.files,
@@ -358,9 +361,9 @@ describe("a ticket with commits on its branch", () => {
 
   test("is footprinted from its branch by tutti plan", () => {
     const open = [
-      issue("a", 1, "Fix src/run/loop.ts."),
-      issue("b", 2, "Reopened: src/run/loop.ts was wrong."),
-      issue("c", 3, "Fix src/run/merge.ts."),
+      issue("a" as TicketId, 1, "Fix src/run/loop.ts."),
+      issue("b" as TicketId, 2, "Reopened: src/run/loop.ts was wrong."),
+      issue("c" as TicketId, 3, "Fix src/run/merge.ts."),
     ]
     const branches = new Map([["b", ["src/run/merge.ts"]]])
     expect(shown(planLinks(open, [], plain, () => "\n"))).toEqual(["a>b:src/run/loop.ts"])
@@ -388,9 +391,9 @@ describe("the checkout's footprints", () => {
         const files = yield* source.repo
         return [
           [files.unioned("CHANGELOG.md"), files.unioned("src/b.ts")],
-          yield* source.changed("t-1"),
-          yield* source.branch?.("t-1") ?? Effect.succeed(["no branch read"]),
-          yield* source.branch?.("t-9") ?? Effect.succeed(["no branch read"]),
+          yield* source.changed("t-1" as TicketId),
+          yield* source.branch?.("t-1" as TicketId) ?? Effect.succeed(["no branch read"]),
+          yield* source.branch?.("t-9" as TicketId) ?? Effect.succeed(["no branch read"]),
         ] as const
       }).pipe(
         Effect.provide(

@@ -35,7 +35,7 @@ import {
 } from "../src/run/steer.ts"
 import { nudgeText } from "../src/run/told.ts"
 import { type Worked, work } from "../src/run/work.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -71,7 +71,7 @@ import {
   type World,
 } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 const tiny = backlog().ticket(id, { title: "One ticket" })
 
@@ -472,23 +472,23 @@ const finished = (files: Files) =>
     const git = yield* Git
     const repository = yield* Repository
     const host = yield* AgentHost
-    const worktree = yield* (yield* Worktrees).prepare("a")
+    const worktree = yield* (yield* Worktrees).prepare("a" as TicketId)
     worktrees.set("a", worktree.path)
     yield* git.addWorktree(repository.dir, worktree.path, { branch: worktree.branch, base: "main" })
     yield* repository.commit(worktree.path, "Do a (a)", files)
-    yield* (yield* Beads).close("a", "done")
+    yield* (yield* Beads).close("a" as TicketId, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-    yield* ledger.transition("a", Move.Dispatched())
-    yield* (yield* Store).saveSession("a", {
+    yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+    yield* ledger.transition("a" as TicketId, Move.Dispatched())
+    yield* (yield* Store).saveSession("a" as TicketId, {
       session: "session-a",
       worktree: worktree.path,
       branch: worktree.branch,
     })
-    yield* host.start("a", { sessionId: "session-a", cwd: worktree.path })
-    yield* untilSettled("a")
+    yield* host.start("a" as TicketId, { sessionId: "session-a", cwd: worktree.path })
+    yield* untilSettled("a" as TicketId)
     return {
-      id: "a",
+      id: "a" as TicketId,
       title: "Ticket a",
       branch: worktree.branch,
       worktree: worktree.path,
@@ -506,7 +506,7 @@ const finishedSession = (then: SessionScript = []): SessionScript => [
 
 /** The client_composed messages ticket a's worker was sent. */
 const composed = (ran: Ran<unknown>) =>
-  messagesOf(ran, "a").flatMap((message) =>
+  messagesOf(ran, "a" as TicketId).flatMap((message) =>
     message.client_composed === true ? [String(message.message.content)] : [],
   )
 
@@ -516,7 +516,7 @@ const pathOf = (ran: Ran<unknown>) =>
     record.kind === "phase" && record.ticket === "a" ? [`${record.to}:${record.cause}`] : [],
   )
 
-const untilPhase = (ticketId: string, tag: PhaseTag) =>
+const untilPhase = (ticketId: TicketId, tag: PhaseTag) =>
   Effect.flatMap(Ledger, (ledger) =>
     ledger.changes.pipe(
       Stream.filter((state) => state.tickets.get(ticketId)?.phase._tag === tag),
@@ -551,19 +551,21 @@ describe("HandBackNow", () => {
         yield* (yield* Repository).commit((yield* Repository).dir, "Land something else", {
           "a.txt": "main's a\n",
         })
-        yield* ledger.steer("a", "message")
+        yield* ledger.steer("a" as TicketId, "message")
         yield* queue.offer(finishedA)
         yield* queue.settled
-        expect((yield* ledger.current).tickets.get("a")?.phase).toMatchObject({
+        expect((yield* ledger.current).tickets.get("a" as TicketId)?.phase).toMatchObject({
           _tag: "Blocked",
           why: "MERGE_CONFLICT",
         })
-        expect((yield* queue.handBacks.waiting).map((stop) => stop.ticket.id)).toEqual(["a"])
-        const handed = yield* handBackNow("a", queue, options)
-        yield* untilPhase("a", "Done")
+        expect((yield* queue.handBacks.waiting).map((stop) => stop.ticket.id)).toEqual([
+          "a" as TicketId,
+        ])
+        const handed = yield* handBackNow("a" as TicketId, queue, options)
+        yield* untilPhase("a" as TicketId, "Done")
         yield* queue.settled
         return {
-          phase: (yield* ledger.current).tickets.get("a")?.phase,
+          phase: (yield* ledger.current).tickets.get("a" as TicketId)?.phase,
           waiting: yield* queue.handBacks.waiting,
           handed,
         } satisfies HandedNow
@@ -601,11 +603,11 @@ describe("HandBackNow", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const queue = yield* lineOnly
-        yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-        yield* ledger.transition("a", Move.Dispatched())
-        const none = yield* handBackNow("a", queue, options)
+        yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+        yield* ledger.transition("a" as TicketId, Move.Dispatched())
+        const none = yield* handBackNow("a" as TicketId, queue, options)
         const stop: RebaseStop = {
-          ticket: { id: "a", title: "Ticket a", branch: "tutti/a", worktree: "/w/a" },
+          ticket: { id: "a" as TicketId, title: "Ticket a", branch: "tutti/a", worktree: "/w/a" },
           onto: "abc" as Sha,
           fork: "def" as Sha,
           head: "123" as Sha,
@@ -614,18 +616,18 @@ describe("HandBackNow", () => {
         }
         yield* queue.handBacks.wait(stop)
         // Working, not Blocked: the hand-back stays waiting, and no waiver is left behind.
-        const working = yield* handBackNow("a", queue, options)
+        const working = yield* handBackNow("a" as TicketId, queue, options)
         return {
-          phase: (yield* ledger.current).tickets.get("a")?.phase,
+          phase: (yield* ledger.current).tickets.get("a" as TicketId)?.phase,
           waiting: yield* queue.handBacks.waiting,
-          handed: none || working || (yield* queue.handBacks.waived("a")),
+          handed: none || working || (yield* queue.handBacks.waived("a" as TicketId)),
         } satisfies HandedNow
       }).pipe(Effect.provide(Ledger.layer)),
     )
     const out = resultOf(ran)
     expect(out.handed).toBe(false)
     expect(out.phase?._tag).toBe("Working")
-    expect(out.waiting.map((stop) => stop.ticket.id)).toEqual(["a"])
+    expect(out.waiting.map((stop) => stop.ticket.id)).toEqual(["a" as TicketId])
     expect(ran.log).toEqual([])
   })
 })
@@ -660,30 +662,34 @@ describe("a steered worker blocked on its waiting hand-back", () => {
         yield* (yield* Repository).commit((yield* Repository).dir, "Land something else", {
           "a.txt": "main's a\n",
         })
-        yield* ledger.steer("a", "message")
+        yield* ledger.steer("a" as TicketId, "message")
         yield* queue.offer(finishedA)
         yield* queue.settled
-        expect((yield* ledger.current).tickets.get("a")?.phase).toMatchObject({
+        expect((yield* ledger.current).tickets.get("a" as TicketId)?.phase).toMatchObject({
           _tag: "Blocked",
           why: "MERGE_CONFLICT",
         })
-        const message = UiCommand.SendMessage({ ticket: "a", text: secret, uuid: yours })
+        const message = UiCommand.SendMessage({
+          ticket: "a" as TicketId,
+          text: secret,
+          uuid: yours,
+        })
         expect(yield* takes(message)).toBe(true)
-        expect(yield* takes(UiCommand.Interrupt({ ticket: "a" }))).toBe(true)
-        expect(yield* takes(UiCommand.Release({ ticket: "a" }))).toBe(true)
-        const sent = yield* sendMessage("a", { text: secret, uuid: yours })
-        yield* untilSettled("a")
-        const interrupted = yield* interrupt("a")
-        const handed = yield* releaseAndHandOver("a", queue, options)
-        yield* untilPhase("a", "Done")
+        expect(yield* takes(UiCommand.Interrupt({ ticket: "a" as TicketId }))).toBe(true)
+        expect(yield* takes(UiCommand.Release({ ticket: "a" as TicketId }))).toBe(true)
+        const sent = yield* sendMessage("a" as TicketId, { text: secret, uuid: yours })
+        yield* untilSettled("a" as TicketId)
+        const interrupted = yield* interrupt("a" as TicketId)
+        const handed = yield* releaseAndHandOver("a" as TicketId, queue, options)
+        yield* untilPhase("a" as TicketId, "Done")
         yield* queue.settled
         const state = yield* ledger.current
         return {
           sent,
           interrupted,
           handed,
-          steered: state.tickets.get("a")?.steered,
-          phase: state.tickets.get("a")?.phase,
+          steered: state.tickets.get("a" as TicketId)?.steered,
+          phase: state.tickets.get("a" as TicketId)?.phase,
           waiting: yield* queue.handBacks.waiting,
           // Done, with no worker and not steered: the run drops what the view sends it.
           stale: !(yield* takes(message)),
@@ -695,7 +701,7 @@ describe("a steered worker blocked on its waiting hand-back", () => {
     expect(out.steered).toBe(false)
     expect(out.phase?._tag).toBe("Done")
     expect(out.waiting).toEqual([])
-    expect(messagesOf(ran, "a").map((each) => each.uuid)).toContain(yours)
+    expect(messagesOf(ran, "a" as TicketId).map((each) => each.uuid)).toContain(yours)
     expect(ran.sent).toContainEqual(expect.objectContaining({ _tag: "Interrupted", ticket: "a" }))
     expect(pathOf(ran)).toEqual([
       "Queued:Ready",
@@ -728,12 +734,12 @@ describe("a steered worker blocked on its waiting hand-back", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const queue = yield* lineOnly
-        yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-        yield* ledger.transition("a", Move.Dispatched())
-        const unsteered = yield* releaseAndHandOver("a", queue, options)
-        yield* ledger.steer("a", "interrupt")
-        const steered = yield* releaseAndHandOver("a", queue, options)
-        const entry = (yield* ledger.current).tickets.get("a")
+        yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+        yield* ledger.transition("a" as TicketId, Move.Dispatched())
+        const unsteered = yield* releaseAndHandOver("a" as TicketId, queue, options)
+        yield* ledger.steer("a" as TicketId, "interrupt")
+        const steered = yield* releaseAndHandOver("a" as TicketId, queue, options)
+        const entry = (yield* ledger.current).tickets.get("a" as TicketId)
         return { unsteered, steered, phase: entry?.phase, still: entry?.steered }
       }).pipe(Effect.provide(Ledger.layer)),
     )
@@ -763,7 +769,9 @@ describe("the run takes steering's commands from the screen", () => {
               wait,
               init(),
               sessionState("running"),
-              run(Effect.asVoid(Effect.orDie(world.beads.update("a", { claim: true })))),
+              run(
+                Effect.asVoid(Effect.orDie(world.beads.update("a" as TicketId, { claim: true }))),
+              ),
               canUseTool("Bash", { command: "rm -rf build" }),
               run(
                 Effect.asVoid(
@@ -772,7 +780,7 @@ describe("the run takes steering's commands from the screen", () => {
                   ),
                 ),
               ),
-              run(Effect.asVoid(Effect.orDie(world.beads.close("a", "done")))),
+              run(Effect.asVoid(Effect.orDie(world.beads.close("a" as TicketId, "done")))),
               result("Closed a."),
               // Your message, queued behind the turn, has a turn of its own.
               wait,
@@ -827,9 +835,9 @@ describe("the run takes steering's commands from the screen", () => {
           Effect.map(attention.current, (all) => all.some((request) => request.ticket === "a")),
         )
         // No worker b: dropped.
-        yield* send(UiCommand.SendMessage({ ticket: "b", text: "hello", uuid: yours }))
-        yield* send(UiCommand.SendMessage({ ticket: "a", text: secret, uuid: yours }))
-        yield* send(UiCommand.Release({ ticket: "a" }))
+        yield* send(UiCommand.SendMessage({ ticket: "b" as TicketId, text: "hello", uuid: yours }))
+        yield* send(UiCommand.SendMessage({ ticket: "a" as TicketId, text: secret, uuid: yours }))
+        yield* send(UiCommand.Release({ ticket: "a" as TicketId }))
         const requestId = ((yield* attention.current)[0] as { readonly id: string }).id
         yield* send(UiCommand.Answer({ requestId, answer: { _tag: "Allow" } }))
         for (let i = 0; i < 3; i++) {
@@ -840,8 +848,8 @@ describe("the run takes steering's commands from the screen", () => {
       }) as Effect.Effect<Outcome, unknown, Env | Scope.Scope>,
     )
     expectExitCode(ran, 0)
-    expect(messagesOf(ran, "a").map((message) => message.uuid)).toContain(yours)
-    expect(messagesOf(ran, "b")).toEqual([])
+    expect(messagesOf(ran, "a" as TicketId).map((message) => message.uuid)).toContain(yours)
+    expect(messagesOf(ran, "b" as TicketId)).toEqual([])
     expectLog(ran, [
       "  STEERED: a",
       `  MESSAGE: you → a (${lengthOf(secret)} characters)`,

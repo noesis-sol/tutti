@@ -18,7 +18,7 @@ import { idleGrace, namesTicket, untilSettled } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { nudgeText } from "../src/run/told.ts"
 import { requeueWaiting, type Worked, work } from "../src/run/work.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -47,7 +47,7 @@ import {
   type World,
 } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 
 /** A folder for the worktrees, so a test knows where its ticket's is before it starts. */
@@ -382,7 +382,7 @@ describe("the outcome of a settled worker", () => {
         root,
         backlog: backlog().ticket("t-0").ticket(id, { title: "One ticket" }).seeds,
         scripts: scripts(root, (c, world) =>
-          turn([run(c.claim), run(orDie(world.beads.addDependency(id, "t-0")))]),
+          turn([run(c.claim), run(orDie(world.beads.addDependency(id, "t-0" as TicketId)))]),
         ),
       },
       (fiber) =>
@@ -390,13 +390,16 @@ describe("the outcome of a settled worker", () => {
           yield* Fiber.join(fiber)
           // t-0 isn't merged: the ticket waits.
           expect(yield* requeueWaiting()).toEqual([])
-          yield* (yield* Beads).close("t-0", "done")
+          yield* (yield* Beads).close("t-0" as TicketId, "done")
           expect(yield* requeueWaiting()).toEqual([id])
           expect((yield* (yield* Ledger).current).tickets.get(id)?.phase._tag).toBe("Queued")
         }),
     )
     expect(phaseOf(ran)).toEqual(
-      expect.objectContaining({ _tag: "Waiting", for: WaitFor.Blockers({ ids: ["t-0"] }) }),
+      expect.objectContaining({
+        _tag: "Waiting",
+        for: WaitFor.Blockers({ ids: ["t-0" as TicketId] }),
+      }),
     )
     expect(moves(ran).slice(2)).toEqual(["Working → Waiting", "Waiting → Queued"])
     expect(ran.issues.find((issue) => issue.id === id)?.status).toBe("open")
@@ -414,16 +417,16 @@ describe("the outcome of a settled worker", () => {
         root,
         backlog: backlog().ticket("t-0").ticket(id, { title: "One ticket" }).seeds,
         scripts: scripts(root, (c, world) =>
-          turn([run(c.claim), run(orDie(world.beads.addDependency(id, "t-0")))]),
+          turn([run(c.claim), run(orDie(world.beads.addDependency(id, "t-0" as TicketId)))]),
         ),
       },
       (fiber) =>
         Effect.gen(function* () {
           const ledger = yield* Ledger
-          yield* (yield* Beads).close("t-0", "done")
-          yield* ledger.transition("t-0", Move.Ready(), { title: "t-0" })
-          yield* ledger.transition("t-0", Move.Dispatched())
-          yield* ledger.transition("t-0", Move.Verified({ place: 1 }))
+          yield* (yield* Beads).close("t-0" as TicketId, "done")
+          yield* ledger.transition("t-0" as TicketId, Move.Ready(), { title: "t-0" })
+          yield* ledger.transition("t-0" as TicketId, Move.Dispatched())
+          yield* ledger.transition("t-0" as TicketId, Move.Verified({ place: 1 }))
           yield* Fiber.join(fiber)
           expect(yield* requeueWaiting()).toEqual([])
         }),
@@ -440,7 +443,7 @@ describe("the outcome of a settled worker", () => {
         turn([
           run(c.claim),
           run(c.commit(`Half of it (${id})`)),
-          run(orDie(world.beads.addDependency(id, "t-0"))),
+          run(orDie(world.beads.addDependency(id, "t-0" as TicketId))),
           run(c.status("open")),
         ]),
       ),
@@ -584,22 +587,22 @@ describe("the continue nudge and PAUSED", () => {
 
 describe("untilSettled", () => {
   test("a worker the host doesn't know has gone", async () => {
-    const ran = await scenario({}, untilSettled("nobody"))
+    const ran = await scenario({}, untilSettled("nobody" as TicketId))
     expect(resultOf(ran)._tag).toBe("Gone")
   })
 })
 
 describe("namesTicket", () => {
   test("names the ticket as a whole ID only", () => {
-    expect(namesTicket("Change it (t-1)", "t-1")).toBe(true)
-    expect(namesTicket("t-1: change it", "t-1")).toBe(true)
-    expect(namesTicket("Fix t-1.", "t-1")).toBe(true)
-    expect(namesTicket("Fix t-1-x and t-10", "t-1")).toBe(false)
-    expect(namesTicket("Fix t-1.2", "t-1")).toBe(false)
-    expect(namesTicket("Fix xt-1", "t-1")).toBe(false)
-    expect(namesTicket("Fix a.t-1", "t-1")).toBe(false)
-    expect(namesTicket("Fix t-10, then t-1", "t-1")).toBe(true)
-    expect(namesTicket("anything", "")).toBe(false)
+    expect(namesTicket("Change it (t-1)", "t-1" as TicketId)).toBe(true)
+    expect(namesTicket("t-1: change it", "t-1" as TicketId)).toBe(true)
+    expect(namesTicket("Fix t-1.", "t-1" as TicketId)).toBe(true)
+    expect(namesTicket("Fix t-1-x and t-10", "t-1" as TicketId)).toBe(false)
+    expect(namesTicket("Fix t-1.2", "t-1" as TicketId)).toBe(false)
+    expect(namesTicket("Fix xt-1", "t-1" as TicketId)).toBe(false)
+    expect(namesTicket("Fix a.t-1", "t-1" as TicketId)).toBe(false)
+    expect(namesTicket("Fix t-10, then t-1", "t-1" as TicketId)).toBe(true)
+    expect(namesTicket("anything", "" as TicketId)).toBe(false)
   })
 
   test("finds the ID wherever a worker puts it, between any words", () => {
@@ -607,7 +610,7 @@ describe("namesTicket", () => {
     fc.assert(
       fc.property(words, words, (before, after) => {
         const message = `${before} t-1 ${after}`
-        expect(namesTicket(message, "t-1")).toBe(true)
+        expect(namesTicket(message, "t-1" as TicketId)).toBe(true)
       }),
     )
   })
@@ -616,9 +619,9 @@ describe("namesTicket", () => {
     fc.assert(
       fc.property(fc.string({ unit: fc.constantFrom("a", "Z", "0", "_") }), (tail) => {
         fc.pre(tail !== "")
-        expect(namesTicket(`x t-1${tail} y`, "t-1")).toBe(false)
-        expect(namesTicket(`x ${tail}t-1 y`, "t-1")).toBe(false)
-        expect(namesTicket(`x t-1.${tail} y`, "t-1")).toBe(false)
+        expect(namesTicket(`x t-1${tail} y`, "t-1" as TicketId)).toBe(false)
+        expect(namesTicket(`x ${tail}t-1 y`, "t-1" as TicketId)).toBe(false)
+        expect(namesTicket(`x t-1.${tail} y`, "t-1" as TicketId)).toBe(false)
       }),
     )
   })
@@ -627,7 +630,7 @@ describe("namesTicket", () => {
     fc.assert(
       fc.property(
         fc.string({ unit: "binary" }),
-        fc.string({ minLength: 1 }),
+        fc.string({ minLength: 1 }).map((id) => id as TicketId),
         (message, ticketId) => {
           expect(typeof namesTicket(message, ticketId)).toBe("boolean")
         },

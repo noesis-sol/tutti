@@ -2,6 +2,7 @@
 // never at once, and lifts are retryEvery apart; an unknown reset lifts once a session says the
 // account is under the limit again, or at the next try, with workers still running; and a worker's
 // rejection goes with its turn, so a later turn failing for another reason reads as Failed.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -22,6 +23,7 @@ import {
   resetOf,
   retryEvery,
 } from "../src/run/usageLimit.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   apiErrorResult,
@@ -59,7 +61,7 @@ const minute = 60_000
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-lift-${name}-`)))
 
 /** Claims, commits and closes its ticket, as a worker does. */
-const finishes = (world: World, root: string, id: string): SessionScript =>
+const finishes = (world: World, root: string, id: TicketId): SessionScript =>
   claimsAndCloses(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     commit: Effect.asVoid(
@@ -145,7 +147,9 @@ describe("when the hold lifts", () => {
     const ran = await runs({
       tickets: ["t-1"],
       scripts: (world, root) => ({
-        "t-1": [[...hitsUsageLimit(0), ...hitsUsageLimit(0), ...finishes(world, root, "t-1")]],
+        "t-1": [
+          [...hitsUsageLimit(0), ...hitsUsageLimit(0), ...finishes(world, root, "t-1" as TicketId)],
+        ],
       }),
       during: Effect.gen(function* () {
         yield* untilLogged(/^USAGE_LIMIT: nothing else runs/)
@@ -179,7 +183,9 @@ describe("when the hold lifts", () => {
       "USAGE_LIMIT lifted",
       "  t-1: the usage limit has reset; its worker carries on",
     ])
-    expect(messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1"))).toHaveLength(2)
+    expect(
+      messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1" as TicketId)),
+    ).toHaveLength(2)
   })
 
   test("an unknown reset lifts, with workers still running, once a session says it is allowed", async () => {
@@ -190,7 +196,7 @@ describe("when the hold lifts", () => {
       concurrent: 2,
       scripts: (world, root) => {
         // Its prompt, system/init and running: its turn under way.
-        const t2 = finishes(world, root, "t-2")
+        const t2 = finishes(world, root, "t-2" as TicketId)
         const [begun, rest] = [t2.slice(0, 3), t2.slice(3)]
         return {
           // t-1 is refused once t-2 has started, so that both are dispatched before the hold.
@@ -199,7 +205,7 @@ describe("when the hold lifts", () => {
               wait,
               step(Deferred.await(started)),
               ...refusedAlone.slice(1),
-              ...finishes(world, root, "t-1"),
+              ...finishes(world, root, "t-1" as TicketId),
             ],
           ],
           // t-2 runs on through the hold, and hears from the account that it is under the limit.
@@ -212,7 +218,7 @@ describe("when the hold lifts", () => {
               ...rest,
             ],
           ],
-          "t-3": [finishes(world, root, "t-3")],
+          "t-3": [finishes(world, root, "t-3" as TicketId)],
         }
       },
       during: Effect.gen(function* () {
@@ -242,7 +248,7 @@ describe("when the hold lifts", () => {
       concurrent: 2,
       scripts: (world, root) => {
         // Its prompt, system/init and running: its turn under way.
-        const t2 = finishes(world, root, "t-2")
+        const t2 = finishes(world, root, "t-2" as TicketId)
         const [begun, rest] = [t2.slice(0, 3), t2.slice(3)]
         return {
           "t-1": [
@@ -250,7 +256,7 @@ describe("when the hold lifts", () => {
               wait,
               step(Deferred.await(started)),
               ...refusedAlone.slice(1),
-              ...finishes(world, root, "t-1"),
+              ...finishes(world, root, "t-1" as TicketId),
             ],
           ],
           "t-2": [
@@ -292,10 +298,12 @@ describe("when the hold lifts", () => {
         "t-1": [
           [
             ...limited.slice(0, 3),
-            step(Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true })))),
+            step(
+              Effect.asVoid(Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true }))),
+            ),
             ...limited.slice(3),
             ...turn([], serverError),
-            ...finishes(world, root, "t-1"),
+            ...finishes(world, root, "t-1" as TicketId),
           ],
         ],
       }),
@@ -312,7 +320,7 @@ describe("when the hold lifts", () => {
     // Held once: the failed turn after the lift doesn't hold the run again, and gets a nudge.
     expect(ran.log.filter((text) => holds.test(text))).toHaveLength(1)
     expect(ran.log.filter((text) => lifted.test(text))).toHaveLength(1)
-    expect(messagesTo(ran.sent, "t-1")).toContain(nudgeText("t-1"))
+    expect(messagesTo(ran.sent, "t-1")).toContain(nudgeText("t-1" as TicketId))
   })
 })
 

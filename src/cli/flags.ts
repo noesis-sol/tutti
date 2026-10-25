@@ -7,10 +7,12 @@
 // TUTTI_NO_MOUSE. An on-or-off flag takes 1, true, yes or on, or 0, false, no or off, as its
 // variable does: `--triage=false`, `TUTTI_TRIAGE=0`; given alone (`--plain`), it is on. orchestra's
 // unprefixed variables (LIMIT, NOTIFY, WT_ROOT, …) are not read (D5).
+
 import { Duration, Option, Result } from "effect"
 import { Flag } from "effect/cli"
 import { parseDuration } from "../project/configFile.ts"
 import { efforts, maxConcurrent } from "../project/settings.ts"
+import type { TicketId } from "../services/Beads.ts"
 
 /** Reads a flag's or a variable's text: its value, or what is wrong with it, after "--name ". */
 export type Reader<A> = (text: string) => Result.Result<A, string>
@@ -103,6 +105,10 @@ export const text =
     return trimmed === "" ? Result.fail(`needs ${what}`) : Result.succeed(trimmed)
   }
 
+/** A ticket's ID, as text gives it: what the run is scoped to, unchecked like one from bd. */
+const ticketId: Reader<TicketId> = (given) =>
+  Result.map(text("a ticket ID")(given), (id) => id as TicketId)
+
 const runFlag = <A>(
   name: string,
   read: Reader<A>,
@@ -148,7 +154,7 @@ export const runFlags = {
     onOff: true,
     description: "run the current tickets without first asking whether to plan a new feature",
   }),
-  ticket: runFlag("ticket", text("a ticket ID"), {
+  ticket: runFlag("ticket", ticketId, {
     metavar: "id",
     description: "work on this ticket and its subtickets only",
   }),

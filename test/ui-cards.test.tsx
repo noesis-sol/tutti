@@ -2,6 +2,7 @@
 // status in its style, the frames and the highlight, two to a row from 120 columns, the compact
 // mode, a stable order as workers finish, the spinner on the shell's clock, the keys and clicks
 // that open a worker, the wind-down line, the key help, and the workers' latest actions.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Fiber, Layer, Queue, Result, Stream } from "effect"
@@ -15,6 +16,7 @@ import { type Entry, emptyTallies, Ledger, type WindDown } from "../src/run/ledg
 import { Finished, Move, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { type Card, emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { actionPoll, latestActions, Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
@@ -46,7 +48,7 @@ const now = began + 67_000
 const resets = new Date(2026, 9, 20, 14, 5).getTime()
 
 interface Ticket {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly title?: string
   readonly phase: TicketPhase
   readonly worker: number | null
@@ -103,7 +105,7 @@ const viewOf = (
     actions: over.actions ?? new Map(),
   })
 
-const permission = (id: string, ticket: string): AttentionRequest => ({
+const permission = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -118,7 +120,7 @@ const permission = (id: string, ticket: string): AttentionRequest => ({
   createdAt: 0,
 })
 
-const question = (id: string, ticket: string): AttentionRequest => ({
+const question = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
   ticket,
   kind: { _tag: "Question", questions: [], input: {} },
@@ -132,8 +134,10 @@ const cardOf = (
   phase: TicketPhase,
   over: Parameters<typeof viewOf>[1] & { readonly steered?: boolean } = {},
 ): Card => {
-  const card = viewOf([{ ticket: "t-1", phase, worker: 1, steered: over.steered ?? false }], over)
-    .cards[0]
+  const card = viewOf(
+    [{ ticket: "t-1" as TicketId, phase, worker: 1, steered: over.steered ?? false }],
+    over,
+  ).cards[0]
   if (card === undefined) throw new Error("no card")
   return card
 }
@@ -225,12 +229,14 @@ describe("a card for each status", () => {
       ["gone", cardOf(working, states(WS.Gone({ why: "exited" }))), theme.look("needsYou")],
       [
         "permission — waiting for you",
-        cardOf(working, { requests: [permission("r1", "t-1")] }),
+        cardOf(working, { requests: [permission("r1", "t-1" as TicketId)] }),
         theme.styles.stop,
       ],
       [
         "question — waiting for you (2)",
-        cardOf(working, { requests: [question("r1", "t-1"), permission("r2", "t-1")] }),
+        cardOf(working, {
+          requests: [question("r1", "t-1" as TicketId), permission("r2", "t-1" as TicketId)],
+        }),
         theme.styles.stop,
       ],
       ["resolving", cardOf(TicketPhase.Resolving({ attempt: 1 })), theme.styles.deferred],
@@ -273,7 +279,7 @@ describe("a card for each status", () => {
   })
 
   test("a worker waiting for you is framed needsYou; one whose turn ended, frame", () => {
-    const waiting = drawn(cardOf(working, { requests: [permission("r1", "t-1")] }))
+    const waiting = drawn(cardOf(working, { requests: [permission("r1", "t-1" as TicketId)] }))
     sameLook(
       lookOf(waiting, "╭────────────────────────────────────────────────╮"),
       theme.look("needsYou"),
@@ -351,7 +357,7 @@ describe("a card for each status", () => {
         fc.boolean(),
         fc.integer({ min: 10, max: 160 }),
         (title, action, denied, width) => {
-          const card = viewOf([{ ticket: "t-1", title, phase: working, worker: 1 }], {
+          const card = viewOf([{ ticket: "t-1" as TicketId, title, phase: working, worker: 1 }], {
             actions: new Map([["t-1", { text: action, denied }]]),
           }).cards[0]
           if (card === undefined) return false
@@ -399,10 +405,14 @@ const currentOf = (frame: Frame): string => {
 const draw = (view: RunView, size: Size) => renderFrame(<Root value={value(view)} />, size)
 
 const four: ReadonlyArray<Ticket> = [
-  { ticket: "tut-kco", phase: TicketPhase.Merging({ step: "fast-forward" }), worker: 1 },
-  { ticket: "tut-zq4", phase: working, worker: 2 },
-  { ticket: "tut-9a1", phase: TicketPhase.ToMerge({ place: 1 }), worker: 3 },
-  { ticket: "tut-b7c", phase: working, worker: 4 },
+  {
+    ticket: "tut-kco" as TicketId,
+    phase: TicketPhase.Merging({ step: "fast-forward" }),
+    worker: 1,
+  },
+  { ticket: "tut-zq4" as TicketId, phase: working, worker: 2 },
+  { ticket: "tut-9a1" as TicketId, phase: TicketPhase.ToMerge({ place: 1 }), worker: 3 },
+  { ticket: "tut-b7c" as TicketId, phase: working, worker: 4 },
 ]
 const fourStates = new Map<string, WorkerState>([
   ["tut-zq4", WS.Working({ doing: "testing" })],
@@ -455,7 +465,7 @@ describe("the Current section", () => {
     const view = viewOf(four, {
       workers: fourStates,
       actions: fourActions,
-      requests: [permission("r1", "tut-b7c")],
+      requests: [permission("r1", "tut-b7c" as TicketId)],
     })
     expect(layoutOf(view.cards, 80, 12)._tag).toBe("Compact")
     expect(layoutOf(view.cards, 80, 22)._tag).toBe("Cards")
@@ -491,7 +501,7 @@ describe("the Current section", () => {
 
   test("six workers keep their full cards in a pane that holds them; the table takes the rest", async () => {
     const six: ReadonlyArray<Ticket> = [1, 2, 3, 4, 5, 6].map((worker) => ({
-      ticket: `tut-${worker}`,
+      ticket: `tut-${worker}` as TicketId,
       phase: working,
       worker,
     }))
@@ -515,9 +525,9 @@ describe("the Current section", () => {
 
   test("the cards keep their order as workers finish; a new one takes the first gap", async () => {
     const all: ReadonlyArray<Ticket> = [
-      { ticket: "a", phase: working, worker: 1 },
-      { ticket: "b", phase: working, worker: 2 },
-      { ticket: "c", phase: working, worker: 3 },
+      { ticket: "a" as TicketId, phase: working, worker: 1 },
+      { ticket: "b" as TicketId, phase: working, worker: 2 },
+      { ticket: "c" as TicketId, phase: working, worker: 3 },
     ]
     const heads = async (view: RunView) =>
       linesOf(await draw(view, { width: 80, height: 40 }))
@@ -529,7 +539,10 @@ describe("the Current section", () => {
       t.ticket === "a" ? { ...t, phase: merged, worker: null } : t,
     )
     expect(await heads(viewOf(finished))).toEqual([`${turned} b`, `${turned} c`])
-    const next: ReadonlyArray<Ticket> = [...finished, { ticket: "d", phase: working, worker: 1 }]
+    const next: ReadonlyArray<Ticket> = [
+      ...finished,
+      { ticket: "d" as TicketId, phase: working, worker: 1 },
+    ]
     expect(await heads(viewOf(next))).toEqual([`${turned} d`, `${turned} b`, `${turned} c`])
   })
 
@@ -551,7 +564,7 @@ describe("the spinner", () => {
 
   test("turns as the clock moves, and stands still with it", async () => {
     let time = 0
-    const view = viewOf([{ ticket: "a", phase: working, worker: 1 }])
+    const view = viewOf([{ ticket: "a" as TicketId, phase: working, worker: 1 }])
     await withRender(
       <Root value={value(view, { clock: () => time })} />,
       { width: 80, height: 24 },
@@ -584,8 +597,8 @@ describe("opening a worker", () => {
         await rendered.input((setup) => setup.mockMouse.click(10, y))
         await rendered.input((setup) => setup.mockMouse.click(70, y))
         expect(taken(commands)).toEqual([
-          UiCommand.OpenWorker({ ticket: "tut-9a1" }),
-          UiCommand.OpenWorker({ ticket: "tut-b7c" }),
+          UiCommand.OpenWorker({ ticket: "tut-9a1" as TicketId }),
+          UiCommand.OpenWorker({ ticket: "tut-b7c" as TicketId }),
         ])
         await rendered.input((setup) => {
           setup.mockInput.pressTab()
@@ -601,8 +614,8 @@ describe("opening a worker", () => {
           setup.mockInput.pressKey("7")
         })
         expect(taken(commands)).toEqual([
-          UiCommand.OpenWorker({ ticket: "tut-zq4" }),
-          UiCommand.OpenWorker({ ticket: "tut-kco" }),
+          UiCommand.OpenWorker({ ticket: "tut-zq4" as TicketId }),
+          UiCommand.OpenWorker({ ticket: "tut-kco" as TicketId }),
         ])
       },
     )
@@ -621,21 +634,32 @@ describe("the wind-down line", () => {
   test("a ■ for each ticket, coloured by its phase", () => {
     const view = viewOf(
       [
-        { ticket: "a", phase: working, worker: 1 },
-        { ticket: "b", phase: TicketPhase.Merging({ step: "check" }), worker: 2 },
+        { ticket: "a" as TicketId, phase: working, worker: 1 },
+        { ticket: "b" as TicketId, phase: TicketPhase.Merging({ step: "check" }), worker: 2 },
         {
-          ticket: "c",
+          ticket: "c" as TicketId,
           phase: TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
           worker: null,
         },
-        { ticket: "d", phase: TicketPhase.Review({ why: "OFF_BRANCH" }), worker: null },
+        { ticket: "d" as TicketId, phase: TicketPhase.Review({ why: "OFF_BRANCH" }), worker: null },
         {
-          ticket: "e",
-          phase: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }),
+          ticket: "e" as TicketId,
+          phase: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x" as TicketId] }) }),
           worker: null,
         },
       ],
-      { windDown: { since: began, tickets: ["a", "b", "c", "d", "e"] } },
+      {
+        windDown: {
+          since: began,
+          tickets: [
+            "a" as TicketId,
+            "b" as TicketId,
+            "c" as TicketId,
+            "d" as TicketId,
+            "e" as TicketId,
+          ],
+        },
+      },
     )
     if (view.windDown === null) throw new Error("no wind-down")
     const line = windDownSegments(view.windDown, theme, 80)
@@ -660,8 +684,8 @@ describe("the wind-down line", () => {
   })
 
   test("drawn above the hint while the run winds down", async () => {
-    const view = viewOf([{ ticket: "a", phase: working, worker: 1 }], {
-      windDown: { since: began, tickets: ["a"] },
+    const view = viewOf([{ ticket: "a" as TicketId, phase: working, worker: 1 }], {
+      windDown: { since: began, tickets: ["a" as TicketId] },
     })
     const lines = linesOf(await draw(view, { width: 80, height: 24 }))
     expect(lines.slice(-2)).toEqual([
@@ -759,10 +783,10 @@ describe("the latest actions", () => {
         const ledger = yield* Ledger
         const transcripts = yield* Transcripts
         for (const cause of [Move.Ready(), Move.Dispatched()]) {
-          const next = yield* ledger.transition("t-1", cause, { title: "One" })
+          const next = yield* ledger.transition("t-1" as TicketId, cause, { title: "One" })
           if (Result.isFailure(next)) throw new Error("invalid transition")
         }
-        yield* ledger.transition("t-2", Move.Ready(), { title: "Queued" })
+        yield* ledger.transition("t-2" as TicketId, Move.Ready(), { title: "Queued" })
         yield* transcripts.record("t-1", {
           session: "s-1",
           message: assistant("call-1", "scripts/check-fast.sh"),

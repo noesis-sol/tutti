@@ -46,7 +46,7 @@ import {
 } from "../src/agent/options.ts"
 import { type AppConfig, defaultSettings } from "../src/cli/AppConfig.ts"
 import { maxPlanned } from "../src/project/planFile.ts"
-import { Beads, BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
 import {
   gone as goneStep,
@@ -329,7 +329,7 @@ describe("file_feature", () => {
     expect(t2?.dependencies).toContainEqual(expect.objectContaining({ id: t1?.id, type: "blocks" }))
     expect(filing._tag).toBe("Filed")
     expect(filedSomething(filing)).toBe(true)
-    if (filing._tag === "Filed") expect(filing.filed.epic).toBe(epic?.id ?? "")
+    if (filing._tag === "Filed") expect(filing.filed.epic).toBe(epic?.id ?? ("" as TicketId))
   })
 
   test("it files once: a second call is refused and files nothing more", async () => {
@@ -495,7 +495,7 @@ describe("tickets_list and ticket_show", () => {
   test("ticketLine puts an issue on one line", () => {
     expect(
       ticketLine({
-        id: "x-1",
+        id: "x-1" as TicketId,
         title: "T",
         status: "open",
         type: "bug",
@@ -622,7 +622,7 @@ describe("startInterview, with the scripted host", () => {
     expect(answers.map((a) => a.isError)).toEqual([undefined])
     expect(ended._tag).toBe("Filed")
     if (ended._tag !== "Filed") return
-    expect(ended.epic).toBe("test-1")
+    expect(ended.epic).toBe("test-1" as TicketId)
     expect(ended.tickets).toBe(2)
     expect(ended.question).toBe("Start the run on test-1 (2 tickets)?")
     expect(ended.plan.epic.title).toBe("test-1 A --json flag for list")
@@ -709,10 +709,10 @@ describe("startInterview, with the scripted host", () => {
         notes: ["dropped"],
       },
       {
-        epic: "p-1",
+        epic: "p-1" as TicketId,
         tickets: new Map([
-          ["a", "p-2"],
-          ["b", "p-3"],
+          ["a", "p-2" as TicketId],
+          ["b", "p-3" as TicketId],
         ]),
       },
     )

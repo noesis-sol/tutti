@@ -1,19 +1,24 @@
 // The run's START block lists each deferred ticket in its scope whose blockers have all merged, a
 // DEFERRED_FREE line with the command that reopens it (§ 5 item 4), as orchestra's does: after the
 // tickets left unmerged and the workers carried over, before the first dispatch.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import type { Seed } from "../src/testing/Beads.ts"
 import { expectLog, type Ran, scenario } from "./harness.ts"
 
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-sdf-${name}-`)))
 
 /** A whole run on main over `seeds`, with nothing ready to start, scoped to `ticket` if given. */
-const runs = (seeds: ReadonlyArray<Seed>, ticket: string | null = null): Promise<Ran<Outcome>> => {
+const runs = (
+  seeds: ReadonlyArray<Seed>,
+  ticket: TicketId | null = null,
+): Promise<Ran<Outcome>> => {
   const repo = folder("repo")
   return scenario(
     { config: { repo, ticket }, backlog: seeds, git: { dir: repo } },
@@ -66,7 +71,7 @@ describe("DEFERRED_FREE in the START block", () => {
         { id: "e-1.1", parent: "e-1", status: "deferred", blockedBy: ["b-1"] },
         { id: "k-1", status: "deferred", blockedBy: ["b-1"] },
       ],
-      "e-1",
+      "e-1" as TicketId,
     )
     expect(freeLines(ran)).toEqual([freeLine("e-1.1", "b-1")])
   })

@@ -1,12 +1,14 @@
 // Clicks act on release (D9, § 7.3): a click target acts when the left button is released on the
 // cell it was pressed on with no text selected, so a drag that selects text to copy, over a card's
 // title or a tool line, neither opens the worker's view nor toggles the line (tutti-bh51).
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { makeCommands } from "../src/run/commands.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { type Card, emptyView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Cards, layoutOf } from "../src/ui/Card.tsx"
 import { clickable } from "../src/ui/click.ts"
 import { Line, seg } from "../src/ui/line.tsx"
@@ -114,7 +116,7 @@ describe("a click target", () => {
 
 describe("a card", () => {
   const card: Card = {
-    ticket: "t-1",
+    ticket: "t-1" as TicketId,
     label: "t-1",
     title: "Remove the build",
     worker: 1,

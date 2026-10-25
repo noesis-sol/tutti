@@ -1,9 +1,11 @@
 // The end-of-run box on the run's status (D19): shown in one step with the status's other
 // changes, so that a change another fiber makes while it is shown isn't lost.
+
 import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, Fiber, SubscriptionRef } from "effect"
 import { showEndOfRun } from "../src/run/run.ts"
 import { emptyStatus, type Status } from "../src/run/runView.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
 const run = <A>(effect: Effect.Effect<A>): Promise<A> => Effect.runPromise(effect)
 
@@ -12,13 +14,13 @@ describe("the end-of-run box on the status", () => {
     const shown = await run(
       Effect.gen(function* () {
         const status = yield* SubscriptionRef.make<Status>({ ...emptyStatus, unclosed: 3 })
-        yield* showEndOfRun(status, ["a", "b"])
+        yield* showEndOfRun(status, ["a" as TicketId, "b" as TicketId])
         const boxed = yield* SubscriptionRef.get(status)
         yield* showEndOfRun(status, null)
         return { boxed, hidden: yield* SubscriptionRef.get(status) }
       }),
     )
-    expect(shown.boxed.endOfRun).toEqual(["a", "b"])
+    expect(shown.boxed.endOfRun).toEqual(["a" as TicketId, "b" as TicketId])
     expect(shown.boxed.unclosed).toBe(3)
     expect(shown.hidden.endOfRun).toBeNull()
   })
@@ -26,9 +28,12 @@ describe("the end-of-run box on the status", () => {
   test("leaves the status as it is when the box is the same", async () => {
     const kept = await run(
       Effect.gen(function* () {
-        const status = yield* SubscriptionRef.make<Status>({ ...emptyStatus, endOfRun: ["a"] })
+        const status = yield* SubscriptionRef.make<Status>({
+          ...emptyStatus,
+          endOfRun: ["a" as TicketId],
+        })
         const before = yield* SubscriptionRef.get(status)
-        yield* showEndOfRun(status, ["a"])
+        yield* showEndOfRun(status, ["a" as TicketId])
         return before === (yield* SubscriptionRef.get(status))
       }),
     )
@@ -52,7 +57,7 @@ describe("the end-of-run box on the status", () => {
           ),
         )
         yield* Deferred.await(holding)
-        const box = yield* Effect.forkChild(showEndOfRun(status, ["a"]))
+        const box = yield* Effect.forkChild(showEndOfRun(status, ["a" as TicketId]))
         yield* Effect.yieldNow
         yield* Deferred.succeed(release, undefined)
         yield* Fiber.join(verdicts)
@@ -60,7 +65,7 @@ describe("the end-of-run box on the status", () => {
         return yield* SubscriptionRef.get(status)
       }),
     )
-    expect(after.endOfRun).toEqual(["a"])
+    expect(after.endOfRun).toEqual(["a" as TicketId])
     expect([...after.verdicts]).toEqual([["c", "environment · high"]])
   })
 })

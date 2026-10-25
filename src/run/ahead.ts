@@ -2,6 +2,7 @@
 // (mergetrain.ts), in state.json: while it is there, the branch may have the commits of the branch
 // ahead, so its merge (merge.ts's Enter step) sets aside one not put back as its worker left it.
 import { Effect, Predicate, type Schema } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import { Sha } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 
@@ -51,14 +52,14 @@ export const aheadJson = ({ onto, head, ...rest }: RebasedAhead): Schema.Json =>
 })
 
 /** Marks the ticket's branch as rebased onto the branch ahead; a Store that can't be written doesn't. */
-export const markAhead = (id: string, mark: RebasedAhead): Effect.Effect<void, never, Store> =>
+export const markAhead = (id: TicketId, mark: RebasedAhead): Effect.Effect<void, never, Store> =>
   Effect.gen(function* () {
     const store = yield* Store
     yield* Effect.ignore(store.setMetadata(id, aheadKey, aheadJson(mark)))
   })
 
 /** Clears the ticket's mark, its branch boarded or put back, if it has one. */
-export const clearAhead = (id: string): Effect.Effect<void, never, Store> =>
+export const clearAhead = (id: TicketId): Effect.Effect<void, never, Store> =>
   Effect.gen(function* () {
     const store = yield* Store
     if (!Object.hasOwn(yield* store.metadata(id), aheadKey)) return

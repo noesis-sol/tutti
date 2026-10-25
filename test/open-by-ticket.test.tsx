@@ -2,6 +2,7 @@
 // number, `1`–`9` open nothing, the hint says `Tab select · Enter open`, and the highlight names a
 // ticket, so it stays on its card as other cards come and go and a new worker takes a finished
 // one's place in the order.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import { WorkerState } from "../src/agent/WorkerState.ts"
@@ -10,6 +11,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, spinnerAt } from "../src/ui/useRunView.ts"
@@ -25,13 +27,13 @@ const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }
 
 /** RunView for tickets, each `[ticket, its worker's number or null, its phase]`. */
 const viewOf = (
-  tickets: ReadonlyArray<readonly [string, number | null, TicketPhase?]>,
+  tickets: ReadonlyArray<readonly [TicketId, number | null, TicketPhase?]>,
   concurrency = 3,
 ): RunView =>
   project({
     ledger: {
       tickets: new Map(
-        tickets.map(([ticket, worker, phase], row): [string, Entry] => [
+        tickets.map(([ticket, worker, phase], row): [TicketId, Entry] => [
           ticket,
           {
             ticket,
@@ -102,9 +104,9 @@ const turned = spinnerAt(now)
 describe("opening a worker without its number", () => {
   test("the cards show no number, in either layout, and the hint says Tab select · Enter open", async () => {
     const tickets = [
-      ["a", 1],
-      ["b", 2],
-      ["c", 3],
+      ["a" as TicketId, 1],
+      ["b" as TicketId, 2],
+      ["c" as TicketId, 3],
     ] as const
     await dashboard(viewOf(tickets), async ({ rendered }) => {
       const lines = linesOf(await rendered.capture())
@@ -133,8 +135,8 @@ describe("opening a worker without its number", () => {
   test("1–9 open nothing; Tab then Enter, or a click, opens a card", async () => {
     await dashboard(
       viewOf([
-        ["a", 1],
-        ["b", 2],
+        ["a" as TicketId, 1],
+        ["b" as TicketId, 2],
       ]),
       async ({ rendered, commands }) => {
         await rendered.input((setup) => {
@@ -146,10 +148,10 @@ describe("opening a worker without its number", () => {
           setup.mockInput.pressTab()
           setup.mockInput.pressEnter()
         })
-        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "b" })])
+        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "b" as TicketId })])
         const y = linesOf(await rendered.capture()).findIndex((line) => line.includes(" a  "))
         await rendered.input((setup) => setup.mockMouse.click(10, y))
-        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "a" })])
+        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "a" as TicketId })])
       },
     )
   })
@@ -157,9 +159,9 @@ describe("opening a worker without its number", () => {
   test("the highlight stays on its ticket as other cards come and go", async () => {
     await dashboard(
       viewOf([
-        ["a", 1],
-        ["b", 2],
-        ["c", 3],
+        ["a" as TicketId, 1],
+        ["b" as TicketId, 2],
+        ["c" as TicketId, 3],
       ]),
       async ({ view, rendered, commands }) => {
         await rendered.input((setup) => {
@@ -170,26 +172,26 @@ describe("opening a worker without its number", () => {
         await rendered.input(() =>
           view.set(
             viewOf([
-              ["a", null, merged],
-              ["b", 2],
-              ["c", 3],
-              ["d", 1],
+              ["a" as TicketId, null, merged],
+              ["b" as TicketId, 2],
+              ["c" as TicketId, 3],
+              ["d" as TicketId, 1],
             ]),
           ),
         )
         const lines = linesOf(await rendered.capture())
         expect(lines.some((line) => line.startsWith(`┃ ${turned} b  `))).toBe(true)
         await rendered.input((setup) => setup.mockInput.pressEnter())
-        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "b" })])
+        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "b" as TicketId })])
         // b finishes and e takes its worker's number, b's place in the order: the highlight goes
         // with b's card and doesn't pass to e, so Enter opens nothing; Tab starts from the first.
         await rendered.input(() =>
           view.set(
             viewOf([
-              ["b", null, merged],
-              ["c", 3],
-              ["d", 1],
-              ["e", 2],
+              ["b" as TicketId, null, merged],
+              ["c" as TicketId, 3],
+              ["d" as TicketId, 1],
+              ["e" as TicketId, 2],
             ]),
           ),
         )
@@ -200,7 +202,7 @@ describe("opening a worker without its number", () => {
           setup.mockInput.pressTab()
           setup.mockInput.pressEnter()
         })
-        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "d" })])
+        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "d" as TicketId })])
       },
     )
   })

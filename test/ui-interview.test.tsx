@@ -2,6 +2,7 @@
 // view's components; leaving it, which asks first unless file_feature filed something; and the
 // interview's side of the run: its commands reaching the session, the plan confirmation once the
 // epic is filed, the run on y, and what an interview that runs nothing says.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -35,6 +36,7 @@ import {
 } from "../src/run/interview.ts"
 import type { RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   assistantText,
   canUseTool,
@@ -349,10 +351,10 @@ const plan: FeaturePlan = {
 }
 
 const filed: FiledPlan = {
-  epic: "bd-7",
+  epic: "bd-7" as TicketId,
   tickets: new Map([
-    ["t1", "bd-7.1"],
-    ["t2", "bd-7.2"],
+    ["t1", "bd-7.1" as TicketId],
+    ["t2", "bd-7.2" as TicketId],
   ]),
 }
 
@@ -487,7 +489,7 @@ describe("the interview's side of the run", () => {
       ["bd-7.2", ["bd-7.1"]],
     ])
     expect(sent.some((each) => each._tag === "Ended" || each._tag === "Closed")).toBe(true)
-    expect(outcome).toEqual(InterviewOutcome.Run({ epic: "bd-7", tickets: 2 }))
+    expect(outcome).toEqual(InterviewOutcome.Run({ epic: "bd-7" as TicketId, tickets: 2 }))
   })
 
   test("n at the confirmation, or Esc, leaves the epic filed and runs nothing", async () => {
@@ -516,7 +518,7 @@ describe("the interview's side of the run", () => {
           }),
         answer,
       )
-      expect(outcome).toEqual(InterviewOutcome.Declined({ epic: "bd-7", tickets: 2 }))
+      expect(outcome).toEqual(InterviewOutcome.Declined({ epic: "bd-7" as TicketId, tickets: 2 }))
     }
   })
 
@@ -595,12 +597,14 @@ describe("interviewEnding", () => {
     reason: "bd create failed",
     mayHaveFiled: false,
     epic: "bd-7",
-    filed: [{ id: "bd-7", key: null, title: "A --json flag for list" }],
+    filed: [{ id: "bd-7" as TicketId, key: null, title: "A --json flag for list" }],
     unlinked: null,
   })
 
   test("what each end says, and its exit code", () => {
-    expect(interviewEnding(InterviewOutcome.Declined({ epic: "bd-7", tickets: 2 }))).toEqual({
+    expect(
+      interviewEnding(InterviewOutcome.Declined({ epic: "bd-7" as TicketId, tickets: 2 })),
+    ).toEqual({
       out: ["Filed epic bd-7 with 2 tickets; nothing was run. Run it with: tutti --ticket bd-7"],
       error: [],
       exitCode: exitCodes.ok,
@@ -619,7 +623,7 @@ describe("interviewEnding", () => {
       interviewEnding(
         InterviewOutcome.Left({ filing: Filing.Filed({ plan, filed }), quit: false }),
       ),
-    ).toEqual({ out: [filedLine("bd-7", 2)], error: [], exitCode: exitCodes.ok })
+    ).toEqual({ out: [filedLine("bd-7" as TicketId, 2)], error: [], exitCode: exitCodes.ok })
     expect(
       interviewEnding(InterviewOutcome.Ended({ why: "it crashed", filing: Filing.None() })),
     ).toEqual({
@@ -636,16 +640,20 @@ describe("interviewEnding", () => {
 
   test("what it says of the session's words and the epic's ID stays on its line, printable", () => {
     fc.assert(
-      fc.property(fc.string(), fc.string({ minLength: 1 }), (why, epic) => {
-        const lines = [
-          ...interviewEnding(InterviewOutcome.Ended({ why, filing: Filing.None() })).error,
-          ...interviewEnding(InterviewOutcome.NotStarted({ why })).error,
-          ...interviewEnding(InterviewOutcome.Declined({ epic, tickets: 1 })).out,
-        ]
-        for (const line of lines) {
-          expect([...line].some((ch) => controls(ch.codePointAt(0) ?? 0))).toBe(false)
-        }
-      }),
+      fc.property(
+        fc.string(),
+        fc.string({ minLength: 1 }).map((epic) => epic as TicketId),
+        (why, epic) => {
+          const lines = [
+            ...interviewEnding(InterviewOutcome.Ended({ why, filing: Filing.None() })).error,
+            ...interviewEnding(InterviewOutcome.NotStarted({ why })).error,
+            ...interviewEnding(InterviewOutcome.Declined({ epic, tickets: 1 })).out,
+          ]
+          for (const line of lines) {
+            expect([...line].some((ch) => controls(ch.codePointAt(0) ?? 0))).toBe(false)
+          }
+        },
+      ),
     )
   })
 
@@ -730,7 +738,7 @@ describe("the interview in the command's renderer", () => {
         await setup.mockInput.typeText("y")
       })
       const outcome = await Effect.runPromise(Fiber.join(fiber as Fiber.Fiber<InterviewOutcome>))
-      expect(outcome).toEqual(InterviewOutcome.Run({ epic: "bd-7", tickets: 2 }))
+      expect(outcome).toEqual(InterviewOutcome.Run({ epic: "bd-7" as TicketId, tickets: 2 }))
     } finally {
       setup.renderer.destroy()
     }

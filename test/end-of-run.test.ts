@@ -2,6 +2,7 @@
 // with a dashboard the run stays open, showing the end-of-run box, until the workers are answered
 // and carry on, or the box's `q` ends it, suspending them; a worker past its ticket limit doesn't
 // keep it open; plain, the run waits for them only until a stop holds it, then ends as usual.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -13,6 +14,7 @@ import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
 import {
@@ -46,7 +48,7 @@ const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-
 const finishes = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   first: ReadonlyArray<SessionScript[number]>,
 ): SessionScript =>
   turn(
@@ -218,9 +220,9 @@ describe("with a dashboard, the run waits for you (D19)", () => {
       concurrent: 3,
       dashboard: true,
       scripts: (world, root) => ({
-        a: [finishes(world, root, "a", [rm])],
-        b: [finishes(world, root, "b", [which])],
-        c: [finishes(world, root, "c", [sleep("2 minutes")])],
+        a: [finishes(world, root, "a" as TicketId, [rm])],
+        b: [finishes(world, root, "b" as TicketId, [which])],
+        c: [finishes(world, root, "c" as TicketId, [sleep("2 minutes")])],
       }),
       during: ({ view, ended }) =>
         Effect.gen(function* () {
@@ -270,8 +272,8 @@ describe("with a dashboard, the run waits for you (D19)", () => {
       concurrent: 2,
       dashboard: true,
       scripts: (world, root) => ({
-        a: [finishes(world, root, "a", [rm])],
-        b: [finishes(world, root, "b", [sleep("1 minute")])],
+        a: [finishes(world, root, "a" as TicketId, [rm])],
+        b: [finishes(world, root, "b" as TicketId, [sleep("1 minute")])],
       }),
       during: ({ view, endRun, ended }) =>
         Effect.gen(function* () {
@@ -304,7 +306,9 @@ describe("with a dashboard, the run waits for you (D19)", () => {
       concurrent: 1,
       dashboard: true,
       ticketLimit: Duration.hours(1),
-      scripts: (world, root) => ({ a: [finishes(world, root, "a", [sleep("30 minutes"), rm])] }),
+      scripts: (world, root) => ({
+        a: [finishes(world, root, "a" as TicketId, [sleep("30 minutes"), rm])],
+      }),
       during: ({ view, ended }) =>
         Effect.gen(function* () {
           yield* passes("40 minutes")
@@ -327,7 +331,7 @@ describe("in plain mode, the run ends as usual (D19)", () => {
       tickets: ["a"],
       concurrent: 1,
       dashboard: false,
-      scripts: (world, root) => ({ a: [finishes(world, root, "a", [rm])] }),
+      scripts: (world, root) => ({ a: [finishes(world, root, "a" as TicketId, [rm])] }),
       during: ({ ended }) =>
         Effect.gen(function* () {
           yield* passes("3 minutes")
@@ -348,8 +352,8 @@ describe("in plain mode, the run ends as usual (D19)", () => {
       concurrent: 2,
       dashboard: false,
       scripts: (world, root) => ({
-        a: [finishes(world, root, "a", [rm])],
-        b: [finishes(world, root, "b", [sleep("10 minutes")])],
+        a: [finishes(world, root, "a" as TicketId, [rm])],
+        b: [finishes(world, root, "b" as TicketId, [sleep("10 minutes")])],
       }),
       during: ({ ended }) =>
         Effect.gen(function* () {

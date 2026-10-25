@@ -42,9 +42,9 @@
 // under its PID now, as this run holds the run lock (§ 9.2).
 import { Clock, Effect, FileSystem, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
-import { type PhaseName, Store, type TicketRecord } from "../services/Store.ts"
+import { type PhaseName, Store, type TicketRecord, ticketsIn } from "../services/Store.ts"
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
@@ -92,11 +92,11 @@ export type Carried =
 export type CarryEnv = WorkEnv | FileSystem.FileSystem
 
 /** `<id>, carried over from the last run, <what>`, as each case's line starts. */
-const carriedLine = (id: string, what: Line): Line =>
+const carriedLine = (id: TicketId, what: Line): Line =>
   detail`${id}, carried over from the last run, ${what}`
 
 /** The ticket, read again as readAgain says while bd fails; not again when bd has no such ticket. */
-const showTrying = (beads: Beads["Service"], id: string): Effect.Effect<Issue, BeadsError> =>
+const showTrying = (beads: Beads["Service"], id: TicketId): Effect.Effect<Issue, BeadsError> =>
   retrying(beads.show(id), readAgain, {
     while: (error) => !(error._tag === "BeadsFailed" && error.noSuchIssue),
   })
@@ -132,14 +132,14 @@ export const saveLeft: Effect.Effect<void, never, Ledger | Store> = Effect.gen(f
   }
   const left = (record: TicketRecord) =>
     record.suspended === undefined && record.phase === undefined
-  const leaving = Object.entries((yield* store.state).tickets).filter(
+  const leaving = ticketsIn(yield* store.state).filter(
     ([id, record]) => phases.has(id) && left(record),
   )
   if (leaving.length === 0) return
   yield* Effect.ignore(
     store.update((state) => {
       const tickets = { ...state.tickets }
-      for (const [id, record] of Object.entries(tickets)) {
+      for (const [id, record] of ticketsIn(state)) {
         const phase = phases.get(id)
         if (phase === undefined || !left(record)) continue
         if (phase === "Deferred") delete tickets[id]
@@ -161,13 +161,13 @@ const leftByCrash = (record: TicketRecord): boolean =>
 const toCarry = Effect.gen(function* () {
   const store = yield* Store
   const crashed = store.previousRun !== undefined
-  return Object.entries((yield* store.state).tickets).filter(
+  return ticketsIn(yield* store.state).filter(
     ([, record]) => record.suspended !== undefined || (crashed && leftByCrash(record)),
   )
 })
 
 /** The tickets whose workers the last run left in state.json, for this one to carry on with. */
-export const carriedTickets: Effect.Effect<ReadonlySet<string>, never, Store> = Effect.map(
+export const carriedTickets: Effect.Effect<ReadonlySet<TicketId>, never, Store> = Effect.map(
   toCarry,
   (saved) => new Set(saved.map(([id]) => id)),
 )
@@ -210,7 +210,7 @@ const resolutionAt = (
  * leaves it as it is, saying so of an abort that failed.
  */
 const abortLeftRebase = (
-  id: string,
+  id: TicketId,
   record: TicketRecord,
   worktree: string,
   branch: string,
@@ -249,7 +249,7 @@ const abortLeftRebase = (
  */
 export const carryOver = (
   options: CarryOptions,
-): Effect.Effect<ReadonlyMap<string, Carried>, never, CarryEnv> => takeUp(options, undefined)
+): Effect.Effect<ReadonlyMap<TicketId, Carried>, never, CarryEnv> => takeUp(options, undefined)
 
 /**
  * Takes up the workers of `waiting`, those carryOver left waiting for a slot, checking each again
@@ -258,14 +258,14 @@ export const carryOver = (
 export const carryWaiting = (
   options: CarryOptions,
   waiting: ReadonlySet<string>,
-): Effect.Effect<ReadonlyMap<string, Carried>, never, CarryEnv> =>
+): Effect.Effect<ReadonlyMap<TicketId, Carried>, never, CarryEnv> =>
   waiting.size === 0 ? Effect.succeed(new Map()) : takeUp(options, waiting)
 
 /** Takes up the saved workers, or those of `only` alone: carryOver's and carryWaiting's. */
 const takeUp = (
   options: CarryOptions,
   only: ReadonlySet<string> | undefined,
-): Effect.Effect<ReadonlyMap<string, Carried>, never, CarryEnv> =>
+): Effect.Effect<ReadonlyMap<TicketId, Carried>, never, CarryEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const beads = yield* Beads
@@ -275,7 +275,7 @@ const takeUp = (
     const fs = yield* FileSystem.FileSystem
     const context = yield* Effect.context<WorkEnv>()
     const { base } = options
-    const carried = new Map<string, Carried>()
+    const carried = new Map<TicketId, Carried>()
     const saved = [...(yield* toCarry)]
       .filter(([id]) => only === undefined || only.has(id))
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -294,15 +294,15 @@ const takeUp = (
       }
     }
 
-    const said = (id: string, what: Carried, text: Line) =>
+    const said = (id: TicketId, what: Carried, text: Line) =>
       Effect.gen(function* () {
         carried.set(id, what)
         yield* info(text, id)
       })
-    const dropped = (id: string, what: Carried, text: Line) =>
+    const dropped = (id: TicketId, what: Carried, text: Line) =>
       Effect.andThen(said(id, what, text), Effect.ignore(store.remove(id)))
     // Taken up into the run, its record is no longer suspended: the run's end saves it again.
-    const taken = (id: string, what: Carried, text: Line) =>
+    const taken = (id: TicketId, what: Carried, text: Line) =>
       Effect.andThen(
         said(id, what, text),
         Effect.ignore(store.updateTicket(id, ({ suspended: _, phase: __, ...record }) => record)),

@@ -4,6 +4,7 @@
 // there before keeps it. And a branch on top of the base with no check command has its worktree's
 // status read before it merges: uncommitted changes there set it aside, DIRTY_WORKTREE. The scenarios
 // are whole runs under TestClock; the removal itself is shown in a real repository.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Effect, Fiber, Layer } from "effect"
 import { checkWroteName, noteWritten, writtenOnly } from "../src/run/checkWrote.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"
 import type { RunStamp, TicketRecord } from "../src/services/Store.ts"
 import { runFolder, Worktrees } from "../src/services/Worktrees.ts"
@@ -128,7 +130,9 @@ describe("untracked files the merge check wrote", () => {
       `  a: its setup or check left coverage.txt untracked in ${join(ran.root, "a")}, removed with it`,
       /^ {2}a closed \(.*\); merged into main, worktree and branch removed$/,
     ])
-    expect(removals(ran)).toEqual([{ op: "remove", id: "a", force: false, untracked: true }])
+    expect(removals(ran)).toEqual([
+      { op: "remove", id: "a" as TicketId, force: false, untracked: true },
+    ])
     expect(ran.main.get("a.txt")).toBe("a\n")
     expect(ran.main.has("coverage.txt")).toBe(false)
   })
@@ -139,7 +143,7 @@ describe("untracked files the merge check wrote", () => {
       left: { "notes.txt": "mine\n" },
     })
     expectPhases(ran, { a: "Done" })
-    expect(removals(ran)).toEqual([{ op: "remove", id: "a", force: false }])
+    expect(removals(ran)).toEqual([{ op: "remove", id: "a" as TicketId, force: false }])
     expect(ran.log.some((text) => text.includes("removed with it"))).toBe(false)
   })
 
@@ -149,7 +153,7 @@ describe("untracked files the merge check wrote", () => {
       left: { "coverage.txt": "90%\n" },
     })
     expectPhases(ran, { a: "Done" })
-    expect(removals(ran)).toEqual([{ op: "remove", id: "a", force: false }])
+    expect(removals(ran)).toEqual([{ op: "remove", id: "a" as TicketId, force: false }])
   })
 })
 
@@ -262,7 +266,7 @@ slow.describe("removing a worktree in a real repository", () => {
     const { repo, runIn } = setUp()
     const path = await runIn(
       Effect.map(
-        Effect.flatMap(Effect.service(Worktrees), (w) => w.prepare("t-1")),
+        Effect.flatMap(Effect.service(Worktrees), (w) => w.prepare("t-1" as TicketId)),
         (made) => made.path,
       ),
     )
@@ -276,7 +280,9 @@ slow.describe("removing a worktree in a real repository", () => {
     const written = await runIn(writtenOnly(path))
     expect(written).toEqual(["coverage/index.html"])
     await runIn(
-      Effect.flatMap(Effect.service(Worktrees), (w) => w.remove("t-1", { untracked: true })),
+      Effect.flatMap(Effect.service(Worktrees), (w) =>
+        w.remove("t-1" as TicketId, { untracked: true }),
+      ),
     )
     expect(existsSync(path)).toBe(false)
     expect(repo.git(["branch", "--list", "tutti/t-1"])).toBe("")
@@ -286,7 +292,7 @@ slow.describe("removing a worktree in a real repository", () => {
     const { repo, runIn } = setUp()
     const path = await runIn(
       Effect.map(
-        Effect.flatMap(Effect.service(Worktrees), (w) => w.prepare("t-1")),
+        Effect.flatMap(Effect.service(Worktrees), (w) => w.prepare("t-1" as TicketId)),
         (made) => made.path,
       ),
     )
@@ -299,7 +305,7 @@ slow.describe("removing a worktree in a real repository", () => {
     )
     expect(await runIn(writtenOnly(path))).toBeUndefined()
     const removed = await runIn(
-      Effect.result(Effect.flatMap(Effect.service(Worktrees), (w) => w.remove("t-1"))),
+      Effect.result(Effect.flatMap(Effect.service(Worktrees), (w) => w.remove("t-1" as TicketId))),
     )
     expect(removed._tag).toBe("Failure")
     expect(existsSync(join(path, "notes.txt"))).toBe(true)
@@ -309,14 +315,16 @@ slow.describe("removing a worktree in a real repository", () => {
     const { repo, runIn } = setUp()
     const path = await runIn(
       Effect.map(
-        Effect.flatMap(Effect.service(Worktrees), (w) => w.prepare("t-1")),
+        Effect.flatMap(Effect.service(Worktrees), (w) => w.prepare("t-1" as TicketId)),
         (made) => made.path,
       ),
     )
     repo.commit("Own (t-1)", { "own.txt": "own" }, path)
     const removed = await runIn(
       Effect.result(
-        Effect.flatMap(Effect.service(Worktrees), (w) => w.remove("t-1", { untracked: true })),
+        Effect.flatMap(Effect.service(Worktrees), (w) =>
+          w.remove("t-1" as TicketId, { untracked: true }),
+        ),
       ),
     )
     expect(removed._tag).toBe("Failure")

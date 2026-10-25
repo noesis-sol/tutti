@@ -47,7 +47,7 @@ import {
   transcriptText,
   type Verdict,
 } from "../organs/triage.ts"
-import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { Git, gitWhy, shortHash } from "../services/Git.ts"
 import { allChangeEntries } from "../services/gitStatus.ts"
 import type { EnvironmentHold } from "./environment.ts"
@@ -59,7 +59,7 @@ import { sayer } from "./say.ts"
 
 /** A ticket set aside as its worker settled, for triage. */
 export interface Deferral {
-  readonly ticket: string
+  readonly ticket: TicketId
   /** How it was set aside, in tutti's words: `the worker deferred it`. */
   readonly how: string
   /** Its worktree. */
@@ -91,11 +91,11 @@ export const off: Triage = {
 const tailRead = 512 * 1024
 
 /** `  triage <id>: environment (high confidence) - <summary>`. */
-export const verdictLine = (id: string, v: Verdict): Line =>
+export const verdictLine = (id: TicketId, v: Verdict): Line =>
   detail`triage ${id}: ${v.cause} (${v.confidence} confidence) - ${v.summary.trim()}`
 
 /** `  TRIAGE_FAILED for <id>: <why>`. */
-export const triageFailedLine = (id: string, why: string): Line =>
+export const triageFailedLine = (id: TicketId, why: string): Line =>
   `  ${Tag.triageFailed} for ${line`${id}: ${why}`}` as Line
 
 /** Why triage gave no verdict, on one line. */
@@ -156,7 +156,7 @@ export const make = (options: {
     const verdicts = yield* SubscriptionRef.make<ReadonlyMap<string, string>>(new Map())
 
     // Every compaction in the worker's transcript, read back a page at a time from its end.
-    const allItems = (id: string) =>
+    const allItems = (id: TicketId) =>
       Effect.gen(function* () {
         const pages: Array<ReadonlyArray<Item>> = []
         let before: number | undefined
@@ -171,7 +171,7 @@ export const make = (options: {
         return pages.flat()
       })
 
-    const attentionText = (id: string) =>
+    const attentionText = (id: TicketId) =>
       Effect.gen(function* () {
         const said = attentionSaid(yield* attention.tally(id))
         const logged = attentionLines(yield* logs.lines)
@@ -231,7 +231,7 @@ export const make = (options: {
       })
 
     // A defect in one ticket's triage, TRIAGE_FAILED; an interruption (a quit) goes on up.
-    const survived = (id: string, cause: Cause.Cause<never>) => {
+    const survived = (id: TicketId, cause: Cause.Cause<never>) => {
       if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
       const text = triageFailedLine(id, causeWhy(cause))
       return warn(text, id)

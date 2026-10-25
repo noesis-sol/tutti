@@ -6,9 +6,11 @@
 // waited for quitWait at most; a merge in its protected step finishes, one before it is cut short;
 // the organ calls are aborted. The tickets' fibers and the hand-backs stop before the interrupts, so
 // that none acts on an interrupted turn.
+
 import { Data, Deferred, Effect, Option, Ref, Result, Stream, type SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { saveAsked, saveLeft } from "./carry.ts"
 import { EventStream } from "./eventstream.ts"
@@ -67,7 +69,7 @@ export interface Quits {
    */
   readonly refuseAnswers: Effect.Effect<void>
   /** The tickets whose workers' sessions are open, sorted. */
-  readonly openWorkers: Effect.Effect<ReadonlyArray<string>>
+  readonly openWorkers: Effect.Effect<ReadonlyArray<TicketId>>
 }
 
 /**
@@ -149,8 +151,8 @@ export const make = (options: {
     const waitFor = (awaited: ReadonlyArray<Awaited>) =>
       Effect.andThen(Ref.set(awaiting, awaited), showOn(status, "quitting")(quittingText(awaited)))
     const openWorkers = Effect.gen(function* () {
-      const known = Option.getOrElse(yield* Stream.runHead(host.workers), () => new Set<string>())
-      const open: Array<string> = []
+      const known = Option.getOrElse(yield* Stream.runHead(host.workers), () => new Set<TicketId>())
+      const open: Array<TicketId> = []
       for (const ticket of known) {
         const state = yield* Effect.result(host.current(ticket))
         if (Result.isFailure(state)) continue

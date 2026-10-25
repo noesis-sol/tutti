@@ -21,6 +21,7 @@ import { Duration, Effect, Exit, Layer } from "effect"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { close, O, openUnder } from "../src/native/libc.ts"
 import { outputTo } from "../src/run/check.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Checks, checkLogName } from "../src/services/Checks.ts"
 import { runFolder, writeRunFile } from "../src/services/Worktrees.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -139,7 +140,11 @@ describe("a hard link at a run file's name", () => {
       Effect.gen(function* () {
         const ran = yield* Effect.scoped(
           Effect.gen(function* () {
-            const to = yield* outputTo({ id: "a", worktree: tree }, checkLogName, "the check's")
+            const to = yield* outputTo(
+              { id: "a" as TicketId, worktree: tree },
+              checkLogName,
+              "the check's",
+            )
             return yield* Effect.exit((yield* Checks).fast({ cwd: tree, ...to }))
           }),
         )

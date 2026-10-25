@@ -45,6 +45,7 @@ import {
 } from "effect"
 import { detail, Log } from "../run/log.ts"
 import { Spending } from "../run/spending.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { Attention } from "./Attention.ts"
 import type { ContextUsage } from "./contextUsage.ts"
 import { type Call, type Reading, read } from "./reading.ts"
@@ -110,7 +111,7 @@ export interface Receipt {
 
 /** A compaction of a worker's context, as its PreCompact hook reports it. */
 export interface Compaction {
-  readonly ticket: string
+  readonly ticket: TicketId
   /** What triggered it: `auto`, or `manual` for `/compact`. */
   readonly trigger: string
 }
@@ -170,14 +171,14 @@ export class AgentHost extends Context.Service<
      * starts again at Starting. Fails when the worker already has an open session; one closing is
      * waited for, until its Claude Code has exited.
      */
-    start(ticket: string, session: Session): Effect.Effect<void, AgentStartFailed>
+    start(ticket: TicketId, session: Session): Effect.Effect<void, AgentStartFailed>
     /**
      * Resumes the session `session.sessionId` (without forking it) and sends it `message`, as
      * `send` does: the message's uuid. Fails when the worker already has an open session; one
      * closing is waited for, until its Claude Code has exited.
      */
     resume(
-      ticket: string,
+      ticket: TicketId,
       session: Session,
       message: Message,
     ): Effect.Effect<MessageUuid, AgentStartFailed>
@@ -187,23 +188,23 @@ export class AgentHost extends Context.Service<
      * the session's results and an interrupt's receipt name it by. Fails when the worker has no
      * open session, or it is closing: the message didn't go.
      */
-    send(ticket: string, message: Message): Effect.Effect<MessageUuid, AgentGone>
+    send(ticket: TicketId, message: Message): Effect.Effect<MessageUuid, AgentGone>
     /**
      * Interrupts the worker's turn and cancels the messages queued behind it (§ 4.8); open requests
      * are withdrawn. The receipt.
      */
-    interrupt(ticket: string): Effect.Effect<Receipt, AgentGone | AgentProtocol>
+    interrupt(ticket: TicketId): Effect.Effect<Receipt, AgentGone | AgentProtocol>
     /**
      * Closes the worker's session on purpose, keeping its ID for a resume: its state is Closed.
      * A session still starting is cancelled, its start failing; one closing or gone is waited for,
      * until its Claude Code has exited. Nothing happens when it has no session.
      */
-    close(ticket: string): Effect.Effect<void>
+    close(ticket: TicketId): Effect.Effect<void>
     /**
      * Closes the worker's session if it is open and forgets the worker: its streams end, and its
      * transcript's memory and open files are let go of. A later start or resume knows it afresh.
      */
-    end(ticket: string): Effect.Effect<void>
+    end(ticket: TicketId): Effect.Effect<void>
     /**
      * The run's requires list has the entries `names` from now on, a merge having changed it: the
      * workers started after are told so in their standing rules (requiresNote), and those resumed
@@ -212,14 +213,14 @@ export class AgentHost extends Context.Service<
      */
     takeRequires(names: ReadonlyArray<string>): Effect.Effect<void>
     /** The worker's state now. */
-    current(ticket: string): Effect.Effect<WorkerState, AgentGone>
+    current(ticket: TicketId): Effect.Effect<WorkerState, AgentGone>
     /**
      * Whether the worker's current session has begun, its first system/init come (§ 4.8): now, then
      * on each change, until it is ended. A session that has ended after it began still has.
      */
-    begun(ticket: string): Stream.Stream<boolean, AgentGone>
+    begun(ticket: TicketId): Stream.Stream<boolean, AgentGone>
     /** The worker's state: now, then on each change, across its sessions, until it is ended. */
-    state(ticket: string): Stream.Stream<WorkerState, AgentGone>
+    state(ticket: TicketId): Stream.Stream<WorkerState, AgentGone>
     /**
      * Waits until the worker's send `uuid` is no longer outstanding (§ 4.2): a message of its
      * session, or an interrupt, said it was answered or cancelled; or its session ended, or a new
@@ -227,30 +228,30 @@ export class AgentHost extends Context.Service<
      * was ended, or the host never knew it. A send is outstanding from its push, before it reaches
      * the session, so a wait begun once `send` has returned misses no answer, however soon it came.
      */
-    answered(ticket: string, uuid: MessageUuid): Effect.Effect<void>
+    answered(ticket: TicketId, uuid: MessageUuid): Effect.Effect<void>
     /**
      * The tickets of the workers the host knows, from each one's first start until it is ended:
      * now, then on each change.
      */
-    readonly workers: Stream.Stream<ReadonlySet<string>>
+    readonly workers: Stream.Stream<ReadonlySet<TicketId>>
     /** Every worker's compactions, from now on, as their PreCompact hooks report them (§ 4.2). */
     readonly compactions: Stream.Stream<Compaction>
     /**
      * How full each worker's context window is, by ticket, as its session last said after a finished
      * turn (§ 7.5): now, then on each change. A worker ended is left out.
      */
-    readonly contexts: Stream.Stream<ReadonlyMap<string, ContextUsage>>
+    readonly contexts: Stream.Stream<ReadonlyMap<TicketId, ContextUsage>>
     /**
      * The process of each open session's Claude Code, by ticket: the leader of a process group of
      * its own (§ 3.2), for its memory on the dashboard's load line (src/run/load.ts).
      */
-    readonly processes: Effect.Effect<ReadonlyMap<string, number>>
+    readonly processes: Effect.Effect<ReadonlyMap<TicketId, number>>
   }
 >()("tutti/agent/AgentHost") {}
 
 /** A worker the host knows: from its first start until it is ended. */
 export interface WorkerEntry {
-  readonly ticket: string
+  readonly ticket: TicketId
   /** The ID of its session now, the last started or resumed: events of any other aren't folded. */
   readonly session: Ref.Ref<string>
   /** The reducer's worker: its state and what it is derived from. */
@@ -290,10 +291,10 @@ export interface Workers {
    * there is one, from its last result in the ticket's transcript; a new session has none there.
    */
   readonly open: (
-    ticket: string,
+    ticket: TicketId,
     opened: { readonly session: string; readonly resumed: boolean },
   ) => Effect.Effect<WorkerEntry>
-  readonly get: (ticket: string) => Effect.Effect<WorkerEntry, AgentGone>
+  readonly get: (ticket: TicketId) => Effect.Effect<WorkerEntry, AgentGone>
   /**
    * Folds `event` into the worker's state, at the clock's time, unless it is of an earlier session
    * than the worker's now; UsageLimits, when there is one, is told when it becomes UsageLimited or
@@ -329,15 +330,15 @@ export interface Workers {
   /** How full the worker's context window is, as its session said after a finished turn. */
   readonly measured: (entry: WorkerEntry, usage: ContextUsage) => Effect.Effect<void>
   /** How full each worker's context window is, by ticket: now, then on each change. */
-  readonly contexts: Stream.Stream<ReadonlyMap<string, ContextUsage>>
+  readonly contexts: Stream.Stream<ReadonlyMap<TicketId, ContextUsage>>
   /** Forgets the worker: its streams end, and its transcript's memory and files are let go of. */
-  readonly forget: (ticket: string) => Effect.Effect<void>
-  readonly current: (ticket: string) => Effect.Effect<WorkerState, AgentGone>
-  readonly begun: (ticket: string) => Stream.Stream<boolean, AgentGone>
-  readonly state: (ticket: string) => Stream.Stream<WorkerState, AgentGone>
-  readonly answered: (ticket: string, uuid: string) => Effect.Effect<void>
+  readonly forget: (ticket: TicketId) => Effect.Effect<void>
+  readonly current: (ticket: TicketId) => Effect.Effect<WorkerState, AgentGone>
+  readonly begun: (ticket: TicketId) => Stream.Stream<boolean, AgentGone>
+  readonly state: (ticket: TicketId) => Stream.Stream<WorkerState, AgentGone>
+  readonly answered: (ticket: TicketId, uuid: string) => Effect.Effect<void>
   /** The tickets of the workers it knows: now, then on each change. */
-  readonly workers: Stream.Stream<ReadonlySet<string>>
+  readonly workers: Stream.Stream<ReadonlySet<TicketId>>
 }
 
 /**
@@ -352,18 +353,18 @@ export const makeWorkers = (
     const attention = yield* Attention
     const transcripts = yield* Transcripts
     const scope = yield* Effect.scope
-    const known = new Map<string, WorkerEntry>()
+    const known = new Map<TicketId, WorkerEntry>()
     // Set as `known` changes, for the streams of the workers it knows.
-    const knownTickets = yield* SubscriptionRef.make<ReadonlySet<string>>(new Set())
+    const knownTickets = yield* SubscriptionRef.make<ReadonlySet<TicketId>>(new Set())
     // Folds are serialised, so the state set last is the one the last fold gave.
     const one = yield* Semaphore.make(1)
     const compactions = yield* PubSub.unbounded<Compaction>()
-    const contexts = yield* SubscriptionRef.make<ReadonlyMap<string, ContextUsage>>(new Map())
+    const contexts = yield* SubscriptionRef.make<ReadonlyMap<TicketId, ContextUsage>>(new Map())
     const log = yield* Log
     const usage = yield* Effect.serviceOption(UsageLimits)
     const spending = yield* Effect.serviceOption(Spending)
 
-    const late = (ticket: string) => {
+    const late = (ticket: TicketId) => {
       const text = `a background task ended and no turn came to report it within ${reportWait}; not waiting for it`
       return log.write(detail`${ticket}: ${text}`)
     }
@@ -410,14 +411,14 @@ export const makeWorkers = (
 
     // A message whose fields the worker's state reads didn't read: it was no change (§ 4.2).
     const misread = (
-      ticket: string,
+      ticket: TicketId,
       { kind, why }: Data.TaggedEnum.Value<Reading, "Unreadable">,
     ) => {
       const text = `a ${kind} message it couldn't read, left out of its state: ${why}`
       return log.write(detail`${ticket}: ${text}`)
     }
 
-    const openCount = (ticket: string) =>
+    const openCount = (ticket: TicketId) =>
       Effect.map(attention.current, (all) => all.filter((r) => r.ticket === ticket).length)
 
     // The worker's open requests, counted in its session now.
@@ -426,7 +427,7 @@ export const makeWorkers = (
         fold(entry, WorkerEvent.Requests({ session, pending })),
       )
 
-    const make = (ticket: string, session: string) =>
+    const make = (ticket: TicketId, session: string) =>
       Effect.gen(function* () {
         const entry: WorkerEntry = {
           ticket,
@@ -452,7 +453,7 @@ export const makeWorkers = (
 
     // The session's totals as its last result in the ticket's transcript gave them, for Spending,
     // so the first turn of a session resumed from an earlier run counts only its own share (§ 10).
-    const seedSpending = (ticket: string, session: string) =>
+    const seedSpending = (ticket: TicketId, session: string) =>
       Effect.gen(function* () {
         if (Option.isNone(spending) || (yield* spending.value.knows(session))) return
         let before: number | undefined
@@ -468,7 +469,7 @@ export const makeWorkers = (
         }
       })
 
-    const forgetContext = (ticket: string) =>
+    const forgetContext = (ticket: TicketId) =>
       SubscriptionRef.updateSome(contexts, (all) => {
         if (!all.has(ticket)) return Option.none()
         const left = new Map(all)
@@ -495,7 +496,7 @@ export const makeWorkers = (
         return found
       })
 
-    const get = (ticket: string) =>
+    const get = (ticket: TicketId) =>
       Effect.suspend(() => {
         const found = known.get(ticket)
         return found === undefined

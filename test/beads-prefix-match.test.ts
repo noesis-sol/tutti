@@ -8,7 +8,7 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer } from "effect"
 import fc from "fast-check"
-import { Beads, type BeadsError, beadsWhy, issueFor } from "../src/services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, issueFor, type TicketId } from "../src/services/Beads.ts"
 import { machineWhich } from "./env.ts"
 import { slow } from "./gates.ts"
 
@@ -80,7 +80,7 @@ const writes = (calls: ReadonlyArray<string>) => calls.filter((call) => !call.st
 describe("bd's prefix match for an ID it has no issue for", () => {
   test("show takes another ID for bd having no such ticket", async () => {
     const fake = prefixBd(["t-x.1"])
-    const error = failureOf(await live(fake, (beads) => beads.show("t-x")))
+    const error = failureOf(await live(fake, (beads) => beads.show("t-x" as TicketId)))
     expect(notFound(error)).toBe(true)
     expect(typeof error !== "string" && beadsWhy(error)).toBe(
       "bd has no such ticket: bd show t-x --json gave t-x.1, another ticket",
@@ -89,14 +89,18 @@ describe("bd's prefix match for an ID it has no issue for", () => {
 
   test("show still gives the issue by the ID, beside the ones it prefixes", async () => {
     const fake = prefixBd(["t-x.1", "t-x"])
-    const exit = await live(fake, (beads) => beads.show("t-x"))
-    expect(Exit.isSuccess(exit) && exit.value.id).toBe("t-x")
+    const exit = await live(fake, (beads) => beads.show("t-x" as TicketId))
+    expect(Exit.isSuccess(exit) && exit.value.id).toBe("t-x" as TicketId)
   })
 
   test("the metadata and links of a deleted ticket are not found either", async () => {
     const fake = prefixBd(["t-x.1"])
-    expect(notFound(failureOf(await live(fake, (beads) => beads.metadata("t-x"))))).toBe(true)
-    expect(notFound(failureOf(await live(fake, (beads) => beads.dependencies("t-x"))))).toBe(true)
+    expect(
+      notFound(failureOf(await live(fake, (beads) => beads.metadata("t-x" as TicketId)))),
+    ).toBe(true)
+    expect(
+      notFound(failureOf(await live(fake, (beads) => beads.dependencies("t-x" as TicketId)))),
+    ).toBe(true)
     expect(writes(fake.calls())).toEqual([])
   })
 
@@ -104,16 +108,16 @@ describe("bd's prefix match for an ID it has no issue for", () => {
     const fake = prefixBd(["t-x.1"])
     const attempts: ReadonlyArray<(beads: Beads["Service"]) => Effect.Effect<unknown, BeadsError>> =
       [
-        (beads) => beads.update("t-x", { appendNotes: "a note" }),
-        (beads) => beads.update("t-x", { status: "open" }),
-        (beads) => beads.close("t-x", "done"),
-        (beads) => beads.defer("t-x", { reason: "later" }),
-        (beads) => beads.addLabel("t-x", "solo"),
-        (beads) => beads.removeLabel("t-x", "solo"),
-        (beads) => beads.setMetadata("t-x", "files", "a.ts"),
-        (beads) => beads.unsetMetadata("t-x", "files"),
-        (beads) => beads.addDependency("t-x", "t-x.1"),
-        (beads) => beads.addDependency("t-x.1", "t-x"),
+        (beads) => beads.update("t-x" as TicketId, { appendNotes: "a note" }),
+        (beads) => beads.update("t-x" as TicketId, { status: "open" }),
+        (beads) => beads.close("t-x" as TicketId, "done"),
+        (beads) => beads.defer("t-x" as TicketId, { reason: "later" }),
+        (beads) => beads.addLabel("t-x" as TicketId, "solo"),
+        (beads) => beads.removeLabel("t-x" as TicketId, "solo"),
+        (beads) => beads.setMetadata("t-x" as TicketId, "files", "a.ts"),
+        (beads) => beads.unsetMetadata("t-x" as TicketId, "files"),
+        (beads) => beads.addDependency("t-x" as TicketId, "t-x.1" as TicketId),
+        (beads) => beads.addDependency("t-x.1" as TicketId, "t-x" as TicketId),
       ]
     for (const attempt of attempts) {
       expect(notFound(failureOf(await live(fake, attempt)))).toBe(true)
@@ -124,10 +128,10 @@ describe("bd's prefix match for an ID it has no issue for", () => {
   test("filing under a deleted parent, or linked to a deleted ticket, files nothing", async () => {
     const fake = prefixBd(["t-x.1", "t-y"])
     for (const link of [
-      { parent: "t-x" },
-      { blockedBy: ["t-y", "t-x"] },
-      { blocks: ["t-x"] },
-      { discoveredFrom: ["t-x"] },
+      { parent: "t-x" as TicketId },
+      { blockedBy: ["t-y" as TicketId, "t-x" as TicketId] },
+      { blocks: ["t-x" as TicketId] },
+      { discoveredFrom: ["t-x" as TicketId] },
     ]) {
       const error = failureOf(await live(fake, (beads) => beads.create({ title: "T", ...link })))
       expect(notFound(error)).toBe(true)
@@ -138,11 +142,13 @@ describe("bd's prefix match for an ID it has no issue for", () => {
 
   test("a write to a ticket bd has goes ahead, after a show of each ID", async () => {
     const fake = prefixBd(["t-x.1", "t-y"])
-    expect(Exit.isSuccess(await live(fake, (beads) => beads.addLabel("t-x.1", "solo")))).toBe(true)
+    expect(
+      Exit.isSuccess(await live(fake, (beads) => beads.addLabel("t-x.1" as TicketId, "solo"))),
+    ).toBe(true)
     const filed = await live(fake, (beads) =>
-      beads.create({ title: "T", parent: "t-y", blockedBy: ["t-x.1"] }),
+      beads.create({ title: "T", parent: "t-y" as TicketId, blockedBy: ["t-x.1" as TicketId] }),
     )
-    expect(Exit.isSuccess(filed) && filed.value.id).toBe("new-1")
+    expect(Exit.isSuccess(filed) && filed.value.id).toBe("new-1" as TicketId)
     expect(fake.calls()).toEqual([
       "show t-x.1 --json",
       "label add t-x.1 solo --json",
@@ -154,8 +160,12 @@ describe("bd's prefix match for an ID it has no issue for", () => {
 
   test("a checked filing shows nothing first", async () => {
     const fake = prefixBd(["t-y"])
-    await live(fake, (beads) => beads.create({ title: "T", parent: "t-y", checked: true }))
-    await live(fake, (beads) => beads.addDependency("t-y", "t-z", "blocks", { checked: true }))
+    await live(fake, (beads) =>
+      beads.create({ title: "T", parent: "t-y" as TicketId, checked: true }),
+    )
+    await live(fake, (beads) =>
+      beads.addDependency("t-y" as TicketId, "t-z" as TicketId, "blocks", { checked: true }),
+    )
     expect(fake.calls()).toEqual([
       "create --json --title=T --parent=t-y",
       "dep add t-y t-z --json --type=blocks",
@@ -170,7 +180,7 @@ describe("bd's prefix match for an ID it has no issue for", () => {
       `#!/bin/sh\necho "$*" >> '${dir}/calls'\n[ "$1" = show ] && { echo 'database locked' >&2; exit 1; }\necho '{"id":"t-1","title":"T","status":"closed"}'\n`,
     )
     chmodSync(bin, 0o755)
-    const exit = await live({ dir, bin }, (beads) => beads.close("t-1"))
+    const exit = await live({ dir, bin }, (beads) => beads.close("t-1" as TicketId))
     expect(Exit.isSuccess(exit)).toBe(true)
     expect(readFileSync(join(dir, "calls"), "utf8").trimEnd().split("\n")).toEqual([
       "show t-1 --json",
@@ -182,7 +192,7 @@ describe("bd's prefix match for an ID it has no issue for", () => {
     const word = fc.stringMatching(/^[a-z0-9.-]{1,12}$/)
     fc.assert(
       fc.property(word, word, (id, rest) => {
-        const other = `${id}${rest}`
+        const other = `${id}${rest}` as TicketId
         const stdout = JSON.stringify([{ id: other, title: "T", status: "open" }])
         const exit = Effect.runSyncExit(issueFor(id, `bd show ${id} --json`, stdout))
         expect(notFound(failureOf(exit))).toBe(true)
@@ -208,7 +218,7 @@ describe("against a real bd", () => {
       }
       const real = bd ?? "bd"
       // bd's v2 envelope, or the bare issue.
-      const idOf = (output: string): string => {
+      const idOf = (output: string): TicketId => {
         const json = JSON.parse(output)
         return (json.data ?? json).id
       }

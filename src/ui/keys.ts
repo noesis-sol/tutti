@@ -28,6 +28,7 @@ import { useBindings } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
 import { Data } from "effect"
 import { createContext, useContext, useEffect } from "react"
+import type { TicketId } from "../services/Beads.ts"
 import type { ToastStore } from "./Toasts.tsx"
 import { type Settable, useEvent } from "./useRunView.ts"
 
@@ -56,13 +57,13 @@ export type Box = Data.TaggedEnum<{
   /** `s`'s: stop after the current tickets, or, `windingDown`, take tickets again. */
   Stop: { readonly windingDown: boolean }
   /** Enter's on a compact card waiting for you: the worker's request and its buttons (§ 7.2). */
-  Answer: { readonly ticket: string }
+  Answer: { readonly ticket: TicketId }
   /** Shift+D's: a reason to deny the request `requestId` with, typed in a small field. */
-  Reason: { readonly requestId: string; readonly ticket: string; readonly label: string }
+  Reason: { readonly requestId: string; readonly ticket: TicketId; readonly label: string }
   /** Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5). */
-  Form: { readonly requestId: string; readonly ticket: string }
+  Form: { readonly requestId: string; readonly ticket: TicketId }
   /** Ctrl+X's in a worker view: whether to interrupt the turn of the ticket's worker (§ 7.5). */
-  Interrupt: { readonly ticket: string }
+  Interrupt: { readonly ticket: TicketId }
   /** Leaving the Interview view with nothing filed: whether to end the interview (§ 4.10). */
   Leave: Record<never, never>
 }>

@@ -1,9 +1,11 @@
 // The run's end with a worker to be resumed that found no slot (§ 5's Scheduling): carried over
 // from the last run, or its question answered, it is still to start, so the run doesn't end, nor
 // shows the end-of-run box, while the worker in the slot waits on you.
+
 import { describe, expect, test } from "bun:test"
 import { TicketPhase } from "../src/run/phase.ts"
 import { decide, End, endOfRunBox, type Snapshot } from "../src/run/runEnd.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
 const look = (over: Partial<Snapshot> = {}): Snapshot => ({
   mergedBefore: true,
@@ -24,12 +26,15 @@ const look = (over: Partial<Snapshot> = {}): Snapshot => ({
 
 /** b works in the one slot, waiting on you; a's question is answered. */
 const waitingOnYou = look({
-  running: new Set(["b"]),
+  running: new Set(["b" as TicketId]),
   tickets: new Map([
-    ["a", { ticket: "a", phase: TicketPhase.Asked({ question: "q-1" }), handBack: false }],
-    ["b", { ticket: "b", phase: TicketPhase.Working(), handBack: false }],
+    [
+      "a" as TicketId,
+      { ticket: "a" as TicketId, phase: TicketPhase.Asked({ question: "q-1" }), handBack: false },
+    ],
+    ["b" as TicketId, { ticket: "b" as TicketId, phase: TicketPhase.Working(), handBack: false }],
   ]),
-  asking: ["b"],
+  asking: ["b" as TicketId],
 })
 
 describe("a worker to be resumed with no slot for it", () => {
@@ -41,8 +46,8 @@ describe("a worker to be resumed with no slot for it", () => {
   })
 
   test("once none is left to resume, the worker waiting on you is waited for", () => {
-    expect(decide(waitingOnYou)).toEqual(End.WaitOnYou({ tickets: ["b"] }))
-    expect(endOfRunBox(waitingOnYou)).toEqual(["b"])
+    expect(decide(waitingOnYou)).toEqual(End.WaitOnYou({ tickets: ["b" as TicketId] }))
+    expect(endOfRunBox(waitingOnYou)).toEqual(["b" as TicketId])
   })
 
   test("keeps a run with nothing else left from ending", () => {

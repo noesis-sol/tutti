@@ -3,6 +3,7 @@
 // handed back once the limit lifts, sent at the reset as its carry-on, rather than set aside, the
 // wait not counting toward resolve_timeout (handback.ts's give, usageLimit.ts). A worker you steer
 // while it waits is sent nothing, and the hand-back is over.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -13,6 +14,7 @@ import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { ScreenInputs } from "../src/run/screen.ts"
 import { resetHandBackText, resetText } from "../src/run/told.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -68,7 +70,7 @@ const folder = (name: string) =>
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   files: Files,
   first: ReadonlyArray<Step> = [],
 ): SessionScript =>
@@ -130,7 +132,7 @@ const untilLogged = (pattern: RegExp) =>
   })
 
 /** Waits, in real time, until `id` is claimed: the run has dispatched it. */
-const untilClaimed = (world: World, id: string) =>
+const untilClaimed = (world: World, id: TicketId) =>
   Effect.orDie(
     Effect.gen(function* () {
       for (let i = 0; i < 2000; i++) {
@@ -275,10 +277,14 @@ describe("a worker at the usage limit already", () => {
       // a's check passes; the one on b's resolution fails; the one on b's fix passes.
       checks: { fast: [passed("fast"), failing] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { "shared.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+        a: [
+          works(world, places, "a" as TicketId, { "shared.txt": "a\n" }, [
+            step(untilClaimed(world, "b" as TicketId)),
+          ]),
+        ],
         b: [
           [
-            ...works(world, places, "b", { "shared.txt": "b\n" }, [
+            ...works(world, places, "b" as TicketId, { "shared.txt": "b\n" }, [
               step(untilOnMain(world, { "shared.txt": "a\n" })),
             ]),
             ...limitedTurn(continues(world, places, "b", { "shared.txt": "a and b\n" })),
@@ -317,8 +323,10 @@ describe("a worker at the usage limit already", () => {
       "tutti: main moved on while you worked, and tutti/b was rebased onto it",
     )
     expect(rest).toEqual([])
-    expect(composed(ran)).not.toContain(resetHandBackText("b", "tutti/b", "fixing", "main"))
-    expect(composed(ran)).not.toContain(resetText("b"))
+    expect(composed(ran)).not.toContain(
+      resetHandBackText("b" as TicketId, "tutti/b", "fixing", "main"),
+    )
+    expect(composed(ran)).not.toContain(resetText("b" as TicketId))
     expect(interrupted(ran)).toBe(false)
   })
 
@@ -328,10 +336,14 @@ describe("a worker at the usage limit already", () => {
       checks: { fast: [passed("fast"), failing] },
       dashboard: true,
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { "shared.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+        a: [
+          works(world, places, "a" as TicketId, { "shared.txt": "a\n" }, [
+            step(untilClaimed(world, "b" as TicketId)),
+          ]),
+        ],
         b: [
           [
-            ...works(world, places, "b", { "shared.txt": "b\n" }, [
+            ...works(world, places, "b" as TicketId, { "shared.txt": "b\n" }, [
               step(untilOnMain(world, { "shared.txt": "a\n" })),
             ]),
             ...limitedTurn(continues(world, places, "b", { "shared.txt": "a and b\n" })),
@@ -344,7 +356,7 @@ describe("a worker at the usage limit already", () => {
           const inputs = screen()
           if (inputs === undefined) throw new Error("the run showed no dashboard")
           // You stop b's worker from its view: it is steered, and still at the limit.
-          yield* Queue.offer(inputs.commands, UiCommand.Interrupt({ ticket: "b" }))
+          yield* Queue.offer(inputs.commands, UiCommand.Interrupt({ ticket: "b" as TicketId }))
           yield* untilLogged(/^ {2}STEERED: /)
           yield* advance("2 hours")
         }),
@@ -374,10 +386,14 @@ describe("a worker at the usage limit already", () => {
       // a's check passes; the one on b rebased onto a fails; c's and the one on b's resolution pass.
       checks: { fast: [passed("fast"), failing] },
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { "a.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+        a: [
+          works(world, places, "a" as TicketId, { "a.txt": "a\n" }, [
+            step(untilClaimed(world, "b" as TicketId)),
+          ]),
+        ],
         b: [
           [
-            ...works(world, places, "b", { "b.txt": "b\n" }, [
+            ...works(world, places, "b" as TicketId, { "b.txt": "b\n" }, [
               step(untilOnMain(world, { "a.txt": "a\n" })),
             ]),
             // c lands while b fixes its check, in the file b's fix commits as the limit hits.
@@ -390,7 +406,9 @@ describe("a worker at the usage limit already", () => {
           ],
         ],
         c: [
-          works(world, places, "c", { "fix.txt": "c\n" }, [step(Effect.promise(() => released))]),
+          works(world, places, "c" as TicketId, { "fix.txt": "c\n" }, [
+            step(Effect.promise(() => released)),
+          ]),
         ],
       }),
       during: pastTheReset("conflicts to resolve"),

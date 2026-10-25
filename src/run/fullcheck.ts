@@ -22,7 +22,7 @@ import type { PlatformError } from "effect/PlatformError"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
+import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { type CheckError, type CheckPassed, Checks, setupLogName } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
@@ -72,7 +72,7 @@ export interface FullChecked {
   /** The end of its output, its last fullCheckEnd lines, when it failed. */
   readonly end: ReadonlyArray<string>
   /** The ticket filed for the suite, or the one open for it already. */
-  readonly ticket?: string
+  readonly ticket?: TicketId
   /** What became of the ticket, for a line: `filed X`, `X is open for it already`. */
   readonly filed?: string
   /** The line that said how it went. */
@@ -492,7 +492,7 @@ const file = (f: {
   readonly how: string
   readonly output: string
   readonly said: ReadonlyArray<string>
-}): Effect.Effect<{ readonly ticket?: string; readonly filed: string }, never, Env> =>
+}): Effect.Effect<{ readonly ticket?: TicketId; readonly filed: string }, never, Env> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const beads = yield* Beads

@@ -9,6 +9,7 @@ import {
   verifierAgent,
   verifierMatcher,
 } from "../src/agent/hooks.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { openFibers } from "./fibers.ts"
 
 const signal = { signal: new AbortController().signal }
@@ -34,7 +35,7 @@ const verifierCall = {
 const verifierHooks = async () => {
   const hooks: Hooks = await Effect.runPromise(
     activityHooks(
-      "t",
+      "t" as TicketId,
       { activity: () => Effect.void, compaction: () => Effect.void },
       openFibers(),
     ),

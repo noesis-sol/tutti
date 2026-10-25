@@ -8,7 +8,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { aheadKey } from "../src/run/mergetrain.ts"
 import { Move } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -27,7 +27,7 @@ const settings = {
 }
 
 /** A ticket its worker finished: a commit naming it on tutti/<id>, closed, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -77,8 +77,8 @@ test("a quit while a ticket boards and its train rebases puts its branch back on
         Effect.provideService(Git, held),
       )
       const repository = yield* Repository
-      const a = yield* finished("a", { "a.txt": "a\n" })
-      const b = yield* finished("b", { "b.txt": "b\n" })
+      const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+      const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
       yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
       const before = yield* repository.head(b.branch)
       yield* queue.offer(a)
@@ -91,14 +91,14 @@ test("a quit while a ticket boards and its train rebases puts its branch back on
       // The quit reaches b's boarding, which waits on its train, and the rebase finishes after it.
       const quit = yield* Effect.forkChild(Effect.andThen(queue.hold, queue.stopMerges))
       for (let i = 0; i < 50; i++) yield* Effect.yieldNow
-      const marked = (yield* (yield* Store).metadata("b"))[aheadKey]
+      const marked = (yield* (yield* Store).metadata("b" as TicketId))[aheadKey]
       yield* Deferred.succeed(release, undefined)
       yield* Fiber.join(quit)
       return {
         before,
         marked,
         after: yield* repository.head(b.branch),
-        mark: (yield* (yield* Store).metadata("b"))[aheadKey],
+        mark: (yield* (yield* Store).metadata("b" as TicketId))[aheadKey],
         main: yield* repository.tree("main"),
       }
     }).pipe(Effect.scoped, Effect.provide(Ledger.layer)),

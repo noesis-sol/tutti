@@ -3,6 +3,7 @@
 // `d`, `Shift+D`, `a` and `r` open the Answer box instead of answering a request never seen, the
 // 500 ms guard starts only once the card's buttons are drawn, and the hint offers neither `d` nor
 // `a`.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import type { Answer, AttentionRequest } from "../src/agent/Attention.ts"
@@ -12,6 +13,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { dashboardHint } from "../src/ui/Dashboard.tsx"
@@ -24,7 +26,7 @@ const themeOf = (appearance: Appearance) =>
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
-const entryOf = (ticket: string, worker: number, row: number): Entry => ({
+const entryOf = (ticket: TicketId, worker: number, row: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: TicketPhase.Working(),
@@ -41,12 +43,15 @@ const entryOf = (ticket: string, worker: number, row: number): Entry => ({
 const viewOf = (
   requests: ReadonlyArray<AttentionRequest>,
   workers: number,
-  endOfRun: ReadonlyArray<string> | null = null,
+  endOfRun: ReadonlyArray<TicketId> | null = null,
 ): RunView =>
   project({
     ledger: {
       tickets: new Map(
-        Array.from({ length: workers }, (_, i) => [`t-${i + 1}`, entryOf(`t-${i + 1}`, i + 1, i)]),
+        Array.from({ length: workers }, (_, i) => [
+          `t-${i + 1}` as TicketId,
+          entryOf(`t-${i + 1}` as TicketId, i + 1, i),
+        ]),
       ),
       rows: workers,
       windDown: null,
@@ -68,7 +73,7 @@ const viewOf = (
   })
 
 /** A Bash call on `ticket`'s worker, waiting for you. */
-const permission = (id: string, ticket: string): AttentionRequest => ({
+const permission = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -149,17 +154,17 @@ const undrawn: ReadonlyArray<{
   {
     where: "below 60×16",
     size: { width: 58, height: 15 },
-    view: viewOf([permission("r1", "t-1")], 1),
+    view: viewOf([permission("r1", "t-1" as TicketId)], 1),
   },
   {
     where: "in the compact layout",
     size: { width: 80, height: 24 },
-    view: viewOf([permission("r1", "t-3")], 4),
+    view: viewOf([permission("r1", "t-3" as TicketId)], 4),
   },
   {
     where: "behind the end-of-run box",
     size: { width: 80, height: 30 },
-    view: viewOf([permission("r1", "t-1")], 2, ["t-1"]),
+    view: viewOf([permission("r1", "t-1" as TicketId)], 2, ["t-1" as TicketId]),
   },
 ]
 
@@ -203,21 +208,25 @@ describe("a request whose buttons aren't drawn", () => {
   })
 
   test("the guard starts once the card's buttons are drawn, not while it was a compact line", async () => {
-    await scene(viewOf([permission("r1", "t-1")], 2), { width: 80, height: 14 }, async (at) => {
-      const { commands, pass, rendered } = at
-      expect(shows(await rendered.capture(), "[ Deny ]")).toBe(false)
-      pass(10 * settle)
-      await rendered.input((setup) => setup.resize(80, 40))
-      const frame = await rendered.capture()
-      expect(shows(frame, "[ Deny ]")).toBe(true)
-      expect(hintOf(frame)).toContain("a allow")
-      await press(rendered, "a")
-      expect(taken(commands)).toEqual([])
-      expect(shows(await rendered.capture(), "saying why")).toBe(false)
-      pass(settle)
-      await press(rendered, "a")
-      expect(taken(commands)).toEqual([answerOf("r1", { _tag: "Allow" })])
-    })
+    await scene(
+      viewOf([permission("r1", "t-1" as TicketId)], 2),
+      { width: 80, height: 14 },
+      async (at) => {
+        const { commands, pass, rendered } = at
+        expect(shows(await rendered.capture(), "[ Deny ]")).toBe(false)
+        pass(10 * settle)
+        await rendered.input((setup) => setup.resize(80, 40))
+        const frame = await rendered.capture()
+        expect(shows(frame, "[ Deny ]")).toBe(true)
+        expect(hintOf(frame)).toContain("a allow")
+        await press(rendered, "a")
+        expect(taken(commands)).toEqual([])
+        expect(shows(await rendered.capture(), "saying why")).toBe(false)
+        pass(settle)
+        await press(rendered, "a")
+        expect(taken(commands)).toEqual([answerOf("r1", { _tag: "Allow" })])
+      },
+    )
   })
 })
 
@@ -226,18 +235,18 @@ describe("the dashboard's hint", () => {
     dashboardHint(view, buttons, highlighted).map((key) => key.keys)
 
   test("names d and a with the buttons drawn, and neither without", () => {
-    const view = viewOf([permission("r1", "t-1")], 2)
+    const view = viewOf([permission("r1", "t-1" as TicketId)], 2)
     expect(words(view, true)).toEqual(["Tab", "Enter", "d", "a", "s", "?"])
     expect(words(view, false)).toEqual(["Tab", "Enter", "s", "?"])
   })
 
   test("names a only where it allows the highlighted card's request", () => {
-    const view = viewOf([{ ...permission("r1", "t-1"), defaultToNo: true }], 2)
+    const view = viewOf([{ ...permission("r1", "t-1" as TicketId), defaultToNo: true }], 2)
     expect(words(view, true)).toEqual(["Tab", "Enter", "d", "s", "?"])
   })
 
   test("names neither on a card with no request highlighted, where they answer nothing", () => {
-    const view = viewOf([permission("r1", "t-1")], 2)
+    const view = viewOf([permission("r1", "t-1" as TicketId)], 2)
     expect(words(view, true, "t-2")).toEqual(["Tab", "Enter", "s", "?"])
   })
 })

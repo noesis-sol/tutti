@@ -27,6 +27,7 @@ import { Duration, Effect, Queue, Ref, Runtime, type Scope, Stream } from "effec
 import { AgentHost } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { settled } from "../agent/WorkerState.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 
 /** The signals that quit. */
@@ -67,7 +68,7 @@ export const heard = (n: number): Heard => (n <= 1 ? "quit" : n === 2 ? "warn" :
 
 /** Something quitting waits for: a ticket's worker, or its merge. */
 export interface Awaited {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly what: "worker" | "merge"
 }
 
@@ -88,7 +89,7 @@ export const quitLine = (request: QuitRequest, workers: ReadonlyArray<string>): 
 }
 
 /** A second request with a merge under way: `<id>'s merge is under way; press Ctrl+C again …`. */
-export const underWayLine = (ticket: string, request: QuitRequest): Line =>
+export const underWayLine = (ticket: TicketId, request: QuitRequest): Line =>
   detail`${ticket}'s merge is under way; ${request.again} to abandon it`
 
 /** A second request with no merge under way: what quitting still waits for. */
@@ -98,7 +99,7 @@ export const stillQuittingLine = (awaited: ReadonlyArray<Awaited>, request: Quit
     : detail`quitting: waiting for ${waitingFor(awaited)}; ${request.again} to quit at once`
 
 /** The workers that didn't answer their interrupt within quitWait. */
-export const unansweredLine = (tickets: ReadonlyArray<string>): Line =>
+export const unansweredLine = (tickets: ReadonlyArray<TicketId>): Line =>
   detail`the workers of ${[...tickets].sort()} did not end their turns within ${Duration.format(quitWait)}; closing their sessions`
 
 /**
@@ -178,15 +179,15 @@ const answered = (state: WorkerState): boolean => settled(state) || state._tag =
  * of them together, the interrupts included: the tickets whose workers hadn't answered by then.
  */
 export const interruptWorkers = (
-  tickets: ReadonlyArray<string>,
+  tickets: ReadonlyArray<TicketId>,
   wait: Duration.Input = quitWait,
-): Effect.Effect<ReadonlyArray<string>, never, AgentHost> =>
+): Effect.Effect<ReadonlyArray<TicketId>, never, AgentHost> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
-    const waiting = yield* Ref.make<ReadonlySet<string>>(new Set(tickets))
+    const waiting = yield* Ref.make<ReadonlySet<TicketId>>(new Set(tickets))
     // Each interrupt and its result within `wait`: a CLI that never answers the interrupt's control
     // request holds quitting no longer than one that never ends its turn.
-    const one = (ticket: string) =>
+    const one = (ticket: TicketId) =>
       Effect.ignore(host.interrupt(ticket)).pipe(
         Effect.andThen(host.state(ticket).pipe(Stream.filter(answered), Stream.runHead)),
         Effect.ignore,

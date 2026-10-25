@@ -1,6 +1,7 @@
 // The account's usage windows (§ 4.12, § 7.2): read from every rate_limit_event's unifiedWindows,
 // a field the SDK's types don't name, kept at their latest figure, shown on the title line all the
 // time and recorded as usage_window events as they change.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -28,6 +29,7 @@ import {
   type TitleView,
 } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, emit, type SessionScript } from "../src/testing/AgentHost.ts"
 import { widthOf } from "../src/ui/line.tsx"
@@ -264,14 +266,16 @@ describe("a run", () => {
         git: { dir: repo },
         worktrees: { root },
         scripts: (world) => {
-          const [taken, init, running, ...rest] = claimsAndCloses("t-1", {
-            claim: Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+          const [taken, init, running, ...rest] = claimsAndCloses("t-1" as TicketId, {
+            claim: Effect.asVoid(
+              Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true })),
+            ),
             commit: Effect.asVoid(
               Effect.orDie(
                 world.repository.commit(join(root, "t-1"), "Change (t-1)", { "t-1.txt": "x\n" }),
               ),
             ),
-            close: Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done"))),
+            close: Effect.asVoid(Effect.orDie(world.beads.close("t-1" as TicketId, "done"))),
           })
           const script: SessionScript = [
             ...[taken, init, running].flatMap((step) => (step === undefined ? [] : [step])),

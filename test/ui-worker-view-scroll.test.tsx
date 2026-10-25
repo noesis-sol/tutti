@@ -1,6 +1,7 @@
 // Scrolling the worker view (§ 7.3, § 7.5): PgUp and PgDn move it a page at a time, the mouse wheel
 // a few lines; past the top, the wheel and PgUp load the items before the window, keeping your
 // place; back at the bottom it follows the worker again.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit, Scope } from "effect"
@@ -11,6 +12,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -37,9 +39,9 @@ const view: RunView = project({
   ledger: {
     tickets: new Map([
       [
-        "t-1",
+        "t-1" as TicketId,
         {
-          ticket: "t-1",
+          ticket: "t-1" as TicketId,
           title: "Title of t-1",
           phase: TicketPhase.Working(),
           since: began,
@@ -82,7 +84,7 @@ const scrolling = async (count: number, body: (rendered: Rendered) => Promise<vo
   const feed = Effect.runSync(transcriptFeed(transcripts).pipe(Scope.provide(scope)))
   const shell: ShellValue = {
     view: external(view),
-    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
     themeOf,

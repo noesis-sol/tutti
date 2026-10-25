@@ -7,6 +7,7 @@ import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import type { Predictor } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -69,7 +70,7 @@ describe("a dispatched ticket's footprint", () => {
   test("marks the predictor's files as predicted", async () => {
     const predictor: Predictor = {
       queue: () => Effect.void,
-      predicted: Effect.succeed(new Map([["t-1", ["src/b.ts"]]])),
+      predicted: Effect.succeed(new Map([["t-1" as TicketId, ["src/b.ts"]]])),
       interrupt: Effect.void,
     }
     const lines = await logOfFill([{ id: "t-1", title: "Tidy up" }], { footprints, predictor })

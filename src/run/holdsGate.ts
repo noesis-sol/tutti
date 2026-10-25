@@ -4,6 +4,7 @@
 // line and its notice. A stop holds the run: said as it comes while tickets still run, unless its
 // line was, and the run is woken to look again.
 import { Effect, Option, SubscriptionRef } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import type { EventStream } from "./eventstream.ts"
 import {
   noHolds,
@@ -25,7 +26,7 @@ import { sayer } from "./say.ts"
  * TICKET_LIMIT (`over`) still at it, which goes on until the run ends.
  */
 export const waitedFor = (
-  entry: { readonly ticket: string; readonly phase: TicketPhase },
+  entry: { readonly ticket: TicketId; readonly phase: TicketPhase },
   over: ReadonlySet<string>,
 ) =>
   phaseFacts[entry.phase._tag].running &&

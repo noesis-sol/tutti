@@ -48,7 +48,7 @@ import { SessionKind } from "../agent/sessionKind.ts"
 import { settled as isSettled, type WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { sleepAwake } from "../services/Wake.ts"
 import { readRunFile, runFolder, writeRunFile } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -68,13 +68,13 @@ export type Settling = "atOnce" | "setup" | "start" | "other" | "uncounted"
 
 /** A ticket in the row failing at once, and how it failed. */
 export interface FastFail {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly how: Exclude<Settling, "other" | "uncounted">
 }
 
 /** Triage's verdict on a deferred ticket, as the hold counts it (§ 6.2). */
 export interface Verdict {
-  readonly ticket: string
+  readonly ticket: TicketId
   /** Its cause: `environment` blames the environment. */
   readonly cause: string
   /** `high` counts. */
@@ -105,7 +105,7 @@ export const Probed = Data.taggedEnum<Probed>()
 export const probeLabel = "probe"
 
 /** The name AgentHost knows the probe's session by, as a ticket's worker is known by its ID. */
-export const probeWorker = "tutti-probe"
+export const probeWorker = "tutti-probe" as TicketId
 
 /** The run file, in the main checkout's .tutti/run/, the probe's command writes. */
 export const probeFile = "probe"
@@ -121,7 +121,7 @@ export const probePrompt = (file: string): string =>
   `shell command, then stop without doing anything else: echo ok > ${shellQuote(file)}`
 
 /** Why the row of tickets failing at once holds the run. */
-export const atOnceWhy = (tickets: ReadonlyArray<string>, window: Duration.Duration): string =>
+export const atOnceWhy = (tickets: ReadonlyArray<TicketId>, window: Duration.Duration): string =>
   `the last ${tickets.length} tickets (${tickets.join(", ")}) each settled within ${formatDuration(window)} of starting without being claimed or changed`
 
 /**
@@ -155,7 +155,7 @@ export const fastFailsWhy = (
 }
 
 /** Why the row of tickets triage blamed on the environment holds the run. */
-export const blamedWhy = (tickets: ReadonlyArray<string>, summary: string): string =>
+export const blamedWhy = (tickets: ReadonlyArray<TicketId>, summary: string): string =>
   `triage blamed the environment for the last ${tickets.length} tickets (${tickets.join(", ")}) with high confidence (${summary.trim().replace(/\.$/, "")})`
 
 /** The hold's stop: `ENVIRONMENT: <why>; check the machine, then restart`. */
@@ -202,7 +202,7 @@ export const settlingOf = (input: {
 /** The environment hold, the run's own (run.ts makes it); the triage organ calls blamed(). */
 export interface EnvironmentHold {
   /** Counts a ticket's worker settling `how` toward the hold. */
-  settled(ticket: string, how: Settling): Effect.Effect<void>
+  settled(ticket: TicketId, how: Settling): Effect.Effect<void>
   /** The hold's generation, for a ticket queued for triage now: blamed() takes it back. */
   readonly generation: Effect.Effect<number>
   /** Counts triage's verdict toward the hold. */
@@ -220,7 +220,7 @@ interface HoldState {
   /** The row of tickets whose workers failed at once, or whose setup failed. */
   readonly atOnce: ReadonlyArray<FastFail>
   /** The row of tickets triage blamed on the environment. */
-  readonly blamed: ReadonlyArray<string>
+  readonly blamed: ReadonlyArray<TicketId>
   /** The hold's stop, while the run holds for the environment. */
   readonly stop: StopReason | null
   readonly why: string
@@ -264,7 +264,7 @@ export const make = (options: {
     const one = yield* Semaphore.make(1)
 
     // Puts a ticket whose worker failed at once back in the queue to wait for the probe.
-    const reopen = (id: string) =>
+    const reopen = (id: TicketId) =>
       Effect.gen(function* () {
         const reopened = yield* Effect.result(beads.update(id, { status: "open" }))
         if (Result.isFailure(reopened)) {
@@ -301,7 +301,7 @@ export const make = (options: {
         yield* Effect.forEach(failed, reopen, { discard: true })
       })
 
-    const settled = (ticket: string, how: Settling) =>
+    const settled = (ticket: TicketId, how: Settling) =>
       Effect.gen(function* () {
         if (count === 0 || how === "uncounted") return
         if (how === "other") {

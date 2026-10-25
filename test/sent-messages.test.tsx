@@ -2,6 +2,7 @@
 // pushes it into the session's inbox, the scripted layer as the live one, and the worker view draws
 // it as a Prompt where it was sent, once the composer no longer shows it queued, and not at all
 // once the CLI cancelled it.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -23,6 +24,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Recording, Sent, layer as scriptedLayer, turn } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
@@ -101,13 +103,13 @@ describe("the scripted host records what it sends", () => {
     const done = await run(
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" })
-        const settled = yield* host.state("t-1").pipe(
+        yield* host.start("t-1" as TicketId, { sessionId: "s-1", cwd: "/work/t-1" })
+        const settled = yield* host.state("t-1" as TicketId).pipe(
           Stream.filter((state) => state._tag === "Idle"),
           Stream.runHead,
           Effect.forkChild({ startImmediately: true }),
         )
-        const uuid = yield* host.send("t-1", {
+        const uuid = yield* host.send("t-1" as TicketId, {
           text: "Please add tests too.",
           from: "human",
           uuid: "u-1" as MessageUuid,
@@ -116,7 +118,7 @@ describe("the scripted host records what it sends", () => {
         return {
           uuid,
           transcript: yield* (yield* Files).messages("t-1"),
-          sent: yield* (yield* Recording).sentTo("t-1"),
+          sent: yield* (yield* Recording).sentTo("t-1" as TicketId),
         }
       }),
     )
@@ -132,7 +134,7 @@ describe("the scripted host records what it sends", () => {
     expect(second?.message).toMatchObject({ type: "command_lifecycle", state: "queued" })
     // The very message the session was sent.
     expect(done.sent.filter((each) => each._tag === "Message")).toEqual([
-      Sent.Message({ ticket: "t-1", message: first?.message as never }),
+      Sent.Message({ ticket: "t-1" as TicketId, message: first?.message as never }),
     ])
     expect(done.transcript.filter((item) => item.message.type === "user")).toHaveLength(1)
   })
@@ -155,7 +157,7 @@ describe("the live host records what it sends", () => {
     })
     const sessionId = "11111111-1111-4111-8111-111111111111"
     const idle = Effect.gen(function* () {
-      const found = yield* (yield* AgentHost).state("t-1").pipe(
+      const found = yield* (yield* AgentHost).state("t-1" as TicketId).pipe(
         Stream.filter((state) => state._tag === "Idle"),
         Stream.runHead,
         Effect.timeout(Duration.seconds(10)),
@@ -165,10 +167,13 @@ describe("the live host records what it sends", () => {
     const done = await Effect.runPromise(
       Effect.gen(function* () {
         const agents = yield* AgentHost
-        yield* agents.start("t-1", { sessionId, cwd: dir })
-        const first = yield* agents.send("t-1", { text: "Work on t-1.", from: "clientComposed" })
+        yield* agents.start("t-1" as TicketId, { sessionId, cwd: dir })
+        const first = yield* agents.send("t-1" as TicketId, {
+          text: "Work on t-1.",
+          from: "clientComposed",
+        })
         yield* idle
-        const second = yield* agents.send("t-1", {
+        const second = yield* agents.send("t-1" as TicketId, {
           text: "And the docs.",
           from: "human",
           uuid: "u-2" as MessageUuid,
@@ -274,9 +279,9 @@ describe("the worker view", () => {
       ledger: {
         tickets: new Map([
           [
-            "t-1",
+            "t-1" as TicketId,
             {
-              ticket: "t-1",
+              ticket: "t-1" as TicketId,
               title: "Title of t-1",
               phase: TicketPhase.Working(),
               since: began,
@@ -337,7 +342,7 @@ describe("the worker view", () => {
     append([said("Working on it.")])
     const shell: ShellValue = {
       view,
-      screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+      screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
       commands,
       appearance: external<Appearance>("dark"),
       themeOf,

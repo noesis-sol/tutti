@@ -10,7 +10,7 @@ import { Effect, Fiber, Queue } from "effect"
 import { line } from "../src/run/log.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store, type TicketRecord } from "../src/services/Store.ts"
 import {
@@ -25,10 +25,10 @@ import { backlog, type Ran, scenario } from "./harness.ts"
 const folder = (name: string) =>
   realpathSync(mkdtempSync(join(tmpdir(), `tutti-carry-quit-${name}-`)))
 
-const tickets = ["t-1", "t-2", "t-3", "t-4"]
+const tickets = ["t-1" as TicketId, "t-2" as TicketId, "t-3" as TicketId, "t-4" as TicketId]
 
 /** What the last run saved of a ticket, its worktree under `root`: suspended at its ticket limit. */
-const savedRecord = (root: string, id: string): TicketRecord => ({
+const savedRecord = (root: string, id: TicketId): TicketRecord => ({
   session: `session-${id}`,
   worktree: join(root, id),
   branch: `tutti/${id}`,
@@ -128,14 +128,14 @@ describe("a quit during the run's start", () => {
       "INTERRUPTED: quit with Ctrl+C; t-1's session is saved for the next run",
     )
     // t-1 was resumed before the quit, and is interrupted and saved again; the others never start.
-    expect(resumed(ran)).toEqual(["t-1"])
+    expect(resumed(ran)).toEqual(["t-1" as TicketId])
     expect(ran.sent.filter((sent) => sent._tag === "Started")).toEqual([])
     expect(ran.sent).toContainEqual(expect.objectContaining({ _tag: "Interrupted", ticket: "t-1" }))
     expect(state.tickets["t-1"]).toEqual(
       expect.objectContaining({ session: "session-t-1", suspended: "quit", phase: "Stopped" }),
     )
     // Those not taken up are left in state.json as they were.
-    for (const id of ["t-2", "t-3", "t-4"]) {
+    for (const id of ["t-2" as TicketId, "t-3" as TicketId, "t-4" as TicketId]) {
       expect(state.tickets[id]).toEqual(savedRecord(root, id))
     }
   })

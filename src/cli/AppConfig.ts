@@ -9,6 +9,7 @@
 // A relative path in a flag (--prompt, --worktrees, --claude) is taken from the folder tutti was
 // started in, as a shell's completion offers it; in a variable, which stands for every run of the
 // project, it is taken from the main checkout's top level, as the settings' are.
+
 import { availableParallelism } from "node:os"
 import {
   basename,
@@ -30,6 +31,7 @@ import {
   runsDir,
   runsDirVariables,
 } from "../run/machine.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { type LoadedScheme, loadScheme, orchestraLoaded, schemeFolders } from "../ui/theme.ts"
 import {
   type billings,
@@ -82,7 +84,7 @@ export interface AppConfigValue {
   /** Run the current tickets without asking (--tickets). */
   readonly tickets: boolean
   /** The ticket the run is scoped to (--ticket), or null for the whole backlog. */
-  readonly ticket: string | null
+  readonly ticket: TicketId | null
   /** The feature request to plan (--feature), or null. */
   readonly feature: string | null
   /** File a --feature plan without asking (--yes). */

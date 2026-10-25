@@ -16,6 +16,7 @@ import { WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { allowAll, layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -158,7 +159,7 @@ const session = (dir: string, sessionId = "11111111-1111-4111-8111-111111111111"
 })
 
 /** Waits, at most 10 s, for the ticket's worker to reach a state `matches`; that state. */
-const until = (ticket: string, matches: (state: WorkerState) => boolean) =>
+const until = (ticket: TicketId, matches: (state: WorkerState) => boolean) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const found = yield* host.state(ticket).pipe(
@@ -196,19 +197,22 @@ describe("AgentHost live: the inbox", () => {
     const { logged, items, state } = await run({}, ({ dir, log }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        expect(yield* host.current("t-1")).toEqual(WorkerState.Starting())
-        const first = yield* host.send("t-1", { text: "Work on t-1.", from: "clientComposed" })
-        yield* until("t-1", idle)
-        const second = yield* host.send("t-1", { text: "/context", from: "human" })
+        yield* host.start("t-1" as TicketId, session(dir))
+        expect(yield* host.current("t-1" as TicketId)).toEqual(WorkerState.Starting())
+        const first = yield* host.send("t-1" as TicketId, {
+          text: "Work on t-1.",
+          from: "clientComposed",
+        })
+        yield* until("t-1" as TicketId, idle)
+        const second = yield* host.send("t-1" as TicketId, { text: "/context", from: "human" })
         yield* logShows(log, (l) => usersIn(l).length === 2)
-        yield* until("t-1", idle)
+        yield* until("t-1" as TicketId, idle)
         const logged = readLog(log)
         expect(usersIn(logged).map((m) => m.uuid)).toEqual([first, second])
         return {
           logged,
           items: yield* (yield* Files).messages("t-1"),
-          state: yield* host.current("t-1"),
+          state: yield* host.current("t-1" as TicketId),
         }
       }),
     )
@@ -247,13 +251,13 @@ describe("AgentHost live: the inbox", () => {
               message.type === "result" && message.subtype === "success" ? [message.result] : [],
             ),
           )
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "first", from: "clientComposed" })
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "first", from: "clientComposed" })
           // The turn waits on its permission request: a message sent now is queued.
-          expect(yield* until("t-1", (s) => s._tag === "NeedsYou")).toEqual(
+          expect(yield* until("t-1" as TicketId, (s) => s._tag === "NeedsYou")).toEqual(
             WorkerState.NeedsYou({ requests: 1 }),
           )
-          yield* host.send("t-1", { text: "second", from: "clientComposed" })
+          yield* host.send("t-1" as TicketId, { text: "second", from: "clientComposed" })
           yield* logShows(log, (l) => usersIn(l).length === 2)
           yield* attention.answer("r1", { _tag: "Allow" }, "screen")
           const results = yield* resultsNow.pipe(
@@ -263,7 +267,7 @@ describe("AgentHost live: the inbox", () => {
             }),
             Effect.timeout(Duration.seconds(10)),
           )
-          yield* until("t-1", idle)
+          yield* until("t-1" as TicketId, idle)
           return { results, users: usersIn(readLog(log)) }
         }),
     )
@@ -278,16 +282,16 @@ describe("AgentHost live: the inbox", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           const attention = yield* Attention
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "first", from: "clientComposed" })
-          yield* until("t-1", (s) => s._tag === "NeedsYou")
-          yield* host.send("t-1", { text: "second", from: "clientComposed" })
-          yield* host.send("t-1", { text: "third", from: "clientComposed" })
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "first", from: "clientComposed" })
+          yield* until("t-1" as TicketId, (s) => s._tag === "NeedsYou")
+          yield* host.send("t-1" as TicketId, { text: "second", from: "clientComposed" })
+          yield* host.send("t-1" as TicketId, { text: "third", from: "clientComposed" })
           yield* logShows(log, (l) => usersIn(l).length === 3)
           yield* attention.answer("r1", { _tag: "Allow" }, "screen")
           // The first Idle comes only after the queued sends' turn: the transcript, recorded before
           // each message is folded in, holds both results by then.
-          yield* until("t-1", idle)
+          yield* until("t-1" as TicketId, idle)
           const items = yield* (yield* Files).messages("t-1")
           const raw = items.map((item) => item.message as unknown as Record<string, unknown>)
           return {
@@ -326,11 +330,14 @@ describe("AgentHost live: state, hooks and stderr", () => {
       ({ dir }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "go", from: "clientComposed" })
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
           // The fake sends system/init and calls the hook back to back, so the hook may be folded
           // in before the init: the turn keeps its tool all the same.
-          return yield* until("t-1", (s) => s._tag === "Working" && s.doing === "testing")
+          return yield* until(
+            "t-1" as TicketId,
+            (s) => s._tag === "Working" && s.doing === "testing",
+          )
         }),
     )
     expect(doing).toEqual(WorkerState.Working({ doing: "testing" }))
@@ -342,9 +349,9 @@ describe("AgentHost live: state, hooks and stderr", () => {
       ({ dir, log }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "go", from: "clientComposed" })
-          const state = yield* until("t-1", idle)
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+          const state = yield* until("t-1" as TicketId, idle)
           return { logged: readLog(log), state }
         }),
       { policy: allowAll },
@@ -359,9 +366,9 @@ describe("AgentHost live: state, hooks and stderr", () => {
     const stderr = await run({ turns: [[{ stderr: "a warning from claude\n" }]] }, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", { text: "go", from: "clientComposed" })
-        yield* until("t-1", idle)
+        yield* host.start("t-1" as TicketId, session(dir))
+        yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+        yield* until("t-1" as TicketId, idle)
         const files = yield* Files
         return yield* Effect.flatMap(files.stderr("t-1"), (text) =>
           text.includes("a warning") ? Effect.succeed(text) : Effect.fail("not yet"),
@@ -380,14 +387,14 @@ describe("AgentHost live: the first system/init", () => {
     const { states, lines } = await run({ init: { permissionMode: "default" } }, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", { text: "one", from: "clientComposed" })
-        yield* until("t-1", idle)
-        yield* host.send("t-1", { text: "two", from: "clientComposed" })
-        yield* host.close("t-1")
-        yield* host.start("t-2", session(dir, "22222222-2222-4222-8222-222222222222"))
-        yield* host.send("t-2", { text: "three", from: "clientComposed" })
-        const second = yield* until("t-2", idle)
+        yield* host.start("t-1" as TicketId, session(dir))
+        yield* host.send("t-1" as TicketId, { text: "one", from: "clientComposed" })
+        yield* until("t-1" as TicketId, idle)
+        yield* host.send("t-1" as TicketId, { text: "two", from: "clientComposed" })
+        yield* host.close("t-1" as TicketId)
+        yield* host.start("t-2" as TicketId, session(dir, "22222222-2222-4222-8222-222222222222"))
+        yield* host.send("t-2" as TicketId, { text: "three", from: "clientComposed" })
+        const second = yield* until("t-2" as TicketId, idle)
         return { states: [second], lines: yield* texts }
       }),
     )
@@ -402,9 +409,9 @@ describe("AgentHost live: the first system/init", () => {
     const { state, lines } = await run({}, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", { text: "go", from: "clientComposed" })
-        return { state: yield* until("t-1", idle), lines: yield* texts }
+        yield* host.start("t-1" as TicketId, session(dir))
+        yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+        return { state: yield* until("t-1" as TicketId, idle), lines: yield* texts }
       }),
     )
     expect(state._tag).toBe("Idle")
@@ -418,11 +425,11 @@ describe("AgentHost live: the first system/init", () => {
       ({ dir, log }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "go", from: "clientComposed" })
-          const state = yield* until("t-1", gone)
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+          const state = yield* until("t-1" as TicketId, gone)
           const sent = yield* Effect.exit(
-            host.send("t-1", { text: "more", from: "clientComposed" }),
+            host.send("t-1" as TicketId, { text: "more", from: "clientComposed" }),
           )
           return {
             state,
@@ -445,9 +452,9 @@ describe("AgentHost live: the first system/init", () => {
       ({ dir }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "go", from: "clientComposed" })
-          return yield* until("t-1", idle)
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+          return yield* until("t-1" as TicketId, idle)
         }),
       {
         servers: {
@@ -463,9 +470,9 @@ describe("AgentHost live: the first system/init", () => {
     const state = await run({ init: { apiKeySource: "ANTHROPIC_API_KEY" } }, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", { text: "go", from: "clientComposed" })
-        return yield* until("t-1", gone)
+        yield* host.start("t-1" as TicketId, session(dir))
+        yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+        return yield* until("t-1" as TicketId, gone)
       }),
     )
     expect(state).toEqual(
@@ -479,9 +486,9 @@ describe("AgentHost live: the first system/init", () => {
       ({ dir }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "go", from: "clientComposed" })
-          return yield* until("t-1", idle)
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+          return yield* until("t-1" as TicketId, idle)
         }),
       { billing: { _tag: "ApiKey" } },
     )
@@ -496,14 +503,14 @@ describe("AgentHost live: interrupt", () => {
       ({ dir, log }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "first", from: "clientComposed" })
-          yield* until("t-1", (s) => s._tag === "Working")
-          const queued = yield* host.send("t-1", { text: "second", from: "human" })
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "first", from: "clientComposed" })
+          yield* until("t-1" as TicketId, (s) => s._tag === "Working")
+          const queued = yield* host.send("t-1" as TicketId, { text: "second", from: "human" })
           yield* logShows(log, (l) => usersIn(l).length === 2)
-          const receipt = yield* host.interrupt("t-1")
+          const receipt = yield* host.interrupt("t-1" as TicketId)
           // The interrupted turn's result is an error, so the worker is Failed; nothing else runs.
-          const state = yield* until("t-1", (s) => s._tag === "Failed")
+          const state = yield* until("t-1" as TicketId, (s) => s._tag === "Failed")
           return { receipt, queued, state, request: interruptIn(readLog(log)) }
         }),
     )
@@ -522,14 +529,14 @@ describe("AgentHost live: interrupt", () => {
       ({ dir, log }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", session(dir))
-          yield* host.send("t-1", { text: "first", from: "clientComposed" })
-          yield* until("t-1", (s) => s._tag === "Working")
-          const queued = yield* host.send("t-1", { text: "second", from: "human" })
+          yield* host.start("t-1" as TicketId, session(dir))
+          yield* host.send("t-1" as TicketId, { text: "first", from: "clientComposed" })
+          yield* until("t-1" as TicketId, (s) => s._tag === "Working")
+          const queued = yield* host.send("t-1" as TicketId, { text: "second", from: "human" })
           yield* logShows(log, (l) => usersIn(l).length === 2)
-          const receipt = yield* host.interrupt("t-1")
+          const receipt = yield* host.interrupt("t-1" as TicketId)
           // Idle needs a clean result: the queued message's turn, after the interrupted one.
-          yield* until("t-1", idle)
+          yield* until("t-1" as TicketId, idle)
           return { receipt, queued, request: interruptIn(readLog(log)) }
         }),
     )
@@ -541,7 +548,7 @@ describe("AgentHost live: interrupt", () => {
     const exit = await run({}, () =>
       Effect.exit(
         Effect.gen(function* () {
-          return yield* (yield* AgentHost).interrupt("t-1")
+          return yield* (yield* AgentHost).interrupt("t-1" as TicketId)
         }),
       ),
     )
@@ -554,20 +561,22 @@ describe("AgentHost live: close, resume and Gone", () => {
     const { closed, afterClose, logged, resumed, state } = await run({}, ({ dir, log }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", { text: "first", from: "clientComposed" })
-        yield* until("t-1", idle)
-        yield* host.close("t-1")
-        const closed = yield* host.current("t-1")
+        yield* host.start("t-1" as TicketId, session(dir))
+        yield* host.send("t-1" as TicketId, { text: "first", from: "clientComposed" })
+        yield* until("t-1" as TicketId, idle)
+        yield* host.close("t-1" as TicketId)
+        const closed = yield* host.current("t-1" as TicketId)
         // close waits for Claude Code to exit: its stdin has closed.
         const afterClose = readLog(log).closed
-        const sent = yield* Effect.exit(host.send("t-1", { text: "lost", from: "clientComposed" }))
+        const sent = yield* Effect.exit(
+          host.send("t-1" as TicketId, { text: "lost", from: "clientComposed" }),
+        )
         expect(Exit.isFailure(sent)).toBe(true)
-        const resumed = yield* host.resume("t-1", session(dir), {
+        const resumed = yield* host.resume("t-1" as TicketId, session(dir), {
           text: "carry on",
           from: "clientComposed",
         })
-        const state = yield* until("t-1", idle)
+        const state = yield* until("t-1" as TicketId, idle)
         return { closed, afterClose, logged: readLog(log), resumed, state }
       }),
     )
@@ -589,10 +598,12 @@ describe("AgentHost live: close, resume and Gone", () => {
     const { state, sent } = await run({ turns: [[{ text: "bye" }, { exit: 1 }]] }, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", { text: "go", from: "clientComposed" })
-        const state = yield* until("t-1", gone)
-        const sent = yield* Effect.exit(host.send("t-1", { text: "more", from: "clientComposed" }))
+        yield* host.start("t-1" as TicketId, session(dir))
+        yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+        const state = yield* until("t-1" as TicketId, gone)
+        const sent = yield* Effect.exit(
+          host.send("t-1" as TicketId, { text: "more", from: "clientComposed" }),
+        )
         return { state, sent }
       }),
     )
@@ -605,8 +616,8 @@ describe("AgentHost live: close, resume and Gone", () => {
     const { exit, state } = await run({ startupFailure: "cwd_unavailable" }, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        const exit = yield* Effect.exit(host.start("t-1", session(dir)))
-        return { exit, state: yield* host.current("t-1") }
+        const exit = yield* Effect.exit(host.start("t-1" as TicketId, session(dir)))
+        return { exit, state: yield* host.current("t-1" as TicketId) }
       }),
     )
     expect(exit).toMatchObject({
@@ -630,9 +641,11 @@ describe("AgentHost live: close, resume and Gone", () => {
     const { twice, missing } = await run({}, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        const twice = yield* Effect.exit(host.start("t-1", session(dir)))
-        const missing = yield* Effect.exit(host.start("t-2", session(join(dir, "gone"))))
+        yield* host.start("t-1" as TicketId, session(dir))
+        const twice = yield* Effect.exit(host.start("t-1" as TicketId, session(dir)))
+        const missing = yield* Effect.exit(
+          host.start("t-2" as TicketId, session(join(dir, "gone"))),
+        )
         return { twice, missing }
       }),
     )
@@ -649,9 +662,9 @@ describe("AgentHost live: close, resume and Gone", () => {
       Effect.gen(function* () {
         where.log = log
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", { text: "go", from: "clientComposed" })
-        yield* until("t-1", (s) => s._tag === "Working")
+        yield* host.start("t-1" as TicketId, session(dir))
+        yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+        yield* until("t-1" as TicketId, (s) => s._tag === "Working")
       }),
     )
     // The scope waited for Claude Code to exit: its stdin closed.
@@ -662,11 +675,13 @@ describe("AgentHost live: close, resume and Gone", () => {
     const after = await run({}, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", session(dir))
-        const states = yield* host.state("t-1").pipe(Stream.runCollect, Effect.forkChild)
-        yield* host.end("t-1")
+        yield* host.start("t-1" as TicketId, session(dir))
+        const states = yield* host
+          .state("t-1" as TicketId)
+          .pipe(Stream.runCollect, Effect.forkChild)
+        yield* host.end("t-1" as TicketId)
         yield* Fiber.join(states)
-        return yield* Effect.exit(host.current("t-1"))
+        return yield* Effect.exit(host.current("t-1" as TicketId))
       }),
     )
     expect(Exit.isFailure(after)).toBe(true)

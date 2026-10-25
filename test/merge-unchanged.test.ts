@@ -6,7 +6,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { unmergedLabel } from "../src/run/scope.ts"
-import { Beads, type Issue } from "../src/services/Beads.ts"
+import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
@@ -33,7 +33,7 @@ const records = (ran: Ran<unknown>, kind: EventRecord["kind"]) =>
  * A ticket its worker finished: its worktree on tutti/<id> with a commit of each of `commits`, the
  * last naming it, closed in Beads, Working in the ledger.
  */
-const finished = (id: string, ...commits: ReadonlyArray<Files>) =>
+const finished = (id: TicketId, ...commits: ReadonlyArray<Files>) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -85,7 +85,7 @@ const mergeA = (
     yield* queue.offer(ticket)
     yield* queue.settled
     return {
-      phase: (yield* (yield* Ledger).current).tickets.get("a")?.phase,
+      phase: (yield* (yield* Ledger).current).tickets.get("a" as TicketId)?.phase,
       before: head,
       after: yield* repository.head("main"),
       branch: yield* repository.head(ticket.branch),
@@ -96,7 +96,7 @@ describe("a ticket left with no change of its own as it merges", () => {
   test("a rebase that drops every commit, the base having them, closes it as unchanged", async () => {
     const ran = await scenario(
       { backlog: backlog().ticket("a").seeds },
-      mergeA(finished("a", { "a.txt": "a\n" }), moveMain({ "a.txt": "a\n" })),
+      mergeA(finished("a" as TicketId, { "a.txt": "a\n" }), moveMain({ "a.txt": "a\n" })),
     )
     const merged = resultOf(ran)
     expect(merged.phase?._tag === "Done" && merged.phase.outcome._tag).toBe("NoChange")
@@ -105,7 +105,7 @@ describe("a ticket left with no change of its own as it merges", () => {
     // Nothing is left to check, or to merge.
     expect(ran.checkRuns).toEqual([])
     expect(ran.worktreeCalls.filter((call) => call.op === "remove")).toEqual([
-      { op: "remove", id: "a", force: false },
+      { op: "remove", id: "a" as TicketId, force: false },
     ])
     expectLog(ran, [
       "  a closed with no change: rebased onto main, which has its changes already, tutti/a changes nothing, so there is nothing to merge; worktree and branch removed",
@@ -122,7 +122,7 @@ describe("a ticket left with no change of its own as it merges", () => {
   test("commits that together change nothing are closed as unchanged, their branch moved to main", async () => {
     const ran = await scenario(
       { backlog: backlog().ticket("a").seeds },
-      mergeA(finished("a", { "a.txt": "a\n" }, { "a.txt": null })),
+      mergeA(finished("a" as TicketId, { "a.txt": "a\n" }, { "a.txt": null })),
     )
     const merged = resultOf(ran)
     expect(merged.phase?._tag === "Done" && merged.phase.outcome._tag).toBe("NoChange")
@@ -131,7 +131,7 @@ describe("a ticket left with no change of its own as it merges", () => {
     expect(merged.branch).toBe(merged.before)
     expect(ran.checkRuns).toEqual([])
     expect(ran.worktreeCalls.filter((call) => call.op === "remove")).toEqual([
-      { op: "remove", id: "a", force: false },
+      { op: "remove", id: "a" as TicketId, force: false },
     ])
     expectLog(ran, [
       "  a closed with no change: the commits on tutti/a, taken together, change nothing, so there is nothing to merge; worktree and branch removed",
@@ -145,7 +145,7 @@ describe("a ticket left with no change of its own as it merges", () => {
           .ticket("E", { type: "epic" })
           .ticket("a", { parent: "E", labels: [unmergedLabel] }).seeds,
       },
-      mergeA(finished("a", { "a.txt": "a\n" }), moveMain({ "a.txt": "a\n" })),
+      mergeA(finished("a" as TicketId, { "a.txt": "a\n" }), moveMain({ "a.txt": "a\n" })),
     )
     resultOf(ran)
     expect(issueOf(ran, "a").labels).toEqual([])
@@ -156,7 +156,7 @@ describe("a ticket left with no change of its own as it merges", () => {
   test("a rebase that keeps a change goes on to the check, and the log says it passed", async () => {
     const ran = await scenario(
       { backlog: backlog().ticket("a").seeds },
-      mergeA(finished("a", { "a.txt": "a\n" }), moveMain({ "main.txt": "moved\n" })),
+      mergeA(finished("a" as TicketId, { "a.txt": "a\n" }), moveMain({ "main.txt": "moved\n" })),
     )
     const merged = resultOf(ran)
     expect(merged.phase?._tag === "Done" && merged.phase.outcome._tag).toBe("Merged")

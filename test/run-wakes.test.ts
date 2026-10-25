@@ -10,7 +10,7 @@ import { Attention } from "../src/agent/Attention.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { make, reads, type Wake } from "../src/run/wakes.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -70,7 +70,7 @@ describe("a look's reasons", () => {
 })
 
 /** Asks to remove each of `paths` in turn, each once answered; then commits and closes its ticket. */
-const asksTwice = (world: World, root: string, id: string): SessionScript =>
+const asksTwice = (world: World, root: string, id: TicketId): SessionScript =>
   turn(
     [
       ...bash(
@@ -95,7 +95,7 @@ const asksTwice = (world: World, root: string, id: string): SessionScript =>
   )
 
 /** Claims, commits and closes its ticket. */
-const finishes = (world: World, root: string, id: string): SessionScript =>
+const finishes = (world: World, root: string, id: TicketId): SessionScript =>
   turn(
     [
       ...bash(
@@ -145,8 +145,8 @@ describe("permission traffic", () => {
         worktrees: { root },
         policy: waitForTest,
         scripts: (world: World) => ({
-          a: [asksTwice(world, root, "a")],
-          b: [finishes(world, root, "b")],
+          a: [asksTwice(world, root, "a" as TicketId)],
+          b: [finishes(world, root, "b" as TicketId)],
         }),
       },
       Effect.gen(function* () {
@@ -218,8 +218,8 @@ describe("a merge", () => {
         git: { dir: repo },
         worktrees: { root },
         scripts: (world: World) => ({
-          a: [finishes(world, root, "a")],
-          b: [finishes(world, root, "b")],
+          a: [finishes(world, root, "a" as TicketId)],
+          b: [finishes(world, root, "b" as TicketId)],
         }),
       },
       Effect.gen(function* () {
@@ -237,6 +237,6 @@ describe("a merge", () => {
     expectExitCode(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done" })
     const started = ran.sent.flatMap((sent) => (sent._tag === "Started" ? [sent.ticket] : []))
-    expect(started).toEqual(["a", "b"])
+    expect(started).toEqual(["a" as TicketId, "b" as TicketId])
   }, 30_000)
 })

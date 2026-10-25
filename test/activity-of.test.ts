@@ -1,18 +1,20 @@
 // A Working ticket's activity is RunView's (runView.ts activityOf), worked out from its worker's
 // state and open requests as the view is projected; the ledger's phase doesn't carry it.
+
 import { describe, expect, test } from "bun:test"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import { emptyTallies, type State } from "../src/run/ledger.ts"
 import { activities, TicketPhase } from "../src/run/phase.ts"
 import { activityOf, emptyStatus, project } from "../src/run/runView.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { questionOf, stateFor } from "./activity.ts"
 
 const ledgerOf = (phase: TicketPhase): State => ({
   tickets: new Map([
     [
-      "t",
+      "t" as TicketId,
       {
-        ticket: "t",
+        ticket: "t" as TicketId,
         title: "Title of t",
         phase,
         since: 0,
@@ -33,15 +35,17 @@ const ledgerOf = (phase: TicketPhase): State => ({
 describe("activityOf", () => {
   test("reads each activity from the worker's state, or a question it asked", () => {
     for (const activity of activities) {
-      const requests = activity === "answer" ? [questionOf("t")] : []
+      const requests = activity === "answer" ? [questionOf("t" as TicketId)] : []
       expect(activityOf(stateFor(activity), requests)).toBe(activity)
     }
   })
 
   test("an open request comes before the state", () => {
     const editing = WorkerState.Working({ doing: "editing" })
-    expect(activityOf(editing, [questionOf("t")])).toBe("answer")
-    expect(activityOf(editing, [{ ...questionOf("t"), kind: permission }])).toBe("allow")
+    expect(activityOf(editing, [questionOf("t" as TicketId)])).toBe("answer")
+    expect(activityOf(editing, [{ ...questionOf("t" as TicketId), kind: permission }])).toBe(
+      "allow",
+    )
   })
 
   test("is starting while neither says, and after the turn", () => {

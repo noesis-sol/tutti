@@ -40,6 +40,7 @@ import {
   usageLimitNote,
   type WorkerPrompt,
 } from "../project/prompt.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { killTree } from "../services/processTree.ts"
 import { reap, reapGrace } from "../services/reaper.ts"
 import type { InterviewSetup } from "./AgentHost.ts"
@@ -73,7 +74,7 @@ export interface WorkerCallbacks {
 /** What a worker's options are made from. */
 export interface WorkerOptionsInput {
   readonly config: Pick<AppConfigValue, "repo" | "settings">
-  readonly ticket: string
+  readonly ticket: TicketId
   /** The ticket's worktree, the session's folder. */
   readonly worktree: string
   /** The run's worker prompt, TICKET_ID still in it: the standing rules; null for the probe. */
@@ -344,7 +345,7 @@ export const interviewOptions = (input: InterviewOptionsInput): SessionSpec => {
  * The callbacks of `ticket`'s worker, from Attention and Transcripts, its hooks recording to
  * `recorder`, each call a fiber of the session's `fibers`.
  */
-export const workerCallbacks = (ticket: string, recorder: Recorder, fibers: SessionFibers) =>
+export const workerCallbacks = (ticket: TicketId, recorder: Recorder, fibers: SessionFibers) =>
   Effect.gen(function* () {
     const attention = yield* Attention
     const transcripts = yield* Transcripts

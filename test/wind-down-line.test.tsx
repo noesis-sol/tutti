@@ -1,6 +1,7 @@
 // The wind-down line's fallbacks (§ 7.2, orchestra's windDownLine): with nothing left running it
 // says `nothing running, ending now`, and a narrow pane drops `, no new tickets`, then the count,
 // then the words, keeping the squares, so the line is never cut mid-word.
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import fc from "fast-check"
@@ -9,6 +10,7 @@ import { type Entry, emptyTallies, type WindDown } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type WindDownView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { widthOf } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -26,7 +28,7 @@ const now = began + 67_000
 const working = TicketPhase.Working()
 const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) })
 
-const entryOf = (ticket: string, phase: TicketPhase, row: number): Entry => ({
+const entryOf = (ticket: TicketId, phase: TicketPhase, row: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase,
@@ -41,8 +43,8 @@ const entryOf = (ticket: string, phase: TicketPhase, row: number): Entry => ({
 
 /** RunView of `tickets` winding down since `from` began it. */
 const viewOf = (
-  tickets: ReadonlyArray<readonly [string, TicketPhase]>,
-  from: ReadonlyArray<string>,
+  tickets: ReadonlyArray<readonly [TicketId, TicketPhase]>,
+  from: ReadonlyArray<TicketId>,
 ): RunView => {
   const windDown: WindDown = { since: began, tickets: from }
   return project({
@@ -78,11 +80,11 @@ const textAt = (view: WindDownView, width: number): string =>
 
 const three = viewOf(
   [
-    ["a", working],
-    ["b", working],
-    ["c", merged],
+    ["a" as TicketId, working],
+    ["b" as TicketId, working],
+    ["c" as TicketId, merged],
   ],
-  ["a", "b", "c"],
+  ["a" as TicketId, "b" as TicketId, "c" as TicketId],
 )
 
 describe("the wind-down line in a narrow pane", () => {
@@ -118,10 +120,10 @@ describe("the wind-down line in a narrow pane", () => {
         fc.array(fc.constantFrom(working, merged), { maxLength: 12 }),
         fc.integer({ min: 0, max: 120 }),
         (phases, width) => {
-          const ids = phases.map((_, i) => `t-${i}`)
+          const ids = phases.map((_, i) => `t-${i}` as TicketId)
           const view = windDownOf(
             viewOf(
-              phases.map((phase, i) => [`t-${i}`, phase] as const),
+              phases.map((phase, i) => [`t-${i}` as TicketId, phase] as const),
               ids,
             ),
           )
@@ -150,10 +152,10 @@ describe("the wind-down line with nothing running", () => {
     const view = windDownOf(
       viewOf(
         [
-          ["a", merged],
-          ["b", merged],
+          ["a" as TicketId, merged],
+          ["b" as TicketId, merged],
         ],
-        ["a", "b"],
+        ["a" as TicketId, "b" as TicketId],
       ),
     )
     expect(view.running).toBe(0)
@@ -175,7 +177,7 @@ describe("the wind-down line with nothing running", () => {
   })
 
   test("drawn on the dashboard, whole at 100 columns and without its rest at 60", async () => {
-    const ids = Array.from({ length: 20 }, (_, i) => `t-${i}`)
+    const ids = Array.from({ length: 20 }, (_, i) => `t-${i}` as TicketId)
     const view = viewOf(
       ids.map((id) => [id, merged] as const),
       ids,

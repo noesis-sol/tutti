@@ -2,6 +2,7 @@
 // record's text is the line, so the log and the event stream can't say it differently, and Log's
 // writeWith keeps another fiber's line from coming between them.
 import { Effect } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { type Line, Log } from "./log.ts"
@@ -14,9 +15,9 @@ export interface Sayer {
   /** Logs `record`'s text and writes `record` beside it, in the same write. */
   say(record: Said): Effect.Effect<void>
   /** Logs `text` and writes its `warn` record, about `ticket` where it is given. */
-  warn(text: Line, ticket?: string): Effect.Effect<void>
+  warn(text: Line, ticket?: TicketId): Effect.Effect<void>
   /** Logs `text` and writes its `info` record, about `ticket` where it is given. */
-  info(text: Line, ticket?: string): Effect.Effect<void>
+  info(text: Line, ticket?: TicketId): Effect.Effect<void>
 }
 
 /** The Sayer over the run's Log and EventStream. */
@@ -39,9 +40,15 @@ export const say = (record: Said): Effect.Effect<void, never, Log | EventStream>
   Effect.flatMap(sayer, (s) => s.say(record))
 
 /** Logs `text` and writes its `warn` record, about `ticket` where it is given. */
-export const warn = (text: Line, ticket?: string): Effect.Effect<void, never, Log | EventStream> =>
+export const warn = (
+  text: Line,
+  ticket?: TicketId,
+): Effect.Effect<void, never, Log | EventStream> =>
   Effect.flatMap(sayer, (s) => s.warn(text, ticket))
 
 /** Logs `text` and writes its `info` record, about `ticket` where it is given. */
-export const info = (text: Line, ticket?: string): Effect.Effect<void, never, Log | EventStream> =>
+export const info = (
+  text: Line,
+  ticket?: TicketId,
+): Effect.Effect<void, never, Log | EventStream> =>
   Effect.flatMap(sayer, (s) => s.info(text, ticket))

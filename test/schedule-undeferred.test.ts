@@ -8,7 +8,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { make } from "../src/run/schedule.ts"
-import { Beads, type Issue } from "../src/services/Beads.ts"
+import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -73,7 +73,7 @@ const scheduler = (options: { readonly deferFails?: boolean } = {}) =>
     return { schedule, starts: Ref.get(starts), hold: (yes: boolean) => Ref.set(held, yes) }
   })
 
-const phaseOf = (id: string) =>
+const phaseOf = (id: TicketId) =>
   Effect.map(
     Effect.flatMap(Ledger, (ledger) => ledger.current),
     (state): PhaseTag | undefined => state.tickets.get(id)?.phase._tag,
@@ -100,11 +100,11 @@ describe("a ticket set aside, then undeferred during the run", () => {
         const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         yield* poll
-        const aside = { phase: yield* phaseOf("t-1"), starts: yield* starts }
-        yield* beads.update("t-1", { status: "open" })
+        const aside = { phase: yield* phaseOf("t-1" as TicketId), starts: yield* starts }
+        yield* beads.update("t-1" as TicketId, { status: "open" })
         yield* poll
         const after = {
-          phase: yield* phaseOf("t-1"),
+          phase: yield* phaseOf("t-1" as TicketId),
           starts: yield* starts,
           started: yield* schedule.started,
         }
@@ -135,7 +135,7 @@ describe("a ticket set aside, then undeferred during the run", () => {
         yield* flush
         yield* poll
         yield* poll
-        const after = { phase: yield* phaseOf("t-1"), starts: yield* starts }
+        const after = { phase: yield* phaseOf("t-1" as TicketId), starts: yield* starts }
         yield* Fiber.interrupt(fiber)
         return after
       }),
@@ -156,11 +156,11 @@ describe("a ticket set aside, then undeferred during the run", () => {
         yield* poll
         // The hold reopens it in bd, and a poll comes before its Reopened.
         yield* hold(true)
-        yield* beads.update("t-1", { status: "open" })
+        yield* beads.update("t-1" as TicketId, { status: "open" })
         yield* poll
-        const mid = yield* phaseOf("t-1")
-        yield* ledger.transition("t-1", Move.Reopened())
-        const after = { phase: yield* phaseOf("t-1"), starts: yield* starts }
+        const mid = yield* phaseOf("t-1" as TicketId)
+        yield* ledger.transition("t-1" as TicketId, Move.Reopened())
+        const after = { phase: yield* phaseOf("t-1" as TicketId), starts: yield* starts }
         const bugs = (yield* texts).filter((text) => text.includes("PHASE_BUG"))
         yield* Fiber.interrupt(fiber)
         return { mid, after, bugs }
@@ -183,12 +183,12 @@ describe("a ticket set aside, then undeferred during the run", () => {
         yield* flush
         yield* poll
         yield* hold(true)
-        yield* beads.update("t-1", { status: "open" })
+        yield* beads.update("t-1" as TicketId, { status: "open" })
         yield* poll
-        const holding = yield* phaseOf("t-1")
+        const holding = yield* phaseOf("t-1" as TicketId)
         yield* hold(false)
         yield* poll
-        const after = { phase: yield* phaseOf("t-1"), starts: yield* starts }
+        const after = { phase: yield* phaseOf("t-1" as TicketId), starts: yield* starts }
         yield* Fiber.interrupt(fiber)
         return { holding, after }
       }),

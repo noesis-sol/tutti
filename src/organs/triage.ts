@@ -12,6 +12,7 @@ import type { Item } from "../agent/Transcripts.ts"
 import { aboutOf } from "../agent/tools.ts"
 import { asRecord, asString } from "../agent/untrusted.ts"
 import { denier, unknownDenier } from "../run/log.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { oneLine } from "../ui/oneLine.ts"
 import { type InputPart, section } from "./evidence.ts"
 import { make, type OrganError, Organs } from "./Organs.ts"
@@ -227,7 +228,7 @@ export const compactionsText = (items: ReadonlyArray<Item>): string => {
 /** The evidence gathered for one deferred ticket, as text. */
 export interface Evidence {
   /** The ticket's ID: tutti's to name it by. */
-  readonly ticket: string
+  readonly ticket: TicketId
   /** How it was set aside, in tutti's words. */
   readonly how: string
   /** The ticket as bd show gives it. */

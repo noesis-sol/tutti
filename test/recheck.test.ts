@@ -7,7 +7,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { foldersOf, ownFailures } from "../src/run/recheck.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -36,7 +36,7 @@ const failing = (said: ReadonlyArray<string>) =>
 const elsewhere = failing(["shared/b.go:12: expected 1"])
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -61,7 +61,7 @@ const moveMain = Effect.gen(function* () {
   yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
 })
 
-const phaseOf = (state: State, id: string) => state.tickets.get(id)?.phase._tag
+const phaseOf = (state: State, id: TicketId) => state.tickets.get(id)?.phase._tag
 
 /** Waits until every ticket named is in its phase. */
 const until = (phases: Readonly<Record<string, PhaseTag>>) =>
@@ -69,7 +69,7 @@ const until = (phases: Readonly<Record<string, PhaseTag>>) =>
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(
       Stream.filter((state) =>
-        Object.entries(phases).every(([id, phase]) => phaseOf(state, id) === phase),
+        Object.entries(phases).every(([id, phase]) => phaseOf(state, id as TicketId) === phase),
       ),
       Stream.runHead,
     )
@@ -130,12 +130,12 @@ const aThenB = (
     },
     withQueue((queue) =>
       Effect.gen(function* () {
-        const a = yield* finished("a", options.aFiles ?? { "a/a.go": "a\n" })
+        const a = yield* finished("a" as TicketId, options.aFiles ?? { "a/a.go": "a\n" })
         yield* moveMain
         yield* queue.offer(a)
         yield* until({ a: "Review" })
         yield* options.between ?? Effect.void
-        yield* queue.offer(yield* finished("b", { "b/b.go": "b\n" }))
+        yield* queue.offer(yield* finished("b" as TicketId, { "b/b.go": "b\n" }))
         yield* until({ b: "Done" })
         yield* options.after?.(queue) ?? Effect.void
         yield* until(phases)
@@ -167,9 +167,9 @@ describe("a ticket set aside as its check failed", () => {
       expect.objectContaining({ ticket: "a", from: "Review", to: "ToMerge", cause: "Recheck" }),
     )
     // Its card is back while it is ToMerge and Merging, with the same worker's number.
-    const back = states.filter((state) => state.tickets.get("a")?.rechecking === true)
-    expect(back.map((state) => phaseOf(state, "a"))).toContain("Merging")
-    for (const state of back) expect(state.tickets.get("a")?.worker).toBe(1)
+    const back = states.filter((state) => state.tickets.get("a" as TicketId)?.rechecking === true)
+    expect(back.map((state) => phaseOf(state, "a" as TicketId))).toContain("Merging")
+    for (const state of back) expect(state.tickets.get("a" as TicketId)?.worker).toBe(1)
   })
 
   test("carries its note and its warn record with aside", async () => {
@@ -203,7 +203,7 @@ describe("a ticket set aside as its check failed", () => {
         after: (queue) =>
           Effect.gen(function* () {
             yield* until({ a: "Review" })
-            yield* queue.offer(yield* finished("c", { "c/c.go": "c\n" }))
+            yield* queue.offer(yield* finished("c" as TicketId, { "c/c.go": "c\n" }))
           }),
       },
     )
@@ -218,7 +218,7 @@ describe("a ticket set aside as its check failed", () => {
 
   test("touched since, reopened, stays set aside and the log says why", async () => {
     const reopen = Effect.gen(function* () {
-      yield* (yield* Beads).update("a", { status: "open" })
+      yield* (yield* Beads).update("a" as TicketId, { status: "open" })
     })
     const ran = await aThenB([elsewhere], { a: "Review", b: "Done" }, { between: reopen })
     expectLog(ran, ["  a is not checked again: it is open now; it stays set aside"])

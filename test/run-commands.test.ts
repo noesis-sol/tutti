@@ -2,6 +2,7 @@
 // each is resolved against the ledger and the open requests as it is taken, and one that no longer
 // names anything is dropped. OpenWorker and CloseWorker move the screen, Answer answers the open
 // request, Drain and Undrain wind the run down and back up, and Quit now quits.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,7 @@ import { UiCommand } from "../src/run/commands.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, canUseTool, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -34,7 +36,7 @@ const folder = (name: string) =>
   realpathSync(mkdtempSync(join(tmpdir(), `tutti-commands-${name}-`)))
 
 /** Claims its ticket, asks to run `rm -rf build`, commits and closes it, as a worker does. */
-const finishes = (world: World, root: string, id: string): SessionScript =>
+const finishes = (world: World, root: string, id: TicketId): SessionScript =>
   turn(
     [
       ...bash(
@@ -110,7 +112,7 @@ const send = (inputs: ScreenInputs, command: UiCommand) =>
 
 /** A whole run on main with a dashboard, each ticket's worktree made in git first. */
 const runs = (
-  tickets: ReadonlyArray<string>,
+  tickets: ReadonlyArray<TicketId>,
   concurrent: number,
   during: During,
 ): Promise<Ran<Outcome>> => {
@@ -164,35 +166,35 @@ const allow = (inputs: ScreenInputs, ticket: string) =>
 describe("the run takes the screen's commands (§ 3.5)", () => {
   test("OpenWorker and CloseWorker move the screen; a stale one is dropped", async () => {
     const screens: Array<Screen> = []
-    const ran = await runs(["a"], 1, (inputs) =>
+    const ran = await runs(["a" as TicketId], 1, (inputs) =>
       Effect.gen(function* () {
         yield* passes("1 minute")
         yield* requestOf("a")
         const now = Effect.flatMap(SubscriptionRef.get(inputs.screen), (screen) =>
           Effect.sync(() => screens.push(screen)),
         )
-        yield* send(inputs, UiCommand.OpenWorker({ ticket: "a" }))
+        yield* send(inputs, UiCommand.OpenWorker({ ticket: "a" as TicketId }))
         yield* now
         yield* send(inputs, UiCommand.CloseWorker())
         yield* now
         // No ticket b in the run: the command is dropped, and the screen stays as it is.
-        yield* send(inputs, UiCommand.OpenWorker({ ticket: "b" }))
+        yield* send(inputs, UiCommand.OpenWorker({ ticket: "b" as TicketId }))
         yield* now
-        yield* send(inputs, UiCommand.OpenWorker({ ticket: "a" }))
+        yield* send(inputs, UiCommand.OpenWorker({ ticket: "a" as TicketId }))
         yield* allow(inputs, "a")
         yield* passes("2 minutes")
       }),
     )
     expectExitCode(ran, 0)
     expect(screens).toEqual([
-      Screen.Worker({ ticket: "a" }),
+      Screen.Worker({ ticket: "a" as TicketId }),
       Screen.Dashboard(),
       Screen.Dashboard(),
     ])
   }, 30_000)
 
   test("Answer answers the open request; one no longer open is dropped", async () => {
-    const ran = await runs(["a"], 1, (inputs) =>
+    const ran = await runs(["a" as TicketId], 1, (inputs) =>
       Effect.gen(function* () {
         yield* passes("1 minute")
         const requestId = yield* requestOf("a")
@@ -212,7 +214,7 @@ describe("the run takes the screen's commands (§ 3.5)", () => {
   }, 30_000)
 
   test("Drain winds the run down, from the dashboard", async () => {
-    const ran = await runs(["a", "b"], 1, (inputs) =>
+    const ran = await runs(["a" as TicketId, "b" as TicketId], 1, (inputs) =>
       Effect.gen(function* () {
         yield* passes("1 minute")
         yield* requestOf("a")
@@ -232,7 +234,7 @@ describe("the run takes the screen's commands (§ 3.5)", () => {
   }, 30_000)
 
   test("Undrain takes tickets again", async () => {
-    const ran = await runs(["a", "b"], 1, (inputs) =>
+    const ran = await runs(["a" as TicketId, "b" as TicketId], 1, (inputs) =>
       Effect.gen(function* () {
         yield* passes("1 minute")
         yield* requestOf("a")
@@ -255,7 +257,7 @@ describe("the run takes the screen's commands (§ 3.5)", () => {
   }, 30_000)
 
   test("Quit now quits from the dashboard; without now it leaves it to the quit box", async () => {
-    const ran = await runs(["a"], 1, (inputs) =>
+    const ran = await runs(["a" as TicketId], 1, (inputs) =>
       Effect.gen(function* () {
         yield* passes("1 minute")
         yield* requestOf("a")

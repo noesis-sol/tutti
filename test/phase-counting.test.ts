@@ -1,6 +1,7 @@
 // What is so of each phase (phase.ts phaseFacts): the dashboard's totals, the run's end notice, the
 // reviewer's sections, the wind-down line, the ledger, the holds, the schedule, the sessions and the
 // tickets table read one table, so that they say the same of a ticket.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Result } from "effect"
 import { TestClock } from "effect/testing"
@@ -23,6 +24,7 @@ import {
 } from "../src/run/phase.ts"
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
 import { lifetime } from "../src/run/sessions.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { marks } from "../src/ui/marks.ts"
 
@@ -37,7 +39,7 @@ const samples: { readonly [T in PhaseTag]: TicketPhase } = {
   Fixing: TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
   Done: TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
   Asked: TicketPhase.Asked({ question: "q-1" }),
-  Waiting: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x-1"] }) }),
+  Waiting: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x-1" as TicketId] }) }),
   Deferred: TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
   Review: TicketPhase.Review({ why: "CHECKS_FAILED" }),
   Blocked: TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
@@ -414,7 +416,7 @@ describe("a run that ends with a MERGE_CONFLICT", () => {
     const state = await Effect.runPromise(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        const go = (ticket: string, ...causes: ReadonlyArray<Move>) =>
+        const go = (ticket: TicketId, ...causes: ReadonlyArray<Move>) =>
           Effect.gen(function* () {
             for (const [i, cause] of causes.entries()) {
               const options = i === 0 ? { title: `Title of ${ticket}` } : {}
@@ -428,8 +430,8 @@ describe("a run that ends with a MERGE_CONFLICT", () => {
           Move.Verified({ place: 1 }),
           Move.ItsTurn(),
         ]
-        yield* go("a", ...merging, Move.FastForwarded({ commit: "abc1234def" }))
-        yield* go("b", ...merging, Move.Block({ why: "MERGE_CONFLICT" }))
+        yield* go("a" as TicketId, ...merging, Move.FastForwarded({ commit: "abc1234def" }))
+        yield* go("b" as TicketId, ...merging, Move.Block({ why: "MERGE_CONFLICT" }))
         return yield* ledger.current
       }).pipe(Effect.provide(ledgerLayer().pipe(Layer.provideMerge(TestClock.layer())))),
     )

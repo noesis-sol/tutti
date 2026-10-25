@@ -2,6 +2,7 @@
 // a worker stays Working until each of tutti's sends is listed, whichever way it ran (§ 4.2). The
 // reducer, the scripted sessions (src/testing/AgentHost.ts) and the fake Claude Code
 // (test/fixtures/fake-claude/claude.ts) under the live host.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -29,6 +30,7 @@ import {
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   backgroundCommand,
   backgroundTasks,
@@ -180,7 +182,7 @@ const scripted = <A, E>(
 const scriptedSession = { sessionId: "s-1", cwd: "/work/t-1" }
 
 /** Watches the ticket's state, from now until it is Idle: a fiber with the states seen. */
-const untilIdle = (ticket: string) =>
+const untilIdle = (ticket: TicketId) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const listening = yield* Deferred.make<void>()
@@ -194,7 +196,7 @@ const untilIdle = (ticket: string) =>
     return fiber
   })
 
-const until = (ticket: string, tag: WorkerState["_tag"]) =>
+const until = (ticket: TicketId, tag: WorkerState["_tag"]) =>
   Effect.flatMap(AgentHost, (host) =>
     host.state(ticket).pipe(
       Stream.takeUntil((s) => s._tag === tag),
@@ -233,12 +235,15 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", scriptedSession)
-        const first = yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* until("t-1", "NeedsYou")
-        const second = yield* host.send("t-1", { text: "Also this.", from: "clientComposed" })
-        const third = yield* host.send("t-1", { text: "And this.", from: "human" })
-        const states = yield* untilIdle("t-1")
+        yield* host.start("t-1" as TicketId, scriptedSession)
+        const first = yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* until("t-1" as TicketId, "NeedsYou")
+        const second = yield* host.send("t-1" as TicketId, {
+          text: "Also this.",
+          from: "clientComposed",
+        })
+        const third = yield* host.send("t-1" as TicketId, { text: "And this.", from: "human" })
+        const states = yield* untilIdle("t-1" as TicketId)
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         return {
           sends: [first, second, third],
@@ -272,13 +277,13 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", scriptedSession)
-        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* until("t-1", "NeedsYou")
-        yield* host.send("t-1", { text: "Also this.", from: "clientComposed" })
+        yield* host.start("t-1" as TicketId, scriptedSession)
+        yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* until("t-1" as TicketId, "NeedsYou")
+        yield* host.send("t-1" as TicketId, { text: "Also this.", from: "clientComposed" })
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         yield* Deferred.await(played)
-        return yield* host.current("t-1")
+        return yield* host.current("t-1" as TicketId)
       }),
     )
     expect(state._tag).toBe("Working")
@@ -301,14 +306,14 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", scriptedSession)
-        const go = yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        yield* until("t-1", "NeedsYou")
-        const a = yield* host.send("t-1", { text: "a", from: "clientComposed" })
-        const b = yield* host.send("t-1", { text: "b", from: "clientComposed" })
-        const c = yield* host.send("t-1", { text: "/context", from: "human" })
-        const d = yield* host.send("t-1", { text: "d", from: "clientComposed" })
-        const states = yield* untilIdle("t-1")
+        yield* host.start("t-1" as TicketId, scriptedSession)
+        const go = yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        yield* until("t-1" as TicketId, "NeedsYou")
+        const a = yield* host.send("t-1" as TicketId, { text: "a", from: "clientComposed" })
+        const b = yield* host.send("t-1" as TicketId, { text: "b", from: "clientComposed" })
+        const c = yield* host.send("t-1" as TicketId, { text: "/context", from: "human" })
+        const d = yield* host.send("t-1" as TicketId, { text: "d", from: "clientComposed" })
+        const states = yield* untilIdle("t-1" as TicketId)
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         return { go, a, b, c, d, states: yield* Fiber.join(states), ...(yield* transcript) }
       }),
@@ -336,14 +341,17 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", scriptedSession)
-        const go = yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
+        yield* host.start("t-1" as TicketId, scriptedSession)
+        const go = yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
         // The first adjust lets the script reach its sleep, which the second passes.
         yield* TestClock.adjust("1 second")
         yield* TestClock.adjust("2 minutes")
-        yield* until("t-1", "NeedsYou")
-        const later = yield* host.send("t-1", { text: "Continue.", from: "clientComposed" })
-        const states = yield* untilIdle("t-1")
+        yield* until("t-1" as TicketId, "NeedsYou")
+        const later = yield* host.send("t-1" as TicketId, {
+          text: "Continue.",
+          from: "clientComposed",
+        })
+        const states = yield* untilIdle("t-1" as TicketId)
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         return { go, later, states: yield* Fiber.join(states), ...(yield* transcript) }
       }),
@@ -358,9 +366,9 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
       { "t-1": [backgroundCommand("make", "1 minute")] },
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", scriptedSession)
-        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
-        const states = yield* untilIdle("t-1")
+        yield* host.start("t-1" as TicketId, scriptedSession)
+        yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
+        const states = yield* untilIdle("t-1" as TicketId)
         // The first adjust lets the script reach its sleep, which the second passes.
         yield* TestClock.adjust("1 second")
         yield* TestClock.adjust("2 minutes")
@@ -433,7 +441,7 @@ const liveSession = (dir: string) => ({
 })
 
 /** Waits, at most 10 s, for the ticket's worker to reach a state with `tag`. */
-const reaches = (ticket: string, tag: WorkerState["_tag"]) =>
+const reaches = (ticket: TicketId, tag: WorkerState["_tag"]) =>
   Effect.flatMap(AgentHost, (host) =>
     host.state(ticket).pipe(
       Stream.filter((s) => s._tag === tag),
@@ -473,14 +481,17 @@ describe("the fake Claude Code: folded, coalesced and self-started turns", () =>
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", liveSession(dir))
-        const first = yield* host.send("t-1", { text: "first", from: "clientComposed" })
-        yield* reaches("t-1", "NeedsYou")
-        const second = yield* host.send("t-1", { text: "second", from: "clientComposed" })
-        const third = yield* host.send("t-1", { text: "third", from: "human" })
+        yield* host.start("t-1" as TicketId, liveSession(dir))
+        const first = yield* host.send("t-1" as TicketId, { text: "first", from: "clientComposed" })
+        yield* reaches("t-1" as TicketId, "NeedsYou")
+        const second = yield* host.send("t-1" as TicketId, {
+          text: "second",
+          from: "clientComposed",
+        })
+        const third = yield* host.send("t-1" as TicketId, { text: "third", from: "human" })
         yield* fakeRead(log, 3)
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
-        yield* reaches("t-1", "Idle")
+        yield* reaches("t-1" as TicketId, "Idle")
         return { sends: [first, second, third], ...(yield* liveTranscript) }
       }),
     )
@@ -494,15 +505,15 @@ describe("the fake Claude Code: folded, coalesced and self-started turns", () =>
       Effect.gen(function* () {
         const host = yield* AgentHost
         const attention = yield* Attention
-        yield* host.start("t-1", liveSession(dir))
-        const go = yield* host.send("t-1", { text: "go", from: "clientComposed" })
-        yield* reaches("t-1", "NeedsYou")
-        const a = yield* host.send("t-1", { text: "a", from: "clientComposed" })
-        const b = yield* host.send("t-1", { text: "b", from: "human" })
-        const c = yield* host.send("t-1", { text: "c", from: "human" })
+        yield* host.start("t-1" as TicketId, liveSession(dir))
+        const go = yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+        yield* reaches("t-1" as TicketId, "NeedsYou")
+        const a = yield* host.send("t-1" as TicketId, { text: "a", from: "clientComposed" })
+        const b = yield* host.send("t-1" as TicketId, { text: "b", from: "human" })
+        const c = yield* host.send("t-1" as TicketId, { text: "c", from: "human" })
         yield* fakeRead(log, 4)
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
-        yield* reaches("t-1", "Idle")
+        yield* reaches("t-1" as TicketId, "Idle")
         return { go, a, b, c, ...(yield* liveTranscript) }
       }),
     )
@@ -518,10 +529,10 @@ describe("the fake Claude Code: folded, coalesced and self-started turns", () =>
     const done = await live([[{ background: "b1" }, { text: "Started it." }]], ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", liveSession(dir))
-        const go = yield* host.send("t-1", { text: "go", from: "clientComposed" })
+        yield* host.start("t-1" as TicketId, liveSession(dir))
+        const go = yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
         // The task is live, then its report is to come: Idle only after the report's turn.
-        yield* reaches("t-1", "Idle")
+        yield* reaches("t-1" as TicketId, "Idle")
         return { go, ...(yield* liveTranscript) }
       }),
     )

@@ -2,11 +2,13 @@
 // <root>/<id>, with no git in it: reused when it is there already, or made anew where the options
 // say its branch was left without it, with what they say an earlier attempt left, as live's found
 // counts it. A detached worktree is a new folder under <root>, its name starting with
-// its prefix. IDs are checked, and run files opened through the symlink guard, as live.
+// its prefix. IDs are checked by prepare, and run files opened through the symlink guard, as live;
+// remove, which takes an ID unchecked as live does, deletes no folder for one prepare refuses.
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import {
   checkRunFolder,
   checkTicketId,
@@ -15,16 +17,17 @@ import {
   nothingEarlier,
   openRunFile,
   type TicketWorktree,
+  ticketIdProblem,
   Worktrees,
   writeRunFile,
 } from "../services/Worktrees.ts"
 
 /** A call the layer was asked for. */
 export type WorktreeCall =
-  | { readonly op: "prepare"; readonly id: string }
+  | { readonly op: "prepare"; readonly id: TicketId }
   | {
       readonly op: "remove"
-      readonly id: string
+      readonly id: TicketId
       readonly force: boolean
       /** Only when asked: the worktree removed with its untracked files. */
       readonly untracked?: true
@@ -58,18 +61,17 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
           }),
         ),
       remove: (id, removal = {}) =>
-        Effect.flatMap(checkTicketId(id), () =>
-          Effect.sync(() => {
-            calls.push({
-              op: "remove",
-              id,
-              force: removal.force === true,
-              ...(removal.untracked === true ? { untracked: true as const } : {}),
-            })
+        Effect.sync(() => {
+          calls.push({
+            op: "remove",
+            id,
+            force: removal.force === true,
+            ...(removal.untracked === true ? { untracked: true as const } : {}),
+          })
+          if (ticketIdProblem(id) === undefined)
             rmSync(join(root, id), { recursive: true, force: true })
-            branchesLeft.delete(id)
-          }),
-        ),
+          branchesLeft.delete(id)
+        }),
       addDetached: (prefix, commit) =>
         Effect.sync(() => {
           const path = mkdtempSync(join(root, prefix))

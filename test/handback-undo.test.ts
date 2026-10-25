@@ -2,11 +2,13 @@
 // the ticket closed it (restoreBranch), and what came of it said in the words its lines and notes
 // carry: left mid-rebase, the rebase aborted, left as its worker left it, left at its commit with
 // the reason, or reset, or not. Run against the in-memory Git, under TestClock for git's retries.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Fiber, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { gitAgainAfter } from "../src/run/branch.ts"
 import { type HandedRebase, undoResolution } from "../src/run/handback.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 
@@ -44,7 +46,7 @@ const undo = (
       const attempt = yield* repository.commit(worktree, "Resolve a (a)", { "a.txt": "tried\n" })
       yield* arrange(to)
       const stop: HandedRebase = {
-        ticket: { id: "a", title: "a", branch, worktree },
+        ticket: { id: "a" as TicketId, title: "a", branch, worktree },
         onto: "" as Sha,
         fork: "" as Sha,
         head: to,

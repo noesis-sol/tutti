@@ -15,7 +15,7 @@ import { aheadJson, aheadKey, type RebasedAhead, rebasedAheadOf } from "../src/r
 import { Move } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { makeSetUps, offBaseKey } from "../src/run/setup.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { type RunStamp, type State, Store, type TicketRecord } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -120,7 +120,7 @@ const afterKill = async (
       const onto = yield* repository.head("tutti/a")
       yield* git.rebase(join(root, "b"), onto)
       const left = { orig, onto, head: yield* repository.head("tutti/b") }
-      yield* store.setMetadata("b", aheadKey, aheadJson(mark(left)))
+      yield* store.setMetadata("b" as TicketId, aheadKey, aheadJson(mark(left)))
       yield* before(join(root, "b"))
       const fiber = yield* Effect.forkChild(
         Effect.scoped(run({ version: "0.1.0-test", base: "main" })),
@@ -205,7 +205,7 @@ describe("a branch a killed run left rebased ahead of its turn", () => {
       (worktree) =>
         Effect.gen(function* () {
           const git = yield* Git
-          const record = yield* (yield* Store).metadata("b")
+          const record = yield* (yield* Store).metadata("b" as TicketId)
           const mark = rebasedAheadOf(record[aheadKey])
           if (mark !== undefined) yield* git.resetBranch(worktree, mark.orig)
         }),
@@ -217,7 +217,7 @@ describe("a branch a killed run left rebased ahead of its turn", () => {
 })
 
 /** A ticket its worker finished: a commit naming it on tutti/<id>, closed, Working. */
-const finished = (id: string) =>
+const finished = (id: TicketId) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -249,7 +249,7 @@ describe("a train's mark in state.json", () => {
       Effect.gen(function* () {
         if (whose(each) === "a") yield* Deferred.await(read)
         else {
-          if (store !== undefined) during = (yield* store.metadata("b"))[aheadKey]
+          if (store !== undefined) during = (yield* store.metadata("b" as TicketId))[aheadKey]
           yield* Deferred.succeed(read, undefined)
         }
         return { ...passed("fast"), command: check }
@@ -265,14 +265,14 @@ describe("a train's mark in state.json", () => {
         store = yield* Store
         const queue = yield* makeQueue({ repo: "/repo", base: "main" })
         const repository = yield* Repository
-        const a = yield* finished("a")
-        const b = yield* finished("b")
+        const a = yield* finished("a" as TicketId)
+        const b = yield* finished("b" as TicketId)
         orig = yield* repository.head(b.branch)
         yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
         yield* queue.offer(a)
         yield* queue.offer(b)
         yield* queue.settled
-        return (yield* (yield* Store).metadata("b"))[aheadKey]
+        return (yield* (yield* Store).metadata("b" as TicketId))[aheadKey]
       }).pipe(Effect.scoped, Effect.provide(Ledger.layer)),
     )
     if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
@@ -290,16 +290,16 @@ describe("the setups' mark of dependencies set up off the base", () => {
     const program = Effect.gen(function* () {
       const store = yield* Store
       const first = yield* makeSetUps
-      yield* first.offBase("b", "its dependencies were set up on top of tutti/a")
-      const saved = (yield* store.metadata("b"))[offBaseKey]
+      yield* first.offBase("b" as TicketId, "its dependencies were set up on top of tutti/a")
+      const saved = (yield* store.metadata("b" as TicketId))[offBaseKey]
       const next = yield* makeSetUps
-      const carried = yield* next.off("b")
-      yield* next.set("b", "abc1234" as Sha, "def5678" as Sha)
+      const carried = yield* next.off("b" as TicketId)
+      yield* next.set("b" as TicketId, "abc1234" as Sha, "def5678" as Sha)
       return {
         saved,
         carried,
-        after: yield* next.off("b"),
-        left: (yield* store.metadata("b"))[offBaseKey],
+        after: yield* next.off("b" as TicketId),
+        left: (yield* store.metadata("b" as TicketId))[offBaseKey],
       }
     })
     const ran = await scenario(

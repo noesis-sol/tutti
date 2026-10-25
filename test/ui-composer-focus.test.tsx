@@ -3,6 +3,7 @@
 // the view, where they would answer the request in the panel; and a focus a click does move
 // elsewhere leaves the composer, its hint with it, so the hint says where the keys go. The answer
 // form's body takes no focus either, so a click on it leaves the keys in the line you type in.
+
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
@@ -18,6 +19,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { InterviewContext } from "../src/ui/InterviewView.tsx"
@@ -88,7 +90,7 @@ const feedOf = (ticket: string): TranscriptFeed => ({
 
 const permission: AttentionRequest = {
   id: "r1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Permission",
     tool: "Bash",
@@ -126,7 +128,7 @@ const question = {
 /** Two questions of worker 1's, which Enter opens in the answer form. */
 const asked: AttentionRequest = {
   id: "q1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Question",
     questions: [
@@ -155,9 +157,9 @@ const workerView = (request: AttentionRequest): RunView =>
     ledger: {
       tickets: new Map([
         [
-          "t-1",
+          "t-1" as TicketId,
           {
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             title: "Title of t-1",
             phase: TicketPhase.Working(),
             since: began,
@@ -243,7 +245,7 @@ const worker = (
   const commands = Effect.runSync(makeCommands)
   const shell: ShellValue = {
     view: external(workerView(request)),
-    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
     commands,
     appearance: external<Appearance>("dark"),
     themeOf,

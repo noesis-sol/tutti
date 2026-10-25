@@ -2,6 +2,7 @@
 // through the symlink guard (§ 9.1). A merged ticket can leave a symbolic link where one was, or at
 // a folder of theirs: git replaces an ignored file with a committed link. Each is refused rather
 // than written through, and the file the link points at is left as it was.
+
 import { describe, expect, test } from "bun:test"
 import {
   existsSync,
@@ -29,6 +30,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { reportName } from "../src/run/localTime.ts"
 import { Log, line, logFile } from "../src/run/log.ts"
 import { type ReportRun, reportsDir, runReport } from "../src/run/report.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Store, StoreWriteFailed, stateFile } from "../src/services/Store.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
@@ -144,7 +146,7 @@ describe("state.json", () => {
   const saved = (repo: string, meanwhile: () => void = () => {}) =>
     Effect.runPromiseExit(
       Effect.flatMap(Store, (store) =>
-        Effect.andThen(Effect.sync(meanwhile), store.saveSession("demo-1", session)),
+        Effect.andThen(Effect.sync(meanwhile), store.saveSession("demo-1" as TicketId, session)),
       ).pipe(Effect.provide(Store.layer({ repo, run }).pipe(Layer.provide(BunFileSystem.layer)))),
     )
 

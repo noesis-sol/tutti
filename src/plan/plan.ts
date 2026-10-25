@@ -22,7 +22,7 @@ import {
 import { type Mentions, mentionsIn, readSources, sharedFile, sharedFunc } from "../run/overlap.ts"
 import { type RepoFiles, repoFiles } from "../run/repoFiles.ts"
 import { takes } from "../run/scope.ts"
-import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { branchOf } from "../services/Worktrees.ts"
@@ -30,8 +30,8 @@ import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 
 /** A blocks link: `blocked` waits for `blocker` (bd dep add <blocked> <blocker>). */
 export interface Link {
-  readonly blocker: string
-  readonly blocked: string
+  readonly blocker: TicketId
+  readonly blocked: TicketId
   /** What both touch, for a proposed link. */
   readonly why: string
 }
@@ -108,10 +108,14 @@ export const existingLinks = (issues: ReadonlyArray<Issue>): ReadonlyArray<Link>
   )
 
 /** Whether `to` already waits for `from`, through the links in after (blocker → blocked). */
-const reaches = (after: ReadonlyMap<string, ReadonlyArray<string>>, from: string, to: string) => {
+const reaches = (
+  after: ReadonlyMap<TicketId, ReadonlyArray<TicketId>>,
+  from: TicketId,
+  to: TicketId,
+) => {
   const seen = new Set([from])
   for (const next = [from]; next.length > 0; ) {
-    for (const n of after.get(next.pop() as string) ?? []) {
+    for (const n of after.get(next.pop() as TicketId) ?? []) {
       if (n === to) return true
       if (!seen.has(n)) {
         seen.add(n)
@@ -165,14 +169,14 @@ export const planLinks = (
   const mentions = mentionsIn(contents)
   const small = (file: string) =>
     !repo.shared(file) && (contents.get(file)?.split("\n").length ?? 1) - 1 <= smallFileLines
-  const after = new Map<string, Array<string>>()
-  const link = (blocker: string, blocked: string) =>
+  const after = new Map<TicketId, Array<TicketId>>()
+  const link = (blocker: TicketId, blocked: TicketId) =>
     after.set(blocker, [...(after.get(blocker) ?? []), blocked])
   for (const l of existing) link(l.blocker, l.blocked)
   const links: Array<Link> = []
   tickets.forEach((later, j) => {
     for (let i = j - 1; i >= 0; i--) {
-      const a = tickets[i]?.id as string
+      const a = tickets[i]?.id as TicketId
       const b = later.id
       const why = planShared(fps[i] ?? emptyFootprint, fps[j] ?? emptyFootprint, mentions, small)
       if (why === "" || reaches(after, a, b) || reaches(after, b, a)) continue

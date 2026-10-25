@@ -9,6 +9,7 @@ import {
   fits,
   runRules,
 } from "../src/agent/Attention.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
@@ -27,7 +28,7 @@ const requestFor = (
   Effect.runPromise(
     Effect.gen(function* () {
       const attention = yield* Attention
-      const canUseTool = yield* attention.request("tut-1", openFibers())
+      const canUseTool = yield* attention.request("tut-1" as TicketId, openFibers())
       const controller = new AbortController()
       const sdk = {
         signal: controller.signal,

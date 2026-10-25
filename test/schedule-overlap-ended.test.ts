@@ -8,7 +8,7 @@ import type { Log } from "../src/run/log.ts"
 import type { TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { make } from "../src/run/schedule.ts"
-import type { Beads, Issue } from "../src/services/Beads.ts"
+import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -28,7 +28,7 @@ const flush = Effect.gen(function* () {
   for (let i = 0; i < 50; i++) yield* Effect.yieldNow
 })
 
-const phaseOf = (id: string) =>
+const phaseOf = (id: TicketId) =>
   Effect.map(
     Effect.flatMap(Ledger, (ledger) => ledger.current),
     (state): TicketPhase | undefined => state.tickets.get(id)?.phase,
@@ -69,7 +69,7 @@ test("a ticket that ends while the fill reads its footprint no longer holds the 
         },
       })
       yield* schedule.fillTrying
-      return [yield* Ref.get(started), (yield* phaseOf("t-2"))?._tag] as const
+      return [yield* Ref.get(started), (yield* phaseOf("t-2" as TicketId))?._tag] as const
     }),
   )
   expect(started).toEqual(["t-1", "t-2"])

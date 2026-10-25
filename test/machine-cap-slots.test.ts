@@ -1,6 +1,7 @@
 // The machine's cap counts the run's slots (§ 8.2; run.ts's ownWorkers, schedule.ts's slots, as
 // orchestra 0.9.4): tickets waiting to merge or merging take no slot up to `concurrent` of them, so
 // they hold the run at no cap, keep the merge train checking ahead, and count in no registration.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readdirSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { line } from "../src/run/log.ts"
 import { type ProcessCheck, Processes } from "../src/run/machine.ts"
 import { run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -35,7 +37,7 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
   Effect.asVoid(Effect.orDie(effect))
 
 /** Claims its ticket and, after `takes`, commits and closes it, as a worker does. */
-const works = (world: World, root: string, id: string, takes: Duration.Input): SessionScript =>
+const works = (world: World, root: string, id: TicketId, takes: Duration.Input): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -74,7 +76,7 @@ const caughtUp = Effect.gen(function* () {
  * the run's start, and a settle, can write nothing for longer than `caughtUp`'s 30 ms on a loaded
  * machine, and a dispatch is due at the moment the clock stands at.
  */
-const started = (ids: ReadonlyArray<string>) =>
+const started = (ids: ReadonlyArray<TicketId>) =>
   Effect.gen(function* () {
     const backlog = yield* Backlog
     for (let i = 0; i < 2000; i++) {
@@ -124,7 +126,14 @@ describe("the machine's cap", () => {
     const root = folder("worktrees")
     const runs = folder("runs")
     const defaults = appConfig().settings
-    const ids = ["m1", "m2", "w1", "w2", "w3", "w4"]
+    const ids = [
+      "m1" as TicketId,
+      "m2" as TicketId,
+      "w1" as TicketId,
+      "w2" as TicketId,
+      "w3" as TicketId,
+      "w4" as TicketId,
+    ]
     const takes: Readonly<Record<string, Duration.Input>> = {
       m1: "1 minute",
       m2: "2 minutes",
@@ -168,11 +177,11 @@ describe("the machine's cap", () => {
             Effect.provideService(Processes, everyoneAlive),
           ),
         )
-        yield* started(["m1", "m2", "w1", "w2"])
+        yield* started(["m1" as TicketId, "m2" as TicketId, "w1" as TicketId, "w2" as TicketId])
         yield* passes("1 minute")
-        yield* started(["w3"])
+        yield* started(["w3" as TicketId])
         yield* passes("1 minute")
-        yield* started(["w4"])
+        yield* started(["w4" as TicketId])
         yield* passes("1 minute")
         yield* caughtUp
         atThree = registeredRunning(runs)

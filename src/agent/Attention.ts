@@ -44,6 +44,7 @@ import type { AttentionQuestion, Event } from "../run/events.ts"
 import { EventStream } from "../run/eventstream.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { AnswerWord } from "./attentionFiles.ts"
 import type { SessionFibers } from "./callbacks.ts"
@@ -101,7 +102,7 @@ export type RequestKind = Permission | Questions | Elicitation
 export interface AttentionRequest {
   /** tutti's ID for it, as `tutti answer` takes it. */
   readonly id: string
-  readonly ticket: string
+  readonly ticket: TicketId
   /** The SDK's ID of the tool call; an elicitation has none. */
   readonly toolUseID?: string
   /** The subagent that asked, if one did. */
@@ -433,9 +434,9 @@ export class Attention extends Context.Service<
   Attention,
   {
     /** The canUseTool callback for the ticket's session, its calls fibers of `fibers`. */
-    request(ticket: string, fibers: SessionFibers): Effect.Effect<CanUseTool>
+    request(ticket: TicketId, fibers: SessionFibers): Effect.Effect<CanUseTool>
     /** The onElicitation callback for the ticket's session, its calls fibers of `fibers`. */
-    elicitation(ticket: string, fibers: SessionFibers): Effect.Effect<OnElicitation>
+    elicitation(ticket: TicketId, fibers: SessionFibers): Effect.Effect<OnElicitation>
     /** Answers the open request `request`; fails NotOpen when it is no longer open. */
     answer(request: string, answer: Answer, via: Via): Effect.Effect<void, NotOpen | DoesNotFit>
     /** The open requests, every worker's, oldest first. */
@@ -443,25 +444,25 @@ export class Attention extends Context.Service<
     /** The open requests, every worker's, oldest first: now, then on each change. */
     readonly open: Stream.Stream<ReadonlyArray<AttentionRequest>>
     /** The ticket's worker's open requests, oldest first: now, then on each change. */
-    openFor(ticket: string): Stream.Stream<ReadonlyArray<AttentionRequest>>
+    openFor(ticket: TicketId): Stream.Stream<ReadonlyArray<AttentionRequest>>
     /**
      * Records a call Claude Code denied the ticket's worker without asking: its `permission_denied`,
      * and the call's input when the worker's messages gave it.
      */
     denial(
-      ticket: string,
+      ticket: TicketId,
       message: SDKPermissionDeniedMessage,
       input?: Readonly<Record<string, unknown>>,
     ): Effect.Effect<void>
     /** The ticket's requests and answers so far. */
-    tally(ticket: string): Effect.Effect<Tally>
+    tally(ticket: TicketId): Effect.Effect<Tally>
     /**
      * Refuses every answer from now on to the requests of the ticket's sessions so far, open or yet
      * to open, with NotOpen: the run's end has stopped its fiber, and an answer would run its worker
      * on unwatched. Their requests stay open until the session closes, for the end to read. A
      * session made afterwards, the next run's, is answered as before.
      */
-    refuse(ticket: string): Effect.Effect<void>
+    refuse(ticket: TicketId): Effect.Effect<void>
   }
 >()("tutti/agent/Attention") {
   /** The live service: requests wait for a person. */
@@ -513,15 +514,15 @@ export const make = (
     // The callbacks made so far, and for each ticket the run's end stopped, how many there were
     // then: the requests of those callbacks are refused.
     const made = yield* Ref.make(0)
-    const refusedBelow = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
+    const refusedBelow = yield* Ref.make<ReadonlyMap<TicketId, number>>(new Map())
     // Opening a request and announcing it, answering one and withdrawing one each hold the permit,
     // so a request's answer is never recorded before the request itself.
     const one = yield* Semaphore.make(1)
 
-    const change = (ticket: string, f: (tally: Tally) => Tally) =>
+    const change = (ticket: TicketId, f: (tally: Tally) => Tally) =>
       Ref.update(tallies, (all) => new Map(all).set(ticket, f(all.get(ticket) ?? emptyTally)))
 
-    const count = (ticket: string, field: Counted) =>
+    const count = (ticket: TicketId, field: Counted) =>
       change(ticket, (tally) => ({ ...tally, [field]: tally[field] + 1 }))
 
     const requests = (all: ReadonlyArray<Open>) => all.map((o) => o.request)
@@ -777,7 +778,7 @@ export const make = (
     })
 
     const canUseTool = (
-      ticket: string,
+      ticket: TicketId,
       callback: number,
       toolName: string,
       input: Record<string, unknown>,
@@ -816,7 +817,7 @@ export const make = (
       })
 
     const denial = (
-      ticket: string,
+      ticket: TicketId,
       message: SDKPermissionDeniedMessage,
       input?: Readonly<Record<string, unknown>>,
     ) =>
@@ -839,7 +840,7 @@ export const make = (
       })
 
     const onElicitation = (
-      ticket: string,
+      ticket: TicketId,
       callback: number,
       sdk: ElicitationRequest,
       signal: AbortSignal,

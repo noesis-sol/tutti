@@ -7,7 +7,7 @@ import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket, MergeStop } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
-import { Beads, BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
@@ -22,7 +22,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 }
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed in Beads. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -62,8 +62,8 @@ const mergeWith = (beads: (live: Beads["Service"]) => Beads["Service"]) =>
   Effect.gen(function* () {
     const live = yield* Beads
     return yield* Effect.gen(function* () {
-      const a = yield* finished("a", { "a.txt": "a\n" })
-      const b = yield* finished("b", { "b.txt": "b\n" })
+      const a = yield* finished("a" as TicketId, { "a.txt": "a\n" })
+      const b = yield* finished("b" as TicketId, { "b.txt": "b\n" })
       const queue = yield* makeQueue(options)
       yield* queue.offer(a)
       yield* queue.offer(b)

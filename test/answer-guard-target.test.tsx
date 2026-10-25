@@ -2,6 +2,7 @@
 // request you read"; tutti-14o5): once the target is answered and the highlight, or the worker
 // view's panel, moves on to a request that has been on screen a while, a key meant for the one
 // before (a second press, a key held down) answers nothing until the new target has settled.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import type { Answer, AttentionRequest } from "../src/agent/Attention.ts"
@@ -11,6 +12,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -23,7 +25,7 @@ const themeOf = (appearance: Appearance) =>
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
-const entryOf = (ticket: string, worker: number): Entry => ({
+const entryOf = (ticket: TicketId, worker: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: TicketPhase.Working(),
@@ -41,8 +43,8 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest>): RunView =>
   project({
     ledger: {
       tickets: new Map([
-        ["t-1", entryOf("t-1", 1)],
-        ["t-2", entryOf("t-2", 2)],
+        ["t-1" as TicketId, entryOf("t-1" as TicketId, 1)],
+        ["t-2" as TicketId, entryOf("t-2" as TicketId, 2)],
       ]),
       rows: 2,
       windDown: null,
@@ -58,7 +60,7 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest>): RunView =>
   })
 
 /** A Bash call running `command` on `ticket`'s worker, waiting for you. */
-const permission = (id: string, ticket: string, command: string): AttentionRequest => ({
+const permission = (id: string, ticket: TicketId, command: string): AttentionRequest => ({
   id,
   ticket,
   kind: { _tag: "Permission", tool: "Bash", input: { command }, suggestions: [], summary: command },
@@ -68,8 +70,8 @@ const permission = (id: string, ticket: string, command: string): AttentionReque
   createdAt: began,
 })
 
-const r1 = permission("r1", "t-1", "ls build")
-const r2 = permission("r2", "t-2", "rm -rf ~/proj")
+const r1 = permission("r1", "t-1" as TicketId, "ls build")
+const r2 = permission("r2", "t-2" as TicketId, "rm -rf ~/proj")
 
 const taken = (commands: Commands) => Effect.runSync(Queue.clear(commands))
 
@@ -160,9 +162,9 @@ describe("the dashboard", () => {
 
 describe("the worker view's panel", () => {
   test("a key within 500 ms of the panel moving on to its next request answers nothing", async () => {
-    const second = { ...r2, ticket: "t-1" }
+    const second = { ...r2, ticket: "t-1" as TicketId }
     await scene(
-      Screen.Worker({ ticket: "t-1" }),
+      Screen.Worker({ ticket: "t-1" as TicketId }),
       [r1, second],
       async ({ view, commands, pass, rendered }) => {
         expect((await rendered.capture()).chars).toContain("rm -rf ~/proj")
@@ -194,8 +196,8 @@ describe("a move and a key that arrive together", () => {
   })
 
   test("in the worker view's panel, ↓ and a in one read answer nothing", async () => {
-    const second = { ...r2, ticket: "t-1" }
-    await scene(Screen.Worker({ ticket: "t-1" }), [r1, second], async (at) => {
+    const second = { ...r2, ticket: "t-1" as TicketId }
+    await scene(Screen.Worker({ ticket: "t-1" as TicketId }), [r1, second], async (at) => {
       const { commands, pass, rendered } = at
       pass(10 * settle)
       await press(rendered, "down", "a")

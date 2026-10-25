@@ -10,7 +10,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git, GitFailed, type GitOp, GitTimedOut } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -32,7 +32,7 @@ const setup = {
 }
 
 /** A ticket its worker finished on top of main, `<id>.txt` committed, closed, Working. */
-const finished = (id: string) =>
+const finished = (id: TicketId) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -74,8 +74,8 @@ const merges = (faults: (a: FinishedTicket) => Effect.Effect<void, unknown, Env>
   scenario(
     setup,
     Effect.gen(function* () {
-      const a = yield* finished("a")
-      const b = yield* finished("b")
+      const a = yield* finished("a" as TicketId)
+      const b = yield* finished("b" as TicketId)
       yield* faults(a)
       const queue = yield* makeQueue(options)
       const fiber = yield* Effect.forkChild(
@@ -88,7 +88,10 @@ const merges = (faults: (a: FinishedTicket) => Effect.Effect<void, unknown, Env>
       yield* joinMovingClock(fiber)
       const state = yield* (yield* Ledger).current
       return {
-        phases: { a: state.tickets.get("a")?.phase, b: state.tickets.get("b")?.phase },
+        phases: {
+          a: state.tickets.get("a" as TicketId)?.phase,
+          b: state.tickets.get("b" as TicketId)?.phase,
+        },
         stop: (yield* queue.state).stop?.why,
         main: yield* (yield* Repository).tree("main"),
       } satisfies Merged
@@ -158,7 +161,7 @@ describe("the files the branch changes, read as its fast-forward fails", () => {
       setup,
       Effect.gen(function* () {
         const repository = yield* Repository
-        const a = yield* finished("a")
+        const a = yield* finished("a" as TicketId)
         // A file git leaves out of the main checkout's clean tree, which the branch changes too.
         yield* repository.commit(a.worktree, "Note it (a)", { ".beads/notes.txt": "a\n" })
         yield* repository.write(repository.dir, { ".beads/notes.txt": "local\n" })
@@ -269,7 +272,7 @@ describe("the reads themselves", () => {
     scenario(
       setup,
       Effect.gen(function* () {
-        const a = yield* finished("a")
+        const a = yield* finished("a" as TicketId)
         const fiber = yield* Effect.forkChild(body(a))
         return yield* joinMovingClock(fiber)
       }).pipe(Effect.provide(Ledger.layer)),

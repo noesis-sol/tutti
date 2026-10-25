@@ -13,6 +13,7 @@ import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { InterviewContext } from "../src/ui/InterviewView.tsx"
 import {
@@ -181,7 +182,7 @@ describe("the bridge", () => {
       </InterviewContext.Provider>,
     )
     expect(setup.captureCharFrame()).toContain("Completed")
-    await act(async () => screen.set(Screen.Worker({ ticket: "t-2" })))
+    await act(async () => screen.set(Screen.Worker({ ticket: "t-2" as TicketId })))
     await setup.waitForFrame((frame) => frame.includes("← Dashboard"))
     await act(async () => screen.set(Screen.Interview()))
     await setup.waitForFrame((frame) => frame.includes("← Back"))

@@ -6,6 +6,7 @@ import { Duration, Effect, Fiber, Queue } from "effect"
 import type { DrainRequest } from "../src/run/drain.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -36,7 +37,7 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
   Effect.asVoid(Effect.orDie(effect))
 
 /** What a ticket's worker's commands do to the in-memory Beads and git. */
-const commands = (world: World, root: string, id: string) => ({
+const commands = (world: World, root: string, id: TicketId) => ({
   claim: orDie(world.beads.update(id, { claim: true })),
   commit: orDie(
     world.repository.commit(join(root, id), `Change (${id})`, { [`${id}.txt`]: "x\n" }),
@@ -45,7 +46,7 @@ const commands = (world: World, root: string, id: string) => ({
 })
 
 /** Claims `id`, files a question blocking it, and puts it back to open. */
-const asks = (world: World, id: string): SessionScript =>
+const asks = (world: World, id: TicketId): SessionScript =>
   filesQuestion(id, {
     claim: orDie(world.beads.update(id, { claim: true })),
     file: orDie(
@@ -57,7 +58,7 @@ const asks = (world: World, id: string): SessionScript =>
   })
 
 /** Closes every open question blocking `id`: the maintainer answering it. */
-const answers = (world: World, id: string): Effect.Effect<void> =>
+const answers = (world: World, id: TicketId): Effect.Effect<void> =>
   orDie(
     Effect.gen(function* () {
       const issue = yield* world.beads.show(id)
@@ -73,7 +74,7 @@ const answers = (world: World, id: string): Effect.Effect<void> =>
 const finishesAfter = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   meanwhile: ReadonlyArray<SessionScript[number]>,
 ): SessionScript => {
   const c = commands(world, root, id)
@@ -86,7 +87,7 @@ const finishesAfter = (
 }
 
 /** Claims its ticket and goes, is resumed once and goes again: PAUSED. */
-const pauses = (world: World, id: string): ReadonlyArray<SessionScript> => [
+const pauses = (world: World, id: TicketId): ReadonlyArray<SessionScript> => [
   [...turn([step(orDie(world.beads.update(id, { claim: true })))]).slice(0, -2), gone("exit 1")],
   [gone("exit 1")],
 ]
@@ -136,11 +137,11 @@ describe("the run takes the answers", () => {
   test("on the ready poll: an answered ticket is resumed once the one running frees its slot", async () => {
     const ran = await runs({
       scripts: (world, root) => ({
-        "t-1": [asks(world, "t-1"), finishesAfter(world, root, "t-1", [])],
+        "t-1": [asks(world, "t-1" as TicketId), finishesAfter(world, root, "t-1" as TicketId, [])],
         // t-2 answers t-1's question, then goes on past a ready poll before it finishes.
         "t-2": [
-          finishesAfter(world, root, "t-2", [
-            step(answers(world, "t-1")),
+          finishesAfter(world, root, "t-2" as TicketId, [
+            step(answers(world, "t-1" as TicketId)),
             sleep(Duration.times(readyPoll, 2)),
           ]),
         ],
@@ -169,8 +170,10 @@ describe("the run takes the answers", () => {
   test("a resumed worker that stops the run holds it: PAUSED, exit 3", async () => {
     const ran = await runs({
       scripts: (world, root) => ({
-        "t-1": [asks(world, "t-1"), ...pauses(world, "t-1")],
-        "t-2": [finishesAfter(world, root, "t-2", [step(answers(world, "t-1"))])],
+        "t-1": [asks(world, "t-1" as TicketId), ...pauses(world, "t-1" as TicketId)],
+        "t-2": [
+          finishesAfter(world, root, "t-2" as TicketId, [step(answers(world, "t-1" as TicketId))]),
+        ],
       }),
     })
     expectExitCode(ran, 3)
@@ -187,13 +190,13 @@ describe("the run takes the answers", () => {
     const ran = await runs({
       drains,
       scripts: (world, root) => ({
-        "t-1": [asks(world, "t-1"), finishesAfter(world, root, "t-1", [])],
+        "t-1": [asks(world, "t-1" as TicketId), finishesAfter(world, root, "t-1" as TicketId, [])],
         "t-2": [
-          finishesAfter(world, root, "t-2", [
+          finishesAfter(world, root, "t-2" as TicketId, [
             step(
               Effect.andThen(
                 Queue.offer(drains, { on: true, how: "by SIGUSR1" }),
-                answers(world, "t-1"),
+                answers(world, "t-1" as TicketId),
               ),
             ),
           ]),

@@ -10,7 +10,7 @@ import type { Log } from "../src/run/log.ts"
 import type { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import { make, type Scheduler } from "../src/run/schedule.ts"
-import type { Beads, Issue } from "../src/services/Beads.ts"
+import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -40,7 +40,7 @@ const scheduler = (concurrent: number) =>
   Effect.gen(function* () {
     const started = yield* Ref.make<ReadonlyArray<string>>([])
     const gates = new Map<string, Deferred.Deferred<void>>()
-    const gate = (id: string) =>
+    const gate = (id: TicketId) =>
       Effect.gen(function* () {
         const known = gates.get(id)
         if (known !== undefined) return known
@@ -61,7 +61,7 @@ const scheduler = (concurrent: number) =>
           }),
       },
     })
-    const finish = (id: string) =>
+    const finish = (id: TicketId) =>
       Effect.gen(function* () {
         yield* Deferred.succeed(yield* gate(id), undefined)
         yield* flush
@@ -75,7 +75,7 @@ const current = Effect.flatMap(Ledger, (ledger) => ledger.current)
 const shown = (p: TicketPhase | undefined): string =>
   p === undefined ? "none" : p._tag === "HeldBack" ? `HeldBack:${p.why}` : p._tag
 
-const phases = (...ids: ReadonlyArray<string>) =>
+const phases = (...ids: ReadonlyArray<TicketId>) =>
   Effect.map(current, (state) => ids.map((id) => shown(state.tickets.get(id)?.phase)))
 
 /** RunView's In queue total and its held back count, as the dashboard shows them. */
@@ -135,12 +135,12 @@ describe("a Queued ticket that bd ready no longer lists", () => {
         const { schedule, started, finish } = yield* scheduler(1)
         const steps: Array<unknown> = []
         yield* schedule.fillTrying
-        steps.push([yield* phases("a", "b"), yield* inQueue])
+        steps.push([yield* phases("a" as TicketId, "b" as TicketId), yield* inQueue])
         yield* change("b", (seed) => ({ ...seed, status: "closed" }))
         const filled = yield* schedule.fillTrying
-        steps.push([yield* phases("a", "b"), yield* inQueue, filled.queued])
+        steps.push([yield* phases("a" as TicketId, "b" as TicketId), yield* inQueue, filled.queued])
         // Its slot free, nothing is left to start.
-        yield* finish("a")
+        yield* finish("a" as TicketId)
         yield* schedule.fillTrying
         steps.push(yield* started)
         return [steps, yield* records] as const
@@ -172,13 +172,13 @@ describe("a Queued ticket that bd ready no longer lists", () => {
         yield* schedule.fillTrying
         yield* change("b", (seed) => ({ ...seed, status: "deferred" }))
         yield* schedule.fillTrying
-        steps.push(yield* phases("b"))
+        steps.push(yield* phases("b" as TicketId))
         yield* change("b", (seed) => ({ ...seed, status: "open" }))
         yield* schedule.fillTrying
-        steps.push(yield* phases("b"))
-        yield* finish("a")
+        steps.push(yield* phases("b" as TicketId))
+        yield* finish("a" as TicketId)
         yield* schedule.fillTrying
-        steps.push([yield* started, yield* phases("b")])
+        steps.push([yield* started, yield* phases("b" as TicketId)])
         return steps
       }),
     )
@@ -194,10 +194,10 @@ describe("a Queued ticket that bd ready no longer lists", () => {
         yield* schedule.fillTrying
         yield* change("b", (seed) => ({ ...seed, dependencies: [{ id: "c", type: "blocks" }] }))
         yield* schedule.fillTrying
-        steps.push([yield* phases("b"), yield* inQueue])
+        steps.push([yield* phases("b" as TicketId), yield* inQueue])
         yield* change("c", (seed) => ({ ...seed, status: "closed" }))
         yield* schedule.fillTrying
-        steps.push([yield* phases("b"), yield* inQueue])
+        steps.push([yield* phases("b" as TicketId), yield* inQueue])
         return [steps, yield* records] as const
       }),
     )
@@ -217,13 +217,13 @@ describe("a HeldBack ticket that bd ready no longer lists", () => {
         const { schedule } = yield* scheduler(1)
         const steps: Array<unknown> = []
         yield* schedule.fillTrying
-        steps.push([yield* phases("p"), yield* inQueue])
+        steps.push([yield* phases("p" as TicketId), yield* inQueue])
         yield* change("p", (seed) => ({ ...seed, status: "deferred" }))
         yield* schedule.fillTrying
-        steps.push([yield* phases("p"), yield* inQueue])
+        steps.push([yield* phases("p" as TicketId), yield* inQueue])
         yield* change("p", (seed) => ({ ...seed, status: "open" }))
         yield* schedule.fillTrying
-        steps.push([yield* phases("p"), yield* inQueue])
+        steps.push([yield* phases("p" as TicketId), yield* inQueue])
         return [steps, yield* records, yield* texts] as const
       }),
     )

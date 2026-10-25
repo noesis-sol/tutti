@@ -42,7 +42,7 @@ import {
   type Scope,
   Semaphore,
 } from "effect"
-import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, type Sha } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import { type Again, retrying } from "./again.ts"
@@ -112,13 +112,13 @@ export interface Footprints {
    * The files the running ticket's worktree has changed since it left the base, but those git
    * merges by union; none if unknown.
    */
-  changed(ticket: string): Effect.Effect<ReadonlyArray<string>>
+  changed(ticket: TicketId): Effect.Effect<ReadonlyArray<string>>
   /**
    * The files the ticket's branch changes on top of the base, but those git merges by union: none
    * without a branch, without commits on it, or if unknown. A ticket with some (reopened, carried
    * over) is footprinted from them (`branchFootprint`); without `branch`, none is.
    */
-  branch?(ticket: string): Effect.Effect<ReadonlyArray<string>>
+  branch?(ticket: TicketId): Effect.Effect<ReadonlyArray<string>>
   /**
    * Places the functions of the footprints paired in the files comparing them asks about
    * (`askedFiles`), keeping what it reads in `sources`, the fill's, so that each is read once a fill.
@@ -141,7 +141,7 @@ export const footprintsOf = (options: {
   readonly base: string
   readonly checkCommands: ReadonlyArray<string>
   readonly sharedFiles?: ReadonlyArray<string>
-  readonly worktree: (ticket: string) => Effect.Effect<string>
+  readonly worktree: (ticket: TicketId) => Effect.Effect<string>
 }): Effect.Effect<Footprints, never, Git | FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<Git | FileSystem.FileSystem>()
@@ -207,7 +207,7 @@ export interface Options {
   /** The most tickets this run starts (--limit), or null for no limit. */
   readonly limit: number | null
   /** The ticket the run is scoped to (--ticket), or null for the whole of bd ready. */
-  readonly scope: string | null
+  readonly scope: TicketId | null
   /** The queue's `exclude_types`. */
   readonly excludeTypes: ReadonlyArray<string>
   readonly start: Start
@@ -238,7 +238,7 @@ export interface Options {
    * The tickets the last run left whose workers wait for a slot to be resumed (carry.ts): none of
    * them is dispatched afresh meanwhile. None without it.
    */
-  readonly carrying?: Effect.Effect<ReadonlySet<string>>
+  readonly carrying?: Effect.Effect<ReadonlySet<TicketId>>
   /** Where tickets work, with the queue's `footprint` on; without it, no ticket overlaps another. */
   readonly footprints?: Footprints
   /**
@@ -266,9 +266,9 @@ export interface QueueShown {
 /** What one fill did. */
 export interface Filled {
   /** The tickets it dispatched, in order. */
-  readonly dispatched: ReadonlyArray<string>
+  readonly dispatched: ReadonlyArray<TicketId>
   /** The tickets it set aside for their IDs. */
-  readonly setAside: ReadonlyArray<string>
+  readonly setAside: ReadonlyArray<TicketId>
   /** The candidates left Queued. */
   readonly queued: number
   /** The candidates left HeldBack. */
@@ -293,7 +293,7 @@ export interface Scheduler {
    * Whether there was a slot for it.
    */
   carry(
-    ticket: string,
+    ticket: TicketId,
     start: Effect.Effect<Effect.Effect<void> | undefined>,
     issue?: Issue,
   ): Effect.Effect<boolean>
@@ -303,11 +303,11 @@ export interface Scheduler {
    * the last pick, and the ticket holding none still. Its issue, read from bd as it takes the
    * slot, has its footprint and solo label count as a dispatched ticket's do. Whether it took one.
    */
-  recheckSlot(ticket: string, work: Effect.Effect<void>): Effect.Effect<boolean>
+  recheckSlot(ticket: TicketId, work: Effect.Effect<void>): Effect.Effect<boolean>
   /** The tickets this run has started: what --limit counts. */
   readonly started: Effect.Effect<number>
   /** The tickets holding a slot now. */
-  readonly running: Effect.Effect<ReadonlySet<string>>
+  readonly running: Effect.Effect<ReadonlySet<TicketId>>
   /**
    * The slots taken now, as the scheduler counts them (slotsTaken): the running tickets', and one
    * for each ticket past its work beyond `concurrent`. The machine's cap counts these.
@@ -341,31 +341,31 @@ export const dispatchLine = (n: number, limit: number | null, issue: Issue): Lin
     : line`[${progress(n, limit)}] ${issue.id} dispatching: ${issue.title}`
 
 /** `<id> footprint: …`, under the dispatch's line with footprints on (§ 5 item 5). */
-export const footprintLine = (id: string, fp: Footprint): Line =>
+export const footprintLine = (id: TicketId, fp: Footprint): Line =>
   detail`${id} footprint: ${showFootprint(fp)}`
 
 /** The BAD_TICKET_ID line, as orchestra words it. */
-export const badTicketIdLine = (id: string, why: string): Line =>
+export const badTicketIdLine = (id: TicketId, why: string): Line =>
   detail`BAD_TICKET_ID: ${why}: ${id} -> deferred without starting a worker; rename it (bd rename ${id} <new-id>), then bd undefer <new-id>`
 
 /** The note bd defer appends to a ticket set aside for its ID. */
-export const badTicketIdNote = (id: string, why: string): string =>
+export const badTicketIdNote = (id: TicketId, why: string): string =>
   `tutti: ${why}, so no worker was started on ${id}: a ticket's ID names its worktree folder and its branch tutti/<id>. Give it a plain ID (bd rename ${id} <new-id>), then bring it back with: bd undefer <new-id>`
 
 /** Whether the ticket waits in the queue: Queued, or HeldBack. */
-const waiting = (state: State, id: string): boolean => {
+const waiting = (state: State, id: TicketId): boolean => {
   const tag = state.tickets.get(id)?.phase._tag
   return tag !== undefined && phaseFacts[tag].ready
 }
 
 /** Whether the ticket is past its work and not merged yet: it waits to merge, merges, or is fixed. */
-const merging = (state: State, id: string): boolean => {
+const merging = (state: State, id: TicketId): boolean => {
   const tag = state.tickets.get(id)?.phase._tag
   return tag !== undefined && phaseFacts[tag].pastWork
 }
 
 /** The tickets past their work and not merged yet that hold no slot: those not `running`. */
-const mergingIn = (state: State, running: ReadonlySet<string>): ReadonlyArray<string> =>
+const mergingIn = (state: State, running: ReadonlySet<TicketId>): ReadonlyArray<TicketId> =>
   [...state.tickets.values()]
     .filter((entry) => merging(state, entry.ticket) && !running.has(entry.ticket))
     .map((entry) => entry.ticket)
@@ -378,32 +378,32 @@ export const slotsTaken = (running: number, merging: number, concurrent: number)
   running + Math.max(0, merging - concurrent)
 
 /** Whether the ticket is back in the queue as its worktree's setup failed, Waiting{setup}. */
-const setupFailed = (state: State, id: string): boolean => {
+const setupFailed = (state: State, id: TicketId): boolean => {
   const phase = state.tickets.get(id)?.phase
   return phase?._tag === "Waiting" && phase.for._tag === "Setup"
 }
 
 /** Whether the ledger lets the run take `id` from bd ready: not taken up yet, or still waiting. */
-const candidate = (state: State, id: string): boolean =>
+const candidate = (state: State, id: TicketId): boolean =>
   !state.tickets.has(id) || waiting(state, id)
 
 /** Whether the ticket is set aside, Deferred. */
-const deferred = (state: State, id: string): boolean =>
+const deferred = (state: State, id: TicketId): boolean =>
   state.tickets.get(id)?.phase._tag === "Deferred"
 
 /** `<id>: undeferred; back in the queue`, for a ticket set aside that bd ready lists again. */
-export const undeferredLine = (id: string): Line => detail`${id}: undeferred; back in the queue`
+export const undeferredLine = (id: TicketId): Line => detail`${id}: undeferred; back in the queue`
 
 /** The solo ticket running, or the one next, as queue and dispatch records give it. */
 interface SoloState {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly next?: true
 }
 
 /** The queue's counts among `ids`, as `state` has them with `change` made: a queue record's. */
 const counts = (
   state: State,
-  ids: ReadonlyArray<string>,
+  ids: ReadonlyArray<TicketId>,
   solo: SoloState | null,
   change?: readonly [string, TicketPhase],
 ) => {
@@ -425,20 +425,20 @@ const counts = (
 }
 
 interface Slots {
-  readonly running: ReadonlySet<string>
+  readonly running: ReadonlySet<TicketId>
   readonly started: number
   /**
    * The running tickets dispatched, or carried with their issue, and those past their work until
    * they merge: their footprints and labels.
    */
-  readonly issues: ReadonlyMap<string, Issue>
+  readonly issues: ReadonlyMap<TicketId, Issue>
   /** The solo ticket running, or past its work until it merges, if any. */
-  readonly solo: string | null
+  readonly solo: TicketId | null
 }
 
 /** `s` without the issues and solo ticket of the tickets neither running nor past their work. */
 const prune = (s: Slots, state: State): Slots => {
-  const kept = (id: string) => s.running.has(id) || merging(state, id)
+  const kept = (id: TicketId) => s.running.has(id) || merging(state, id)
   if ([...s.issues.keys()].every(kept) && (s.solo === null || kept(s.solo))) return s
   return {
     ...s,
@@ -460,7 +460,7 @@ export interface PickFrom {
   /** The tickets in line held back for nothing but a slot or a solo ticket, in the order they start. */
   readonly free: ReadonlyArray<Issue>
   /** The solo ticket running, or past its work until it merges, if any. */
-  readonly solo: string | null
+  readonly solo: TicketId | null
   /** The tickets running, and those past their work and not merged yet. */
   readonly busy: number
   /** Whether a slot is free. */
@@ -472,15 +472,15 @@ export interface Picked {
   /** The ticket to start, if any. */
   readonly start?: Issue
   /** The solo ticket next, which holds back the others while a slot is free. */
-  readonly soloNext: string | null
+  readonly soloNext: TicketId | null
   /**
    * The solo ticket first in line, even with every slot taken: no recheck takes a slot ahead of it.
    */
-  readonly soloFirst: string | null
+  readonly soloFirst: TicketId | null
   /** The solo line saying why nothing starts, or "" for none. */
   readonly soloLine: Line | ""
   /** The tickets held back for a solo ticket: with a slot free and none to start, the free ones. */
-  readonly heldSolo: ReadonlyArray<string>
+  readonly heldSolo: ReadonlyArray<TicketId>
 }
 
 /**
@@ -491,7 +491,7 @@ export interface Picked {
 export const pick = (p: PickFrom): Picked => {
   const first = p.free[0]
   let start: Issue | undefined
-  let next: string | null = null
+  let next: TicketId | null = null
   if (first !== undefined && p.solo === null) {
     if (isSolo(first) && p.busy > 0) next = first.id
     else start = first
@@ -518,18 +518,18 @@ export const pick = (p: PickFrom): Picked => {
  */
 interface Memo {
   /** The parents of the tickets the run took up, for those closed and not merged yet. */
-  readonly parentOf: ReadonlyMap<string, string>
+  readonly parentOf: ReadonlyMap<TicketId, TicketId | null>
   /** What holds each waiting ticket back, as last said. */
   readonly waitSaid: Said
   /** What each ticket was last skipped for, an overlap. */
   readonly skipSaid: Said
   /** The solo ticket next, which holds back the others while a slot is free. */
-  readonly soloNext: string | null
+  readonly soloNext: TicketId | null
   /**
    * The solo ticket first in line at the last pick, even one made with every slot taken: no
    * recheck takes a slot ahead of it.
    */
-  readonly soloFirst: string | null
+  readonly soloFirst: TicketId | null
   /** The solo line last said. */
   readonly soloSaid: string
   /** The LIKELY_CONFLICT lines said, each once. */
@@ -538,20 +538,20 @@ interface Memo {
    * What the branch of each ticket dispatched or carried changed on top of the base as it
    * started: one with some is footprinted from them while it runs, as it was when it started.
    */
-  readonly startBranch: ReadonlyMap<string, ReadonlyArray<string>>
+  readonly startBranch: ReadonlyMap<TicketId, ReadonlyArray<string>>
   /** The tickets the queue draws from, as the last fill read them. */
   readonly unclosed: number | null
   /** The queue last shown. */
   readonly shownLast: string
   /** The candidates the last fill read, which a queue record counts. */
-  readonly lastIds: ReadonlyArray<string>
+  readonly lastIds: ReadonlyArray<TicketId>
   /**
    * The tickets set aside (Deferred) that a fill found gone from bd ready, their fibers ended: one
    * bd ready lists again was undeferred outside the run, and is queued again while the run doesn't
    * hold. One bd couldn't defer, which bd ready still lists, is kept out of the run. So is one an
    * environment hold reopens itself (Deferred → Waiting), which it does once the run holds.
    */
-  readonly leftReady: ReadonlySet<string>
+  readonly leftReady: ReadonlySet<TicketId>
 }
 
 const noMemo: Memo = {
@@ -570,7 +570,7 @@ const noMemo: Memo = {
 }
 
 /** The solo ticket running, or else the one next. */
-const soloState = (s: Slots, soloNext: string | null): SoloState | null =>
+const soloState = (s: Slots, soloNext: TicketId | null): SoloState | null =>
   s.solo !== null ? { ticket: s.solo } : soloNext !== null ? { ticket: soloNext, next: true } : null
 
 /** The scheduler over the run's Beads, Ledger (which writes the records), Log and RunFibers. */
@@ -605,7 +605,7 @@ export const make = (
       )
     const beforeStart = options.beforeStart ?? Effect.void
     const machineFull = options.machineFull ?? Effect.succeed(false)
-    const carrying = options.carrying ?? Effect.succeed(new Set<string>())
+    const carrying = options.carrying ?? Effect.succeed(new Set<TicketId>())
     // The queue's counts for a record, `machine_full` with them while the run holds at the cap.
     const recorded = (...args: Parameters<typeof counts>) =>
       Effect.map(machineFull, (full) => ({
@@ -620,12 +620,12 @@ export const make = (
       soloState(s, m.soloNext),
     )
     // Records the ticket's reason, waiting or skipped, and says whether it is one to say.
-    const said = (which: "waitSaid" | "skipSaid", id: string, why: string) =>
+    const said = (which: "waitSaid" | "skipSaid", id: TicketId, why: string) =>
       Ref.modify(memo, (m): readonly [boolean, Memo] => {
         const next = saying(m[which], id, why)
         return [next.say, { ...m, [which]: next.said }]
       })
-    const forget = (which: "waitSaid" | "skipSaid", id: string) =>
+    const forget = (which: "waitSaid" | "skipSaid", id: TicketId) =>
       remember((m) => ({ ...m, [which]: unsaid(m[which], id) }))
     const slotsTaken = Effect.map(Effect.all([Ref.get(slots), ledger.current]), ([s, state]) =>
       taken(s, state, options.concurrent),
@@ -671,13 +671,13 @@ export const make = (
     // ends a few steps after it enters Waiting: by then its blocker may have merged, putting it back
     // in the queue, and bd ready may no longer list it, taking it out of the ledger. It isn't
     // dispatched again before its fiber ends, so it is never Working here for a later start.
-    const requeued = (state: State, ticket: string) => {
+    const requeued = (state: State, ticket: TicketId) => {
       const phase = state.tickets.get(ticket)?.phase
       if (phase === undefined) return true
       return phase._tag === "Waiting" ? phase.for._tag !== "Probe" : waiting(state, ticket)
     }
 
-    const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue, counted = false) =>
+    const occupy = (ticket: TicketId, work: Effect.Effect<void>, issue?: Issue, counted = false) =>
       Effect.gen(function* () {
         const parent = issue?.parent
         if (parent !== undefined) {
@@ -728,7 +728,7 @@ export const make = (
         }
       })
 
-    const dispatch = (issue: Issue, ids: ReadonlyArray<string>, footprint?: Footprint) =>
+    const dispatch = (issue: Issue, ids: ReadonlyArray<TicketId>, footprint?: Footprint) =>
       Effect.gen(function* () {
         const s = yield* Ref.updateAndGet(slots, (s) => ({ ...s, started: s.started + 1 }))
         const text = dispatchLine(s.started, options.limit, issue)
@@ -768,7 +768,7 @@ export const make = (
         const footprints = options.footprints
         if (issue === undefined || footprints === undefined) return
         const repo = yield* footprints.repo
-        const predicted: ReadonlyMap<string, ReadonlyArray<string>> = options.predictor ===
+        const predicted: ReadonlyMap<TicketId, ReadonlyArray<string>> = options.predictor ===
         undefined
           ? new Map()
           : yield* options.predictor.predicted
@@ -788,7 +788,7 @@ export const make = (
     })
 
     // A ticket's issue as bd show gives it; null, saying why, when bd couldn't.
-    const issueOf = (id: string) =>
+    const issueOf = (id: TicketId) =>
       Effect.gen(function* () {
         const read = yield* beads.show(id).pipe(Effect.result)
         if (Result.isSuccess(read)) return read.success
@@ -801,11 +801,11 @@ export const make = (
     // footprint and solo label then count as a dispatched ticket's do.
     const withIssues = (
       s: Slots,
-      past: ReadonlyArray<string>,
-      read: (id: string) => Effect.Effect<Issue | null> = issueOf,
+      past: ReadonlyArray<TicketId>,
+      read: (id: TicketId) => Effect.Effect<Issue | null> = issueOf,
     ) =>
       Effect.gen(function* () {
-        const found = new Map<string, Issue>()
+        const found = new Map<TicketId, Issue>()
         for (const id of [...s.running, ...past]) {
           if (s.issues.has(id)) continue
           const issue = yield* read(id)
@@ -837,7 +837,7 @@ export const make = (
 
     // Moves a waiting ticket to the phase `held` says: HeldBack for its reason, or Queued; one held
     // for another reason is released first. Each move writes a queue record.
-    const placeWaiting = (id: string, held: HoldBack | undefined, ids: ReadonlyArray<string>) =>
+    const placeWaiting = (id: TicketId, held: HoldBack | undefined, ids: ReadonlyArray<TicketId>) =>
       Effect.gen(function* () {
         const before = yield* ledger.current
         const phase = before.tickets.get(id)?.phase
@@ -879,7 +879,7 @@ export const make = (
           }
         }
         const holdsNow = holds(yield* gate)
-        const back = (id: string) => !holdsNow && deferred(before, id) && leftReady.has(id)
+        const back = (id: TicketId) => !holdsNow && deferred(before, id) && leftReady.has(id)
         const candidates = listed.filter((issue) => candidate(before, issue.id) || back(issue.id))
         // The queue's counts take in the tickets whose setup failed, held back apart.
         const ids = listed
@@ -889,7 +889,7 @@ export const make = (
           )
           .map((issue) => issue.id)
         yield* remember((m) => ({ ...m, leftReady, lastIds: ids }))
-        const setAsideNow: Array<string> = []
+        const setAsideNow: Array<TicketId> = []
         // A ticket waiting in the queue that bd ready no longer lists (closed, deferred or blocked
         // outside the run) leaves it; it is queued anew if it is ready again.
         for (const entry of before.tickets.values()) {
@@ -946,14 +946,14 @@ export const make = (
         for (const id of unmerged(yield* ledger.current)) {
           if (parentOf.has(id) || openIds.has(id)) continue
           const read = yield* beads.show(id).pipe(Effect.result)
-          if (Result.isSuccess(read)) parentOf.set(id, read.success.parent ?? "")
+          if (Result.isSuccess(read)) parentOf.set(id, read.success.parent ?? null)
         }
         yield* remember((m) => ({ ...m, parentOf: new Map([...m.parentOf, ...parentOf]) }))
         const parents = parentsWaiting([...open, ...left], yield* ledger.current, parentOf)
 
         // A ticket's links, as bd show gives them, read once a fill; null when bd couldn't.
-        const shown = new Map<string, Issue | null>()
-        const linksOf = (id: string) =>
+        const shown = new Map<TicketId, Issue | null>()
+        const linksOf = (id: TicketId) =>
           Effect.gen(function* () {
             if (shown.has(id)) return shown.get(id) ?? null
             const read = yield* beads.show(id).pipe(Effect.result)
@@ -970,8 +970,8 @@ export const make = (
         const sources: Sources = new Map()
         const footprints = options.footprints
         const repo = footprints === undefined ? undefined : yield* footprints.repo
-        const changes = new Map<string, ReadonlyArray<string>>()
-        const changedIn = (id: string) =>
+        const changes = new Map<TicketId, ReadonlyArray<string>>()
+        const changedIn = (id: TicketId) =>
           Effect.gen(function* () {
             const known = changes.get(id)
             if (known !== undefined || footprints === undefined || repo === undefined) {
@@ -982,8 +982,8 @@ export const make = (
             return files
           })
         // What a waiting ticket's branch changes, read once a fill.
-        const branches = new Map<string, ReadonlyArray<string>>()
-        const branchIn = (id: string) =>
+        const branches = new Map<TicketId, ReadonlyArray<string>>()
+        const branchIn = (id: TicketId) =>
           Effect.gen(function* () {
             const known = branches.get(id)
             if (known !== undefined || footprints?.branch === undefined) return known ?? []
@@ -997,14 +997,14 @@ export const make = (
         if (predictor !== undefined && repo !== undefined) {
           yield* predictor.queue(queue, repo, branchIn)
         }
-        const predicted: ReadonlyMap<string, ReadonlyArray<string>> = predictor === undefined
+        const predicted: ReadonlyMap<TicketId, ReadonlyArray<string>> = predictor === undefined
           ? new Map()
           : yield* predictor.predicted
 
         // Two running tickets' worktrees changing one file: the second to merge may conflict.
         const runningNow = (yield* Ref.get(slots)).running
         if (footprints !== undefined && runningNow.size > 1) {
-          const changed = new Map<string, ReadonlyArray<string>>()
+          const changed = new Map<TicketId, ReadonlyArray<string>>()
           for (const id of runningNow) changed.set(id, yield* changedIn(id))
           for (const edit of sharedChanges(changed)) {
             const key = `${edit.a} ${edit.b} ${edit.file}`
@@ -1021,10 +1021,10 @@ export const make = (
         // the fill first found it.
         const closed = options.closedBranches
         let head: { readonly at: string | undefined } | undefined
-        const offBase = new Map<string, string | undefined>()
+        const offBase = new Map<TicketId, string | undefined>()
         const branchesOf = (state: State, links: Issue) =>
           Effect.gen(function* () {
-            const found = new Map<string, string>()
+            const found = new Map<TicketId, string>()
             if (closed === undefined) return found
             for (const link of links.dependencies) {
               if (link.type !== "blocks" && link.type !== "discovered-from") continue
@@ -1066,9 +1066,13 @@ export const make = (
 
         // With a slot free, what overlaps the footprint of a ticket running or past its work, saying
         // why once. A solo ticket waits for every one of them anyway, so it is never skipped for one.
-        const overlapping = (issues: ReadonlyArray<Issue>, s: Slots, past: ReadonlyArray<string>) =>
+        const overlapping = (
+          issues: ReadonlyArray<Issue>,
+          s: Slots,
+          past: ReadonlyArray<TicketId>,
+        ) =>
           Effect.gen(function* () {
-            const skipped = new Map<string, Held>()
+            const skipped = new Map<TicketId, Held>()
             const asked = issues.filter((issue) => !isSolo(issue))
             if (
               footprints === undefined ||
@@ -1079,12 +1083,12 @@ export const make = (
               return skipped
             }
             const { startBranch } = yield* Ref.get(memo)
-            const running = new Map<string, Footprint>()
+            const running = new Map<TicketId, Footprint>()
             for (const [id, issue] of s.issues) {
               const fp = footprintOf(issue, repo, predicted, startBranch.get(id) ?? [])
               running.set(id, withChanges(fp, yield* changedIn(id), repo))
             }
-            const mine = new Map<string, Footprint>()
+            const mine = new Map<TicketId, Footprint>()
             for (const issue of asked) {
               mine.set(issue.id, footprintOf(issue, repo, predicted, yield* branchIn(issue.id)))
             }
@@ -1107,7 +1111,7 @@ export const make = (
             return skipped
           })
 
-        const dispatched: Array<string> = []
+        const dispatched: Array<TicketId> = []
         for (;;) {
           const { s: was, state } = yield* current
           const past = mergingIn(state, was.running)
@@ -1116,7 +1120,7 @@ export const make = (
           const inLine = queue.filter(
             (issue) => waiting(state, issue.id) && !was.running.has(issue.id),
           )
-          const holds = new Map<string, HoldBack>()
+          const holds = new Map<TicketId, HoldBack>()
           const notHeld: Array<Issue> = []
           for (const issue of inLine) {
             const held = yield* heldFor(issue, state)
@@ -1124,7 +1128,7 @@ export const make = (
             else holds.set(issue.id, held.why)
           }
           const s = slot ? yield* withIssues(was, past, linksOf) : was
-          const overlaps = slot ? yield* overlapping(notHeld, s, past) : new Map<string, Held>()
+          const overlaps = slot ? yield* overlapping(notHeld, s, past) : new Map<TicketId, Held>()
           for (const [id, held] of overlaps) holds.set(id, held.why)
           const free = notHeld.filter((issue) => !overlaps.has(issue.id))
           // The pick (`pick`), and its solo line said when it changed.

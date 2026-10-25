@@ -22,6 +22,7 @@ import { unusedTools } from "../src/agent/unusedTools.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { checkNote, requiresNote, usageLimitNote } from "../src/project/prompt.ts"
 import { permissionModes } from "../src/project/settings.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -61,7 +62,7 @@ const configWith = (
 const optionsFor = (session: SessionStart, config: AppConfigValue = configWith()) =>
   workerOptions({
     config,
-    ticket: "tutti-abc.1",
+    ticket: "tutti-abc.1" as TicketId,
     worktree: "/work/project-tutti/tutti-abc.1",
     prompt,
     servers,
@@ -153,7 +154,7 @@ describe("workerOptions", () => {
   test("no servers chosen gives none, strictly", () => {
     const options = workerOptions({
       config: configWith(),
-      ticket: "t",
+      ticket: "t" as TicketId,
       worktree: "/w",
       prompt,
       servers: { servers: [], note: "none" },
@@ -167,28 +168,31 @@ describe("workerOptions", () => {
 
   test("the standing rules name the ticket, whatever its ID", () => {
     fc.assert(
-      fc.property(fc.string(), (ticket) => {
-        const options = workerOptions({
-          config: configWith(),
-          ticket,
-          worktree: "/w",
-          prompt,
-          servers,
-          skills: false,
-          callbacks,
-          session: { _tag: "New", sessionId: "s" },
-        })
-        const system = options.systemPrompt
-        if (typeof system !== "object" || Array.isArray(system) || system.type !== "preset") {
-          throw new Error("not a preset system prompt")
-        }
-        expect(system.append).toBe(
-          prompt.text.split("TICKET_ID").join(ticket) +
-            requiresNote([], prompt.text, false) +
-            checkNote("scripts/check-fast.sh") +
-            usageLimitNote,
-        )
-      }),
+      fc.property(
+        fc.string().map((id) => id as TicketId),
+        (ticket) => {
+          const options = workerOptions({
+            config: configWith(),
+            ticket,
+            worktree: "/w",
+            prompt,
+            servers,
+            skills: false,
+            callbacks,
+            session: { _tag: "New", sessionId: "s" },
+          })
+          const system = options.systemPrompt
+          if (typeof system !== "object" || Array.isArray(system) || system.type !== "preset") {
+            throw new Error("not a preset system prompt")
+          }
+          expect(system.append).toBe(
+            prompt.text.split("TICKET_ID").join(ticket) +
+              requiresNote([], prompt.text, false) +
+              checkNote("scripts/check-fast.sh") +
+              usageLimitNote,
+          )
+        },
+      ),
       { examples: [["$$"], ["$&"], ["$`"], ["$'"], ["$1"]] },
     )
   })
@@ -279,7 +283,7 @@ describe("activityHooks", () => {
   test("covers § 4.2's events, each with one callback for every tool", async () => {
     const hooks = await Effect.runPromise(
       activityHooks(
-        "t",
+        "t" as TicketId,
         { activity: () => Effect.void, compaction: () => Effect.void },
         openFibers(),
       ),
@@ -298,7 +302,7 @@ describe("activityHooks", () => {
     const compactions: Array<string> = []
     const hooks = await Effect.runPromise(
       activityHooks(
-        "t",
+        "t" as TicketId,
         {
           activity: (input) => Effect.sync(() => activity.push(input.hook_event_name)),
           compaction: (input) => Effect.sync(() => compactions.push(input.trigger)),
@@ -317,7 +321,7 @@ describe("activityHooks", () => {
     let started = false
     const hooks = await Effect.runPromise(
       activityHooks(
-        "t",
+        "t" as TicketId,
         {
           activity: () =>
             Effect.andThen(
@@ -366,7 +370,7 @@ describe("activityHooks", () => {
     test(`a recorder that ${how} is logged, and the callback still returns {}`, async () => {
       const warnings: Array<string> = []
       const hooks = await Effect.runPromise(
-        activityHooks("tutti-abc.1", recorder, openFibers(), (message) =>
+        activityHooks("tutti-abc.1" as TicketId, recorder, openFibers(), (message) =>
           Effect.sync(() => warnings.push(message)),
         ),
       )
@@ -385,7 +389,7 @@ describe("activityHooks", () => {
     const compactions: Array<string> = []
     const hooks = await Effect.runPromise(
       activityHooks(
-        "t",
+        "t" as TicketId,
         {
           activity: () => Effect.fail("no state"),
           compaction: (input) => Effect.sync(() => compactions.push(input.trigger)),
@@ -402,7 +406,7 @@ describe("activityHooks", () => {
   test("a warning that fails too is swallowed", async () => {
     const hooks = await Effect.runPromise(
       activityHooks(
-        "t",
+        "t" as TicketId,
         { activity: () => Effect.fail("no"), compaction: () => Effect.void },
         openFibers(),
         () => Effect.die("the log is gone"),
@@ -422,7 +426,7 @@ describe("activityHooks", () => {
         async (event, fields, outcome) => {
           const hooks = await Effect.runPromise(
             activityHooks(
-              "t",
+              "t" as TicketId,
               {
                 activity: () => outcomes[outcome] ?? Effect.void,
                 compaction: () => outcomes[outcome] ?? Effect.void,
@@ -445,7 +449,7 @@ describe("workerCallbacks", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const callbacks = yield* workerCallbacks(
-          "tutti-abc.1",
+          "tutti-abc.1" as TicketId,
           {
             activity: (input) => Effect.sync(() => recorded.push(input.hook_event_name)),
             compaction: () => Effect.void,

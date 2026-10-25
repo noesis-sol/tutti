@@ -43,9 +43,10 @@ import {
   SubscriptionRef,
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
-import { Store } from "../services/Store.ts"
+import { Store, ticketsIn } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import { aheadKey, clearAhead, markAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
@@ -143,16 +144,16 @@ interface Run {
  */
 interface Trains {
   /** The tickets waiting for their first turn, which may be checked ahead of it. */
-  readonly ahead: ReadonlyMap<string, FinishedTicket>
+  readonly ahead: ReadonlyMap<TicketId, FinishedTicket>
   /** The tickets checked ahead of their turn. */
-  readonly runs: ReadonlyMap<string, Run>
+  readonly runs: ReadonlyMap<TicketId, Run>
   /** The fibers checking them, each added as its train starts, under the lock. */
-  readonly fibers: ReadonlyMap<string, Fiber.Fiber<void>>
+  readonly fibers: ReadonlyMap<TicketId, Fiber.Fiber<void>>
   /**
    * The tickets whose turn has taken their train, until it has ended: it is no longer stopped with
    * the others, nor left by the merges stopping, its turn putting its branch back.
    */
-  readonly boarding: ReadonlySet<string>
+  readonly boarding: ReadonlySet<TicketId>
   /** The branch of the ticket whose turn it is, at the commit its check runs or passed on. */
   readonly checking: { readonly branch: string; readonly at: Sha | undefined } | undefined
   /** Set once the trains are left: none starts again. */
@@ -169,13 +170,13 @@ const noTrains: Trains = {
 }
 
 /** The trains with the run of `id` changed by `change`; as they are when it has none. */
-const withRun = (trains: Trains, id: string, change: (run: Run) => Run): Trains => {
+const withRun = (trains: Trains, id: TicketId, change: (run: Run) => Run): Trains => {
   const run = trains.runs.get(id)
   return run === undefined ? trains : { ...trains, runs: new Map(trains.runs).set(id, change(run)) }
 }
 
 /** The trains with `ids`' runs, and their fibers, gone. */
-const withoutRuns = (trains: Trains, ids: ReadonlyArray<string>): Trains => {
+const withoutRuns = (trains: Trains, ids: ReadonlyArray<TicketId>): Trains => {
   const runs = new Map(trains.runs)
   const fibers = new Map(trains.fibers)
   const boarding = new Set(trains.boarding)
@@ -233,7 +234,7 @@ export const putBackLeft = (
     const git = yield* Git
     const store = yield* Store
     const log = yield* Log
-    for (const [id, record] of Object.entries((yield* store.state).tickets)) {
+    for (const [id, record] of ticketsIn(yield* store.state)) {
       if (!Object.hasOwn(record.metadata, aheadKey)) continue
       const mark = rebasedAheadOf(record.metadata[aheadKey])
       const worktree = record.worktree ?? ""
@@ -315,7 +316,7 @@ export interface MergeTrain extends CheckWatch {
    * How the checks ahead of their turn go, by ticket, now and on each change: from its rebase onto
    * the branch ahead to its turn, or until its train is stopped before its check ends.
    */
-  readonly checksAhead: Stream.Stream<ReadonlyMap<string, CheckAhead>>
+  readonly checksAhead: Stream.Stream<ReadonlyMap<TicketId, CheckAhead>>
 }
 
 /**
@@ -323,7 +324,7 @@ export interface MergeTrain extends CheckWatch {
  * naming where it came from.
  */
 export const make = (
-  options: MergeOptions & { readonly waiting: Effect.Effect<ReadonlyArray<string>> },
+  options: MergeOptions & { readonly waiting: Effect.Effect<ReadonlyArray<TicketId>> },
   memory: MergeMemory,
   guard: (where: string, effect: Effect.Effect<void>) => Effect.Effect<void>,
 ): Effect.Effect<MergeTrain, never, MergeEnv | RunFibers | Scope.Scope> =>
@@ -338,9 +339,9 @@ export const make = (
     // The trains (Trains), each change one step.
     const trains = yield* Ref.make(noTrains)
     const update = (change: (now: Trains) => Trains) => Ref.update(trains, change)
-    const runOf = (id: string) => Effect.map(Ref.get(trains), (now) => now.runs.get(id))
+    const runOf = (id: TicketId) => Effect.map(Ref.get(trains), (now) => now.runs.get(id))
     // How the checks ahead of their turn go, by ticket, for the dashboard.
-    const shown = yield* SubscriptionRef.make<ReadonlyMap<string, CheckAhead>>(new Map())
+    const shown = yield* SubscriptionRef.make<ReadonlyMap<TicketId, CheckAhead>>(new Map())
     const show = (run: Run, step: CheckAhead["step"] | undefined) =>
       SubscriptionRef.updateSome(shown, (all) => {
         const id = run.ticket.id
@@ -438,7 +439,7 @@ export const make = (
       })
 
     // The trains behind the ticket in line are stopped: its own check failed ahead of its turn.
-    const cancelBehind = (id: string) =>
+    const cancelBehind = (id: TicketId) =>
       lock.withPermit(
         Effect.gen(function* () {
           const waiting = yield* options.waiting

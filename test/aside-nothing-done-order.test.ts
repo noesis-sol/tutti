@@ -1,11 +1,13 @@
 // dropNothingDone's CLEANUP_FAILED line and its `warn` record are written together (Log's
 // writeWith), the line first, so the log and events.jsonl give them in one order.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { dropNothingDone } from "../src/run/aside.ts"
 import { EventStream } from "../src/run/eventstream.ts"
 import { noFigures } from "../src/run/figures.ts"
 import { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { GitFailed } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { layer as capturedLog, texts } from "../src/testing/Log.ts"
@@ -44,7 +46,7 @@ describe("dropNothingDone's CLEANUP_FAILED", () => {
       }),
     )
     await Effect.runPromise(
-      dropNothingDone({ id: "t-1", path: "/w/t-1", branch: "tutti/t-1" }).pipe(
+      dropNothingDone({ id: "t-1" as TicketId, path: "/w/t-1", branch: "tutti/t-1" }).pipe(
         Effect.provide(Layer.mergeAll(refusing, noting.pipe(Layer.provideMerge(capturedLog())))),
       ),
     )

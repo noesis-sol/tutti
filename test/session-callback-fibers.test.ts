@@ -1,5 +1,6 @@
 // The SDK's callbacks as fibers of their session's scope (src/agent/callbacks.ts): closing the
 // session interrupts what they still run, and both MCP servers' handlers follow one rule.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,6 +16,7 @@ import { sessionFibers, toolAnswer, toolHandler } from "../src/agent/callbacks.t
 import { activityHooks } from "../src/agent/hooks.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import type { WorkerState } from "../src/agent/WorkerState.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -54,7 +56,7 @@ describe("a session's callbacks end with its scope", () => {
       Effect.gen(function* () {
         const scope = yield* Scope.make()
         const fibers = yield* Scope.provide(sessionFibers, scope)
-        const canUseTool = yield* (yield* Attention).request("t-1", fibers)
+        const canUseTool = yield* (yield* Attention).request("t-1" as TicketId, fibers)
         const call = canUseTool("Bash", { command: "rm -rf build" }, sdkOptions())
         yield* opened(1)
         yield* Scope.close(scope, Exit.void)
@@ -79,7 +81,7 @@ describe("a session's callbacks end with its scope", () => {
         const scope = yield* Scope.make()
         const fibers = yield* Scope.provide(sessionFibers, scope)
         const hooks = yield* activityHooks(
-          "t-1",
+          "t-1" as TicketId,
           {
             activity: () =>
               Deferred.succeed(started, undefined).pipe(
@@ -197,7 +199,7 @@ describe("the live host", () => {
     const until = (matches: (state: WorkerState) => boolean) =>
       Effect.flatMap(AgentHost, (h) =>
         h
-          .state("t-1")
+          .state("t-1" as TicketId)
           .pipe(
             Stream.filter(matches),
             Stream.runHead,
@@ -209,11 +211,14 @@ describe("the live host", () => {
       Effect.gen(function* () {
         const agents = yield* AgentHost
         const attention = yield* Attention
-        yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* agents.send("t-1", { text: "go", from: "clientComposed" })
+        yield* agents.start("t-1" as TicketId, {
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          cwd: dir,
+        })
+        yield* agents.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
         yield* until((s) => s._tag === "NeedsYou")
         const before = (yield* attention.current).map((r) => r.id)
-        yield* agents.close("t-1")
+        yield* agents.close("t-1" as TicketId)
         const after = yield* attention.current
         const answered = yield* Effect.exit(attention.answer("r1", { _tag: "Allow" }, "screen"))
         return { before, after, answered }

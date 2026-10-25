@@ -1,6 +1,7 @@
 // Open URL pressed again while the opener runs (§ 4.5): the second press is ignored, in the view
 // it was pressed in or another, so it opens no second tab and sends no second Accept; once the open
 // has resolved, a press opens it again.
+
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
@@ -10,6 +11,7 @@ import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import type { Opened, UrlOpener } from "../src/ui/openUrl.ts"
@@ -24,7 +26,7 @@ const url = "https://docs.example/login"
 
 const elicitation: AttentionRequest = {
   id: "e1",
-  ticket: "t-1",
+  ticket: "t-1" as TicketId,
   kind: {
     _tag: "Elicitation",
     server: "docs",
@@ -45,9 +47,9 @@ const viewOf = (requests: ReadonlyArray<AttentionRequest>): RunView =>
     ledger: {
       tickets: new Map([
         [
-          "t-1",
+          "t-1" as TicketId,
           {
-            ticket: "t-1",
+            ticket: "t-1" as TicketId,
             title: "Title of t-1",
             phase: TicketPhase.Working(),
             since: began,
@@ -131,7 +133,7 @@ const onOpenUrl = async (
     await rendered.input((setup) => setup.mockInput.pressTab())
     const press = () => rendered.input((setup) => setup.mockInput.pressEnter())
     const toWorkerView = async () => {
-      await rendered.input(() => screen.set(Screen.Worker({ ticket: "t-1" })))
+      await rendered.input(() => screen.set(Screen.Worker({ ticket: "t-1" as TicketId })))
       at += settle
       await rendered.input((setup) => setup.mockInput.pressTab())
     }

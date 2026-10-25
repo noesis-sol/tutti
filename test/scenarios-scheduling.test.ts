@@ -15,7 +15,7 @@ import { endIfNothing, heldAtStart } from "../src/run/nothing.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import { stillUnmerged } from "../src/run/unmerged.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, stateVersion, type TicketRecord } from "../src/services/Store.ts"
@@ -79,7 +79,7 @@ const at = (millis: number) => new Date(millis).toISOString()
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   options: {
     readonly files?: Files
     readonly takes?: Duration.Input
@@ -108,7 +108,7 @@ const works = (
   )
 
 /** Claims its ticket and, after `takes`, defers it, noting why it can't finish. */
-const defers = (world: World, id: string, takes: Duration.Input = 0): SessionScript =>
+const defers = (world: World, id: TicketId, takes: Duration.Input = 0): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -125,7 +125,7 @@ const defers = (world: World, id: string, takes: Duration.Input = 0): SessionScr
 const closesUncommitted = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   takes: Duration.Input = 0,
 ): SessionScript =>
   turn([
@@ -142,7 +142,7 @@ const closesUncommitted = (
  * Claims its ticket, finds it needs `blocker`'s work, links it and stops with the ticket open and
  * nothing done: it started too early.
  */
-const needs = (world: World, id: string, blocker: string): SessionScript =>
+const needs = (world: World, id: TicketId, blocker: TicketId): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -158,7 +158,7 @@ const needs = (world: World, id: string, blocker: string): SessionScript =>
  */
 const isGoneTwice = (
   world: World,
-  id: string,
+  id: TicketId,
   takes: Duration.Input,
 ): ReadonlyArray<SessionScript> => [
   [
@@ -227,7 +227,7 @@ interface Plan {
   /** --limit. */
   readonly limit?: number
   /** --ticket. */
-  readonly ticket?: string
+  readonly ticket?: TicketId
   readonly checks?: ChecksScript
   readonly scripts: (world: World, places: Places) => Scripts
   /** The tickets workers file as the run goes, which it may start: their worktrees are made too. */
@@ -351,10 +351,10 @@ describe("several tickets at once", () => {
     const ran = await runs({
       backlog: backlog().ticket("a").ticket("b").ticket("c").ticket("d"),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { takes: "10 minutes" })],
-        b: [works(world, places, "b", { takes: "1 minute" })],
-        c: [works(world, places, "c", { takes: "2 minutes" })],
-        d: [works(world, places, "d")],
+        a: [works(world, places, "a" as TicketId, { takes: "10 minutes" })],
+        b: [works(world, places, "b" as TicketId, { takes: "1 minute" })],
+        c: [works(world, places, "c" as TicketId, { takes: "2 minutes" })],
+        d: [works(world, places, "d" as TicketId)],
       }),
       during: () => passes("11 minutes"),
     })
@@ -398,8 +398,8 @@ describe("several tickets at once", () => {
         .ticket("a")
         .ticket("b", { status: "deferred", deferUntil: at(70_000) }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { takes: "3 minutes" })],
-        b: [works(world, places, "b")],
+        a: [works(world, places, "a" as TicketId, { takes: "3 minutes" })],
+        b: [works(world, places, "b" as TicketId)],
       }),
       during: () =>
         Effect.gen(function* () {
@@ -436,9 +436,14 @@ describe("footprints", () => {
         .ticket("b", { priority: 1, ...touching("src/a.ts") })
         .ticket("c", { priority: 2, ...touching("src/c.ts") }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { takes: "2 minutes", files: { "src/a.ts": "a2\n" } })],
-        b: [works(world, places, "b")],
-        c: [works(world, places, "c", { takes: "5 minutes" })],
+        a: [
+          works(world, places, "a" as TicketId, {
+            takes: "2 minutes",
+            files: { "src/a.ts": "a2\n" },
+          }),
+        ],
+        b: [works(world, places, "b" as TicketId)],
+        c: [works(world, places, "c" as TicketId, { takes: "5 minutes" })],
       }),
       during: () => passes("6 minutes"),
     })
@@ -489,7 +494,7 @@ describe("footprints", () => {
         }),
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             first: [
               ...bash(
                 "edit src/b.ts",
@@ -500,7 +505,7 @@ describe("footprints", () => {
             files: { "src/a.ts": "a2\n" },
           }),
         ],
-        b: [works(world, places, "b")],
+        b: [works(world, places, "b" as TicketId)],
       }),
       during: () => passes("4 minutes"),
     })
@@ -531,9 +536,9 @@ describe("solo", () => {
         .ticket("s", { priority: 1, labels: ["solo"] })
         .ticket("c", { priority: 2 }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { takes: "2 minutes" })],
-        s: [works(world, places, "s", { takes: "2 minutes" })],
-        c: [works(world, places, "c")],
+        a: [works(world, places, "a" as TicketId, { takes: "2 minutes" })],
+        s: [works(world, places, "s" as TicketId, { takes: "2 minutes" })],
+        c: [works(world, places, "c" as TicketId)],
       }),
       during: () => passes("5 minutes"),
     })
@@ -574,9 +579,9 @@ describe("parents and epics", () => {
         .ticket("p.1", { parent: "p", priority: 1 })
         .ticket("p.2", { parent: "p", priority: 1 }),
       scripts: (world, places) => ({
-        p: [works(world, places, "p")],
-        "p.1": [works(world, places, "p.1", { takes: "1 minute" })],
-        "p.2": [works(world, places, "p.2", { takes: "2 minutes" })],
+        p: [works(world, places, "p" as TicketId)],
+        "p.1": [works(world, places, "p.1" as TicketId, { takes: "1 minute" })],
+        "p.2": [works(world, places, "p.2" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("3 minutes"),
     })
@@ -604,8 +609,8 @@ describe("parents and epics", () => {
     const ran = await runs({
       backlog: backlog().epic("e", ["e.2"]).epic("e.1", ["e.1.1"], { parent: "e" }),
       scripts: (world, places) => ({
-        "e.2": [works(world, places, "e.2", { takes: "1 minute" })],
-        "e.1.1": [works(world, places, "e.1.1", { takes: "2 minutes" })],
+        "e.2": [works(world, places, "e.2" as TicketId, { takes: "1 minute" })],
+        "e.1.1": [works(world, places, "e.1.1" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("3 minutes"),
     })
@@ -642,9 +647,9 @@ describe("blockers and follow-ups", () => {
         .ticket("b", { priority: 1, blockedBy: ["a"] })
         .ticket("f", { priority: 2, dependencies: [{ id: "a", type: "discovered-from" }] }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { last: [sleep("2 minutes")] })],
-        b: [works(world, places, "b", { takes: "1 minute" })],
-        f: [works(world, places, "f", { takes: "2 minutes" })],
+        a: [works(world, places, "a" as TicketId, { last: [sleep("2 minutes")] })],
+        b: [works(world, places, "b" as TicketId, { takes: "1 minute" })],
+        f: [works(world, places, "f" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("5 minutes"),
     })
@@ -677,17 +682,19 @@ describe("blockers and follow-ups", () => {
       filed: ["test-2"],
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             first: [
               ...bash(
                 'bd create --deps discovered-from:a --title "Follow-up"',
-                orDie(world.beads.create({ title: "Follow-up", discoveredFrom: ["a"] })),
+                orDie(
+                  world.beads.create({ title: "Follow-up", discoveredFrom: ["a" as TicketId] }),
+                ),
               ),
               sleep("2 minutes"),
             ],
           }),
         ],
-        "test-2": [works(world, places, "test-2")],
+        "test-2": [works(world, places, "test-2" as TicketId)],
       }),
       during: () => passes("3 minutes"),
     })
@@ -716,8 +723,8 @@ describe("waits for merge", () => {
       backlog: backlog().ticket("a", { priority: 0 }).ticket("b", { priority: 1 }),
       limit: 2,
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { takes: "3 minutes" })],
-        b: [needs(world, "b", "a"), works(world, places, "b")],
+        a: [works(world, places, "a" as TicketId, { takes: "3 minutes" })],
+        b: [needs(world, "b" as TicketId, "a" as TicketId), works(world, places, "b" as TicketId)],
       }),
       during: () => passes("4 minutes"),
     })
@@ -755,10 +762,10 @@ describe("waits for merge", () => {
     expect(notesOf(ran, "b")).toContain("started before a merged; back in the queue until it does")
     // Its worktree held nothing: removed, and made again as it started again.
     expect(ran.worktreeCalls.filter((call) => "id" in call && call.id === "b")).toEqual([
-      { op: "prepare", id: "b" },
-      { op: "remove", id: "b", force: false },
-      { op: "prepare", id: "b" },
-      { op: "remove", id: "b", force: false },
+      { op: "prepare", id: "b" as TicketId },
+      { op: "remove", id: "b" as TicketId, force: false },
+      { op: "prepare", id: "b" as TicketId },
+      { op: "remove", id: "b" as TicketId, force: false },
     ])
   }, 30_000)
 
@@ -772,9 +779,9 @@ describe("waits for merge", () => {
         .ticket("c", { priority: 2 }),
       limit: 2,
       scripts: (world, places) => ({
-        a: [closesUncommitted(world, places, "a", "1 minute")],
-        b: [needs(world, "b", "a")],
-        c: [works(world, places, "c", { takes: "2 minutes" })],
+        a: [closesUncommitted(world, places, "a" as TicketId, "1 minute")],
+        b: [needs(world, "b" as TicketId, "a" as TicketId)],
+        c: [works(world, places, "c" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("3 minutes"),
     })
@@ -811,8 +818,8 @@ describe("--limit", () => {
       limit: 2,
       settings: () => ({ concurrent: 1 }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a")],
-        b: [works(world, places, "b")],
+        a: [works(world, places, "a" as TicketId)],
+        b: [works(world, places, "b" as TicketId)],
       }),
     })
     expectClean(ran, 0)
@@ -840,10 +847,10 @@ describe("the scope", () => {
   test("--ticket runs that ticket's subtickets only: SCOPE_DONE, tutti closing its epic", async () => {
     const ran = await runs({
       backlog: backlog().epic("e", ["e.1", "e.2"]).ticket("other"),
-      ticket: "e",
+      ticket: "e" as TicketId,
       scripts: (world, places) => ({
-        "e.1": [works(world, places, "e.1", { takes: "1 minute" })],
-        "e.2": [works(world, places, "e.2", { takes: "2 minutes" })],
+        "e.1": [works(world, places, "e.1" as TicketId, { takes: "1 minute" })],
+        "e.2": [works(world, places, "e.2" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("3 minutes"),
     })
@@ -870,10 +877,10 @@ describe("the scope", () => {
         .epic("e", ["e.1"])
         .ticket("e.2", { parent: "e", blockedBy: ["x"] })
         .ticket("e.3", { parent: "e" }),
-      ticket: "e",
+      ticket: "e" as TicketId,
       scripts: (world, places) => ({
-        "e.1": [works(world, places, "e.1", { takes: "2 minutes" })],
-        "e.3": [defers(world, "e.3", "1 minute")],
+        "e.1": [works(world, places, "e.1" as TicketId, { takes: "2 minutes" })],
+        "e.3": [defers(world, "e.3" as TicketId, "1 minute")],
       }),
       during: () => passes("3 minutes"),
     })
@@ -898,9 +905,9 @@ describe("set aside and review", () => {
       backlog: backlog().ticket("a").ticket("b").ticket("c"),
       settings: () => ({ concurrent: 3 }),
       scripts: (world, places) => ({
-        a: [defers(world, "a")],
-        b: [closesUncommitted(world, places, "b", "1 minute")],
-        c: [works(world, places, "c", { takes: "2 minutes" })],
+        a: [defers(world, "a" as TicketId)],
+        b: [closesUncommitted(world, places, "b" as TicketId, "1 minute")],
+        c: [works(world, places, "c" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("3 minutes"),
     })
@@ -938,9 +945,9 @@ describe("recheck", () => {
       settings: (settings) => ({ concurrent: 3, ...noHandBacks(settings) }),
       checks: { fast: [passed("fast"), fails()] },
       scripts: (world, places) => ({
-        x: [works(world, places, "x")],
-        a: [works(world, places, "a", { takes: "1 minute" })],
-        b: [works(world, places, "b", { takes: "2 minutes" })],
+        x: [works(world, places, "x" as TicketId)],
+        a: [works(world, places, "a" as TicketId, { takes: "1 minute" })],
+        b: [works(world, places, "b" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("3 minutes"),
     })
@@ -990,8 +997,8 @@ describe("unmerged at the end", () => {
       settings: noHandBacks,
       checks: { fast: [passed("fast"), fails()] },
       scripts: (world, places) => ({
-        x: [works(world, places, "x", { takes: "1 minute" })],
-        b: [works(world, places, "b", { takes: "2 minutes" })],
+        x: [works(world, places, "x" as TicketId, { takes: "1 minute" })],
+        b: [works(world, places, "b" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("3 minutes"),
     })
@@ -1023,8 +1030,8 @@ describe("stopping drains", () => {
         .ticket("b", { priority: 1 })
         .ticket("c", { priority: 2 }),
       scripts: (world, places) => ({
-        a: isGoneTwice(world, "a", "1 minute"),
-        b: [works(world, places, "b", { takes: "5 minutes" })],
+        a: isGoneTwice(world, "a" as TicketId, "1 minute"),
+        b: [works(world, places, "b" as TicketId, { takes: "5 minutes" })],
       }),
       during: () => passes("6 minutes"),
     })
@@ -1063,14 +1070,14 @@ describe("stopping drains", () => {
       drains,
       scripts: (world, places) => ({
         a: [
-          works(world, places, "a", {
+          works(world, places, "a" as TicketId, {
             first: [
               sleep("1 minute"),
               step(Effect.asVoid(Queue.offer(drains, { on: true, how: "by SIGUSR1" }))),
             ],
           }),
         ],
-        b: [works(world, places, "b", { takes: "2 minutes" })],
+        b: [works(world, places, "b" as TicketId, { takes: "2 minutes" })],
       }),
       during: () => passes("3 minutes"),
     })

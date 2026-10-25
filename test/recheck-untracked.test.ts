@@ -7,7 +7,7 @@ import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -31,7 +31,7 @@ const elsewhere = new CheckFailed({
 })
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -56,7 +56,9 @@ const until = (phases: Readonly<Record<string, PhaseTag>>) =>
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(
       Stream.filter((state: State) =>
-        Object.entries(phases).every(([id, phase]) => state.tickets.get(id)?.phase._tag === phase),
+        Object.entries(phases).every(
+          ([id, phase]) => state.tickets.get(id as TicketId)?.phase._tag === phase,
+        ),
       ),
       Stream.runHead,
     )
@@ -81,12 +83,12 @@ const leftInA = (left: Files, phases: Readonly<Record<string, PhaseTag>>) =>
     withQueue((queue) =>
       Effect.gen(function* () {
         const repository = yield* Repository
-        const a = yield* finished("a", { "a/a.go": "a\n" })
+        const a = yield* finished("a" as TicketId, { "a/a.go": "a\n" })
         yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
         yield* queue.offer(a)
         yield* until({ a: "Review" })
         yield* repository.write(a.worktree, left)
-        yield* queue.offer(yield* finished("b", { "b/b.go": "b\n" }))
+        yield* queue.offer(yield* finished("b" as TicketId, { "b/b.go": "b\n" }))
         yield* until({ b: "Done" })
         yield* until(phases)
         yield* queue.settled

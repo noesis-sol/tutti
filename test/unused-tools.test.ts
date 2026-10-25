@@ -17,6 +17,7 @@ import {
   skillTool,
   unusedTools,
 } from "../src/agent/unusedTools.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -47,7 +48,7 @@ const optionsWith = (skills: boolean, askUserQuestion = true) => {
         workers: { ...base.settings.workers, ask_user_question: askUserQuestion },
       },
     },
-    ticket: "tutti-abc.1",
+    ticket: "tutti-abc.1" as TicketId,
     worktree: "/work/project-tutti/tutti-abc.1",
     prompt: { text: "You work on TICKET_ID.", file: null },
     servers: noServers,
@@ -207,7 +208,10 @@ const workerArgs = (dir: string): Promise<ReadonlyArray<string>> => {
   })
   const started = Effect.gen(function* () {
     const agents = yield* AgentHost
-    yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
+    yield* agents.start("t-1" as TicketId, {
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      cwd: dir,
+    })
     return yield* Effect.sync(() =>
       existsSync(log)
         ? readFileSync(log, "utf8")

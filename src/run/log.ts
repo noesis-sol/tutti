@@ -13,6 +13,7 @@ import { Cause, Clock, Console, Context, Effect, Layer, Result, Semaphore } from
 import type { AnswerWord } from "../agent/attentionFiles.ts"
 import { answerWith } from "../answer/answerWith.ts"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { stamp } from "./localTime.ts"
 
@@ -144,7 +145,7 @@ export interface Marked {
   readonly line: Line
   readonly tag: string
   /** The ticket's ID, as the run has it. */
-  readonly ticket: string
+  readonly ticket: TicketId
 }
 
 /** What the log is given to write: a line, or a ticket's line marked with its tag and ticket. */
@@ -152,7 +153,7 @@ export type Written = Line | Marked
 
 /** A ticket's line starting with `tag`, as `ticketLine` makes it, marked with `tag` and `ticket`. */
 const marked =
-  (tag: string, ticket: string) =>
+  (tag: string, ticket: TicketId) =>
   (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>): Marked => ({
     line: ticketLine(tag)(strings, ...args),
     tag,
@@ -164,7 +165,7 @@ export const textOf = (written: Written): Line =>
   typeof written === "string" ? written : written.line
 
 /** The branch a ticket's work is on (§ 11). */
-const branch = (id: string): Line => line`tutti/${id}`
+const branch = (id: TicketId): Line => line`tutti/${id}`
 
 /** What the START block says. */
 export interface Start {
@@ -197,7 +198,7 @@ export const hold = (reason: string, running: number): Line =>
 
 /** RESOLVING: a ticket's rebase stopped on conflicts, handed back to its worker. */
 export const resolving = (r: {
-  readonly id: string
+  readonly id: TicketId
   readonly base: string
   readonly files: ReadonlyArray<string>
   /** How long the worker has, as in `20m`. */
@@ -214,7 +215,7 @@ export const resolving = (r: {
  * to its worker.
  */
 export const fixing = (f: {
-  readonly id: string
+  readonly id: TicketId
   readonly base: string
   /** What failed, as in `'scripts/check-fast.sh' fails`. */
   readonly failure: string
@@ -234,7 +235,7 @@ export const branchOn = (name: string, base: string, onTop: boolean): string =>
   onTop ? `${name} on top of ${base}` : `${name} rebased onto ${base}`
 
 /** A permission request as `<what>`: the request's title, else its tool and input. */
-const request = (id: string, what: string): Line => line`${id}'s worker asks: ${what}`
+const request = (id: TicketId, what: string): Line => line`${id}'s worker asks: ${what}`
 
 /** What every request's line takes to say how to answer it: the answers it takes (§ 7.6). */
 interface Answering {
@@ -248,7 +249,7 @@ interface Answering {
 /** PERMISSION: a worker's request, and how to answer it with `tutti answer` (§ 7.6). */
 export const permission = (
   p: Answering & {
-    readonly id: string
+    readonly id: TicketId
     /** The tool call: `Bash(rm -rf build)`. */
     readonly what: string
     /** Why the worker is asked, when the SDK says: `held by the safety check`. */
@@ -262,7 +263,7 @@ export const permission = (
 /** QUESTION: a worker's AskUserQuestion, each question with its options, and how to answer it. */
 export const question = (
   q: Answering & {
-    readonly id: string
+    readonly id: TicketId
     readonly questions: ReadonlyArray<{
       readonly question: string
       readonly options: ReadonlyArray<string>
@@ -279,7 +280,7 @@ export const question = (
 /** QUESTION: an MCP server's elicitation, asking for input or a URL login (§ 4.5). */
 export const elicitation = (
   e: Answering & {
-    readonly id: string
+    readonly id: TicketId
     readonly server: string
     readonly message: string
     /** The URL to open, for a URL login. */
@@ -306,7 +307,7 @@ export type Verdict =
 
 /** A request's answer: `  PERMISSION: tut-1's worker: Bash(x) allowed, via tutti answer`. */
 export const answered = (a: {
-  readonly id: string
+  readonly id: TicketId
   readonly kind: "permission" | "question"
   readonly what: string
   readonly verdict: Verdict
@@ -321,7 +322,7 @@ export const answered = (a: {
 }
 
 /** ALLOWED: a request allowed without asking, by a rule allowed for this run (§ 4.5). */
-export const allowedByRule = (id: string, what: string): Marked =>
+export const allowedByRule = (id: TicketId, what: string): Marked =>
   marked(Tag.allowed, id)`${id}'s worker: ${what}, by a rule you allowed for this run`
 
 /** What denied a tool call, from the SDK's `decision_reason_type`. */
@@ -344,7 +345,7 @@ export const denier = (by: DeniedBy | (string & {})): string =>
 
 /** DENIED: the classifier, the safety check, the mode or a rule refused a worker's tool call (§ 4.5). */
 export const denied = (d: {
-  readonly id: string
+  readonly id: TicketId
   readonly what: string
   /** A `decision_reason_type` tutti doesn't know is named as given. */
   readonly by: DeniedBy | (string & {})
@@ -352,21 +353,21 @@ export const denied = (d: {
 }): Marked => marked(Tag.denied, d.id)`${d.id}'s worker: ${d.what}, by ${denier(d.by)}: ${d.reason}`
 
 /** A worker's context was compacted, `trigger` its PreCompact hook's (§ 4.2), as orchestra says it. */
-export const compacted = (id: string, trigger: string): Line =>
+export const compacted = (id: TicketId, trigger: string): Line =>
   detail`${id}'s worker's context was compacted (${trigger})`
 
 /** STEERED: you sent the worker a message or interrupted it (§ 4.3). */
-export const steered = (id: string): Marked => marked(Tag.steered, id)`${id}`
+export const steered = (id: TicketId): Marked => marked(Tag.steered, id)`${id}`
 
 /** RELEASED: the worker is no longer steered (§ 4.3). */
-export const released = (id: string): Marked => marked(Tag.released, id)`${id}`
+export const released = (id: TicketId): Marked => marked(Tag.released, id)`${id}`
 
 /** MESSAGE: you sent the worker a message; its length, never its text (§ 7.5). */
-export const message = (id: string, text: string): Marked =>
+export const message = (id: TicketId, text: string): Marked =>
   marked(Tag.message, id)`you → ${id} (${[...text].length} characters)`
 
 /** FILED: you filed what you wrote in a finished worker's view as a new ticket (§ 7.5). */
-export const filedTicket = (id: string, from: string): Line =>
+export const filedTicket = (id: TicketId, from: TicketId): Line =>
   ticketLine(Tag.filed)`${id}, written for ${from}'s worker after it had finished`
 
 /** USAGE: an account's usage nears a limit (`allowed_warning`), said once per limit (§ 4.12). */
@@ -405,7 +406,7 @@ export const usageLimitLifted: Line = `${Tag.usageLimit} lifted` as Line
 
 /** PHASE_BUG: the run loop asked for a transition the state machine doesn't have (§ 5.1). */
 export const phaseBug = (p: {
-  readonly id: string
+  readonly id: TicketId
   readonly from: string
   readonly to: string
   readonly cause: string

@@ -1,6 +1,7 @@
 // A merge that changes the requires list while a look fills the free slots (src/run/run.ts's
 // requiresChecked): the list is checked before that fill starts another ticket, not at the next
 // look only, as § 5 item 7 has it ("before the next ticket starts").
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import type { Requirement } from "../src/project/settings.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readAgainAfter } from "../src/run/schedule.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, run as step, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -74,7 +76,7 @@ describe("the requires list a merge changes during a look's fill", () => {
               [
                 ...bash(
                   "bd update a --claim",
-                  Effect.asVoid(Effect.orDie(world.beads.update("a", { claim: true }))),
+                  Effect.asVoid(Effect.orDie(world.beads.update("a" as TicketId, { claim: true }))),
                 ),
                 ...bash(
                   'git commit -am "Change (a)"',
@@ -89,7 +91,10 @@ describe("the requires list a merge changes during a look's fill", () => {
                     ),
                   ),
                 ),
-                ...bash("bd close a", Effect.asVoid(Effect.orDie(world.beads.close("a", "done")))),
+                ...bash(
+                  "bd close a",
+                  Effect.asVoid(Effect.orDie(world.beads.close("a" as TicketId, "done"))),
+                ),
                 // The next fill's read of bd ready fails, and the fill reads it again later.
                 step(world.backlog.fail("ready")),
               ],

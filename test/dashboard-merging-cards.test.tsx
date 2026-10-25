@@ -2,6 +2,7 @@
 // merging have cards without a worker's slot, so Current is kept a line for each card, the table
 // gives way before the cards overflow, and a box too short for a line each ends in `+N more`, never
 // drawing over the wind-down line or the hint.
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import fc from "fast-check"
@@ -10,6 +11,7 @@ import { type Entry, emptyTallies, type WindDown } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { compactLines, compactShown, keptLines } from "../src/ui/Card.tsx"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
@@ -25,7 +27,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const now = began + 67_000
 
 const entryOf = (
-  ticket: string,
+  ticket: TicketId,
   phase: TicketPhase,
   worker: number | null,
   row: number,
@@ -54,11 +56,11 @@ const viewOf = (
 ): RunView => {
   const entries = [
     ...Array.from({ length: working }, (_, i) =>
-      entryOf(`tut-w${i + 1}`, TicketPhase.Working(), i + 1, i),
+      entryOf(`tut-w${i + 1}` as TicketId, TicketPhase.Working(), i + 1, i),
     ),
     ...Array.from({ length: merging }, (_, i) =>
       entryOf(
-        `tut-m${i + 1}`,
+        `tut-m${i + 1}` as TicketId,
         i === 0 ? TicketPhase.Merging({ step: "check" }) : TicketPhase.ToMerge({ place: i }),
         working + i + 1,
         working + i,
@@ -110,7 +112,7 @@ const currentOf = (lines: ReadonlyArray<string>, foot: number): ReadonlyArray<st
     lines.length - foot,
   )
 
-const windDown: WindDown = { since: began, tickets: ["tut-w1"] }
+const windDown: WindDown = { since: began, tickets: ["tut-w1" as TicketId] }
 
 describe("Current with more cards than slots", () => {
   for (const { name, size, view } of [
@@ -176,7 +178,11 @@ describe("the compact box in fewer lines than its cards", () => {
 
   test("keeps the highlighted card, and counts the rest in +N more", () => {
     const shown = compactShown(view.cards, "tut-m4", 6)
-    expect(shown.map((card) => card.ticket)).toEqual(["tut-w1", "tut-w2", "tut-m4"])
+    expect(shown.map((card) => card.ticket)).toEqual([
+      "tut-w1" as TicketId,
+      "tut-w2" as TicketId,
+      "tut-m4" as TicketId,
+    ])
     const text = compactLines(view.cards, theme, { ...options, highlighted: "tut-m4", lines: 6 })
       .map((line) => line.map((s) => s.text).join(""))
       .join("\n")

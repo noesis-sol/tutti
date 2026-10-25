@@ -10,7 +10,7 @@ import { Cause, Console, Context, Deferred, Effect, Exit, Fiber, Layer, Runtime 
 import { Command } from "effect/cli"
 import { tuttiWith } from "../src/cli/commands.ts"
 import { stoppedLine, stoppedReadingLine } from "../src/plan/plan.ts"
-import { Beads, BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { type Git, Git as GitService } from "../src/services/Git.ts"
 import type { RunLock } from "../src/services/RunLock.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -144,8 +144,8 @@ describe("tutti plan stopped", () => {
     ])
     expect(interruptedOnly(result.exit)).toBe(true)
     expect(result.code).toBe(130)
-    expect(result.blockers["t-1"]).toEqual(["t-2"])
-    expect(result.blockers["t-5"]).toEqual(["t-4"])
+    expect(result.blockers["t-1"]).toEqual(["t-2" as TicketId])
+    expect(result.blockers["t-5"]).toEqual(["t-4" as TicketId])
     expect(result.blockers["t-8"]).toEqual([])
   })
 
@@ -155,7 +155,7 @@ describe("tutti plan stopped", () => {
       "tutti plan: stopped. Added 1 of 3 links: t-1 waits for t-2. Not added: t-5 waits for t-4, t-8 waits for t-3.",
     ])
     expect(result.code).toBe(130)
-    expect(result.blockers["t-1"]).toEqual(["t-2"])
+    expect(result.blockers["t-1"]).toEqual(["t-2" as TicketId])
     expect(result.blockers["t-5"]).toEqual([])
   })
 
@@ -167,7 +167,7 @@ describe("tutti plan stopped", () => {
     ])
     expect(result.code).toBe(130)
     expect(result.blockers["t-1"]).toEqual([])
-    expect(result.blockers["t-5"]).toEqual(["t-4"])
+    expect(result.blockers["t-5"]).toEqual(["t-4" as TicketId])
   })
 
   test("a stop during the last link says all were added", async () => {
@@ -176,7 +176,7 @@ describe("tutti plan stopped", () => {
       "tutti plan: stopped. Added 3 of 3 links: t-1 waits for t-2, t-5 waits for t-4, t-8 waits for t-3.",
     ])
     expect(result.code).toBe(130)
-    expect(result.blockers["t-8"]).toEqual(["t-3"])
+    expect(result.blockers["t-8"]).toEqual(["t-3" as TicketId])
   })
 
   test("a stop as it looks for a run to warn of says nothing changed", async () => {
@@ -197,11 +197,14 @@ describe("tutti plan stopped", () => {
 })
 
 describe("stoppedLine", () => {
-  const link = (blocked: string, blocker: string) => ({ blocked, blocker, why: "README.md" })
+  const link = (blocked: TicketId, blocker: TicketId) => ({ blocked, blocker, why: "README.md" })
 
   test("says none added when the stop came before the first link", () => {
-    expect(stoppedLine([], [link("b", "a"), link("c", "b")])).toBe(
-      "tutti plan: stopped. Added 0 of 2 links. Not added: b waits for a, c waits for b.",
-    )
+    expect(
+      stoppedLine(
+        [],
+        [link("b" as TicketId, "a" as TicketId), link("c" as TicketId, "b" as TicketId)],
+      ),
+    ).toBe("tutti plan: stopped. Added 0 of 2 links. Not added: b waits for a, c waits for b.")
   })
 })

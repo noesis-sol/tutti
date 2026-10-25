@@ -1,5 +1,6 @@
 // A start interrupted at any point (§ 4.8): the ticket isn't left Starting with no session, so its
 // next start isn't refused as "a session is already open".
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -11,6 +12,7 @@ import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -80,7 +82,7 @@ describe("AgentHost live: a start interrupted", () => {
         const cwd = join(dir, "gone")
         const results: Array<{ step: number; first: Exit.Exit<void, unknown>; next: unknown }> = []
         for (let step = 1; step <= 60; step++) {
-          const ticket = `t-${step}`
+          const ticket = `t-${step}` as TicketId
           const scheduler = new InterruptAt(step)
           const starting = yield* Effect.forkChild(
             host

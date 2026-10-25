@@ -3,10 +3,11 @@ import fc from "fast-check"
 import { Tag } from "../src/run/log.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { decide, End, endOfRunBox, type Look, type Snapshot, whatsLeft } from "../src/run/runEnd.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 
 type Ticket = Look["tickets"] extends ReadonlyMap<string, infer V> ? V : never
 
-const ids = ["a", "b", "c", "d", "e"]
+const ids = ["a", "b", "c", "d", "e"].map((id) => id as TicketId)
 
 const phases: ReadonlyArray<TicketPhase> = [
   TicketPhase.Queued(),
@@ -21,7 +22,7 @@ const phases: ReadonlyArray<TicketPhase> = [
   TicketPhase.Blocked({ why: "a reason" }),
 ]
 
-const arbTicket = (ticket: string): fc.Arbitrary<Ticket> =>
+const arbTicket = (ticket: TicketId): fc.Arbitrary<Ticket> =>
   fc.record({ phase: fc.constantFrom(...phases), handBack: fc.boolean() }).map((each) => ({
     ticket,
     ...each,
@@ -69,7 +70,7 @@ const look = (over: Partial<Snapshot> = {}): Snapshot => ({
   ...over,
 })
 
-const tickets = (...entries: ReadonlyArray<[string, TicketPhase, boolean?]>) =>
+const tickets = (...entries: ReadonlyArray<[TicketId, TicketPhase, boolean?]>) =>
   new Map(
     entries.map(([ticket, phase, handBack]) => [
       ticket,
@@ -171,58 +172,67 @@ describe("decide", () => {
 
   test("a worker waiting on you holds a queued ticket still to start, but not at the cap", () => {
     const snapshot = look({
-      running: new Set(["a"]),
-      tickets: tickets(["a", working], ["b", TicketPhase.Queued()]),
-      asking: ["a"],
+      running: new Set(["a" as TicketId]),
+      tickets: tickets(["a" as TicketId, working], ["b" as TicketId, TicketPhase.Queued()]),
+      asking: ["a" as TicketId],
     })
     expect(decide(snapshot)).toEqual(End.Busy())
-    expect(decide({ ...snapshot, canTake: false })).toEqual(End.WaitOnYou({ tickets: ["a"] }))
+    expect(decide({ ...snapshot, canTake: false })).toEqual(
+      End.WaitOnYou({ tickets: ["a" as TicketId] }),
+    )
   })
 
   test("a solo ticket held behind a waiting worker doesn't keep the run busy", () => {
     const snapshot = look({
-      running: new Set(["a"]),
-      tickets: tickets(["a", working], ["b", TicketPhase.HeldBack({ why: "solo" })]),
-      asking: ["a"],
+      running: new Set(["a" as TicketId]),
+      tickets: tickets(
+        ["a" as TicketId, working],
+        ["b" as TicketId, TicketPhase.HeldBack({ why: "solo" })],
+      ),
+      asking: ["a" as TicketId],
     })
-    expect(decide(snapshot)).toEqual(End.WaitOnYou({ tickets: ["a"] }))
+    expect(decide(snapshot)).toEqual(End.WaitOnYou({ tickets: ["a" as TicketId] }))
   })
 
   test("a ticket held back for an ended one's footprint is to start", () => {
-    const snapshot = look({ tickets: tickets(["b", TicketPhase.HeldBack({ why: "overlap" })]) })
+    const snapshot = look({
+      tickets: tickets(["b" as TicketId, TicketPhase.HeldBack({ why: "overlap" })]),
+    })
     expect(decide(snapshot)).toEqual(End.Busy())
     expect(decide({ ...snapshot, canTake: false })).toEqual(End.Done({ asked: false }))
   })
 
   test("a worker past its ticket limit is neither waited for nor waited on", () => {
     const snapshot = look({
-      running: new Set(["a"]),
-      tickets: tickets(["a", working]),
-      asking: ["a"],
-      overLimit: new Set(["a"]),
+      running: new Set(["a" as TicketId]),
+      tickets: tickets(["a" as TicketId, working]),
+      asking: ["a" as TicketId],
+      overLimit: new Set(["a" as TicketId]),
     })
     expect(decide(snapshot)).toEqual(End.Done({ asked: false }))
   })
 
   test("a conflict hand-back waits on you with a dashboard only", () => {
     const snapshot = look({
-      tickets: tickets(["c", TicketPhase.Blocked({ why: Tag.mergeConflict }), true]),
+      tickets: tickets(["c" as TicketId, TicketPhase.Blocked({ why: Tag.mergeConflict }), true]),
     })
-    expect(decide(snapshot)).toEqual(End.WaitOnYou({ tickets: ["c"] }))
+    expect(decide(snapshot)).toEqual(End.WaitOnYou({ tickets: ["c" as TicketId] }))
     expect(decide({ ...snapshot, dashboard: false })).toEqual(End.Done({ asked: false }))
   })
 
   test("requests come oldest first, hand-backs after", () => {
     const snapshot = look({
-      running: new Set(["a", "b"]),
+      running: new Set(["a" as TicketId, "b" as TicketId]),
       tickets: tickets(
-        ["c", TicketPhase.Blocked({ why: Tag.mergeConflict }), true],
-        ["a", working],
-        ["b", working],
+        ["c" as TicketId, TicketPhase.Blocked({ why: Tag.mergeConflict }), true],
+        ["a" as TicketId, working],
+        ["b" as TicketId, working],
       ),
-      asking: ["b", "a", "b"],
+      asking: ["b" as TicketId, "a" as TicketId, "b" as TicketId],
     })
-    expect(decide(snapshot)).toEqual(End.WaitOnYou({ tickets: ["b", "a", "c"] }))
+    expect(decide(snapshot)).toEqual(
+      End.WaitOnYou({ tickets: ["b" as TicketId, "a" as TicketId, "c" as TicketId] }),
+    )
   })
 
   test("a merge under way as the look began has it look again", () => {

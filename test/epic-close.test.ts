@@ -6,7 +6,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -23,7 +23,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 }
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed in Beads. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -52,7 +52,7 @@ const mergeUnder = (type: string, excluded: ReadonlyArray<string>) => {
     setup,
     Effect.gen(function* () {
       const queue = yield* makeQueue(options)
-      yield* queue.offer(yield* finished("a", { "a.txt": "a\n" }))
+      yield* queue.offer(yield* finished("a" as TicketId, { "a.txt": "a\n" }))
       yield* queue.settled
     }).pipe(Effect.scoped, Effect.provide(Ledger.layer)),
   )

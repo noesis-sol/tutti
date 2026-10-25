@@ -9,6 +9,7 @@
 // doesn't promise them again.
 import { Effect } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
+import type { TicketId } from "../services/Beads.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, type Log, line } from "./log.ts"
@@ -45,7 +46,7 @@ export const drainWords = (
 }
 
 /** `DRAIN: stopping after …, asked by SIGUSR1`. */
-export const drainLine = (running: ReadonlyArray<string>, how: string): Line => {
+export const drainLine = (running: ReadonlyArray<TicketId>, how: string): Line => {
   const [lead, list, tail] = drainWords([...running].sort())
   const asked = how === "" ? "" : `, asked ${how}`
   return line`DRAIN: ${lead}${list}${tail}${asked}`

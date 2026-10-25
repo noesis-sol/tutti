@@ -3,6 +3,7 @@
 // line to merge, rather than set aside OFF_BRANCH mid-rebase. One whose conflicts were handed back
 // to its worker is aborted too, its resolution unfinished, for the merge to hand them back afresh,
 // naming the commit the resolution had got to.
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -11,6 +12,7 @@ import { Effect, Fiber } from "effect"
 import fc from "fast-check"
 import { handedBackOf, markHandedBack, uncheckedKey, uncheckedOf } from "../src/run/check.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import { type RunStamp, type State, Store, type TicketRecord } from "../src/services/Store.ts"
 import { Repository } from "../src/testing/Git.ts"
@@ -83,7 +85,7 @@ const afterKill = async (
       // conflicts with, as git would be on any commit mid-rebase.
       yield* repository.commit(repo, "Land a conflict", { "b.txt": "main\n" })
       yield* Effect.flip(git.rebase(worktree, yield* repository.head("main")))
-      yield* store.setMetadata("b", uncheckedKey, { fork, head: orig, ...extra })
+      yield* store.setMetadata("b" as TicketId, uncheckedKey, { fork, head: orig, ...extra })
       const resolution = resolved
         ? yield* repository.commit(worktree, "Do b (b)", { "b.txt": "main\nb\n" })
         : ""
@@ -157,7 +159,7 @@ describe("a rebase a killed run's merge left in progress", () => {
 })
 
 describe("the hand-back on the mark", () => {
-  const markIn = (value: Parameters<typeof handedBackOf>[0], id = "b") =>
+  const markIn = (value: Parameters<typeof handedBackOf>[0], id = "b" as TicketId) =>
     Effect.gen(function* () {
       const store = yield* Store
       if (value !== undefined) yield* store.setMetadata(id, uncheckedKey, value)

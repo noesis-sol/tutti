@@ -11,7 +11,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git, type GitError } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -35,7 +35,7 @@ const locked =
   "fatal: Unable to create '/repo/.git/index.lock': File exists. Another git process seems to be running in this repository"
 
 /** A ticket its worker finished on top of main, `<id>.txt` committed, closed, Working. */
-const finished = (id: string) =>
+const finished = (id: TicketId) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -79,8 +79,8 @@ const merges = (
   scenario(
     setup,
     Effect.gen(function* () {
-      const a = yield* finished("a")
-      const b = yield* finished("b")
+      const a = yield* finished("a" as TicketId)
+      const b = yield* finished("b" as TicketId)
       yield* before
       const git = yield* Git
       const repository = yield* Repository
@@ -108,7 +108,10 @@ const merges = (
       yield* Fiber.join(fiber)
       const state = yield* (yield* Ledger).current
       return {
-        phases: { a: state.tickets.get("a")?.phase, b: state.tickets.get("b")?.phase },
+        phases: {
+          a: state.tickets.get("a" as TicketId)?.phase,
+          b: state.tickets.get("b" as TicketId)?.phase,
+        },
         stop: (yield* queue.state).stop?.why,
         main: yield* repository.tree("main"),
         fastForwards: (yield* repository.calls).filter((call) => call.op === "merge --ff-only")

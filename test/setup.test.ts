@@ -9,7 +9,7 @@ import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import { fileList, setupFilesIn } from "../src/run/setup.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, CheckTimedOut } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -51,7 +51,7 @@ const setupFailed = new CheckFailed({
 })
 
 /** A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -77,7 +77,7 @@ const moveMain = (files: Files) =>
     yield* repository.commit(repository.dir, "Land something else", files)
   })
 
-const phaseOf = (state: State, id: string) => state.tickets.get(id)?.phase
+const phaseOf = (state: State, id: TicketId) => state.tickets.get(id)?.phase
 
 /** What a setup scenario hands back: each ticket's phase, and every state the ledger had. */
 interface SetUpRun {
@@ -111,7 +111,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 }
 
 /** Waits until the ticket's phase is `tag`. */
-const until = (id: string, tag: TicketPhase["_tag"]) =>
+const until = (id: TicketId, tag: TicketPhase["_tag"]) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     yield* ledger.changes.pipe(
@@ -137,7 +137,7 @@ const mergeA = (
     },
     withQueue((queue) =>
       Effect.gen(function* () {
-        const a = yield* finished("a", own)
+        const a = yield* finished("a" as TicketId, own)
         yield* moveMain(landed)
         yield* queue.offer(a)
       }),
@@ -163,7 +163,7 @@ describe("the setup before the merge check", () => {
     ])
     // Merging{setup} while it runs, between the rebase and the check.
     const steps = states
-      .map((state) => phaseOf(state, "a"))
+      .map((state) => phaseOf(state, "a" as TicketId))
       .flatMap((phase) => (phase?._tag === "Merging" ? [phase.step] : []))
     expect([...new Set(steps)]).toEqual(["rebase", "setup", "check", "fast-forward"])
   })
@@ -171,7 +171,7 @@ describe("the setup before the merge check", () => {
   test("its step shows on the card as the setup running", async () => {
     const ran = await mergeA({ "a.ts": "a\n" }, { "bun.lock": "v2\n" })
     const during = resultOf(ran).states.find((state) => {
-      const phase = phaseOf(state, "a")
+      const phase = phaseOf(state, "a" as TicketId)
       return phase?._tag === "Merging" && phase.step === "setup"
     })
     expect(during).toBeDefined()
@@ -191,7 +191,7 @@ describe("the setup before the merge check", () => {
     expect(resultOf(ran).phases.a?._tag).toBe("Done")
     expect(ran.checkRuns.map((run) => run.check)).toEqual(["fast"])
     expect(ran.log.some((line) => line.includes("before the check"))).toBe(false)
-    const steps = resultOf(ran).states.map((state) => phaseOf(state, "a"))
+    const steps = resultOf(ran).states.map((state) => phaseOf(state, "a" as TicketId))
     expect(steps.some((phase) => phase?._tag === "Merging" && phase.step === "setup")).toBe(false)
   })
 
@@ -212,7 +212,7 @@ describe("the setup before the merge check", () => {
       { backlog: backlog().ticket("a").seeds, config: withSetup() },
       withQueue((queue) =>
         Effect.gen(function* () {
-          yield* queue.offer(yield* finished("a", { "bun.lock": "a's\n" }))
+          yield* queue.offer(yield* finished("a" as TicketId, { "bun.lock": "a's\n" }))
         }),
       ),
     )
@@ -235,7 +235,7 @@ describe("the setup before the merge check", () => {
       { backlog: backlog().ticket("a").seeds, config: withSetup() },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a.ts": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a.ts": "a\n" })
           yield* moveMain({ "main.txt": "moved\n" })
           // The merge's looks for a change of its own, before and after the rebase, then the setup's.
           yield* (yield* Repository).fail("diff --name-only", { times: 3 })
@@ -306,12 +306,12 @@ describe("a setup that fails", () => {
       },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a.ts": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a.ts": "a\n" })
           yield* moveMain({ "bun.lock": "v2\n" })
           yield* queue.offer(a)
-          yield* until("a", "Review")
-          yield* queue.offer(yield* finished("b", { "b.ts": "b\n" }))
-          yield* until("a", "Done")
+          yield* until("a" as TicketId, "Review")
+          yield* queue.offer(yield* finished("b" as TicketId, { "b.ts": "b\n" }))
+          yield* until("a" as TicketId, "Done")
         }),
       ),
     )
@@ -368,12 +368,12 @@ describe("a setup that fails", () => {
       },
       withQueue((queue) =>
         Effect.gen(function* () {
-          const a = yield* finished("a", { "a.ts": "a\n" })
+          const a = yield* finished("a" as TicketId, { "a.ts": "a\n" })
           yield* moveMain({ "bun.lock": "v2\n" })
           yield* queue.offer(a)
-          yield* until("a", "Review")
-          yield* queue.offer(yield* finished("b", { "b.ts": "b\n" }))
-          yield* until("a", "Done")
+          yield* until("a" as TicketId, "Review")
+          yield* queue.offer(yield* finished("b" as TicketId, { "b.ts": "b\n" }))
+          yield* until("a" as TicketId, "Done")
         }),
       ),
     )

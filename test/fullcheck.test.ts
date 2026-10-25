@@ -15,7 +15,7 @@ import {
 } from "../src/run/fullcheck.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import type { Issue } from "../src/services/Beads.ts"
+import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, CheckTimedOut, type Said } from "../src/services/Checks.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"
 import { runExcludeEntry, Worktrees } from "../src/services/Worktrees.ts"
@@ -61,7 +61,7 @@ const config = (setup = false): Partial<AppConfigValue> => {
 }
 
 /** Claims, commits and closes its ticket, as a worker does. */
-const finishes = (world: World, root: string, id: string): SessionScript =>
+const finishes = (world: World, root: string, id: TicketId): SessionScript =>
   claimsAndCloses(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     commit: Effect.asVoid(
@@ -73,14 +73,14 @@ const finishes = (world: World, root: string, id: string): SessionScript =>
   })
 
 /** Claims its ticket and defers it: nothing merges. */
-const gives = (world: World, id: string): SessionScript =>
+const gives = (world: World, id: TicketId): SessionScript =>
   defers(id, {
     claim: Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))),
     defer: Effect.asVoid(Effect.orDie(world.beads.defer(id))),
   })
 
 /** Claims its ticket and goes, is resumed once and goes again: PAUSED. */
-const pauses = (world: World, id: string): ReadonlyArray<SessionScript> => [
+const pauses = (world: World, id: TicketId): ReadonlyArray<SessionScript> => [
   [
     ...turn([step(Effect.asVoid(Effect.orDie(world.beads.update(id, { claim: true }))))]).slice(
       0,
@@ -117,10 +117,10 @@ const runs = (plan: Plan): Promise<Ran<Outcome | undefined>> => {
           Object.entries(plan.workers).map(([id, how]) => [
             id,
             how === "finishes"
-              ? [finishes(world, root, id)]
+              ? [finishes(world, root, id as TicketId)]
               : how === "defers"
-                ? [gives(world, id)]
-                : pauses(world, id),
+                ? [gives(world, id as TicketId)]
+                : pauses(world, id as TicketId),
           ]),
         ),
     },
@@ -327,7 +327,7 @@ describe("FULL_CHECK_FAILED", () => {
       workers: { "t-1": "finishes" },
       checks: { full: [failsIn("e2e")] },
     })
-    expect(checkFullTickets(again).map((issue) => issue.id)).toEqual(["cf-1"])
+    expect(checkFullTickets(again).map((issue) => issue.id)).toEqual(["cf-1" as TicketId])
     expect(checkFullTickets(again)[0]?.notes).toContain("fails again on main at")
     expect(recordsOf(again, "full_check")).toEqual([
       expect.objectContaining({ ticket: "cf-1", suite: "e2e" }),

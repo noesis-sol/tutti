@@ -18,6 +18,7 @@ import { memo, useCallback, useMemo } from "react"
 import { pad } from "../run/localTime.ts"
 import { activityRows } from "../run/phase.ts"
 import type { Card, ShownRequest } from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { attentionInside, attentionLines } from "./AttentionCard.tsx"
 import { clickable } from "./click.ts"
 import { workerMemory } from "./LoadLine.tsx"
@@ -424,7 +425,7 @@ const CompactBox = ({
   readonly width: number
   readonly lines: number
   readonly highlighted: string | null
-  readonly open: (ticket: string) => void
+  readonly open: (ticket: TicketId) => void
 }) => {
   const now = useNow()
   const spin = useSpinner(cards.some((card) => card.motion === "spinner"))
@@ -545,7 +546,7 @@ export const Cards = ({
   /** The highlighted card's ticket. */
   readonly highlighted: string | null
   /** Opens the view of the ticket's worker. */
-  readonly open: (ticket: string) => void
+  readonly open: (ticket: TicketId) => void
   /** The focused button of an attention card. */
   readonly focusOf: (request: ShownRequest | undefined) => number | null
   /** Presses an attention card's button: the same function from one drawing to the next. */

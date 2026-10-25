@@ -29,6 +29,7 @@ import {
   steeredInRun,
   type talliesLine,
 } from "../src/run/report.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { type Seed as BeadsSeed, layer as beadsLayer } from "../src/testing/Beads.ts"
@@ -119,20 +120,20 @@ const report = async (setup: Setup = {}) => {
       yield* git.commit(repo, "Parse the config (t-1)", { "src/config.ts": "parse" })
       const ledger = yield* Ledger
       for (const [id, title] of [
-        ["t-1", "Parse the config"],
-        ["t-2", "Fix the flaky test"],
-        ["t-3", "Write the docs"],
+        ["t-1" as TicketId, "Parse the config"],
+        ["t-2" as TicketId, "Fix the flaky test"],
+        ["t-3" as TicketId, "Write the docs"],
       ] as const) {
         yield* ledger.transition(id, Move.Ready(), { title })
         yield* ledger.transition(id, Move.Dispatched())
       }
-      yield* ledger.transition("t-1", Move.Verified({ place: 1 }))
-      yield* ledger.transition("t-1", Move.ItsTurn())
-      yield* ledger.transition("t-1", Move.FastForwarded({ commit: "abc123" }))
-      yield* ledger.transition("t-2", Move.Defer({ why: "deferred by its worker" }))
+      yield* ledger.transition("t-1" as TicketId, Move.Verified({ place: 1 }))
+      yield* ledger.transition("t-1" as TicketId, Move.ItsTurn())
+      yield* ledger.transition("t-1" as TicketId, Move.FastForwarded({ commit: "abc123" }))
+      yield* ledger.transition("t-2" as TicketId, Move.Defer({ why: "deferred by its worker" }))
       // t-1's worker asks twice and is denied once, and Claude Code denies it three calls.
       const attention = yield* Attention
-      const ask = yield* attention.request("t-1", openFibers())
+      const ask = yield* attention.request("t-1" as TicketId, openFibers())
       const sdk = { signal: new AbortController().signal, toolUseID: "toolu_1", requestId: "req" }
       const question = {
         questions: [{ question: "Which?", options: [{ label: "This" }], multiSelect: false }],
@@ -141,26 +142,31 @@ const report = async (setup: Setup = {}) => {
       yield* Effect.promise(() => ask("Write", { file_path: "/work/a.ts" }, sdk))
       yield* Effect.promise(() => ask("AskUserQuestion", question, sdk))
       for (const by of ["safetyCheck", "classifier", "safetyCheck"]) {
-        yield* attention.denial("t-1", denial(by))
+        yield* attention.denial("t-1" as TicketId, denial(by))
       }
-      yield* ledger.count("t-2", "messages", 2)
-      yield* ledger.count("t-2", "compactions")
-      yield* ledger.steer("t-2", "message")
+      yield* ledger.count("t-2" as TicketId, "messages", 2)
+      yield* ledger.count("t-2" as TicketId, "compactions")
+      yield* ledger.steer("t-2" as TicketId, "message")
       // t-3's worker was interrupted and handed back: steered once, not now.
-      yield* ledger.steer("t-3", "interrupt")
-      yield* ledger.release("t-3")
+      yield* ledger.steer("t-3" as TicketId, "interrupt")
+      yield* ledger.release("t-3" as TicketId)
       const logs = yield* Log
       yield* logs.write(
-        log.steered("t-3"),
-        log.released("t-3"),
+        log.steered("t-3" as TicketId),
+        log.released("t-3" as TicketId),
         log.permission({
-          id: "t-1",
+          id: "t-1" as TicketId,
           requestId: "r1",
           what: "Bash(ffprobe in.mp4)",
           defaultToNo: false,
           answers: ["allow", "allow-run", "deny"],
         }),
-        log.denied({ id: "t-1", what: "Bash(rm -rf $T/*)", by: "safetyCheck", reason: "held" }),
+        log.denied({
+          id: "t-1" as TicketId,
+          what: "Bash(rm -rf $T/*)",
+          by: "safetyCheck",
+          reason: "held",
+        }),
       )
       const costs = yield* OrganCost
       yield* costs.record({
@@ -276,7 +282,7 @@ describe("the report", () => {
   })
 
   test("names the scope in its title", async () => {
-    const { files, repo } = await report({ config: { ticket: "t-9" } })
+    const { files, repo } = await report({ config: { ticket: "t-9" as TicketId } })
     const written = readFileSync(join(repo, reportsDir, files[0] ?? ""), "utf8")
     expect(written.split("\n")[0]).toEndWith(" · main · t-9")
   })
@@ -354,9 +360,9 @@ describe("steering and tallies", () => {
     expect(steeredInRun({ ...entry, steered: true }, [])).toBe(true)
     expect(steeredInRun({ ...entry, tallies: { ...entry.tallies, messages: 1 } }, [])).toBe(true)
     const kept = (written: log.Written) => Effect.runSync(log.keep([written]))
-    expect(steeredInRun(entry, kept(log.steered("t-1")))).toBe(true)
-    expect(steeredInRun(entry, kept(log.steered("xt-1")))).toBe(false)
-    expect(steeredInRun(entry, kept(log.steered("t-10")))).toBe(false)
+    expect(steeredInRun(entry, kept(log.steered("t-1" as TicketId)))).toBe(true)
+    expect(steeredInRun(entry, kept(log.steered("xt-1" as TicketId)))).toBe(false)
+    expect(steeredInRun(entry, kept(log.steered("t-10" as TicketId)))).toBe(false)
   })
 })
 

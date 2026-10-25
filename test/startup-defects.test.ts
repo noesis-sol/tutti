@@ -1,6 +1,7 @@
 // A startup check that fails with a defect still says what failed, and the SDK's query() throwing
 // as it is called (no Claude Code for the platform) fails the login probe and a worker's start
 // with what to do, rather than as a defect: tutti never exits 2 saying nothing.
+
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -19,6 +20,7 @@ import { WorkerState } from "../src/agent/WorkerState.ts"
 import { type AppConfigValue, defaultSettings, SetupProblem } from "../src/cli/AppConfig.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { check, failures, report, type StartupFailed } from "../src/run/startup.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
@@ -184,9 +186,12 @@ describe("AgentHost live: query() throwing as the session starts", () => {
       Effect.gen(function* () {
         const agents = yield* AgentHost
         const exit = yield* Effect.exit(
-          agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir }),
+          agents.start("t-1" as TicketId, {
+            sessionId: "11111111-1111-4111-8111-111111111111",
+            cwd: dir,
+          }),
         )
-        return { exit, state: yield* agents.current("t-1") }
+        return { exit, state: yield* agents.current("t-1" as TicketId) }
       }).pipe(
         Effect.provide(
           host.pipe(

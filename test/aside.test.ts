@@ -4,7 +4,7 @@ import { leaveForReview, putAside } from "../src/run/aside.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { type Log, Tag, ticketLine } from "../src/run/log.ts"
 import { Move } from "../src/run/phase.ts"
-import type { Beads } from "../src/services/Beads.ts"
+import type { Beads, TicketId } from "../src/services/Beads.ts"
 import { Store } from "../src/services/Store.ts"
 import { Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
@@ -17,8 +17,8 @@ const aside = (body: Effect.Effect<unknown, never, Ledger | Beads | Log | Store>
   Effect.runPromise(
     Effect.gen(function* () {
       const ledger = yield* Ledger
-      yield* ledger.transition("t-1", Move.Ready(), { title: "One ticket" })
-      yield* ledger.transition("t-1", Move.Dispatched())
+      yield* ledger.transition("t-1" as TicketId, Move.Ready(), { title: "One ticket" })
+      yield* ledger.transition("t-1" as TicketId, Move.Dispatched())
       yield* body
       const issues = yield* (yield* Backlog).issues
       return {
@@ -28,8 +28,8 @@ const aside = (body: Effect.Effect<unknown, never, Ledger | Beads | Log | Store>
           (record) => record.kind !== "phase" && record.kind !== "ticket_end",
         ),
         log: yield* texts,
-        phase: (yield* ledger.current).tickets.get("t-1")?.phase,
-        saved: yield* (yield* Store).ticket("t-1"),
+        phase: (yield* ledger.current).tickets.get("t-1" as TicketId)?.phase,
+        saved: yield* (yield* Store).ticket("t-1" as TicketId),
       }
     }).pipe(
       Effect.provide(
@@ -49,7 +49,7 @@ describe("setting a ticket aside", () => {
   test("for review: its note, Review{why}, and its warn record with aside", async () => {
     const text = ticketLine(Tag.closedWithoutCommit)`no commit on tutti/t-1 names t-1`
     const left = await aside(
-      leaveForReview("t-1", {
+      leaveForReview("t-1" as TicketId, {
         why: Tag.closedWithoutCommit,
         detail: "closed without a commit",
         text,
@@ -75,7 +75,7 @@ describe("setting a ticket aside", () => {
     const deferred = ticketLine("t-1")`set aside`
     const left = await aside(
       putAside(
-        { id: "t-1", title: "One ticket" },
+        { id: "t-1" as TicketId, title: "One ticket" },
         {
           note: "tutti: set aside.",
           reason: "set aside",

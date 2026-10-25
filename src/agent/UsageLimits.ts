@@ -24,6 +24,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import type { TicketId } from "../services/Beads.ts"
 import type { Reading } from "./reading.ts"
 
 /** A `rate_limit_event`'s status. */
@@ -241,7 +242,7 @@ export const reportOf = (info: unknown): LimitReport => ({
 })
 
 /** The workers whose turn ended on the limit (UsageLimited), by ticket: when it resets, if known. */
-export type Waiting = ReadonlyMap<string, number | null>
+export type Waiting = ReadonlyMap<TicketId, number | null>
 
 export class UsageLimits extends Context.Service<
   UsageLimits,
@@ -264,7 +265,7 @@ export class UsageLimits extends Context.Service<
      * The ticket's worker is UsageLimited until `resetsAt` (epoch milliseconds, null when
      * unknown), or, with undefined, no longer is: AgentHost says so as its state changes.
      */
-    limited(ticket: string, resetsAt: number | null | undefined): Effect.Effect<void>
+    limited(ticket: TicketId, resetsAt: number | null | undefined): Effect.Effect<void>
     /** The workers waiting for the limit: now, then on each change. */
     readonly waiting: Stream.Stream<Waiting>
     /** Whether the usage-limit hold is on. */

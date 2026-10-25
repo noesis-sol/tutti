@@ -1,6 +1,7 @@
 // The screen's commands after the run's end: a whole run with its screen ends, by the end-of-run
 // box's `q`, with a's conflict handed back and waiting for its steered worker (Blocked); HandBackNow
 // sent after the end is dropped, so nothing merges or steers after the end record's phases are read.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,7 @@ import { UiCommand } from "../src/run/commands.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   canUseTool,
@@ -48,11 +50,11 @@ const scripts = (world: World, repo: string, root: string) => {
     wait,
     init(),
     sessionState("running"),
-    run(orDie(world.beads.update("a", { claim: true }))),
+    run(orDie(world.beads.update("a" as TicketId, { claim: true }))),
     canUseTool("Bash", { command: "ls" }),
     run(orDie(world.repository.commit(repo, "Land something else", { "a.txt": "main's a\n" }))),
     run(orDie(world.repository.commit(worktree, "Do a (a)", { "a.txt": "a\n" }))),
-    run(orDie(world.beads.close("a", "done"))),
+    run(orDie(world.beads.close("a" as TicketId, "done"))),
     result("Closed a."),
     wait,
     init(),
@@ -148,7 +150,7 @@ describe("the screen's commands after the run's end", () => {
         yield* until("a's request", () => Effect.map(requestOf, (request) => request !== undefined))
         yield* send(
           UiCommand.SendMessage({
-            ticket: "a",
+            ticket: "a" as TicketId,
             text: "Keep it small",
             uuid: "11111111-2222-4333-8444-555555555555" as MessageUuid,
           }),
@@ -170,7 +172,7 @@ describe("the screen's commands after the run's end", () => {
         }
         const ended = yield* Fiber.join(fiber)
         const atEnd = yield* texts
-        yield* send(UiCommand.HandBackNow({ ticket: "a" }))
+        yield* send(UiCommand.HandBackNow({ ticket: "a" as TicketId }))
         for (let i = 0; i < 30; i++) {
           yield* advance("1 second")
           yield* Effect.promise(() => Bun.sleep(2))

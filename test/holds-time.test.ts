@@ -1,5 +1,6 @@
 // The holds that come with time (§ 4.3, § 4.5): TICKET_LIMIT, LONG_RUNNING and BLOCKED, as whole
 // runs under TestClock, and the pure parts of them.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -23,6 +24,7 @@ import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import type { RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
@@ -57,7 +59,7 @@ const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-
 const finishes = (
   world: World,
   root: string,
-  id: string,
+  id: TicketId,
   first: ReadonlyArray<SessionScript[number]>,
 ): SessionScript =>
   turn(
@@ -81,11 +83,11 @@ const finishes = (
   )
 
 /** A worker that takes `takes` to finish its ticket. */
-const takes = (world: World, root: string, id: string, takes: Duration.Input): SessionScript =>
+const takes = (world: World, root: string, id: TicketId, takes: Duration.Input): SessionScript =>
   finishes(world, root, id, [sleep(takes)])
 
 /** A worker that asks permission for `rm -rf build`, then finishes its ticket once answered. */
-const asks = (world: World, root: string, id: string): SessionScript =>
+const asks = (world: World, root: string, id: TicketId): SessionScript =>
   finishes(world, root, id, [canUseTool("Bash", { command: "rm -rf build" })])
 
 /** Waits, in real time, until a log line matches `pattern`. */
@@ -170,7 +172,7 @@ const runs = (plan: Plan) => {
 }
 
 /** A request open since `createdAt`, from `ticket`'s worker. */
-const request = (id: string, ticket: string, createdAt: number): AttentionRequest => ({
+const request = (id: string, ticket: TicketId, createdAt: number): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -189,38 +191,46 @@ const limit = Duration.toMillis(blockedAfter)
 
 describe("BLOCKED, as the open requests say", () => {
   test("a ticket trips once a request of its worker has been open for blockedAfter", () => {
-    const open = [request("r1", "t-1", 0), request("r2", "t-1", 10), request("r3", "t-2", 60_000)]
+    const open = [
+      request("r1", "t-1" as TicketId, 0),
+      request("r2", "t-1" as TicketId, 10),
+      request("r3", "t-2" as TicketId, 60_000),
+    ]
     expect(blockedAt(open, new Set(), limit - 1, blockedAfter)).toEqual({ trips: [], lifts: [] })
     expect(blockedAt(open, new Set(), limit, blockedAfter)).toEqual({
-      trips: [{ ticket: "t-1", what: "Bash(rm -rf build)" }],
+      trips: [{ ticket: "t-1" as TicketId, what: "Bash(rm -rf build)" }],
       lifts: [],
     })
     // Held already, it doesn't trip again.
-    expect(blockedAt(open, new Set(["t-1"]), limit + 60_000, blockedAfter)).toEqual({
-      trips: [{ ticket: "t-2", what: "Bash(rm -rf build)" }],
+    expect(blockedAt(open, new Set(["t-1" as TicketId]), limit + 60_000, blockedAfter)).toEqual({
+      trips: [{ ticket: "t-2" as TicketId, what: "Bash(rm -rf build)" }],
       lifts: [],
     })
   })
 
   test("a ticket held lifts once none of its requests is open, a new one too", () => {
-    const open = [request("r3", "t-2", limit * 2)]
-    expect(blockedAt(open, new Set(["t-1", "t-2"]), limit * 2, blockedAfter)).toEqual({
+    const open = [request("r3", "t-2" as TicketId, limit * 2)]
+    expect(
+      blockedAt(open, new Set(["t-1" as TicketId, "t-2" as TicketId]), limit * 2, blockedAfter),
+    ).toEqual({
       trips: [],
-      lifts: ["t-1"],
+      lifts: ["t-1" as TicketId],
     })
   })
 
   test("its stop and lift lines name the ticket and what it waits on", () => {
-    const stop = blockedStop("t-1", "Bash(rm -rf build)")
+    const stop = blockedStop("t-1" as TicketId, "Bash(rm -rf build)")
     expect(String(stop.text)).toBe("BLOCKED >4min: t-1 needs you: Bash(rm -rf build)")
     expect(stop).toMatchObject({ why: "BLOCKED", code: 3, ticket: "t-1" })
-    expect(String(blockedLifted("t-1"))).toBe("HOLD lifted: t-1's requests were answered")
+    expect(String(blockedLifted("t-1" as TicketId))).toBe(
+      "HOLD lifted: t-1's requests were answered",
+    )
   })
 
   test("a request's words can't break the stop's line", () => {
     fc.assert(
       fc.property(fc.string(), (what) => {
-        const text = String(blockedStop("t-1", what).text)
+        const text = String(blockedStop("t-1" as TicketId, what).text)
         expect(text.startsWith("BLOCKED >4min: t-1 needs you: ")).toBe(true)
         for (const control of ["\n", "\r", "\u001b"]) expect(text).not.toContain(control)
       }),
@@ -228,17 +238,19 @@ describe("BLOCKED, as the open requests say", () => {
   })
 
   test("lifting a ticket's stop keeps the others, the first left deciding the exit code", () => {
-    const one = blockedStop("t-1", "a")
-    const two = blockedStop("t-2", "b")
+    const one = blockedStop("t-1" as TicketId, "a")
+    const two = blockedStop("t-2" as TicketId, "b")
     const dirty = stopFor("DIRTY_TREE", "uncommitted changes in /repo")
     const lifted = liftStops(addStop(addStop(addStop(noStops, one), dirty), two), (stop) =>
-      isBlockedOn(stop, "t-1"),
+      isBlockedOn(stop, "t-1" as TicketId),
     )
     expect(exitCodeOf(lifted)).toBe(5)
     expect(String(stopsLine(lifted))).toBe(
       "DIRTY_TREE: uncommitted changes in /repo; also BLOCKED >4min: t-2 needs you: b",
     )
-    expect(liftStops(addStop(noStops, one), (stop) => isBlockedOn(stop, "t-1"))).toEqual(noStops)
+    expect(
+      liftStops(addStop(noStops, one), (stop) => isBlockedOn(stop, "t-1" as TicketId)),
+    ).toEqual(noStops)
   })
 })
 
@@ -250,10 +262,10 @@ describe("the time holds in a run", () => {
       concurrent: 2,
       ticketLimit: Duration.hours(1),
       scripts: (world, root) => ({
-        "t-1": [takes(world, root, "t-1", "3 hours")],
-        "t-2": [takes(world, root, "t-2", "30 minutes")],
-        "t-3": [takes(world, root, "t-3", "45 minutes")],
-        "t-4": [takes(world, root, "t-4", "1 minute")],
+        "t-1": [takes(world, root, "t-1" as TicketId, "3 hours")],
+        "t-2": [takes(world, root, "t-2" as TicketId, "30 minutes")],
+        "t-3": [takes(world, root, "t-3" as TicketId, "45 minutes")],
+        "t-4": [takes(world, root, "t-4" as TicketId, "1 minute")],
       }),
       during: () =>
         Effect.gen(function* () {
@@ -296,7 +308,9 @@ describe("the time holds in a run", () => {
       tickets: ["t-1"],
       ticketLimit: Duration.hours(1),
       scripts: (world, root) => ({
-        "t-1": [[...hitsUsageLimit(2 * 3600), ...takes(world, root, "t-1", "30 minutes")]],
+        "t-1": [
+          [...hitsUsageLimit(2 * 3600), ...takes(world, root, "t-1" as TicketId, "30 minutes")],
+        ],
       }),
       during: () => passes("3 hours"),
     })
@@ -309,7 +323,7 @@ describe("the time holds in a run", () => {
   test("LONG_RUNNING is said once at 2h without a limit, and holds nothing", async () => {
     const ran = await runs({
       tickets: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [takes(world, root, "t-1", "3 hours")] }),
+      scripts: (world, root) => ({ "t-1": [takes(world, root, "t-1" as TicketId, "3 hours")] }),
       during: () =>
         Effect.gen(function* () {
           yield* passes("119 minutes")
@@ -337,9 +351,9 @@ describe("the time holds in a run", () => {
       tickets: ["t-1", "t-2", "t-3"],
       concurrent: 2,
       scripts: (world, root) => ({
-        "t-1": [asks(world, root, "t-1")],
-        "t-2": [takes(world, root, "t-2", "10 minutes")],
-        "t-3": [takes(world, root, "t-3", "1 minute")],
+        "t-1": [asks(world, root, "t-1" as TicketId)],
+        "t-2": [takes(world, root, "t-2" as TicketId, "10 minutes")],
+        "t-3": [takes(world, root, "t-3" as TicketId, "1 minute")],
       }),
       during: (view) =>
         Effect.gen(function* () {

@@ -25,6 +25,7 @@ import {
 } from "../agent/Transcripts.ts"
 import { asRecord, asString } from "../agent/untrusted.ts"
 import { keepAll } from "../run/same.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import { type External, external } from "./useRunView.ts"
 
@@ -664,7 +665,7 @@ export interface OpenTranscript {
  */
 export interface TranscriptFeed {
   /** Opens the transcript of the ticket's worker, its view's open flag set until it is closed. */
-  readonly open: (ticket: string) => OpenTranscript
+  readonly open: (ticket: TicketId) => OpenTranscript
 }
 
 /** The state before a transcript's view has its first items. */

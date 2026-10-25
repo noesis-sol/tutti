@@ -14,7 +14,7 @@ import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -68,7 +68,7 @@ const tagsOf = (state: State): Record<string, PhaseTag> =>
   Object.fromEntries([...state.tickets.values()].map((entry) => [entry.ticket, entry.phase._tag]))
 
 /** A ticket its worker finished: a commit naming it on tutti/<id>, closed, Working. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const repository = yield* Repository
     const worktree = yield* (yield* Worktrees).prepare(id)
@@ -150,8 +150,8 @@ const twoTickets = (
           : { machineFull: Effect.succeed(plan.machineFull) }),
       })
       const repository = yield* Repository
-      const a = yield* finished("a", plan.files?.a ?? { "a.txt": "a\n" })
-      const b = yield* finished("b", plan.files?.b ?? { "b.txt": "b\n" })
+      const a = yield* finished("a" as TicketId, plan.files?.a ?? { "a.txt": "a\n" })
+      const b = yield* finished("b" as TicketId, plan.files?.b ?? { "b.txt": "b\n" })
       yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
       const before = yield* repository.head(b.branch)
       yield* queue.offer(a)
@@ -368,7 +368,7 @@ describe("merge.train", () => {
 })
 
 /** Claims its ticket and, after `takes`, commits a file and closes it, as a worker does. */
-const works = (world: World, root: string, id: string, takes: Duration.Input): SessionScript =>
+const works = (world: World, root: string, id: TicketId, takes: Duration.Input): SessionScript =>
   turn(
     [
       ...bash(
@@ -418,8 +418,8 @@ describe("a whole run", () => {
         worktrees: { root },
         checks: { fast: [slow("10 minutes"), slow("5 minutes")] },
         scripts: (world: World) => ({
-          a: [works(world, root, "a", 0)],
-          b: [works(world, root, "b", "1 minute")],
+          a: [works(world, root, "a" as TicketId, 0)],
+          b: [works(world, root, "b" as TicketId, "1 minute")],
         }),
       },
       Effect.gen(function* () {

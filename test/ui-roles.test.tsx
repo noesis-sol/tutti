@@ -5,6 +5,7 @@
 // terminal's own colours; and every colour drawn is a role's. Then a snapshot of each layout: narrow,
 // 120 columns, the smallest size, attention cards (with defaultToNo), the end-of-run box, the usage
 // banner, wind-down, and one per phase.
+
 import { describe, expect, test } from "bun:test"
 import type { PermissionUpdate, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { type RGBA, TextAttributes } from "@opentui/core"
@@ -25,6 +26,7 @@ import {
 } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { App, Root } from "../src/ui/App.tsx"
 import { useInput } from "../src/ui/keys.ts"
 import { TicketCount } from "../src/ui/questions.ts"
@@ -106,7 +108,7 @@ const now = began + (18 * 60 + 40) * 1000
 const resets = new Date(2026, 9, 20, 14, 5).getTime()
 
 interface Ticket {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly title?: string
   readonly phase: TicketPhase
   /** The worker's number, for a ticket with a card. */
@@ -168,7 +170,7 @@ const merged = (commit: string) => TicketPhase.Done({ outcome: Finished.Merged({
 
 const permission = (
   id: string,
-  ticket: string,
+  ticket: TicketId,
   over: Partial<AttentionRequest> & { readonly suggestions?: ReadonlyArray<PermissionUpdate> } = {},
 ): AttentionRequest => {
   const { suggestions, ...rest } = over
@@ -191,7 +193,7 @@ const permission = (
   }
 }
 
-const question = (id: string, ticket: string): AttentionRequest => ({
+const question = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -485,39 +487,45 @@ const draw = (
 const where = (each: Where | string): Where => (typeof each === "string" ? { text: each } : each)
 
 const illustratedTickets: ReadonlyArray<Ticket> = [
-  { ticket: "tut-dwv", title: "Lay out the property panel", phase: merged("ffd6ce4a1b2c3") },
   {
-    ticket: "tut-kco",
+    ticket: "tut-dwv" as TicketId,
+    title: "Lay out the property panel",
+    phase: merged("ffd6ce4a1b2c3"),
+  },
+  {
+    ticket: "tut-kco" as TicketId,
     title: "Open the property model",
     phase: TicketPhase.Merging({ step: "check" }),
     worker: 2,
   },
   {
-    ticket: "tut-zq4",
+    ticket: "tut-zq4" as TicketId,
     title: "Add an undo stack for property edits",
     phase: working,
     worker: 1,
   },
-  { ticket: "tut-9a1", title: "Remove the build cache", phase: working, worker: 3 },
+  { ticket: "tut-9a1" as TicketId, title: "Remove the build cache", phase: working, worker: 3 },
   {
-    ticket: "tut-vzg",
+    ticket: "tut-vzg" as TicketId,
     title: "Animate the timeline",
     phase: TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
   },
-  { ticket: "tut-q1", phase: TicketPhase.Queued(), row: null },
-  { ticket: "tut-q2", phase: TicketPhase.HeldBack({ why: "overlap" }), row: null },
+  { ticket: "tut-q1" as TicketId, phase: TicketPhase.Queued(), row: null },
+  { ticket: "tut-q2" as TicketId, phase: TicketPhase.HeldBack({ why: "overlap" }), row: null },
 ]
 
 /** The run § 7.2 illustrates: a merge, a worker testing, one asking, one set aside, a queue. */
 const illustrated = viewOf(illustratedTickets, {
   status: {
-    scope: "tut-8f2",
+    scope: "tut-8f2" as TicketId,
     usage: { utilization: 0.85, resetsAt: resets },
     unclosed: 16,
     verdicts: new Map([["tut-vzg", "environment · high · prompt never submitted"]]),
   },
   workers: [["tut-zq4", WS.Working({ doing: "testing" })]],
-  requests: [permission("r1", "tut-9a1", { decisionReason: "outside the working directories" })],
+  requests: [
+    permission("r1", "tut-9a1" as TicketId, { decisionReason: "outside the working directories" }),
+  ],
   actions: [["tut-zq4", { text: "Bash(bun test)", denied: false }]],
 })
 
@@ -526,7 +534,7 @@ const illustrated = viewOf(illustratedTickets, {
 const rowsOf = (phases: ReadonlyArray<TicketPhase | Activity>) =>
   viewOf(
     phases.map((phase, i) => ({
-      ticket: `tut-${i + 1}`,
+      ticket: `tut-${i + 1}` as TicketId,
       phase: typeof phase === "string" ? working : phase,
     })),
     {
@@ -547,7 +555,7 @@ const cardsOf = (
 ) =>
   viewOf(
     states.map(([phase], i) => ({
-      ticket: `t-${i + 1}`,
+      ticket: `t-${i + 1}` as TicketId,
       phase,
       worker: i + 1,
       steered: steered.includes(`t-${i + 1}`),
@@ -661,7 +669,7 @@ const scenes: ReadonlyArray<Scene> = [
       TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
       TicketPhase.Done({ outcome: Finished.NoChange() }),
       TicketPhase.Asked({ question: "q-1" }),
-      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-1"] }) }),
+      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-1" as TicketId] }) }),
       TicketPhase.Review({ why: "OFF_BRANCH" }),
       TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
       TicketPhase.Stopped({ why: "PAUSED" }),
@@ -737,7 +745,7 @@ const scenes: ReadonlyArray<Scene> = [
         [TicketPhase.Fixing({ attempt: 1, afterResolution: false }), null],
         [working, WS.Idle({ at: began })],
       ],
-      { requests: [question("q1", "t-7")] },
+      { requests: [question("q1", "t-7" as TicketId)] },
       ["t-1"],
     ),
     ready: "steered",
@@ -793,13 +801,19 @@ const scenes: ReadonlyArray<Scene> = [
     size: { width: 80, height: 24 },
     view: viewOf(
       [
-        { ticket: "a", phase: working, worker: 1 },
-        { ticket: "b", phase: merged("abc1234") },
-        { ticket: "c", phase: TicketPhase.Review({ why: "OFF_BRANCH" }) },
-        { ticket: "d", phase: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }) },
+        { ticket: "a" as TicketId, phase: working, worker: 1 },
+        { ticket: "b" as TicketId, phase: merged("abc1234") },
+        { ticket: "c" as TicketId, phase: TicketPhase.Review({ why: "OFF_BRANCH" }) },
+        {
+          ticket: "d" as TicketId,
+          phase: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x" as TicketId] }) }),
+        },
       ],
       {
-        windDown: { since: began, tickets: ["a", "b", "c", "d"] },
+        windDown: {
+          since: began,
+          tickets: ["a" as TicketId, "b" as TicketId, "c" as TicketId, "d" as TicketId],
+        },
         workers: [["a", WS.Working({ doing: "editing" })]],
       },
     ),
@@ -816,7 +830,7 @@ const scenes: ReadonlyArray<Scene> = [
   {
     name: "the stop question",
     size: { width: 80, height: 30 },
-    view: viewOf([{ ticket: "tut-1", phase: working, worker: 1 }], {
+    view: viewOf([{ ticket: "tut-1" as TicketId, phase: working, worker: 1 }], {
       workers: [["tut-1", WS.Idle({ at: began })]],
     }),
     keys: ["s"],
@@ -833,13 +847,13 @@ const scenes: ReadonlyArray<Scene> = [
     size: { width: 80, height: 30 },
     view: viewOf(
       [
-        { ticket: "tut-dwv", phase: merged("ffd6ce4") },
-        { ticket: "tut-9a1", phase: working, worker: 1 },
-        { ticket: "tut-7k2", phase: working, worker: 2 },
+        { ticket: "tut-dwv" as TicketId, phase: merged("ffd6ce4") },
+        { ticket: "tut-9a1" as TicketId, phase: working, worker: 1 },
+        { ticket: "tut-7k2" as TicketId, phase: working, worker: 2 },
       ],
       {
-        status: { endOfRun: ["tut-9a1", "tut-7k2"] },
-        requests: [permission("r1", "tut-9a1"), question("r2", "tut-7k2")],
+        status: { endOfRun: ["tut-9a1" as TicketId, "tut-7k2" as TicketId] },
+        requests: [permission("r1", "tut-9a1" as TicketId), question("r2", "tut-7k2" as TicketId)],
       },
     ),
     ready: "Everything else is done",
@@ -852,10 +866,13 @@ const scenes: ReadonlyArray<Scene> = [
   {
     name: "a defaultToNo card",
     size: { width: 80, height: 30 },
-    view: viewOf([{ ticket: "t-1", phase: working, worker: 1 }], {
+    view: viewOf([{ ticket: "t-1" as TicketId, phase: working, worker: 1 }], {
       workers: [["t-1", WS.Idle({ at: began })]],
       requests: [
-        permission("r1", "t-1", { defaultToNo: true, decisionReason: "held by the safety check" }),
+        permission("r1", "t-1" as TicketId, {
+          defaultToNo: true,
+          decisionReason: "held by the safety check",
+        }),
       ],
     }),
     ready: "[ Deny ]",
@@ -941,10 +958,10 @@ const scenes: ReadonlyArray<Scene> = [
   {
     name: "the worker view",
     size: { width: 80, height: 30 },
-    view: viewOf([{ ticket: "t-1", phase: working, worker: 1, steered: true }], {
+    view: viewOf([{ ticket: "t-1" as TicketId, phase: working, worker: 1, steered: true }], {
       workers: [["t-1", WS.Idle({ at: began })]],
     }),
-    screen: Screen.Worker({ ticket: "t-1" }),
+    screen: Screen.Worker({ ticket: "t-1" as TicketId }),
     transcripts: feedOf(transcript),
     ready: highlighted,
     treeSitter: "real",
@@ -1325,8 +1342,8 @@ describe("layouts", () => {
     async () => {
       const view = viewOf(
         [
-          { ticket: "t-1", phase: working, worker: 1 },
-          { ticket: "t-2", phase: working, worker: 2 },
+          { ticket: "t-1" as TicketId, phase: working, worker: 1 },
+          { ticket: "t-2" as TicketId, phase: working, worker: 2 },
         ],
         {
           workers: [
@@ -1334,7 +1351,7 @@ describe("layouts", () => {
             ["t-2", WS.Idle({ at: began })],
           ],
           requests: [
-            permission("r1", "t-1", {
+            permission("r1", "t-1" as TicketId, {
               decisionReason: "outside the working directories",
               suggestions: [
                 {
@@ -1345,7 +1362,7 @@ describe("layouts", () => {
                 },
               ],
             }),
-            permission("r2", "t-2", {
+            permission("r2", "t-2" as TicketId, {
               defaultToNo: true,
               suppressAlwaysAllowRule: true,
               decisionReason: "held by the safety check",
@@ -1517,7 +1534,7 @@ const phaseExamples: { readonly [T in PhaseTag]: readonly [TicketPhase, WorkerSt
   Fixing: [TicketPhase.Fixing({ attempt: 2, afterResolution: false }), null],
   Done: [merged("ffd6ce4a1b2c3"), null],
   Asked: [TicketPhase.Asked({ question: "tut-q9" }), null],
-  Waiting: [TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-2"] }) }), null],
+  Waiting: [TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-2" as TicketId] }) }), null],
   Deferred: [TicketPhase.Deferred({ why: "BAD_TICKET_ID" }), null],
   Review: [TicketPhase.Review({ why: "OFF_BRANCH" }), null],
   Blocked: [TicketPhase.Blocked({ why: "MERGE_CONFLICT" }), null],
@@ -1533,7 +1550,7 @@ test(
         view: viewOf(
           [
             {
-              ticket: "tut-1",
+              ticket: "tut-1" as TicketId,
               title: "Add an undo stack for property edits",
               phase,
               ...(hasCard(phase) ? { worker: 1 } : {}),

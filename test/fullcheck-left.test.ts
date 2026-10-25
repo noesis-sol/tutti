@@ -1,6 +1,7 @@
 // The full check's worktrees a killed run left (§ 5 item 12): a run killed while its full check ran
 // never removed its worktree, so the next run removes those it finds as it starts, and a ticket's
 // worktree is kept whatever its name.
+
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { Effect, Layer } from "effect"
 import { PlatformError, SystemError } from "effect/PlatformError"
 import { fullCheckFolderPrefix, removeLeftFullChecks } from "../src/run/fullcheck.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git, GitFailed, GitWriter } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { slow } from "./gates.ts"
@@ -130,7 +132,9 @@ slow.describe("the full check's worktrees a killed run left, in real git", () =>
       Effect.runPromise(Effect.provide(Effect.flatMap(Effect.service(Worktrees), use), layer))
     const left = await within((worktrees) => worktrees.addDetached(fullCheckFolderPrefix, "main"))
     repo.write({ "installed.txt": "x\n" }, left)
-    const ticket = await within((worktrees) => worktrees.prepare(`${fullCheckFolderPrefix}t`))
+    const ticket = await within((worktrees) =>
+      worktrees.prepare(`${fullCheckFolderPrefix}t` as TicketId),
+    )
     expect(await within((worktrees) => worktrees.leftDetached(fullCheckFolderPrefix))).toEqual([
       left,
     ])

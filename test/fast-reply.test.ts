@@ -3,6 +3,7 @@
 // until the answer, so a reply that came before the wait began isn't missed. A worker just started
 // is the sharpest case: its script's fiber, forked by the start, takes the send and plays its
 // whole turn before any fiber forked after it has run.
+
 import { describe, expect, test } from "bun:test"
 import { Duration, Effect, Exit, Fiber, Layer, type Scope, Stream } from "effect"
 import { TestClock } from "effect/testing"
@@ -10,6 +11,7 @@ import { AgentHost, type MessageUuid } from "../src/agent/AgentHost.ts"
 import { give, type HandBack, noReset } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import type { Sha } from "../src/services/Git.ts"
 import { layer as hostLayer, type Script, turn } from "../src/testing/AgentHost.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
@@ -18,7 +20,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { advance, backlog, type Env, scenario } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const session = { sessionId: "s-1", cwd: "/work/t-1" }
 
 /** Runs `effect` with the scripted host playing `scripts`, under TestClock. */

@@ -19,7 +19,13 @@ import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { PathRefused } from "../src/native/libc.ts"
 import { type FullChecked, fullCheck, fullCheckLabel } from "../src/run/fullcheck.ts"
 import { logFile } from "../src/run/log.ts"
-import { Beads, BeadsFailed, BeadsTimedOut, type Issue } from "../src/services/Beads.ts"
+import {
+  Beads,
+  BeadsFailed,
+  BeadsTimedOut,
+  type Issue,
+  type TicketId,
+} from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { GitFailed } from "../src/services/Git.ts"
 import { runFolder, Worktrees } from "../src/services/Worktrees.ts"
@@ -280,7 +286,10 @@ describe("bd failing as the full check's ticket is filed", () => {
     })
     const result = checked(ran)
     if (result.ticket === undefined) throw new Error("no ticket was filed")
-    expect(checkFullTickets(ran).map((issue) => issue.id)).toEqual(["cf-1", result.ticket])
+    expect(checkFullTickets(ran).map((issue) => issue.id)).toEqual([
+      "cf-1" as TicketId,
+      result.ticket,
+    ])
     expect(result.ticket).not.toBe("cf-1")
     expect(result.filed).toBe(`filed ${result.ticket}`)
     expectLog(ran, [

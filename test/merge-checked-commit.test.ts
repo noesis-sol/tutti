@@ -7,7 +7,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { budgets, type FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Checks } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -34,7 +34,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 }
 
 /** A ticket its worker finished: closed, its commit on tutti/<id>, Working in the ledger. */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -71,12 +71,12 @@ const mergeA = (
   return scenario(
     { config: { settings }, backlog: backlog().ticket("a").seeds },
     Effect.gen(function* () {
-      ticket = yield* finished("a", { "a.txt": "a\n" })
+      ticket = yield* finished("a" as TicketId, { "a.txt": "a\n" })
       const queue = yield* around(of, makeQueue(options))
       yield* queue.offer(ticket)
       yield* queue.settled
       const phase: TicketPhase | undefined = (yield* (yield* Ledger).current).tickets.get(
-        "a",
+        "a" as TicketId,
       )?.phase
       const main = yield* (yield* Repository).tree("main")
       return { phase, main }

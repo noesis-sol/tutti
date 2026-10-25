@@ -52,6 +52,7 @@ import { CommandFailed, planServices, tuttiWith } from "../src/cli/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
@@ -123,7 +124,7 @@ const bashRule = (command: string): PermissionUpdate => ({
 
 /** Asks `ticket`'s canUseTool for `tool` with `input`, and waits until the request is open. */
 const ask = (
-  ticket: string,
+  ticket: TicketId,
   tool: string,
   input: Record<string, unknown>,
   options: Parameters<CanUseTool>[2] = sdkOptions(),
@@ -253,7 +254,7 @@ describe("attention files: the request files", () => {
     const file = await run(
       repo,
       Effect.gen(function* () {
-        const { request } = yield* ask("tut-1", "Bash", rm, held())
+        const { request } = yield* ask("tut-1" as TicketId, "Bash", rm, held())
         yield* until("the request file", present(repo, requestFile(request.id)))
         const path = join(repo, requestFile(request.id))
         expect(lstatSync(path).mode & 0o777).toBe(0o600)
@@ -283,9 +284,9 @@ describe("attention files: the request files", () => {
     const [question, permission] = await run(
       repo,
       Effect.gen(function* () {
-        const q = yield* ask("tut-1", "AskUserQuestion", askQuestions)
+        const q = yield* ask("tut-1" as TicketId, "AskUserQuestion", askQuestions)
         const p = yield* ask(
-          "tut-2",
+          "tut-2" as TicketId,
           "Bash",
           rm,
           sdkOptions({ suggestions: [bashRule("rm -rf build")] }),
@@ -325,7 +326,7 @@ describe("attention files: the request files", () => {
       repo,
       Effect.gen(function* () {
         const { request } = yield* ask(
-          "tut-1",
+          "tut-1" as TicketId,
           "Bash",
           { command: "echo \u001b[31mred\u001b[0m" },
           sdkOptions({ title: "Claude wants \u001b]0;pwned\u0007to run\u202e it" }),
@@ -346,7 +347,7 @@ describe("attention files: the request files", () => {
       repo,
       Effect.gen(function* () {
         const attention = yield* Attention
-        const { request, result } = yield* ask("tut-1", "Bash", rm)
+        const { request, result } = yield* ask("tut-1" as TicketId, "Bash", rm)
         yield* until("the request file", present(repo, requestFile(request.id)))
         yield* attention.answer(request.id, { _tag: "Deny" }, "screen")
         yield* settled(result)
@@ -361,7 +362,7 @@ describe("attention files: the request files", () => {
       repo,
       Effect.gen(function* () {
         const options = sdkOptions()
-        const { request, result } = yield* ask("tut-1", "Bash", rm, options)
+        const { request, result } = yield* ask("tut-1" as TicketId, "Bash", rm, options)
         yield* until("the request file", present(repo, requestFile(request.id)))
         options.controller.abort()
         yield* settled(result)
@@ -389,7 +390,7 @@ describe("attention files: the request files", () => {
     const lines = await run(
       repo,
       Effect.gen(function* () {
-        const { request, result } = yield* ask("tut-1", "Bash", rm)
+        const { request, result } = yield* ask("tut-1" as TicketId, "Bash", rm)
         yield* Effect.flatMap(Attention, (a) => a.answer(request.id, { _tag: "Deny" }, "screen"))
         yield* settled(result)
         return yield* texts
@@ -406,7 +407,7 @@ describe("attention files: answers the run takes", () => {
     const { result, lines, answered } = await run(
       repo,
       Effect.gen(function* () {
-        const { request, result } = yield* ask("tut-1", "Bash", rm)
+        const { request, result } = yield* ask("tut-1" as TicketId, "Bash", rm)
         yield* writeAnswer(repo, request.id, { answer: "allow" })
         const settledResult = yield* taken(result)
         yield* until("the answer file to go", absent(repo, answerFile(request.id)))
@@ -436,7 +437,7 @@ describe("attention files: answers the run takes", () => {
     const result = await run(
       repo,
       Effect.gen(function* () {
-        const { request, result } = yield* ask("tut-1", "AskUserQuestion", askQuestions)
+        const { request, result } = yield* ask("tut-1" as TicketId, "AskUserQuestion", askQuestions)
         yield* writeAnswer(repo, request.id, {
           answer: "allow",
           choices: ["SQLite", "Cache, Queue"],
@@ -458,7 +459,7 @@ describe("attention files: answers the run takes", () => {
     const result = await run(
       repo,
       Effect.gen(function* () {
-        const { request, result } = yield* ask("tut-1", "Bash", rm)
+        const { request, result } = yield* ask("tut-1" as TicketId, "Bash", rm)
         yield* writeAnswer(repo, request.id, { answer: "deny", reason: "build is needed" })
         return yield* taken(result)
       }),
@@ -475,7 +476,7 @@ describe("attention files: answers the run takes", () => {
     const result = await run(
       repo,
       Effect.gen(function* () {
-        const { request, result } = yield* ask("tut-1", "Bash", rm, held())
+        const { request, result } = yield* ask("tut-1" as TicketId, "Bash", rm, held())
         yield* writeAnswer(repo, request.id, { answer: "allow", confirm: true })
         return yield* taken(result)
       }),
@@ -501,7 +502,7 @@ describe("attention files: answers the run refuses", () => {
       Effect.gen(function* () {
         const attention = yield* Attention
         const { request } = yield* ask(
-          "tut-1",
+          "tut-1" as TicketId,
           options.tool ?? "Bash",
           options.input ?? rm,
           options.sdk ?? sdkOptions(),
@@ -712,8 +713,8 @@ describe("tutti answer", () => {
     const [listed, text, json] = await run(
       repo,
       Effect.gen(function* () {
-        yield* ask("tut-1", "Bash", rm, held())
-        yield* ask("tut-2", "AskUserQuestion", askQuestions)
+        yield* ask("tut-1" as TicketId, "Bash", rm, held())
+        yield* ask("tut-2" as TicketId, "AskUserQuestion", askQuestions)
         yield* until(
           "both files",
           () => present(repo, requestFile("r1"))() && present(repo, requestFile("r2"))(),
@@ -744,7 +745,7 @@ describe("tutti answer", () => {
     const result = await run(
       repo,
       Effect.gen(function* () {
-        const { request, result } = yield* ask("tut-1", "Bash", rm, held())
+        const { request, result } = yield* ask("tut-1" as TicketId, "Bash", rm, held())
         yield* until("the request file", present(repo, requestFile(request.id)))
         yield* answering(answer(repo, { request: request.id, answer: "allow", confirm: true }))
         expect(existsSync(join(repo, answerFile(request.id)))).toBe(false)
@@ -759,7 +760,7 @@ describe("tutti answer", () => {
     const exits = await run(
       repo,
       Effect.gen(function* () {
-        const { request } = yield* ask("tut-1", "Bash", rm, held())
+        const { request } = yield* ask("tut-1" as TicketId, "Bash", rm, held())
         yield* until("the request file", present(repo, requestFile(request.id)))
         const attempt = (given: Given) => Effect.exit(answer(repo, given))
         const unconfirmed = yield* attempt({ request: request.id, answer: "allow" })
@@ -787,7 +788,7 @@ describe("tutti answer", () => {
     const exit = await run(
       repo,
       Effect.gen(function* () {
-        const { request } = yield* ask("tut-1", "Bash", rm)
+        const { request } = yield* ask("tut-1" as TicketId, "Bash", rm)
         yield* until("the request file", present(repo, requestFile(request.id)))
         return yield* Effect.exit(answering(answer(repo, { request: request.id, answer: "deny" })))
       }),
@@ -807,7 +808,7 @@ describe("tutti answer", () => {
     const exit = await run(
       repo,
       Effect.gen(function* () {
-        const { request } = yield* ask("tut-1", "Bash", rm)
+        const { request } = yield* ask("tut-1" as TicketId, "Bash", rm)
         // No run serves the folder: the request file is written by hand.
         mkdirSync(join(repo, attentionFolder), { recursive: true })
         writeFileSync(join(repo, requestFile(request.id)), encodeFile(toRequestFile(request)))
@@ -828,7 +829,7 @@ describe("tutti answer", () => {
     const exit = await run(
       repo,
       Effect.gen(function* () {
-        const { request } = yield* ask("tut-1", "Bash", rm)
+        const { request } = yield* ask("tut-1" as TicketId, "Bash", rm)
         mkdirSync(join(repo, attentionFolder), { recursive: true })
         writeFileSync(join(repo, requestFile(request.id)), encodeFile(toRequestFile(request)))
         writeFileSync(join(repo, answerFile(request.id)), "waiting")
@@ -888,8 +889,8 @@ describe("tutti answer", () => {
       const { results, listed } = await run(
         repo,
         Effect.gen(function* () {
-          const question = yield* ask("tut-1", "AskUserQuestion", askQuestions)
-          const permission = yield* ask("tut-2", "Bash", rm)
+          const question = yield* ask("tut-1" as TicketId, "AskUserQuestion", askQuestions)
+          const permission = yield* ask("tut-2" as TicketId, "Bash", rm)
           yield* until(
             "both files",
             () => present(repo, requestFile("r1"))() && present(repo, requestFile("r2"))(),
@@ -924,7 +925,7 @@ describe("tutti answer", () => {
       const exit = await run(
         repo,
         Effect.gen(function* () {
-          yield* ask("tut-1", "Bash", rm, held())
+          yield* ask("tut-1" as TicketId, "Bash", rm, held())
           yield* until("the request file", present(repo, requestFile("r1")))
           return yield* Effect.exit(cli(repo, ["r1", "allow"], out.console))
         }),

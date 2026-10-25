@@ -6,7 +6,7 @@
 // blockers have merged (DEFERRED_FREE). The run then prints that in a box on the main screen, or
 // as plain lines, and exits 0 without a dashboard, triage, a report or a notification.
 import { Console, Effect, Result } from "effect"
-import { Beads, type BeadsError, HumanLabel, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
@@ -31,7 +31,7 @@ export type HoldKind =
 /** Why a run has nothing to do: everything is done, or nothing is ready, and what holds the rest. */
 export interface NothingToRun {
   /** The run's scope (--ticket), or null for all of bd ready. */
-  readonly scope: string | null
+  readonly scope: TicketId | null
   /**
    * No ticket is left but those of the excluded types, never run, and none is closed but not
    * merged. In a scoped run: SCOPE_DONE.
@@ -113,7 +113,7 @@ export const earlierRun = "left unmerged by an earlier run"
 /** What the run knows as it starts, before its loop, beside Beads. */
 export interface Options {
   /** The ticket the run is scoped to (--ticket), or null for the whole of bd ready. */
-  readonly scope: string | null
+  readonly scope: TicketId | null
   /** The queue's `exclude_types`. */
   readonly filter: scope.Filter
   /** The main checkout. */
@@ -121,9 +121,9 @@ export interface Options {
   /** The branch tickets merge into. */
   readonly base: string
   /** The tickets whose workers the last run left, for this one to carry on with (§ 4.8). */
-  readonly carried: ReadonlySet<string>
+  readonly carried: ReadonlySet<TicketId>
   /** The tickets closed but not merged, as the run finds them (merged by hand counts as merged). */
-  readonly unmerged: ReadonlySet<string>
+  readonly unmerged: ReadonlySet<TicketId>
   /**
    * Why git finds a closed ticket's work only on its branch (closedBranches.ts's startBranches),
    * for a blocker closed where no run saw it close; without it, such a blocker counts as merged.
@@ -145,7 +145,7 @@ export const noHolds = (): Effect.Effect<HoldKind | undefined> => Effect.succeed
  * saw it close with its work only on its branch.
  */
 export const heldAtStart =
-  (beads: Beads["Service"], unmerged: ReadonlySet<string>, branches?: Branches) =>
+  (beads: Beads["Service"], unmerged: ReadonlySet<TicketId>, branches?: Branches) =>
   (issue: Issue): Effect.Effect<HoldKind | undefined, BeadsError, Git> =>
     Effect.gen(function* () {
       const children = yield* beads.list({ parent: issue.id, all: true })
@@ -201,9 +201,9 @@ export const allNothing = (
 /** Why a scoped run has nothing to run, as the scope's end says it; null when bd can't say. */
 const scopeNothing = (
   beads: Beads["Service"],
-  root: string,
+  root: TicketId,
   filter: scope.Filter,
-  unmerged: ReadonlySet<string>,
+  unmerged: ReadonlySet<TicketId>,
 ): Effect.Effect<NothingToRun | null> =>
   Effect.map(
     scope.end(
@@ -246,7 +246,7 @@ export const check = (
     const ready = yield* scope.ready(beads, root, options.filter)
     const subs = root === null ? [] : yield* scope.descendants(beads, root)
     const inScope = new Set([...(root === null ? [] : [root]), ...subs.map((issue) => issue.id)])
-    const within = (id: string) => root === null || inScope.has(id)
+    const within = (id: TicketId) => root === null || inScope.has(id)
     if ([...options.carried].some(within)) return null
     let unclosed: ReadonlyArray<Issue> | null =
       ready.length > 0 || root === null ? yield* beads.list() : null

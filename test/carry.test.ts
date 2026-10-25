@@ -9,7 +9,7 @@ import type { EventRecord } from "../src/run/events.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readAgainAfter } from "../src/run/schedule.ts"
 import { answeredText, resumedText } from "../src/run/told.ts"
-import { Beads, BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store, type TicketRecord } from "../src/services/Store.ts"
 import {
@@ -116,7 +116,7 @@ const runs = async (plan: Plan): Promise<Carried> => {
 }
 
 /** What a ticket's worker's commands do to the in-memory Beads and git. */
-const commands = (world: World, root: string, id: string) => {
+const commands = (world: World, root: string, id: TicketId) => {
   const orDie = <A, E>(effect: Effect.Effect<A, E>) => Effect.asVoid(Effect.orDie(effect))
   return {
     claim: orDie(world.beads.update(id, { claim: true })),
@@ -164,13 +164,15 @@ describe("carry-over: a suspended worker", () => {
       backlog: backlog().ticket("t-1", { status: "in_progress", title: "One" }).seeds,
       saved: (root) => ({ "t-1": savedRecord(root, "t-1") }),
       worktrees: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done" })
     // The saved session, resumed: no new one is drawn.
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
-    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1", "quit")])
+    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1" as TicketId, "quit")])
     // Its session began in the last run: it is told its standing rules' notes as they are now first.
     const [sent] = ran.sent.flatMap((each) => (each._tag === "Message" ? [each.message] : []))
     expect(String(sent?.message.content)).toStartWith(resumedNotes("").trimEnd())
@@ -193,17 +195,19 @@ describe("carry-over: a suspended worker", () => {
       saved: (root) => ({ "t-1": savedRecord(root, "t-1", { suspended: "TICKET_LIMIT" }) }),
       worktrees: ["t-1"],
       config: {
-        ticket: "e-1",
+        ticket: "e-1" as TicketId,
         settings: {
           ...defaults,
           workers: { ...defaults.workers, ticket_limit: Duration.hours(1) },
         },
       },
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
     })
     expectPhases(ran, { "t-1": "Done" })
     const [told] = textsOf(ran, "t-1")
-    expect(told).toStartWith(resumedText("t-1", "TICKET_LIMIT"))
+    expect(told).toStartWith(resumedText("t-1" as TicketId, "TICKET_LIMIT"))
     expect(told).toContain("You have about 1h for this ticket")
     expect(told).toContain("This run works on e-1 and its subtickets only.")
   })
@@ -255,8 +259,8 @@ describe("carry-over: a suspended worker", () => {
       worktrees: ["t-1", "t-2"],
       config: { limit: 1, settings: { ...defaults, concurrent: 1 } },
       scripts: (world, root) => ({
-        "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))],
-        "t-2": [claimsAndCloses("t-2", commands(world, root, "t-2"))],
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+        "t-2": [claimsAndCloses("t-2" as TicketId, commands(world, root, "t-2" as TicketId))],
       }),
     })
     expectExitCode(ran, 0)
@@ -340,13 +344,15 @@ describe("carry-over: an asked ticket", () => {
         }),
       }),
       worktrees: ["t-1"],
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done" })
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
     expect(textsOf(ran, "t-1")).toEqual([
-      answeredText({ id: "t-1", question: "q-1", title: "Which way?" }),
+      answeredText({ id: "t-1" as TicketId, question: "q-1", title: "Which way?" }),
     ])
     expect(entries(ran, "t-1")).toEqual(["StillAsked Asked"])
     expect(records(ran, "resumed")).toEqual([expect.objectContaining({ why: "answered" })])
@@ -368,13 +374,19 @@ describe("carry-over: an asked ticket", () => {
       saved: () => ({}),
       scripts: (world) => ({
         "t-1": [
-          filesQuestion("t-1", {
-            claim: Effect.asVoid(Effect.orDie(world.beads.update("t-1", { claim: true }))),
+          filesQuestion("t-1" as TicketId, {
+            claim: Effect.asVoid(
+              Effect.orDie(world.beads.update("t-1" as TicketId, { claim: true })),
+            ),
             file: Effect.asVoid(
               Effect.orDie(
                 Effect.andThen(
-                  world.beads.create({ title: "Which way?", labels: ["human"], blocks: ["t-1"] }),
-                  world.beads.update("t-1", { status: "open" }),
+                  world.beads.create({
+                    title: "Which way?",
+                    labels: ["human"],
+                    blocks: ["t-1" as TicketId],
+                  }),
+                  world.beads.update("t-1" as TicketId, { status: "open" }),
                 ),
               ),
             ),
@@ -466,7 +478,9 @@ describe("carry-over: the other cases", () => {
     const { ran, state, root } = await runs({
       backlog: backlog().ticket("t-1", { status: "in_progress" }).seeds,
       saved: (root) => ({ "t-1": savedRecord(root, "t-1") }),
-      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      scripts: (world, root) => ({
+        "t-1": [claimsAndCloses("t-1" as TicketId, commands(world, root, "t-1" as TicketId))],
+      }),
     })
     expectPhases(ran, {})
     expect(sessionsOf(ran, "t-1")).toEqual([])
@@ -520,8 +534,10 @@ describe("carry-over: the other cases", () => {
       backlog: backlog().ticket("t-1", { status: "in_progress" }).ticket("t-2").seeds,
       saved: (root) => ({ "t-1": savedRecord(root, "t-1") }),
       worktrees: ["t-1", "t-2"],
-      config: { ticket: "t-2" },
-      scripts: (world, root) => ({ "t-2": [claimsAndCloses("t-2", commands(world, root, "t-2"))] }),
+      config: { ticket: "t-2" as TicketId },
+      scripts: (world, root) => ({
+        "t-2": [claimsAndCloses("t-2" as TicketId, commands(world, root, "t-2" as TicketId))],
+      }),
     })
     expectPhases(ran, { "t-2": "Done" })
     expect(sessionsOf(ran, "t-1")).toEqual([])

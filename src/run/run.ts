@@ -90,7 +90,7 @@ import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
 import { type Ending, printSummary, type Summary } from "../print/summary.ts"
 import { checkCommands } from "../project/settings.ts"
-import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
+import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, gitWhy } from "../services/Git.ts"
 import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
@@ -226,7 +226,7 @@ export type RunEnv =
   | ChildProcessSpawner.ChildProcessSpawner
 
 /** The stop a ticket's fiber failing with `error` stops the run for (§ 5 item 10). */
-export const errorStop = (ticket: string, error: WorkError): StopReason => {
+export const errorStop = (ticket: TicketId, error: WorkError): StopReason => {
   switch (error._tag) {
     case "GitFailed":
     case "GitTimedOut":
@@ -249,7 +249,7 @@ const firstLine = (defect: unknown): string => {
 }
 
 /** The PANIC stop of a ticket's fiber that died with `defect`. */
-export const panicStop = (ticket: string, defect: unknown): StopReason =>
+export const panicStop = (ticket: TicketId, defect: unknown): StopReason =>
   stopFor("PANIC", `${ticket}'s fiber: ${firstLine(defect)}`, { ticket })
 
 /** What a fiber that died with `cause` died of: its defect, or the cause told. */
@@ -259,7 +259,7 @@ const defectOf = (cause: Cause.Cause<unknown>): unknown => {
 }
 
 /** The stop a ticket's fiber ending with `cause` stops the run for, if any. */
-const causeStop = (ticket: string, cause: Cause.Cause<WorkError>): StopReason | undefined => {
+const causeStop = (ticket: TicketId, cause: Cause.Cause<WorkError>): StopReason | undefined => {
   if (Cause.hasInterruptsOnly(cause)) return undefined
   const error = Cause.findError(cause)
   if (Result.isSuccess(error)) return errorStop(ticket, error.success)
@@ -274,7 +274,7 @@ const causeStop = (ticket: string, cause: Cause.Cause<WorkError>): StopReason | 
  */
 export const showEndOfRun = (
   status: SubscriptionRef.SubscriptionRef<Status>,
-  tickets: ReadonlyArray<string> | null,
+  tickets: ReadonlyArray<TicketId> | null,
 ): Effect.Effect<void> => showOn(status, "endOfRun")(tickets)
 
 /**
@@ -404,7 +404,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // A ticket checked once more takes a slot from the scheduler, made after the queue it starts
     // tickets with: none before it is.
     const slots = yield* Ref.make<Scheduler["recheckSlot"] | undefined>(undefined)
-    const recheckSlot = (ticket: string, work: Effect.Effect<void>) =>
+    const recheckSlot = (ticket: TicketId, work: Effect.Effect<void>) =>
       Effect.flatMap(Ref.get(slots), (take) =>
         take === undefined ? Effect.succeed(false) : take(ticket, work),
       )
@@ -451,12 +451,12 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const branches = yield* closedBranches({ repo: config.repo, base })
 
     // A ticket's fiber, dispatched or carried over: its work, and the stop it ended with, if any.
-    const onTicketLimit = (ticket: string) => (stop: StopReason) =>
+    const onTicketLimit = (ticket: TicketId) => (stop: StopReason) =>
       stopped(stop, (now) => pastTicketLimit(now, ticket, stop))
     // The same, for workers resumed by carry-over or an answer, each stop naming its ticket.
     const onResumedLimit = (stop: StopReason) =>
       stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop)
-    const outcomeOf = <R>(ticket: string, worked: Effect.Effect<Worked, WorkError, R>) =>
+    const outcomeOf = <R>(ticket: TicketId, worked: Effect.Effect<Worked, WorkError, R>) =>
       worked.pipe(
         Effect.matchCauseEffect({
           onSuccess: (worked) =>
@@ -541,7 +541,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         : undefined
     // The tickets the last run left whose workers wait for a slot to be resumed (carry.ts): the
     // scheduler dispatches none of them afresh.
-    const carrying = yield* Ref.make<ReadonlySet<string>>(new Set())
+    const carrying = yield* Ref.make<ReadonlySet<TicketId>>(new Set())
     const scheduler = yield* makeScheduler({
       concurrent: config.settings.concurrent,
       limit: config.limit,
@@ -667,9 +667,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             took ? Effect.void : Ref.update(unslotted, (all) => new Set([...all, ticket])),
         ),
     }
-    const waitingOf = (carried: ReadonlyMap<string, Carried>) =>
+    const waitingOf = (carried: ReadonlyMap<TicketId, Carried>) =>
       new Set([...carried].flatMap(([id, what]) => (what === "waiting" ? [id] : [])))
-    const carried: ReadonlyMap<string, Carried> =
+    const carried: ReadonlyMap<TicketId, Carried> =
       missing !== ""
         ? new Map()
         : yield* untilQuit(carryOver(carryOptions).pipe(Effect.provideContext(context)), new Map())
@@ -851,7 +851,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const asking =
       quit === null
         ? new Set((yield* attention.current).map((request) => request.ticket))
-        : new Set<string>()
+        : new Set<TicketId>()
     if (quit === null) yield* Effect.andThen(scheduler.interrupt, quits.refuseAnswers)
     yield* showEndOfRun(status, null)
     if (quit !== null) yield* quits.quitNow(quit)

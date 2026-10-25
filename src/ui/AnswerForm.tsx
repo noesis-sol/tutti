@@ -16,6 +16,7 @@ import { type InputRenderable, RGBA, type ScrollBoxRenderable } from "@opentui/c
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ShownRequest } from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
 import {
   answerOf,
   buttonLabels,
@@ -380,7 +381,7 @@ export const AnswerForm = ({
   ticket,
 }: {
   readonly requestId: string
-  readonly ticket: string
+  readonly ticket: TicketId
 }) => {
   const request = useRunViewPart((view) => view.requests.find((each) => each.id === requestId))
   const { box, toasts } = useInput()

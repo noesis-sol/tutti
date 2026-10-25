@@ -11,7 +11,7 @@ import type { Log } from "../src/run/log.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
-import type { Beads, Issue } from "../src/services/Beads.ts"
+import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -66,14 +66,14 @@ const t2After = (rechecked: boolean) =>
             ),
         },
       })
-      yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
-      const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
+      yield* ledger.transition("r" as TicketId, Move.Unmerged({ place: 1 }))
+      const took = rechecked ? yield* schedule.recheckSlot("r" as TicketId, Effect.never) : false
       yield* schedule.fillTrying
       const state = yield* ledger.current
       return {
         took,
         started: yield* Ref.get(started),
-        t2: shown(state.tickets.get("t-2")?.phase),
+        t2: shown(state.tickets.get("t-2" as TicketId)?.phase),
         skipping: (yield* texts).filter((text) => text.includes("skipping")),
       }
     }),

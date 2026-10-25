@@ -3,6 +3,7 @@
 // rebased and checked again; it is rebased onto the moved base first and checked there, its fix
 // carried to that check. Each scenario is a whole run under TestClock: a lands at once, b's check
 // fails after its rebase onto a and is handed back, and c merges while b's worker works on it.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -50,7 +52,7 @@ interface Places {
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   files: Files,
   first: SessionScript,
 ): SessionScript =>
@@ -130,7 +132,7 @@ const untilLogged = (pattern: RegExp) =>
   })
 
 /** Waits, in real time, until `id`'s worker has claimed it: the run has dispatched it. */
-const untilClaimed = (world: World, id: string) =>
+const untilClaimed = (world: World, id: TicketId) =>
   Effect.orDie(
     Effect.gen(function* () {
       for (let i = 0; i < 2000; i++) {
@@ -175,14 +177,18 @@ const runs = (
   const places = { repo: folder("repo"), root: folder("worktrees") }
   const tickets = ["a", "b", "c"]
   const scripts = (world: World): Scripts => ({
-    a: [works(world, places, "a", { "a.txt": "a\n" }, [step(untilClaimed(world, "c"))])],
+    a: [
+      works(world, places, "a" as TicketId, { "a.txt": "a\n" }, [
+        step(untilClaimed(world, "c" as TicketId)),
+      ]),
+    ],
     b: [
       [
-        ...works(world, places, "b", { "b.txt": "b\n" }, [sleep("1 minute")]),
+        ...works(world, places, "b" as TicketId, { "b.txt": "b\n" }, [sleep("1 minute")]),
         ...rest(world, places),
       ],
     ],
-    c: [works(world, places, "c", cFiles, [sleep("3 minutes")])],
+    c: [works(world, places, "c" as TicketId, cFiles, [sleep("3 minutes")])],
   })
   return scenario(
     {

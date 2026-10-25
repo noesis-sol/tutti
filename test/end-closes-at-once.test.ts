@@ -6,6 +6,7 @@ import { Effect, Exit, Fiber, Queue, Ref } from "effect"
 import { line } from "../src/run/log.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import {
@@ -42,7 +43,7 @@ const closedAll = (tickets: ReadonlyArray<string>) =>
 
 describe("the run's end", () => {
   test("closes its sessions all at once, not one after another, under TestClock", async () => {
-    const tickets = ["t-1", "t-2", "t-3"]
+    const tickets = ["t-1" as TicketId, "t-2" as TicketId, "t-3" as TicketId]
     const repo = folder("repo")
     const root = folder("worktrees")
     const quits = Effect.runSync(Queue.unbounded<QuitRequest>())

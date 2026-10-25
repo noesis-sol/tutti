@@ -3,6 +3,7 @@
 // told after the reset to carry on with the hand-back, not its ticket; a rebase or fix finished as
 // the limit hits is taken from git; past the limit, a finished result is taken from git, else the
 // worker is stopped and told the hand-back is over before its branch is put back.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -14,6 +15,7 @@ import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { resetHandBackText, resetText } from "../src/run/told.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git, type Sha } from "../src/services/Git.ts"
 import {
@@ -72,7 +74,7 @@ const folder = (name: string) =>
 const works = (
   world: World,
   places: Places,
-  id: string,
+  id: TicketId,
   files: Files,
   first: ReadonlyArray<Step> = [],
 ): SessionScript =>
@@ -145,7 +147,7 @@ const untilLogged = (pattern: RegExp) =>
   })
 
 /** Waits, in real time, until `id` is claimed: the run has dispatched it. */
-const untilClaimed = (world: World, id: string) =>
+const untilClaimed = (world: World, id: TicketId) =>
   Effect.orDie(
     Effect.gen(function* () {
       for (let i = 0; i < 2000; i++) {
@@ -178,8 +180,10 @@ const aThenB = (
   bFiles: Files,
   rest: SessionScript,
 ): Scripts => ({
-  a: [works(world, places, "a", aFiles, [step(untilClaimed(world, "b"))])],
-  b: [[...works(world, places, "b", bFiles, [step(untilOnMain(world, aFiles))]), ...rest]],
+  a: [works(world, places, "a" as TicketId, aFiles, [step(untilClaimed(world, "b" as TicketId))])],
+  b: [
+    [...works(world, places, "b" as TicketId, bFiles, [step(untilOnMain(world, aFiles))]), ...rest],
+  ],
 })
 
 /** a and b conflicting in shared.txt: b's rebase onto a's merge stops, and is handed back. */
@@ -316,8 +320,8 @@ describe("the usage limit during a hand-back", () => {
     ])
     const [handBack, ...after] = composed(ran)
     expect(handBack).toContain("rebasing tutti/b onto it stopped on conflicts in shared.txt")
-    expect(after).toEqual([resetHandBackText("b", "tutti/b", "resolving", "main")])
-    expect(after).not.toContain(resetText("b"))
+    expect(after).toEqual([resetHandBackText("b" as TicketId, "tutti/b", "resolving", "main")])
+    expect(after).not.toContain(resetText("b" as TicketId))
     expect(interrupted(ran)).toBe(false)
   })
 
@@ -503,7 +507,7 @@ describe("a hand-back past resolve_timeout", () => {
 
 describe("what the worker is told", () => {
   const ticket: FinishedTicket = {
-    id: "b",
+    id: "b" as TicketId,
     title: "Ticket b",
     branch: "tutti/b",
     worktree: "/w/b",
@@ -531,10 +535,10 @@ describe("what the worker is told", () => {
   })
 
   test("the carry-on after the reset names the hand-back, not the ticket", () => {
-    expect(resetHandBackText("b", "tutti/b", "fixing", "main")).toBe(
+    expect(resetHandBackText("b" as TicketId, "tutti/b", "fixing", "main")).toBe(
       "tutti: the account's usage limit has reset. Carry on where you left off with the failing check tutti handed back to you, fixing tutti/b so that it passes and committing the fix, as tutti's message asked, not with b itself, which you closed already. If you had finished that before the limit, check that git shows it done and say DONE.",
     )
-    expect(resetHandBackText("b", "tutti/b", "resolving", "main")).toContain(
+    expect(resetHandBackText("b" as TicketId, "tutti/b", "resolving", "main")).toContain(
       "with the rebase of tutti/b onto main tutti handed back to you, resolving its conflicts",
     )
   })

@@ -19,7 +19,7 @@ import type { Log } from "../src/run/log.ts"
 import type { Room } from "../src/run/machineGate.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { make, readyPoll, type Scheduler } from "../src/run/schedule.ts"
-import { Beads, type Issue } from "../src/services/Beads.ts"
+import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import type { TicketRecord } from "../src/services/Store.ts"
 import { bash, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
@@ -68,7 +68,7 @@ const scheduler = (options: {
   readonly limit?: number
   readonly gate?: Effect.Effect<Gate>
   readonly room?: (own: number) => Effect.Effect<Room>
-  readonly carrying?: Effect.Effect<ReadonlySet<string>>
+  readonly carrying?: Effect.Effect<ReadonlySet<TicketId>>
 }) =>
   Effect.gen(function* () {
     const started: Array<string> = []
@@ -85,7 +85,7 @@ const scheduler = (options: {
       },
     })
     const done = yield* Deferred.make<void>()
-    const carry = (id: string, issue?: Issue) =>
+    const carry = (id: TicketId, issue?: Issue) =>
       schedule.carry(
         id,
         Effect.sync(() => {
@@ -103,7 +103,11 @@ describe("the scheduler's carry", () => {
       [],
       Effect.gen(function* () {
         const { schedule, carry, started } = yield* scheduler({ concurrent: 2, limit: 1 })
-        const took = [yield* carry("c-1"), yield* carry("c-2"), yield* carry("c-3")]
+        const took = [
+          yield* carry("c-1" as TicketId),
+          yield* carry("c-2" as TicketId),
+          yield* carry("c-3" as TicketId),
+        ]
         return { took, started, count: yield* schedule.started, slots: yield* schedule.slots }
       }),
     )
@@ -119,11 +123,11 @@ describe("the scheduler's carry", () => {
       [],
       Effect.gen(function* () {
         const { carry, started, done } = yield* scheduler({ concurrent: 1 })
-        const first = yield* carry("c-1")
-        const waiting = yield* carry("c-2")
+        const first = yield* carry("c-1" as TicketId)
+        const waiting = yield* carry("c-2" as TicketId)
         yield* Deferred.succeed(done, undefined)
         yield* flush
-        return { first, waiting, after: yield* carry("c-2"), started }
+        return { first, waiting, after: yield* carry("c-2" as TicketId), started }
       }),
     )
     expect(seen).toEqual({
@@ -145,11 +149,11 @@ describe("the scheduler's carry", () => {
           gate: Ref.get(gate),
           room: () => Effect.map(Ref.get(room), (has): Room => (has ? "room" : "held")),
         })
-        const held = yield* carry("c-1")
+        const held = yield* carry("c-1" as TicketId)
         yield* Ref.set(gate, openGate)
-        const full = yield* carry("c-1")
+        const full = yield* carry("c-1" as TicketId)
         yield* Ref.set(room, true)
-        return { held, full, after: yield* carry("c-1"), started }
+        return { held, full, after: yield* carry("c-1" as TicketId), started }
       }),
     )
     expect(seen).toEqual({ held: false, full: false, after: true, started: ["carried c-1"] })
@@ -162,9 +166,9 @@ describe("the scheduler's carry", () => {
         const { carry, started } = yield* scheduler({ concurrent: 3 })
         const ledger = yield* Ledger
         yield* ledger.windDown
-        const wound = yield* carry("c-1")
+        const wound = yield* carry("c-1" as TicketId)
         yield* ledger.windUp
-        return { wound, after: yield* carry("c-1"), started }
+        return { wound, after: yield* carry("c-1" as TicketId), started }
       }),
     )
     expect(seen).toEqual({ wound: false, after: true, started: ["carried c-1"] })
@@ -178,14 +182,14 @@ describe("the scheduler's carry", () => {
       ],
       Effect.gen(function* () {
         const beads = yield* Beads
-        const solo1 = yield* beads.show("s-1")
-        const solo2 = yield* beads.show("s-2")
+        const solo1 = yield* beads.show("s-1" as TicketId)
+        const solo2 = yield* beads.show("s-2" as TicketId)
         const { carry, started } = yield* scheduler({ concurrent: 3 })
-        const soloFirst = yield* carry("s-1", solo1)
-        const beside = yield* carry("c-1")
+        const soloFirst = yield* carry("s-1" as TicketId, solo1)
+        const beside = yield* carry("c-1" as TicketId)
         const { carry: carryElsewhere } = yield* scheduler({ concurrent: 3 })
-        const plain = yield* carryElsewhere("c-2")
-        const soloBeside = yield* carryElsewhere("s-2", solo2)
+        const plain = yield* carryElsewhere("c-2" as TicketId)
+        const soloBeside = yield* carryElsewhere("s-2" as TicketId, solo2)
         return { soloFirst, beside, plain, soloBeside, started }
       }),
     )
@@ -202,7 +206,7 @@ describe("the scheduler's carry", () => {
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({
           concurrent: 3,
-          carrying: Effect.succeed(new Set(["t-1"])),
+          carrying: Effect.succeed(new Set(["t-1" as TicketId])),
         })
         yield* schedule.fillTrying
         yield* flush
@@ -221,7 +225,7 @@ const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-
 /** What the last run saved of a ticket, its worktree under `root`: suspended by a quit. */
 const savedRecord = (
   root: string,
-  id: string,
+  id: TicketId,
   fields: Partial<TicketRecord> = {},
 ): TicketRecord => ({
   session: `session-${id}`,
@@ -238,7 +242,7 @@ const savedRecord = (
  * Claims the ticket, works for a ready poll's time, then commits a change naming it and closes it,
  * in its worktree under `root`.
  */
-const finishes = (world: World, root: string, id: string): SessionScript => {
+const finishes = (world: World, root: string, id: TicketId): SessionScript => {
   const orDie = <A, E>(effect: Effect.Effect<A, E>) => Effect.asVoid(Effect.orDie(effect))
   return turn([
     ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
@@ -259,7 +263,7 @@ const finishes = (world: World, root: string, id: string): SessionScript => {
  */
 const runs = async (
   seeds: ReadonlyArray<Seed>,
-  ids: ReadonlyArray<string>,
+  ids: ReadonlyArray<TicketId>,
   holder: string,
   saved: (root: string) => Readonly<Record<string, TicketRecord>>,
 ): Promise<Ran<Outcome>> => {
@@ -317,9 +321,12 @@ describe("with one slot", () => {
     const ran = await runs(
       backlog().ticket("t-1", { status: "in_progress" }).ticket("t-2", { status: "in_progress" })
         .seeds,
-      ["t-1", "t-2"],
+      ["t-1" as TicketId, "t-2" as TicketId],
       "t-1",
-      (root) => ({ "t-1": savedRecord(root, "t-1"), "t-2": savedRecord(root, "t-2") }),
+      (root) => ({
+        "t-1": savedRecord(root, "t-1" as TicketId),
+        "t-2": savedRecord(root, "t-2" as TicketId),
+      }),
     )
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done", "t-2": "Done" })
@@ -342,15 +349,15 @@ describe("with one slot", () => {
         .ticket("q-1", { labels: ["human"], title: "Which way?", status: "closed" })
         .ticket("t-1", { blockedBy: ["q-1"] })
         .ticket("t-2", { status: "in_progress" }).seeds,
-      ["t-1", "t-2"],
+      ["t-1" as TicketId, "t-2" as TicketId],
       "t-2",
       (root) => ({
-        "t-1": savedRecord(root, "t-1", {
+        "t-1": savedRecord(root, "t-1" as TicketId, {
           suspended: askedWhy,
           phase: "Asked",
           metadata: { [questionKey]: "q-1" },
         }),
-        "t-2": savedRecord(root, "t-2"),
+        "t-2": savedRecord(root, "t-2" as TicketId),
       }),
     )
     expectExitCode(ran, 0)

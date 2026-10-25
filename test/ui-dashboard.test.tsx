@@ -1,6 +1,7 @@
 // The dashboard's title line, totals strip and tickets table (§ 5.1, § 7.2, § 7.11): frames at a
 // narrow, a 120-column and the minimum size, a row for each phase and activity in its style, the
 // banners, the table's place and height, and the 3-second tick of the run's time.
+
 import { describe, expect, spyOn, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
 import { Effect } from "effect"
@@ -11,6 +12,7 @@ import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { type Activity, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { dashboardLayout, warningLines } from "../src/ui/Dashboard.tsx"
 import { widthOf } from "../src/ui/line.tsx"
@@ -31,7 +33,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const now = began + (18 * 60 + 40) * 1000
 const resets = new Date(2026, 9, 20, 14, 5).getTime()
 
-const entry = (ticket: string, title: string, phase: TicketPhase, row: number | null): Entry => ({
+const entry = (ticket: TicketId, title: string, phase: TicketPhase, row: number | null): Entry => ({
   ticket,
   title,
   phase,
@@ -115,21 +117,31 @@ const merged = (commit: string) => TicketPhase.Done({ outcome: Finished.Merged({
 /** The run as § 7.2's illustration shows it. */
 const illustrated = viewOf(
   [
-    entry("tut-dwv", "Lay out the property panel", merged("ffd6ce4a1b2c3"), 0),
+    entry("tut-dwv" as TicketId, "Lay out the property panel", merged("ffd6ce4a1b2c3"), 0),
     entry(
-      "tut-kco",
+      "tut-kco" as TicketId,
       "Open the property model: Interpolatable protocol and custom key-path properties",
       TicketPhase.Merging({ step: "check" }),
       1,
     ),
-    entry("tut-zq4", "Add an undo stack for property edits", TicketPhase.Working(), 2),
-    entry("tut-9a1", "Remove the build cache", TicketPhase.Working(), 3),
-    entry("tut-vzg", "Animate the timeline", TicketPhase.Deferred({ why: "BAD_TICKET_ID" }), 4),
-    entry("tut-q1", "A ticket in the queue", TicketPhase.Queued(), null),
-    entry("tut-q2", "A ticket held back", TicketPhase.HeldBack({ why: "overlap" }), null),
+    entry("tut-zq4" as TicketId, "Add an undo stack for property edits", TicketPhase.Working(), 2),
+    entry("tut-9a1" as TicketId, "Remove the build cache", TicketPhase.Working(), 3),
+    entry(
+      "tut-vzg" as TicketId,
+      "Animate the timeline",
+      TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
+      4,
+    ),
+    entry("tut-q1" as TicketId, "A ticket in the queue", TicketPhase.Queued(), null),
+    entry(
+      "tut-q2" as TicketId,
+      "A ticket held back",
+      TicketPhase.HeldBack({ why: "overlap" }),
+      null,
+    ),
   ],
   {
-    scope: "tut-8f2",
+    scope: "tut-8f2" as TicketId,
     usage: { utilization: 0.85, resetsAt: resets },
     unclosed: 16,
     verdicts: new Map([["tut-vzg", "environment · high · prompt never submitted"]]),
@@ -267,7 +279,7 @@ describe("the title line", () => {
   }
 
   test("the pill, the version faint, the branch, the run's time and the scope faint", async () => {
-    const { frame, line } = await title({ scope: "tut-8f2" })
+    const { frame, line } = await title({ scope: "tut-8f2" as TicketId })
     expect(line).toBe(" Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2")
     looksLike(frame, " Tutti ", "title")
     looksLike(frame, "0.1.0", "dim")
@@ -374,10 +386,12 @@ describe("the tickets table", () => {
   const rowOf = async (phase: TicketPhase | Activity, status: Partial<Status> = {}) => {
     const view =
       typeof phase === "string"
-        ? viewOf([entry("tut-1", "The ticket's title", TicketPhase.Working(), 0)], status, [
-            ["tut-1", phase],
-          ])
-        : viewOf([entry("tut-1", "The ticket's title", phase, 0)], status)
+        ? viewOf(
+            [entry("tut-1" as TicketId, "The ticket's title", TicketPhase.Working(), 0)],
+            status,
+            [["tut-1", phase]],
+          )
+        : viewOf([entry("tut-1" as TicketId, "The ticket's title", phase, 0)], status)
     const { frame, text } = await draw(view, { width: 80, height: 24 })
     const line = text.split("\n").find((each) => each.includes("tut-1")) ?? ""
     return { frame, line }
@@ -408,7 +422,7 @@ describe("the tickets table", () => {
     ["? for you", TicketPhase.Asked({ question: "q-1" }), "The ticket's title", "stop"],
     [
       "◷ waiting",
-      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-2"] }) }),
+      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-2" as TicketId] }) }),
       "The ticket's title",
       "dim",
     ],
@@ -432,7 +446,8 @@ describe("the tickets table", () => {
   test("a finished ticket's note is faint, a live one's title is not", async () => {
     looksLike((await rowOf(merged("abc1234def"))).frame, "abc1234 merged", "dim")
     looksLike(
-      (await rowOf(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }))).frame,
+      (await rowOf(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x" as TicketId] }) })))
+        .frame,
       "The ticket's",
       "dim",
     )
@@ -455,7 +470,9 @@ describe("the tickets table", () => {
 
   test("rows keep their place as phases change", async () => {
     const tickets = (phases: ReadonlyArray<TicketPhase>) =>
-      viewOf(phases.map((phase, i) => entry(`tut-${i + 1}`, `Ticket ${i + 1}`, phase, i)))
+      viewOf(
+        phases.map((phase, i) => entry(`tut-${i + 1}` as TicketId, `Ticket ${i + 1}`, phase, i)),
+      )
     const view = external(
       tickets([TicketPhase.Working(), TicketPhase.Working(), TicketPhase.Working()]),
     )
@@ -470,7 +487,7 @@ describe("the tickets table", () => {
           tickets([
             TicketPhase.Merging({ step: "check" }),
             merged("abc1234def"),
-            TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-1"] }) }),
+            TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-1" as TicketId] }) }),
           ]),
         ),
       )
@@ -491,7 +508,7 @@ describe("the tickets table", () => {
     expect(tables).toEqual([0, 6, 6, 10, 13, 13])
     const many = viewOf(
       Array.from({ length: 9 }, (_, i) =>
-        entry(`tut-${i + 1}`, `Ticket ${i + 1}`, merged(`c0ffee${i}abcdef`), i),
+        entry(`tut-${i + 1}` as TicketId, `Ticket ${i + 1}`, merged(`c0ffee${i}abcdef`), i),
       ),
     )
     const { text } = await draw(many, { width: 80, height: 35 })
@@ -509,7 +526,7 @@ describe("the tickets table", () => {
       "tut-9",
     ])
     expect(lines[top + 8]).toStartWith("╰")
-    const few = await draw(viewOf([entry("tut-1", "One", TicketPhase.Working(), 0)]), {
+    const few = await draw(viewOf([entry("tut-1" as TicketId, "One", TicketPhase.Working(), 0)]), {
       width: 80,
       height: 35,
     })
@@ -518,10 +535,12 @@ describe("the tickets table", () => {
   })
 
   test("a pane too short for it and a line a worker leaves it out", async () => {
-    const view = viewOf([entry("tut-1", "One", TicketPhase.Working(), 0)])
+    const view = viewOf([entry("tut-1" as TicketId, "One", TicketPhase.Working(), 0)])
     expect((await draw(view, { width: 80, height: 19 })).text).not.toContain("Tickets")
     expect((await draw(view, { width: 80, height: 20 })).text).toContain("Tickets")
-    const more = viewOf([entry("tut-1", "One", TicketPhase.Working(), 0)], { concurrency: 8 })
+    const more = viewOf([entry("tut-1" as TicketId, "One", TicketPhase.Working(), 0)], {
+      concurrency: 8,
+    })
     expect((await draw(more, { width: 80, height: 24 })).text).not.toContain("Tickets")
   })
 
@@ -540,15 +559,15 @@ describe("untrusted text", () => {
     fc.assert(
       fc.property(
         fc.string({ unit: "binary" }),
-        fc.string({ unit: "binary", minLength: 1 }),
+        fc.string({ unit: "binary", minLength: 1 }).map((id) => id as TicketId),
         fc.string({ unit: "binary" }),
-        fc.string({ unit: "binary" }),
+        fc.string({ unit: "binary" }).map((scope) => scope as TicketId),
         fc.integer({ min: 60, max: 160 }),
         (text, id, verdict, scope, width) => {
           const view = viewOf(
             [
               entry(id, text, TicketPhase.Deferred({ why: "BAD_TICKET_ID" }), 0),
-              entry(`${id}-2`, text, TicketPhase.Working(), 1),
+              entry(`${id}-2` as TicketId, text, TicketPhase.Working(), 1),
             ],
             {
               branch: text,

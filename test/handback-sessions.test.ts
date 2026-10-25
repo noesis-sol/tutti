@@ -10,7 +10,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -157,31 +157,31 @@ const finished = (worker: Worker) =>
     const git = yield* Git
     const repository = yield* Repository
     const host = yield* AgentHost
-    const worktree = yield* (yield* Worktrees).prepare("a")
+    const worktree = yield* (yield* Worktrees).prepare("a" as TicketId)
     worktrees.set("a", worktree.path)
     yield* git.addWorktree(repository.dir, worktree.path, { branch: worktree.branch, base: "main" })
     yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
-    yield* (yield* Beads).close("a", "done")
+    yield* (yield* Beads).close("a" as TicketId, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-    yield* ledger.transition("a", Move.Dispatched())
-    yield* (yield* Store).saveSession("a", {
+    yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+    yield* ledger.transition("a" as TicketId, Move.Dispatched())
+    yield* (yield* Store).saveSession("a" as TicketId, {
       session: "session-a",
       worktree: worktree.path,
       branch: worktree.branch,
     })
-    yield* host.start("a", { sessionId: "session-a", cwd: worktree.path })
+    yield* host.start("a" as TicketId, { sessionId: "session-a", cwd: worktree.path })
     if (worker === "gone") {
-      yield* host.state("a").pipe(
+      yield* host.state("a" as TicketId).pipe(
         Stream.filter((state) => state._tag === "Gone"),
         Stream.runHead,
       )
     } else {
-      yield* untilSettled("a")
+      yield* untilSettled("a" as TicketId)
     }
-    if (worker === "closed") yield* host.close("a")
+    if (worker === "closed") yield* host.close("a" as TicketId)
     return {
-      id: "a",
+      id: "a" as TicketId,
       title: "Ticket a",
       branch: worktree.branch,
       worktree: worktree.path,
@@ -244,7 +244,7 @@ const merged = (
     return {
       phases: phasesOf(yield* (yield* Ledger).current),
       resumes: yield* Ref.get(resumes),
-      goneResumed: yield* (yield* Ledger).goneResumed("a"),
+      goneResumed: yield* (yield* Ledger).goneResumed("a" as TicketId),
     } satisfies Ended
   })
 
@@ -333,7 +333,7 @@ describe("a hand-back to a worker that is gone (Gone)", () => {
   test("whose Gone resume is spent: not handed back, and the line says why", async () => {
     const ran = await handedBack({}, () => ({ a: [finishedSession([gone("exit 1")])] }), "gone", {
       before: Effect.gen(function* () {
-        yield* (yield* Ledger).claimGoneResume("a")
+        yield* (yield* Ledger).claimGoneResume("a" as TicketId)
       }),
     })
     expect(resultOf(ran).phases.a).toEqual(

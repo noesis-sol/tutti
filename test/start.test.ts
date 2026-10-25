@@ -24,6 +24,7 @@ import {
   specOf,
   start,
 } from "../src/run/start.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import type { Commit, Sha, StatusEntry } from "../src/services/Git.ts"
 import { Store, type TicketRecord } from "../src/services/Store.ts"
 import { type Earlier, nothingEarlier } from "../src/services/Worktrees.ts"
@@ -32,7 +33,7 @@ import { appConfig } from "../src/testing/AppConfig.ts"
 import { backlog, expectEvents, expectLog, type Ran, type Setup, scenario } from "./harness.ts"
 
 const message = (fields: Partial<FirstMessage> = {}): FirstMessage => ({
-  id: "t-1",
+  id: "t-1" as TicketId,
   branch: "tutti/t-1",
   base: "main",
   ticketLimit: null,
@@ -70,7 +71,11 @@ describe("firstMessage", () => {
 
   test("carries the spec, the time the ticket has and the --ticket scope line", () => {
     const text = firstMessage(
-      message({ spec: "docs/spec.md", ticketLimit: Duration.minutes(90), scope: "t-epic" }),
+      message({
+        spec: "docs/spec.md",
+        ticketLimit: Duration.minutes(90),
+        scope: "t-epic" as TicketId,
+      }),
     )
     expect(text).toContain(
       "t-1 is part of the spec at docs/spec.md: read the sections of it that t-1 cites before " +
@@ -89,7 +94,7 @@ describe("firstMessage", () => {
   })
 
   test("leaves out the scope line when the run is scoped to the ticket itself", () => {
-    expect(firstMessage(message({ scope: "t-1" }))).not.toContain("This run works on")
+    expect(firstMessage(message({ scope: "t-1" as TicketId }))).not.toContain("This run works on")
   })
 
   test("lists what an earlier attempt left: its commits and git status", () => {
@@ -237,7 +242,7 @@ const withTicketLimit = (limit: Duration.Duration) => {
   return { ...settings, workers: { ...settings.workers, ticket_limit: limit } }
 }
 
-const t1: StartTicket = { id: "t-1", title: "One ticket", metadata: {} }
+const t1: StartTicket = { id: "t-1" as TicketId, title: "One ticket", metadata: {} }
 
 describe("start", () => {
   test("a fresh start: a new worktree, the session ID saved, the session started and told", async () => {
@@ -248,7 +253,7 @@ describe("start", () => {
         backlog: backlog().ticket("t-1", { title: "One ticket" }).seeds,
         scripts: { "t-1": [turn([])] },
         worktrees: { root },
-        config: { ticket: "t-epic" },
+        config: { ticket: "t-epic" as TicketId },
       },
     )
     const started = result(ran)
@@ -257,7 +262,7 @@ describe("start", () => {
     const { worker } = started.start
     const path = join(root, "t-1")
     expect(worker.worktree).toMatchObject({ path, branch: "tutti/t-1", reused: false })
-    expect(ran.worktreeCalls).toEqual([{ op: "prepare", id: "t-1" }])
+    expect(ran.worktreeCalls).toEqual([{ op: "prepare", id: "t-1" as TicketId }])
     expect(started.record).toMatchObject({
       session: worker.session,
       worktree: path,
@@ -275,11 +280,11 @@ describe("start", () => {
       session_id: worker.session,
       message: {
         content: firstMessage({
-          id: "t-1",
+          id: "t-1" as TicketId,
           branch: "tutti/t-1",
           base: "main",
           ticketLimit: null,
-          scope: "t-epic",
+          scope: "t-epic" as TicketId,
           spec: "docs/spec.md",
           earlier: nothingEarlier,
         }),
@@ -387,7 +392,7 @@ describe("start", () => {
   })
 
   test("BAD_TICKET_ID: an ID that can't name a worktree is set aside before anything is made", async () => {
-    const id = "t-..x"
+    const id = "t-..x" as TicketId
     const ran = await starting(
       { id, title: "Bad", metadata: {} },
       { backlog: backlog().ticket(id, { title: "Bad" }).seeds, scripts: {} },
@@ -443,7 +448,7 @@ describe("start", () => {
   })
 
   test("DEFER_FAILED: a ticket bd can't defer is still kept out of the run", async () => {
-    const id = "t-..x"
+    const id = "t-..x" as TicketId
     const ran = await starting({ id, title: "Bad", metadata: {} }, { scripts: {} })
     const started = result(ran)
     expect(started.start).toMatchObject({ _tag: "SetAside", deferred: false })

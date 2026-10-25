@@ -21,7 +21,7 @@ import { Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import type { AppConfig } from "../cli/AppConfig.ts"
 import { filingFailedLines } from "../project/planFile.ts"
-import type { Beads } from "../services/Beads.ts"
+import type { Beads, TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { FormCancelled, type Plan } from "../ui/questions.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
@@ -53,9 +53,9 @@ export type InterviewScreen = (inputs: InterviewInputs) => Effect.Effect<void, n
 /** How the interview ended. */
 export type InterviewOutcome = Data.TaggedEnum<{
   /** The epic was filed and you said y: the run goes on, scoped to it. */
-  Run: { readonly epic: string; readonly tickets: number }
+  Run: { readonly epic: TicketId; readonly tickets: number }
   /** The epic was filed and you said n, or Esc: it stays filed, and nothing runs. */
-  Declined: { readonly epic: string; readonly tickets: number }
+  Declined: { readonly epic: TicketId; readonly tickets: number }
   /** You left the view (`quit`: by Ctrl+C's quit box); `filing` says what was filed by then. */
   Left: { readonly filing: Filing; readonly quit: boolean }
   /** The session ended by itself, before the epic was filed. */
@@ -249,7 +249,7 @@ export interface InterviewEnding {
 const plural = (n: number, noun: string): string => (n === 1 ? `1 ${noun}` : `${n} ${noun}s`)
 
 /** The epic filed, and how to run it. */
-export const filedLine = (epic: string, tickets: number): string => {
+export const filedLine = (epic: TicketId, tickets: number): string => {
   const id = sanitizeLine(epic)
   return `Filed epic ${id} with ${plural(tickets, "ticket")}; nothing was run. Run it with: tutti --ticket ${id}`
 }

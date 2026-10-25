@@ -11,7 +11,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import type { TicketPhase } from "../src/run/phase.ts"
 import { footprintsOf, make } from "../src/run/schedule.ts"
-import type { Beads, Issue } from "../src/services/Beads.ts"
+import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -66,7 +66,7 @@ describe("a fill with a ticket of the run's pending", () => {
         const state = yield* (yield* Ledger).current
         return [
           yield* Ref.get(started),
-          ["t-2", "t-3"].map((id) => shown(state.tickets.get(id)?.phase)),
+          ["t-2" as TicketId, "t-3" as TicketId].map((id) => shown(state.tickets.get(id)?.phase)),
           yield* texts,
         ] as const
       }),

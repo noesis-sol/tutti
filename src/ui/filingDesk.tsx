@@ -13,6 +13,7 @@ import {
   useState,
 } from "react"
 import type { TicketFiling } from "../run/fileTicket.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { fileWords } from "./Composer.tsx"
 import { useInput } from "./keys.ts"
 import type { ToastStore } from "./Toasts.tsx"
@@ -27,16 +28,16 @@ export interface AskedFiling {
 /** The filings the worker views asked for, kept while bd answers them. */
 export interface FilingDesk {
   /** The filing `ticket`'s view asked for that bd hasn't answered, if any. */
-  readonly pending: (ticket: string) => AskedFiling | undefined
+  readonly pending: (ticket: TicketId) => AskedFiling | undefined
   /** Records the filing `ticket`'s view asked for. */
-  readonly ask: (ticket: string, asked: AskedFiling) => void
+  readonly ask: (ticket: TicketId, asked: AskedFiling) => void
   /**
    * The text `ticket`'s composer opens with: the text still being filed, or the one bd refused
    * while its view was gone, which it gives once; "" with neither.
    */
-  readonly opening: (ticket: string) => string
+  readonly opening: (ticket: TicketId) => string
   /** Attaches the composer of `ticket`'s view while it's open: the detach it returns lets it go. */
-  readonly attach: (ticket: string, field: RefObject<TextareaRenderable | null>) => () => void
+  readonly attach: (ticket: TicketId, field: RefObject<TextareaRenderable | null>) => () => void
   /**
    * Settles the pending filings `filings` say bd has answered: `toasts` says how each went; the
    * composer of its view, if open, is emptied of the text filed; a text refused with its view gone

@@ -11,14 +11,14 @@ import fc from "fast-check"
 import { tuttiWith } from "../src/cli/commands.ts"
 import { compareIds, type Link, planLinks } from "../src/plan/plan.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
-import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type Issue, type TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
 import type { RunLock } from "../src/services/RunLock.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as gitLayer } from "../src/testing/Git.ts"
 import { layer as lockLayer } from "../src/testing/RunLock.ts"
 
-const ticket = (id: string, priority: number, description: string, more: Partial<Issue> = {}) =>
+const ticket = (id: TicketId, priority: number, description: string, more: Partial<Issue> = {}) =>
   ({
     id,
     title: id,
@@ -55,9 +55,9 @@ const sourceOf =
 describe("planLinks", () => {
   test("links tickets naming one function, the higher-priority one first", () => {
     const open = [
-      ticket("low", 3, "Retry in `Loop.merge` (src/run/merge.ts)."),
-      ticket("high", 1, "Log each rebase in Loop.merge()."),
-      ticket("other", 0, "Change refreshBranch() in src/run/merge.ts."),
+      ticket("low" as TicketId, 3, "Retry in `Loop.merge` (src/run/merge.ts)."),
+      ticket("high" as TicketId, 1, "Log each rebase in Loop.merge()."),
+      ticket("other" as TicketId, 0, "Change refreshBranch() in src/run/merge.ts."),
     ]
     // low and other work in merge.ts on different functions it mentions.
     const merge = sourceOf({
@@ -68,10 +68,10 @@ describe("planLinks", () => {
 
   test("at the same priority the older ticket goes first, then the lower ID", () => {
     const open = [
-      ticket("b", 2, "Change `Loop.merge`.", { createdAt: "2026-10-02T00:00:00Z" }),
-      ticket("a", 2, "Change `Loop.merge`.", { createdAt: "2026-10-03T00:00:00Z" }),
-      ticket("e.10", 2, "Change `Loop.merge`.", { createdAt: "2026-10-01T00:00:00Z" }),
-      ticket("e.2", 2, "Change `Loop.merge`.", { createdAt: "2026-10-01T00:00:00Z" }),
+      ticket("b" as TicketId, 2, "Change `Loop.merge`.", { createdAt: "2026-10-02T00:00:00Z" }),
+      ticket("a" as TicketId, 2, "Change `Loop.merge`.", { createdAt: "2026-10-03T00:00:00Z" }),
+      ticket("e.10" as TicketId, 2, "Change `Loop.merge`.", { createdAt: "2026-10-01T00:00:00Z" }),
+      ticket("e.2" as TicketId, 2, "Change `Loop.merge`.", { createdAt: "2026-10-01T00:00:00Z" }),
     ]
     expect(shown(planLinks(open, [], repoFiles(tracked), sourceOf({})))).toEqual([
       "e.2>e.10:Loop.merge",
@@ -82,20 +82,20 @@ describe("planLinks", () => {
 
   test("independent tickets get no link", () => {
     const open = [
-      ticket("a", 1, "Reword README.md."),
-      ticket("b", 1, "Tidy src/run/loop.ts."),
-      ticket("c", 1, "Change `waitSettled`."),
+      ticket("a" as TicketId, 1, "Reword README.md."),
+      ticket("b" as TicketId, 1, "Tidy src/run/loop.ts."),
+      ticket("c" as TicketId, 1, "Change `waitSettled`."),
     ]
     expect(planLinks(open, [], repoFiles(tracked), sourceOf({}))).toEqual([])
   })
 
   test("only a small file links tickets; one not written yet is small", () => {
     const open = [
-      ticket("a", 1, "Reword the intro in README.md."),
-      ticket("b", 2, "Add a section to README.md and src/run/loop.ts."),
-      ticket("c", 2, "Tidy src/run/loop.ts."),
-      ticket("d", 2, "Add src/plan/plan.ts."),
-      ticket("e", 3, "Test src/plan/plan.ts."),
+      ticket("a" as TicketId, 1, "Reword the intro in README.md."),
+      ticket("b" as TicketId, 2, "Add a section to README.md and src/run/loop.ts."),
+      ticket("c" as TicketId, 2, "Tidy src/run/loop.ts."),
+      ticket("d" as TicketId, 2, "Add src/plan/plan.ts."),
+      ticket("e" as TicketId, 3, "Test src/plan/plan.ts."),
     ]
     const source = (file: string) =>
       file === "src/run/loop.ts" ? lines(900) : file === "src/plan/plan.ts" ? undefined : lines(50)
@@ -107,9 +107,9 @@ describe("planLinks", () => {
 
   test("tickets naming different functions of one file aren't linked", () => {
     const open = [
-      ticket("a", 1, "Change `waitSettled` in README.md."),
-      ticket("b", 2, "Change refreshBranch() in README.md."),
-      ticket("c", 2, "Reword README.md."),
+      ticket("a" as TicketId, 1, "Change `waitSettled` in README.md."),
+      ticket("b" as TicketId, 2, "Change refreshBranch() in README.md."),
+      ticket("c" as TicketId, 2, "Reword README.md."),
     ]
     const readme = sourceOf({ "README.md": "Call waitSettled, then refreshBranch.\n" })
     // c names no function, so the file decides for it: it waits for b, the nearest ticket before
@@ -122,9 +122,9 @@ describe("planLinks", () => {
 
   test("tickets on one function form a chain, and ordered pairs get none", () => {
     const open = [
-      ticket("a", 1, "Change `Loop.merge`."),
-      ticket("b", 2, "Change `Loop.merge`."),
-      ticket("c", 3, "Change `Loop.merge`."),
+      ticket("a" as TicketId, 1, "Change `Loop.merge`."),
+      ticket("b" as TicketId, 2, "Change `Loop.merge`."),
+      ticket("c" as TicketId, 3, "Change `Loop.merge`."),
     ]
     expect(shown(planLinks(open, [], repoFiles(tracked), sourceOf({})))).toEqual([
       "a>b:Loop.merge",
@@ -132,27 +132,27 @@ describe("planLinks", () => {
     ])
     // Already ordered, either way round or through another ticket: nothing to add.
     const existing = [
-      { blocker: "c", blocked: "x", why: "" },
-      { blocker: "x", blocked: "b", why: "" },
-      { blocker: "a", blocked: "c", why: "" },
+      { blocker: "c" as TicketId, blocked: "x" as TicketId, why: "" },
+      { blocker: "x" as TicketId, blocked: "b" as TicketId, why: "" },
+      { blocker: "a" as TicketId, blocked: "c" as TicketId, why: "" },
     ]
     expect(planLinks(open, existing, repoFiles(tracked), sourceOf({}))).toEqual([])
   })
 
   test("area labels and predicted files don't link tickets", () => {
     const open = [
-      ticket("a", 1, "Make it faster.", { labels: ["area:tui"] }),
-      ticket("b", 2, "Make it nicer.", { labels: ["area:tui"] }),
-      ticket("c", 2, "Make it calmer.", { predictedFiles: ["src/run/loop.ts"] }),
-      ticket("d", 3, "Change src/run/loop.ts."),
+      ticket("a" as TicketId, 1, "Make it faster.", { labels: ["area:tui"] }),
+      ticket("b" as TicketId, 2, "Make it nicer.", { labels: ["area:tui"] }),
+      ticket("c" as TicketId, 2, "Make it calmer.", { predictedFiles: ["src/run/loop.ts"] }),
+      ticket("d" as TicketId, 3, "Change src/run/loop.ts."),
     ]
     expect(planLinks(open, [], repoFiles(tracked), sourceOf({}))).toEqual([])
   })
 
   test("the files the check command names link nobody", () => {
     const open = [
-      ticket("a", 1, "Make README.md pass the check."),
-      ticket("b", 2, "Make README.md pass the check too."),
+      ticket("a" as TicketId, 1, "Make README.md pass the check."),
+      ticket("b" as TicketId, 2, "Make README.md pass the check too."),
     ]
     expect(planLinks(open, [], repoFiles(tracked, ["cat README.md"]), sourceOf({}))).toEqual([])
   })
@@ -296,8 +296,8 @@ describe("tutti plan", () => {
       "Added 2 links.",
     ])
     expect(result.failed).toBe(false)
-    expect(result.blockers["t-1"]).toEqual(["t-2"])
-    expect(result.blockers["t-8"]).toEqual(["t-3"])
+    expect(result.blockers["t-1"]).toEqual(["t-2" as TicketId])
+    expect(result.blockers["t-8"]).toEqual(["t-3" as TicketId])
     expect(result.blockers["t-2"]).toEqual([])
   })
 
@@ -334,7 +334,7 @@ describe("tutti plan", () => {
       "tutti plan: bd didn't add 1 link",
     ])
     expect(result.failed).toBe(true)
-    expect(result.blockers["t-1"]).toEqual(["t-2"])
+    expect(result.blockers["t-1"]).toEqual(["t-2" as TicketId])
     expect(result.blockers["t-8"]).toEqual([])
   })
 

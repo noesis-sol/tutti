@@ -19,6 +19,7 @@ import {
   type Issue,
   metadataList,
   saysNoSuchIssue,
+  type TicketId,
 } from "../src/services/Beads.ts"
 import { Backlog, layer as backlogLayer, type Seed } from "../src/testing/Beads.ts"
 import { machineWhich } from "./env.ts"
@@ -45,11 +46,11 @@ describe("decoding bd --json", () => {
   test("bd ready: issues with labels, metadata files, parent and links by ID", () => {
     const ready = decoded(decodeIssues("bd ready", fixture("ready.json")))
     expect(ready.map((issue) => issue.id)).toEqual([
-      "demo-1an",
-      "demo-mtp",
-      "demo-8df",
-      "demo-5ox",
-      "demo-mtp.3",
+      "demo-1an" as TicketId,
+      "demo-mtp" as TicketId,
+      "demo-8df" as TicketId,
+      "demo-5ox" as TicketId,
+      "demo-mtp.3" as TicketId,
     ])
     const filed = byId(ready, "demo-mtp.3")
     expect(filed).toMatchObject({
@@ -65,8 +66,8 @@ describe("decoding bd --json", () => {
       metadata: { files: ["src/c.ts"] },
     })
     expect(filed.dependencies).toEqual([
-      { id: "demo-mtp.1", type: "discovered-from" },
-      { id: "demo-mtp", type: "parent-child" },
+      { id: "demo-mtp.1" as TicketId, type: "discovered-from" },
+      { id: "demo-mtp" as TicketId, type: "parent-child" },
     ])
     expect(byId(ready, "demo-8df")).toMatchObject({ labels: [], dependencies: [], acceptance: "" })
   })
@@ -85,8 +86,8 @@ describe("decoding bd --json", () => {
       deferUntil: "2098-12-31T22:00:00Z",
     })
     expect(byId(list, "demo-mtp.2").dependencies).toEqual([
-      { id: "demo-mtp", type: "parent-child" },
-      { id: "demo-mtp.1", type: "blocks" },
+      { id: "demo-mtp" as TicketId, type: "parent-child" },
+      { id: "demo-mtp.1" as TicketId, type: "blocks" },
     ])
     expect(byId(list, "demo-mtp.1")).toMatchObject({
       acceptance: "a ok",
@@ -97,7 +98,7 @@ describe("decoding bd --json", () => {
 
   test("bd show: the linked issues, with their status and labels", () => {
     const issue = decoded(decodeIssue("bd show", fixture("show-c.json")))
-    expect(issue.id).toBe("demo-1an")
+    expect(issue.id).toBe("demo-1an" as TicketId)
     expect(issue.parent).toBeUndefined()
     expect(issue.dependencies.map((d) => [d.id, d.type, d.issue?.status, d.issue?.labels])).toEqual(
       [
@@ -106,7 +107,7 @@ describe("decoding bd --json", () => {
       ],
     )
     const child = decoded(decodeIssue("bd show", fixture("show-b.json")))
-    expect(child.parent).toBe("demo-mtp")
+    expect(child.parent).toBe("demo-mtp" as TicketId)
     expect(child.dependencies[1]?.issue?.files).toEqual(["src/a.ts", "src/b.ts"])
   })
 
@@ -149,7 +150,9 @@ describe("decoding bd --json", () => {
 
   test("bd human list", () => {
     const questions = decoded(decodeQuestions("bd human list", fixture("human-list.json")))
-    expect(questions.map((issue) => [issue.id, issue.labels])).toEqual([["demo-n0n", ["human"]]])
+    expect(questions.map((issue) => [issue.id, issue.labels])).toEqual([
+      ["demo-n0n" as TicketId, ["human"]],
+    ])
   })
 
   test("output that isn't what the command gives is BeadsUnreadable", () => {
@@ -334,7 +337,7 @@ describe("the in-memory backlog", () => {
       ],
       Effect.andThen(TestClock.setTime(now), readyIds()),
     )
-    expect(ids).toEqual(["t-urgent", "t-open", "t-past"])
+    expect(ids).toEqual(["t-urgent" as TicketId, "t-open" as TicketId, "t-past" as TicketId])
   })
 
   test("a deferral wakes once its date passes", async () => {
@@ -345,12 +348,12 @@ describe("the in-memory backlog", () => {
         const before = yield* readyIds()
         yield* TestClock.adjust("2 hours")
         const after = yield* readyIds()
-        const woken = yield* (yield* Beads).show("t-1")
+        const woken = yield* (yield* Beads).show("t-1" as TicketId)
         return [before, after, woken] as const
       }),
     )
     expect(before).toEqual([])
-    expect(after).toEqual(["t-1"])
+    expect(after).toEqual(["t-1" as TicketId])
     expect(woken.status).toBe("open")
     expect(woken.deferUntil).toBeUndefined()
   })
@@ -366,20 +369,20 @@ describe("the in-memory backlog", () => {
       Effect.gen(function* () {
         const beads = yield* Beads
         const open = yield* readyIds()
-        yield* beads.update("t-blocker", { claim: true })
+        yield* beads.update("t-blocker" as TicketId, { claim: true })
         const claimed = yield* readyIds()
-        yield* beads.defer("t-blocker")
+        yield* beads.defer("t-blocker" as TicketId)
         const deferred = yield* readyIds()
-        yield* beads.close("t-blocker", "done")
+        yield* beads.close("t-blocker" as TicketId, "done")
         const closed = yield* readyIds()
         return { open, claimed, deferred, closed }
       }),
     )
     expect(steps).toEqual({
-      open: ["t-blocker", "t-found", "t-related"],
-      claimed: ["t-found", "t-related"],
-      deferred: ["t-found", "t-related"],
-      closed: ["t-waits", "t-found", "t-related"],
+      open: ["t-blocker" as TicketId, "t-found" as TicketId, "t-related" as TicketId],
+      claimed: ["t-found" as TicketId, "t-related" as TicketId],
+      deferred: ["t-found" as TicketId, "t-related" as TicketId],
+      closed: ["t-waits" as TicketId, "t-found" as TicketId, "t-related" as TicketId],
     })
   })
 
@@ -394,25 +397,30 @@ describe("the in-memory backlog", () => {
       Effect.gen(function* () {
         const beads = yield* Beads
         const all = yield* readyIds()
-        const scoped = yield* readyIds({ parent: "t-epic" })
-        yield* beads.addDependency("t-epic.1", "t-other")
+        const scoped = yield* readyIds({ parent: "t-epic" as TicketId })
+        yield* beads.addDependency("t-epic.1" as TicketId, "t-other" as TicketId)
         const blocked = yield* readyIds()
-        yield* beads.close("t-other")
-        yield* beads.update("t-epic.1", { status: "in_progress" })
+        yield* beads.close("t-other" as TicketId)
+        yield* beads.update("t-epic.1" as TicketId, { status: "in_progress" })
         const inProgress = yield* readyIds()
-        yield* beads.defer("t-epic")
+        yield* beads.defer("t-epic" as TicketId)
         const deferred = yield* readyIds()
         const epics = yield* readyIds({ excludeTypes: ["epic"], excludeLabels: ["human"] })
         return { all, scoped, blocked, inProgress, deferred, epics }
       }),
     )
     expect(steps).toEqual({
-      all: ["t-epic", "t-epic.1", "t-epic.1.1", "t-other"],
-      scoped: ["t-epic.1", "t-epic.1.1"],
-      blocked: ["t-epic", "t-other"],
-      inProgress: ["t-epic", "t-epic.1.1"],
-      deferred: ["t-epic.1.1"],
-      epics: ["t-epic.1.1"],
+      all: [
+        "t-epic" as TicketId,
+        "t-epic.1" as TicketId,
+        "t-epic.1.1" as TicketId,
+        "t-other" as TicketId,
+      ],
+      scoped: ["t-epic.1" as TicketId, "t-epic.1.1" as TicketId],
+      blocked: ["t-epic" as TicketId, "t-other" as TicketId],
+      inProgress: ["t-epic" as TicketId, "t-epic.1.1" as TicketId],
+      deferred: ["t-epic.1.1" as TicketId],
+      epics: ["t-epic.1.1" as TicketId],
     })
   })
 
@@ -421,11 +429,11 @@ describe("the in-memory backlog", () => {
       [{ id: "t-1" }, { id: "t-2", labels: ["solo"] }, { id: "t-q", labels: ["human"] }],
       Effect.gen(function* () {
         const beads = yield* Beads
-        yield* beads.addLabel("t-1", "area:ui")
-        yield* beads.addLabel("t-1", "area:ui")
-        yield* beads.addLabel("t-1", "solo")
-        yield* beads.removeLabel("t-2", "solo")
-        const one = yield* beads.show("t-1")
+        yield* beads.addLabel("t-1" as TicketId, "area:ui")
+        yield* beads.addLabel("t-1" as TicketId, "area:ui")
+        yield* beads.addLabel("t-1" as TicketId, "solo")
+        yield* beads.removeLabel("t-2" as TicketId, "solo")
+        const one = yield* beads.show("t-1" as TicketId)
         const solo = yield* beads.list({ labels: ["solo"] })
         const ready = yield* readyIds({ excludeLabels: ["human"] })
         const questions = yield* beads.questions()
@@ -433,9 +441,9 @@ describe("the in-memory backlog", () => {
       }),
     )
     expect(result.labels).toEqual(["area:ui", "solo"])
-    expect(result.solo).toEqual(["t-1"])
-    expect(result.ready).toEqual(["t-1", "t-2"])
-    expect(result.questions.map((issue) => issue.id)).toEqual(["t-q"])
+    expect(result.solo).toEqual(["t-1" as TicketId])
+    expect(result.ready).toEqual(["t-1" as TicketId, "t-2" as TicketId])
+    expect(result.questions.map((issue) => issue.id)).toEqual(["t-q" as TicketId])
   })
 
   test("metadata: set and unset keys, files read from it, list by a field", async () => {
@@ -443,11 +451,11 @@ describe("the in-memory backlog", () => {
       [{ id: "t-1", metadata: { files: ["a.ts"], spec: "s.md" } }, { id: "t-2" }],
       Effect.gen(function* () {
         const beads = yield* Beads
-        yield* beads.setMetadata("t-1", "predicted_files", '["b.ts"]')
-        yield* beads.setMetadata("t-2", "files", "c.ts,d.ts")
-        yield* beads.unsetMetadata("t-1", "spec")
-        const one = yield* beads.show("t-1")
-        const two = yield* beads.metadata("t-2")
+        yield* beads.setMetadata("t-1" as TicketId, "predicted_files", '["b.ts"]')
+        yield* beads.setMetadata("t-2" as TicketId, "files", "c.ts,d.ts")
+        yield* beads.unsetMetadata("t-1" as TicketId, "spec")
+        const one = yield* beads.show("t-1" as TicketId)
+        const two = yield* beads.metadata("t-2" as TicketId)
         const bySpec = yield* beads.list({ metadata: { files: "c.ts,d.ts" } })
         return { one, two, bySpec: bySpec.map((issue) => issue.id) }
       }),
@@ -456,7 +464,7 @@ describe("the in-memory backlog", () => {
     expect(result.one.files).toEqual(["a.ts"])
     expect(result.one.predictedFiles).toEqual(["b.ts"])
     expect(result.two).toEqual({ files: "c.ts,d.ts" })
-    expect(result.bySpec).toEqual(["t-2"])
+    expect(result.bySpec).toEqual(["t-2" as TicketId])
   })
 
   test("update claims, sets the status and appends notes; close gives its reason", async () => {
@@ -464,9 +472,12 @@ describe("the in-memory backlog", () => {
       [{ id: "t-1", notes: "first" }],
       Effect.gen(function* () {
         const beads = yield* Beads
-        const claimed = yield* beads.update("t-1", { claim: true, appendNotes: "second" })
-        const reopened = yield* beads.update("t-1", { status: "open" })
-        const closed = yield* beads.close("t-1", "merged")
+        const claimed = yield* beads.update("t-1" as TicketId, {
+          claim: true,
+          appendNotes: "second",
+        })
+        const reopened = yield* beads.update("t-1" as TicketId, { status: "open" })
+        const closed = yield* beads.close("t-1" as TicketId, "merged")
         const listed = yield* beads.list()
         const all = yield* beads.list({ all: true })
         return { claimed, reopened, closed, listed, all }
@@ -480,7 +491,7 @@ describe("the in-memory backlog", () => {
     expect(result.reopened.status).toBe("open")
     expect(result.closed).toMatchObject({ status: "closed", closeReason: "merged" })
     expect(result.listed).toEqual([])
-    expect(result.all.map((issue) => issue.id)).toEqual(["t-1"])
+    expect(result.all.map((issue) => issue.id)).toEqual(["t-1" as TicketId])
   })
 
   test("create numbers subtickets after their parent, with their links", async () => {
@@ -488,12 +499,12 @@ describe("the in-memory backlog", () => {
       [{ id: "t-epic", type: "epic" }, { id: "t-work" }],
       Effect.gen(function* () {
         const beads = yield* Beads
-        const first = yield* beads.create({ title: "one", parent: "t-epic" })
+        const first = yield* beads.create({ title: "one", parent: "t-epic" as TicketId })
         const second = yield* beads.create({
           title: "two",
-          parent: "t-epic",
+          parent: "t-epic" as TicketId,
           blockedBy: [first.id],
-          discoveredFrom: ["t-work"],
+          discoveredFrom: ["t-work" as TicketId],
           labels: ["area:x"],
           metadata: { files: ["x.ts"] },
           priority: 1,
@@ -502,7 +513,7 @@ describe("the in-memory backlog", () => {
         const question = yield* beads.create({
           title: "A question?",
           labels: ["human"],
-          blocks: ["t-work"],
+          blocks: ["t-work" as TicketId],
         })
         const shown = yield* beads.show(second.id)
         const up = yield* beads.dependencies(first.id, { direction: "up" })
@@ -511,7 +522,7 @@ describe("the in-memory backlog", () => {
         return { first, second, question, shown, up, down, ready }
       }),
     )
-    expect(result.first.id).toBe("t-epic.1")
+    expect(result.first.id).toBe("t-epic.1" as TicketId)
     expect(result.second).toMatchObject({
       id: "t-epic.2",
       parent: "t-epic",
@@ -520,15 +531,19 @@ describe("the in-memory backlog", () => {
       labels: ["area:x"],
       files: ["x.ts"],
     })
-    expect(result.question.id).toBe("test-5")
+    expect(result.question.id).toBe("test-5" as TicketId)
     expect(result.shown.dependencies.map((d) => [d.id, d.type, d.issue?.title])).toEqual([
       ["t-epic", "parent-child", "t-epic"],
       ["t-epic.1", "blocks", "one"],
       ["t-work", "discovered-from", "t-work"],
     ])
     expect(result.up.map((d) => [d.id, d.type])).toEqual([["t-epic.2", "blocks"]])
-    expect(result.down.map((d) => d.id)).toEqual(["t-epic.1"])
-    expect(result.ready).toEqual(["t-epic", "t-epic.1", "test-5"])
+    expect(result.down.map((d) => d.id)).toEqual(["t-epic.1" as TicketId])
+    expect(result.ready).toEqual([
+      "t-epic" as TicketId,
+      "t-epic.1" as TicketId,
+      "test-5" as TicketId,
+    ])
   })
 
   test("an ID it has no issue for fails as bd does", async () => {
@@ -537,10 +552,12 @@ describe("the in-memory backlog", () => {
       Effect.gen(function* () {
         const beads = yield* Beads
         return [
-          yield* Effect.exit(Effect.asVoid(beads.show("t-gone"))),
-          yield* Effect.exit(Effect.asVoid(beads.update("t-gone", { claim: true }))),
-          yield* Effect.exit(beads.addDependency("t-1", "t-gone")),
-          yield* Effect.exit(Effect.asVoid(beads.create({ title: "x", parent: "t-gone" }))),
+          yield* Effect.exit(Effect.asVoid(beads.show("t-gone" as TicketId))),
+          yield* Effect.exit(Effect.asVoid(beads.update("t-gone" as TicketId, { claim: true }))),
+          yield* Effect.exit(beads.addDependency("t-1" as TicketId, "t-gone" as TicketId)),
+          yield* Effect.exit(
+            Effect.asVoid(beads.create({ title: "x", parent: "t-gone" as TicketId })),
+          ),
         ]
       }),
     )
@@ -564,9 +581,9 @@ describe("the in-memory backlog", () => {
         return { ready, one, all: all.map((issue) => issue.id), none: yield* backlog.get("t-x") }
       }),
     )
-    expect(result.ready).toEqual(["t-2"])
+    expect(result.ready).toEqual(["t-2" as TicketId])
     expect(result.one).toMatchObject({ status: "closed", closeReason: "by a worker" })
-    expect(result.all).toEqual(["t-1", "t-2"])
+    expect(result.all).toEqual(["t-1" as TicketId, "t-2" as TicketId])
     expect(result.none).toBeUndefined()
   })
 })
@@ -616,7 +633,7 @@ describe("the live layer", () => {
       fake,
       withBeads((beads) =>
         beads.ready({
-          parent: "demo-mtp",
+          parent: "demo-mtp" as TicketId,
           excludeLabels: ["human"],
           excludeTypes: ["epic", "chore"],
         }),
@@ -644,7 +661,7 @@ fi`)
     await live(
       fake,
       withBeads((beads) =>
-        beads.update("demo-1", {
+        beads.update("demo-1" as TicketId, {
           claim: true,
           status: "in_progress",
           appendNotes: "--a note, with = and spaces",
@@ -671,10 +688,10 @@ fi`)
           description: "D",
           type: "bug",
           priority: 0,
-          parent: "demo-1",
-          blockedBy: ["demo-2"],
-          blocks: ["demo-3"],
-          discoveredFrom: ["demo-4"],
+          parent: "demo-1" as TicketId,
+          blockedBy: ["demo-2" as TicketId],
+          blocks: ["demo-3" as TicketId],
+          discoveredFrom: ["demo-4" as TicketId],
           labels: ["a", "b"],
           metadata: { files: ["x.ts"] },
         }),
@@ -697,7 +714,12 @@ fi`)
     await live(
       fake,
       withBeads((beads) =>
-        beads.list({ all: true, parent: "demo-1", labels: ["x", "y"], metadata: { spec: "s.md" } }),
+        beads.list({
+          all: true,
+          parent: "demo-1" as TicketId,
+          labels: ["x", "y"],
+          metadata: { spec: "s.md" },
+        }),
       ),
     )
     expect(fake.args()).toEqual([
@@ -712,27 +734,27 @@ fi`)
     ])
     await live(
       fake,
-      withBeads((beads) => beads.addDependency("demo-1", "demo-2")),
+      withBeads((beads) => beads.addDependency("demo-1" as TicketId, "demo-2" as TicketId)),
     )
     expect(fake.args()).toEqual(["dep", "add", "demo-1", "demo-2", "--json", "--type=blocks"])
     await live(
       fake,
-      withBeads((beads) => beads.dependencies("demo-1", { direction: "up" })),
+      withBeads((beads) => beads.dependencies("demo-1" as TicketId, { direction: "up" })),
     )
     expect(fake.args()).toEqual(["dep", "list", "demo-1", "--json", "--direction=up"])
     await live(
       fake,
-      withBeads((beads) => beads.close("demo-1", "done")),
+      withBeads((beads) => beads.close("demo-1" as TicketId, "done")),
     )
     expect(fake.args()).toEqual(["close", "demo-1", "--json", "--reason=done"])
     await live(
       fake,
-      withBeads((beads) => beads.defer("demo-1", { reason: "r", until: "+1h" })),
+      withBeads((beads) => beads.defer("demo-1" as TicketId, { reason: "r", until: "+1h" })),
     )
     expect(fake.args()).toEqual(["defer", "demo-1", "--json", "--reason=r", "--until=+1h"])
     await live(
       fake,
-      withBeads((beads) => beads.removeLabel("demo-1", "solo")),
+      withBeads((beads) => beads.removeLabel("demo-1" as TicketId, "solo")),
     )
     expect(fake.args()).toEqual(["label", "remove", "demo-1", "solo", "--json"])
     await live(
@@ -757,7 +779,7 @@ echo 'Issue nope not found' >&2; exit 1`)
     const error = failure(
       await live(
         fake,
-        withBeads((beads) => beads.show("nope")),
+        withBeads((beads) => beads.show("nope" as TicketId)),
       ),
     )
     expect(error).toBeInstanceOf(BeadsFailed)
@@ -786,7 +808,7 @@ echo 'Issue nope not found' >&2; exit 1`)
     const error = failure(
       await live(
         fake,
-        withBeads((beads) => beads.addLabel("demo-1", "x")),
+        withBeads((beads) => beads.addLabel("demo-1" as TicketId, "x")),
       ),
     )
     expect(error).toMatchObject({ _tag: "BeadsFailed", exitCode: 13, stderr: "cannot claim\n" })
@@ -799,14 +821,14 @@ echo 'Issue nope not found' >&2; exit 1`)
     const limits = { read: "30 seconds", write: "200 millis" } as const
     const read = await live(
       fake,
-      withBeads((beads) => beads.show("demo-813")),
+      withBeads((beads) => beads.show("demo-813" as TicketId)),
       limits,
     )
     expect(Exit.isSuccess(read)).toBe(true)
     const write = failure(
       await live(
         fake,
-        withBeads((beads) => beads.close("demo-813")),
+        withBeads((beads) => beads.close("demo-813" as TicketId)),
         limits,
       ),
     )

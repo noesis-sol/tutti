@@ -9,7 +9,7 @@ import { Effect, Exit, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { asking, askLines, type Deciding, decided, ticketCount } from "../src/run/choose.ts"
 import { noHolds, type Options } from "../src/run/nothing.ts"
-import { Beads, BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { type Holder, parseHolder, RunLock } from "../src/services/RunLock.ts"
 import type { OutputMode } from "../src/services/Tty.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -41,7 +41,7 @@ describe("whether the run asks", () => {
   test("not when a flag decides: --tickets, --ticket, --feature, --plain, a --limit reached", () => {
     const flags: ReadonlyArray<Partial<Deciding>> = [
       { tickets: true },
-      { ticket: "k-1" },
+      { ticket: "k-1" as TicketId },
       { feature: "dark mode" },
       { plain: true },
       { limit: 0 },
@@ -129,7 +129,7 @@ describe("what it says of the current tickets", () => {
       { id: "e-1.1", parent: "e-1", status: "in_progress" },
       { id: "k-1" },
     ]
-    expect(await count(seeds, { scope: "e-1" })).toMatchObject({ _tag: "NoneReady" })
+    expect(await count(seeds, { scope: "e-1" as TicketId })).toMatchObject({ _tag: "NoneReady" })
   })
 
   test("unknown when bd can't say", async () => {

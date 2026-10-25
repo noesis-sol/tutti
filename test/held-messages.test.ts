@@ -12,7 +12,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -59,7 +59,7 @@ const until = (ready: (state: State) => boolean) =>
     yield* (yield* Ledger).changes.pipe(Stream.filter(ready), Stream.runHead)
   })
 
-const checking = (id: string) => (state: State) => {
+const checking = (id: TicketId) => (state: State) => {
   const phase = state.tickets.get(id)?.phase
   return phase?._tag === "Merging" && phase.step === "check"
 }
@@ -77,7 +77,7 @@ const finishedSession = (then: SessionScript = []): SessionScript => [
  * A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed in
  * Beads, Working in the ledger; with `session`, its worker's session started and settled.
  */
-const finished = (id: string, files: Files, session: boolean) =>
+const finished = (id: TicketId, files: Files, session: boolean) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -130,18 +130,18 @@ describe("a message to the worker of a ticket that merges", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           const queue = yield* makeQueue(options)
-          const a = yield* finished("a", { "a.txt": "a\n" }, true)
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" }, true)
           const repository = yield* Repository
           yield* repository.commit(repository.dir, "Land something else", { "b.txt": "b\n" })
           yield* queue.offer(a)
-          yield* until(checking("a"))
-          expect(yield* queue.held.hold("a", { text: words, uuid: yours })).toBe(true)
-          expect((yield* ledger.current).tickets.get("a")?.steered).toBe(true)
+          yield* until(checking("a" as TicketId))
+          expect(yield* queue.held.hold("a" as TicketId, { text: words, uuid: yours })).toBe(true)
+          expect((yield* ledger.current).tickets.get("a" as TicketId)?.steered).toBe(true)
           expect((yield* queue.held.messages).get("a")).toEqual([{ text: words, uuid: yours }])
           yield* Deferred.succeed(gate, undefined)
           yield* queue.settled
           return {
-            phase: (yield* ledger.current).tickets.get("a")?.phase,
+            phase: (yield* ledger.current).tickets.get("a" as TicketId)?.phase,
             held: yield* queue.held.messages,
           }
         }),
@@ -153,13 +153,13 @@ describe("a message to the worker of a ticket that merges", () => {
     expect(yoursTo(ran)).toEqual([])
     expectLog(ran, [
       `  ${Tag.steered}: a`,
-      heldLine("a", words, TicketPhase.Merging({ step: "check" })),
-      notSentLine("a", 1),
+      heldLine("a" as TicketId, words, TicketPhase.Merging({ step: "check" })),
+      notSentLine("a" as TicketId, 1),
     ])
     expect(ran.log.some((each) => each.startsWith(`  ${Tag.message}:`))).toBe(false)
     // Its length, never its text.
     expect(ran.log.some((each) => each.includes(words))).toBe(false)
-    expect(heldLine("a", words, TicketPhase.Merging({ step: "check" }))).toContain(
+    expect(heldLine("a" as TicketId, words, TicketPhase.Merging({ step: "check" }))).toContain(
       "(27 characters) is held, as a is merging",
     )
   })
@@ -179,25 +179,27 @@ describe("a message to the worker of a ticket that merges", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           const queue = yield* makeQueue(options)
-          const a = yield* finished("a", { "a.txt": "a\n" }, true)
-          const b = yield* finished("b", { "b.txt": "b\n" }, false)
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" }, true)
+          const b = yield* finished("b" as TicketId, { "b.txt": "b\n" }, false)
           const repository = yield* Repository
           // Main changes a.txt too: a's rebase stops on the conflict.
           yield* repository.commit(repository.dir, "Land something else", {
             "a.txt": "main's a\n",
           })
           yield* queue.offer(b)
-          yield* until(checking("b"))
+          yield* until(checking("b" as TicketId))
           // Behind b, not checked ahead of its turn.
           yield* queue.offer(a, undefined, false)
-          expect((yield* ledger.current).tickets.get("a")?.phase._tag).toBe("ToMerge")
-          expect(yield* queue.held.hold("a", { text: words, uuid: yours })).toBe(true)
-          expect(yield* queue.held.hold("a", { text: "and two", uuid: second })).toBe(true)
+          expect((yield* ledger.current).tickets.get("a" as TicketId)?.phase._tag).toBe("ToMerge")
+          expect(yield* queue.held.hold("a" as TicketId, { text: words, uuid: yours })).toBe(true)
+          expect(yield* queue.held.hold("a" as TicketId, { text: "and two", uuid: second })).toBe(
+            true,
+          )
           yield* Deferred.succeed(gate, undefined)
           yield* queue.settled
           return {
-            a: (yield* ledger.current).tickets.get("a"),
-            b: (yield* ledger.current).tickets.get("b")?.phase,
+            a: (yield* ledger.current).tickets.get("a" as TicketId),
+            b: (yield* ledger.current).tickets.get("b" as TicketId)?.phase,
             held: yield* queue.held.messages,
           }
         }),
@@ -214,8 +216,8 @@ describe("a message to the worker of a ticket that merges", () => {
       { uuid: second, text: "and two" },
     ])
     expectLog(ran, [
-      heldLine("a", words, TicketPhase.ToMerge({ place: 1 })),
-      heldLine("a", "and two", TicketPhase.ToMerge({ place: 1 })),
+      heldLine("a" as TicketId, words, TicketPhase.ToMerge({ place: 1 })),
+      heldLine("a" as TicketId, "and two", TicketPhase.ToMerge({ place: 1 })),
       `  ${Tag.message}: you → a (27 characters)`,
       `  ${Tag.message}: you → a (7 characters)`,
     ])
@@ -259,23 +261,23 @@ describe("a message held for a worker you released meanwhile", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           const queue = yield* makeQueue(options)
-          const a = yield* finished("a", { "a.txt": "a\n" }, true)
+          const a = yield* finished("a" as TicketId, { "a.txt": "a\n" }, true)
           worktrees.set("a", a.worktree)
-          const b = yield* finished("b", { "b.txt": "b\n" }, false)
+          const b = yield* finished("b" as TicketId, { "b.txt": "b\n" }, false)
           const repository = yield* Repository
           yield* repository.commit(repository.dir, "Land something else", {
             "a.txt": "main's a\n",
           })
           yield* queue.offer(b)
-          yield* until(checking("b"))
+          yield* until(checking("b" as TicketId))
           yield* queue.offer(a, undefined, false)
-          expect(yield* queue.held.hold("a", { text: words, uuid: yours })).toBe(true)
+          expect(yield* queue.held.hold("a" as TicketId, { text: words, uuid: yours })).toBe(true)
           // Released, its worker takes the conflict its merge stops on.
-          yield* ledger.release("a")
+          yield* ledger.release("a" as TicketId)
           yield* Deferred.succeed(gate, undefined)
           yield* queue.settled
           return {
-            a: (yield* ledger.current).tickets.get("a")?.phase,
+            a: (yield* ledger.current).tickets.get("a" as TicketId)?.phase,
             held: yield* queue.held.messages,
           }
         }),
@@ -291,7 +293,7 @@ describe("a message held for a worker you released meanwhile", () => {
     expect(toA.map((message) => message.client_composed === true)).toEqual([false, true])
     expect(toA[0]).toMatchObject({ uuid: yours, message: { content: words } })
     expectLog(ran, [
-      heldLine("a", words, TicketPhase.ToMerge({ place: 1 })),
+      heldLine("a" as TicketId, words, TicketPhase.ToMerge({ place: 1 })),
       /^ {2}RESOLVING: /,
       `  ${Tag.message}: you → a (27 characters)`,
     ])
@@ -306,11 +308,11 @@ describe("the held messages", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           const held = yield* makeHeld
-          yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-          yield* ledger.transition("a", Move.Dispatched())
-          expect(yield* held.hold("a", { text: words, uuid: yours })).toBe(false)
-          expect(yield* held.hold("nobody", { text: words, uuid: yours })).toBe(false)
-          return { steered: (yield* ledger.current).tickets.get("a")?.steered, held }
+          yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+          yield* ledger.transition("a" as TicketId, Move.Dispatched())
+          expect(yield* held.hold("a" as TicketId, { text: words, uuid: yours })).toBe(false)
+          expect(yield* held.hold("nobody" as TicketId, { text: words, uuid: yours })).toBe(false)
+          return { steered: (yield* ledger.current).tickets.get("a" as TicketId)?.steered, held }
         }),
       ),
     )
@@ -326,15 +328,15 @@ describe("the held messages", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           const held = yield* makeHeld
-          yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
-          yield* ledger.transition("a", Move.Dispatched())
-          yield* ledger.transition("a", Move.Verified({ place: 1 }))
-          expect(yield* held.hold("a", { text: words, uuid: yours })).toBe(true)
-          yield* held.over("a")
+          yield* ledger.transition("a" as TicketId, Move.Ready(), { title: "Ticket a" })
+          yield* ledger.transition("a" as TicketId, Move.Dispatched())
+          yield* ledger.transition("a" as TicketId, Move.Verified({ place: 1 }))
+          expect(yield* held.hold("a" as TicketId, { text: words, uuid: yours })).toBe(true)
+          yield* held.over("a" as TicketId)
           const kept = (yield* held.messages).get("a")
-          yield* ledger.transition("a", Move.ItsTurn())
-          yield* ledger.transition("a", Move.Aside({ why: Tag.checksFailed }))
-          yield* held.over("a")
+          yield* ledger.transition("a" as TicketId, Move.ItsTurn())
+          yield* ledger.transition("a" as TicketId, Move.Aside({ why: Tag.checksFailed }))
+          yield* held.over("a" as TicketId)
           return { kept, after: yield* held.messages }
         }),
       ),
@@ -342,8 +344,8 @@ describe("the held messages", () => {
     const ended = resultOf(ran)
     expect(ended.kept).toEqual([{ text: words, uuid: yours }])
     expect(ended.after.size).toBe(0)
-    expect(ran.log).toContain(notSentLine("a", 1))
-    expect(String(notSentLine("a", 2))).toBe(
+    expect(ran.log).toContain(notSentLine("a" as TicketId, 1))
+    expect(String(notSentLine("a" as TicketId, 2))).toBe(
       "  your 2 messages held for a's worker were not sent: its merge is over, and its worker has finished",
     )
   })

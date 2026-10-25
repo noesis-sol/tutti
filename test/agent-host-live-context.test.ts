@@ -1,6 +1,7 @@
 // The live host asks each session how full its context window is once a turn has finished
 // (getContextUsage, § 7.5's resource line), against the fake Claude Code
 // (test/fixtures/fake-claude/claude.ts), which answers the control request as its scenario says.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,7 @@ import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServers } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -65,7 +67,7 @@ const run = <A, E>(scenario: object, effect: (dir: string) => Effect.Effect<A, E
 }
 
 /** The worker's context once the host has one for it, waiting at most 10 s; none after that. */
-const measured = (ticket: string) =>
+const measured = (ticket: TicketId) =>
   Effect.flatMap(AgentHost, (host) =>
     host.contexts.pipe(
       Stream.filter((all) => all.has(ticket)),
@@ -96,12 +98,12 @@ describe("AgentHost live: the context window", () => {
       (dir) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
-          yield* host.start("t-1", {
+          yield* host.start("t-1" as TicketId, {
             sessionId: "11111111-1111-4111-8111-111111111111",
             cwd: dir,
           })
-          yield* host.send("t-1", { text: "go", from: "clientComposed" })
-          return yield* measured("t-1")
+          yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+          return yield* measured("t-1" as TicketId)
         }),
     )
     expect(Option.getOrUndefined(context)).toEqual({
@@ -116,9 +118,12 @@ describe("AgentHost live: the context window", () => {
     const context = await run({ turns: [[]] }, (dir) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
-        yield* host.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* host.send("t-1", { text: "go", from: "clientComposed" })
-        yield* host.state("t-1").pipe(
+        yield* host.start("t-1" as TicketId, {
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          cwd: dir,
+        })
+        yield* host.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+        yield* host.state("t-1" as TicketId).pipe(
           Stream.filter((state) => state._tag === "Idle"),
           Stream.runHead,
         )
@@ -127,6 +132,6 @@ describe("AgentHost live: the context window", () => {
         return yield* host.contexts.pipe(Stream.runHead)
       }),
     )
-    expect(Option.getOrUndefined(context)?.has("t-1")).toBe(false)
+    expect(Option.getOrUndefined(context)?.has("t-1" as TicketId)).toBe(false)
   })
 })

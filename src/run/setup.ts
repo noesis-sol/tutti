@@ -40,10 +40,10 @@ import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { decodeConfig, parseConfigJson } from "../project/configFile.ts"
 import { type Requirement, Settings, settingsFile } from "../project/settings.ts"
-import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { type CheckError, Checks, setupLogName } from "../services/Checks.ts"
 import { Git, type Sha, type StatusEntry } from "../services/Git.ts"
-import { Store } from "../services/Store.ts"
+import { Store, ticketsIn } from "../services/Store.ts"
 import {
   checkRunFolder,
   readRunFile,
@@ -114,37 +114,37 @@ export interface SetUps {
    * The branch commit the dependencies in the ticket's worktree were last set up for in this run,
    * before its worker or before its check; undefined when they weren't.
    */
-  worktree(id: string): Effect.Effect<Sha | undefined>
+  worktree(id: TicketId): Effect.Effect<Sha | undefined>
   /** The dependencies in the ticket's worktree are set up for its branch at `head` (its worker's). */
-  setWorktree(id: string, head: Sha): Effect.Effect<void>
+  setWorktree(id: TicketId, head: Sha): Effect.Effect<void>
   /** The setup failed in the ticket's worktree before its worker could start (see FailedSetup). */
-  failed(id: string, failed: FailedSetup): Effect.Effect<void>
+  failed(id: TicketId, failed: FailedSetup): Effect.Effect<void>
   /** The tickets whose worktree's setup failed before their worker started, the last time it ran. */
   readonly failures: Effect.Effect<ReadonlyMap<string, FailedSetup>>
   /**
    * The base commit the ticket's dependencies were last set up for: `fork`, where its branch left
    * the base, the first time it is asked, until `set` says otherwise.
    */
-  from(id: string, fork: Sha): Effect.Effect<Sha>
+  from(id: TicketId, fork: Sha): Effect.Effect<Sha>
   /**
    * The branch commit the ticket's dependencies were last set up for, as far as its worker's own
    * commits go: `at`, its branch before its worker's fix or resolution, the first time it is asked,
    * until `set` says otherwise.
    */
-  since(id: string, at: Sha): Effect.Effect<Sha>
+  since(id: TicketId, at: Sha): Effect.Effect<Sha>
   /**
    * The ticket's dependencies are now set up for the base at `onto` and its branch at `head`
    * (undefined when git couldn't say).
    */
-  set(id: string, onto: Sha, head: Sha | undefined): Effect.Effect<void>
+  set(id: TicketId, onto: Sha, head: Sha | undefined): Effect.Effect<void>
   /**
    * The ticket's dependencies were set up off the base, `why` saying how: on top of the branch
    * ahead of it in the merge queue, its branch since put back (mergetrain.ts). Its next setup runs
    * whatever the base changed, until `set` says otherwise, in a later run too (offBaseKey).
    */
-  offBase(id: string, why: string): Effect.Effect<void>
+  offBase(id: TicketId, why: string): Effect.Effect<void>
   /** How the ticket's dependencies were set up off the base, if they were, as offBase says. */
-  off(id: string): Effect.Effect<string | undefined>
+  off(id: TicketId): Effect.Effect<string | undefined>
 }
 
 /** What a ticket's dependencies were last set up for, of what was asked: the base's commit, its branch's. */
@@ -176,7 +176,7 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
   const failures = yield* Ref.make<ReadonlyMap<string, FailedSetup>>(new Map())
   const left = new Map<string, SetUpFor>()
   if (Option.isSome(store)) {
-    for (const [id, record] of Object.entries((yield* store.value.state).tickets)) {
+    for (const [id, record] of ticketsIn(yield* store.value.state)) {
       const off = Object.hasOwn(record.metadata, offBaseKey) ? record.metadata[offBaseKey] : null
       if (typeof off === "string" && off !== "") left.set(id, { off })
     }
@@ -185,7 +185,7 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
   // Writes to state.json, when there is a Store; one that can't be written doesn't.
   const persist = (write: (store: Store["Service"]) => Effect.Effect<void, unknown>) =>
     Option.isSome(store) ? Effect.ignore(write(store.value)) : Effect.void
-  const setWorktree = (id: string, head: Sha) =>
+  const setWorktree = (id: TicketId, head: Sha) =>
     Effect.andThen(
       Ref.update(heads, (now) => new Map(now).set(id, head)),
       Ref.update(failures, (now) => {
@@ -195,7 +195,7 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
       }),
     )
   /** The ticket's `key`, `first` and kept so the first time it is asked. */
-  const get = (id: string, key: "base" | "head", first: Sha) =>
+  const get = (id: TicketId, key: "base" | "head", first: Sha) =>
     Ref.modify(commits, (setUps): [Sha, ReadonlyMap<string, SetUpFor>] => {
       const was = setUps.get(id)
       const kept = was?.[key]
@@ -390,7 +390,7 @@ const markIn = (worktree: string): Effect.Effect<string | undefined> =>
  * Removes the mark of the setup under way in the worktree, now that one has worked there; a failure
  * is logged: the setup then runs again when the worktree is next taken up.
  */
-const dropMark = (id: string, worktree: string): Effect.Effect<void, never, Log> =>
+const dropMark = (id: TicketId, worktree: string): Effect.Effect<void, never, Log> =>
   Effect.gen(function* () {
     const dropped = yield* Effect.result(
       Effect.andThen(
@@ -406,7 +406,7 @@ const dropMark = (id: string, worktree: string): Effect.Effect<void, never, Log>
   })
 
 /** Writes the mark of a setup in the worktree, holding `text`; a failure is logged, not fatal. */
-const writeMark = (id: string, worktree: string, text: string): Effect.Effect<void, never, Log> =>
+const writeMark = (id: TicketId, worktree: string, text: string): Effect.Effect<void, never, Log> =>
   Effect.gen(function* () {
     const written = yield* Effect.result(writeRunFile(worktree, setupMarkName, text))
     if (Result.isSuccess(written)) return
@@ -488,7 +488,7 @@ export const mergedCount = (state: LedgerState): number =>
 
 /** The ticket whose worktree's setup failed before its worker started: as bd ready gave it. */
 export interface SetupTicket {
-  readonly id: string
+  readonly id: TicketId
   readonly title: string
   /** Its status in bd ready; open unless given. */
   readonly status?: string
@@ -573,7 +573,7 @@ export const retrySetups = (
 export const setupWaiting = (
   state: LedgerState,
   failures: ReadonlyMap<string, FailedSetup>,
-): ReadonlyArray<readonly [id: string, output: string]> =>
+): ReadonlyArray<readonly [id: TicketId, output: string]> =>
   [...state.tickets.values()].flatMap((entry) => {
     const failed = failures.get(entry.ticket)
     return entry.phase._tag === "Waiting" &&
@@ -655,7 +655,7 @@ const setupSaid = (command: string | null): string => (command === null ? "none"
  * requires list stay as they were.
  */
 export const takeSettings = (
-  id: string,
+  id: TicketId,
   options: MergeTarget,
   setUps: SetUps,
   before: Sha,

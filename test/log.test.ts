@@ -34,6 +34,7 @@ import {
   usageWarning,
   type Written,
 } from "../src/run/log.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { layer as capturedLayer, texts } from "../src/testing/Log.ts"
 
 // 2026-10-17 09:05:03 local time, as the log dates its lines.
@@ -112,7 +113,10 @@ describe("a line's format", () => {
     writeFileSync(file, "2026-10-16 22:41:42 an earlier run's line\n")
     await live(
       file,
-      write(line`DRAIN: stopping after the ${2} running tickets finish`, steered("tut-9a1")),
+      write(
+        line`DRAIN: stopping after the ${2} running tickets finish`,
+        steered("tut-9a1" as TicketId),
+      ),
     )
     expect(readFileSync(file, "utf8")).toBe(
       "2026-10-16 22:41:42 an earlier run's line\n" +
@@ -190,13 +194,13 @@ describe("the tags' lines", () => {
 
   test("RESOLVING and FIXING name the ticket's branch, not a tab", () => {
     expect<unknown>(
-      resolving({ id: "tut-7", base: "main", files: ["a.ts", "b.ts"], limit: "20m" }),
+      resolving({ id: "tut-7" as TicketId, base: "main", files: ["a.ts", "b.ts"], limit: "20m" }),
     ).toBe(
       "  RESOLVING: tutti/tut-7 conflicts with main in a.ts, b.ts; handed back to its worker to resolve (up to 20m)",
     )
     expect<unknown>(
       fixing({
-        id: "tut-7",
+        id: "tut-7" as TicketId,
         base: "main",
         failure: "'scripts/check-fast.sh' fails",
         attempt: 1,
@@ -220,7 +224,7 @@ describe("the tags' lines", () => {
   test("PERMISSION says how to answer with tutti answer (§ 7.6)", () => {
     expect<unknown>(
       permission({
-        id: "tut-9a1",
+        id: "tut-9a1" as TicketId,
         requestId: "a3f9",
         what: "Bash(rm -rf build)",
         why: "held by the safety check",
@@ -232,7 +236,7 @@ describe("the tags' lines", () => {
     )
     expect<unknown>(
       permission({
-        id: "tut-2",
+        id: "tut-2" as TicketId,
         requestId: "b001",
         what: "Read(foo.txt)",
         answers: ["allow", "allow-run", "deny"],
@@ -246,7 +250,7 @@ describe("the tags' lines", () => {
   test("QUESTION lists each question's options", () => {
     expect<unknown>(
       question({
-        id: "tut-4",
+        id: "tut-4" as TicketId,
         requestId: "c2",
         answers: ["allow", "deny"],
         defaultToNo: false,
@@ -260,7 +264,7 @@ describe("the tags' lines", () => {
   test("answers and the rules they leave", () => {
     expect<unknown>(
       answered({
-        id: "tut-9a1",
+        id: "tut-9a1" as TicketId,
         kind: "permission",
         what: "Bash(rm -rf build)",
         verdict: "denied",
@@ -272,7 +276,7 @@ describe("the tags' lines", () => {
     )
     expect<unknown>(
       answered({
-        id: "tut-4",
+        id: "tut-4" as TicketId,
         kind: "question",
         what: "Which store?",
         verdict: "answered",
@@ -280,31 +284,41 @@ describe("the tags' lines", () => {
         via: "screen",
       }).line,
     ).toBe("  QUESTION: tut-4's worker: Which store? answered (Dolt)")
-    expect<unknown>(allowedByRule("tut-5", "Bash(bun test)").line).toBe(
+    expect<unknown>(allowedByRule("tut-5" as TicketId, "Bash(bun test)").line).toBe(
       "  ALLOWED: tut-5's worker: Bash(bun test), by a rule you allowed for this run",
     )
   })
 
   test("DENIED, STEERED, RELEASED and MESSAGE as § 4.3, § 4.5 and § 7.5 word them", () => {
     expect<unknown>(
-      denied({ id: "tut-9a1", what: "Bash(rm -rf build)", by: "classifier", reason: "too wide" })
-        .line,
+      denied({
+        id: "tut-9a1" as TicketId,
+        what: "Bash(rm -rf build)",
+        by: "classifier",
+        reason: "too wide",
+      }).line,
     ).toBe("  DENIED: tut-9a1's worker: Bash(rm -rf build), by the classifier: too wide")
     expect<unknown>(
-      denied({ id: "tut-9a1", what: "Bash(rm -rf $T/*)", by: "safetyCheck", reason: "held" }).line,
+      denied({
+        id: "tut-9a1" as TicketId,
+        what: "Bash(rm -rf $T/*)",
+        by: "safetyCheck",
+        reason: "held",
+      }).line,
     ).toBe("  DENIED: tut-9a1's worker: Bash(rm -rf $T/*), by the safety check: held")
     expect<unknown>(
-      denied({ id: "tut-9a1", what: "Bash(ls)", by: "sandbox\u001b[2J", reason: "no" }).line,
+      denied({ id: "tut-9a1" as TicketId, what: "Bash(ls)", by: "sandbox\u001b[2J", reason: "no" })
+        .line,
     ).toBe("  DENIED: tut-9a1's worker: Bash(ls), by sandbox: no")
     expect<unknown>(
-      denied({ id: "tut-9a1", what: "Bash(ls)", by: "constructor", reason: "no" }).line,
+      denied({ id: "tut-9a1" as TicketId, what: "Bash(ls)", by: "constructor", reason: "no" }).line,
     ).toBe("  DENIED: tut-9a1's worker: Bash(ls), by constructor: no")
-    expect<unknown>(steered("tut-9a1").line).toBe("  STEERED: tut-9a1")
-    expect<unknown>(released("tut-9a1").line).toBe("  RELEASED: tut-9a1")
-    expect<unknown>(message("tut-9a1", "x".repeat(212)).line).toBe(
+    expect<unknown>(steered("tut-9a1" as TicketId).line).toBe("  STEERED: tut-9a1")
+    expect<unknown>(released("tut-9a1" as TicketId).line).toBe("  RELEASED: tut-9a1")
+    expect<unknown>(message("tut-9a1" as TicketId, "x".repeat(212)).line).toBe(
       "  MESSAGE: you → tut-9a1 (212 characters)",
     )
-    expect<unknown>(message("tut-9a1", "👍🏽 ok").line).toBe(
+    expect<unknown>(message("tut-9a1" as TicketId, "👍🏽 ok").line).toBe(
       "  MESSAGE: you → tut-9a1 (5 characters)",
     )
   })
@@ -321,7 +335,7 @@ describe("the tags' lines", () => {
     )
     expect<unknown>(usageLimitLifted).toBe("USAGE_LIMIT lifted")
     expect<unknown>(
-      phaseBug({ id: "tut-1", from: "Queued", to: "Merging", cause: "MergeStarted" }),
+      phaseBug({ id: "tut-1" as TicketId, from: "Queued", to: "Merging", cause: "MergeStarted" }),
     ).toBe("  PHASE_BUG: tut-1 Queued → Merging (MergeStarted)")
   })
 })
@@ -333,7 +347,7 @@ describe("sanitising", () => {
       "tut-1 dispatching: Fix the build now please",
     )
     expect<unknown>(
-      resolving({ id: "t\x1b[31m-1", base: "main", files: ["a\nb.ts"], limit: "20m" }),
+      resolving({ id: "t\x1b[31m-1" as TicketId, base: "main", files: ["a\nb.ts"], limit: "20m" }),
     ).toBe(
       "  RESOLVING: tutti/t-1 conflicts with main in a b.ts; handed back to its worker to resolve (up to 20m)",
     )
@@ -349,7 +363,7 @@ describe("sanitising", () => {
   })
 
   test("property: no builder's line holds a control character, whatever its arguments", () => {
-    const builders: ReadonlyArray<(s: string) => Line> = [
+    const builders: ReadonlyArray<(s: TicketId) => Line> = [
       (s) => line`a ${s} b ${[s, s]}`,
       (s) => detail`${s}`,
       (s) => tagged("HOLD")`${s}`,
@@ -439,7 +453,7 @@ describe("the stdout sink", () => {
   test("plain mode prints the lines the file gets, dated the same", async () => {
     const file = temp()
     const { printed, console } = capturingConsole()
-    await live(file, write(line`one`, steered("tut-1")), { sink: "stdout", console })
+    await live(file, write(line`one`, steered("tut-1" as TicketId)), { sink: "stdout", console })
     expect(printed).toEqual([`${dated} one`, `${dated}   STEERED: tut-1`])
     expect(readFileSync(file, "utf8")).toBe(`${printed.join("\n")}\n`)
   })
@@ -457,7 +471,7 @@ describe("the test layer", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         yield* TestClock.setTime(at)
-        yield* write(line`one`, released("tut-1"))
+        yield* write(line`one`, released("tut-1" as TicketId))
         return { lines: yield* (yield* Log).lines, texts: yield* texts }
       }).pipe(
         Effect.provide(Layer.merge(capturedLayer({ sink: "stdout" }), TestClock.layer())),

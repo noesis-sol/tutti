@@ -15,7 +15,7 @@ import { readyPoll } from "../src/run/schedule.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { answeredText } from "../src/run/told.ts"
 import { type Worked, work } from "../src/run/work.ts"
-import { Beads } from "../src/services/Beads.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store, type TicketRecord } from "../src/services/Store.ts"
 import {
@@ -36,7 +36,7 @@ import {
   type World,
 } from "./harness.ts"
 
-const id = "t-1"
+const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 const tiny = backlog().ticket(id, { title: "One ticket" })
 

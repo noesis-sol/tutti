@@ -57,6 +57,7 @@ import { type ProbeAnswer, UsageProbe } from "../agent/UsageProbe.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { OrganHold } from "../organs/Organs.ts"
 import { formatDuration } from "../project/configFile.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { EventStream } from "./eventstream.ts"
@@ -109,7 +110,7 @@ export const neverHanded = ({
   mode,
   stuck,
 }: {
-  readonly id: string
+  readonly id: TicketId
   readonly mode: HandBackMode
   /** The worktree left mid-rebase. */
   readonly stuck?: string | undefined
@@ -173,7 +174,7 @@ export interface UsageLimitHold {
   /** Whether the hold is on: no new tickets. */
   readonly held: Effect.Effect<boolean>
   /** The tickets whose workers are UsageLimited now. */
-  readonly limited: Effect.Effect<ReadonlySet<string>>
+  readonly limited: Effect.Effect<ReadonlySet<TicketId>>
   /**
    * On each look of the run, `alone` saying whether nothing runs but workers waiting for the limit:
    * with the hold on and nothing else running, the run waits for the reset, the countdown shown
@@ -185,14 +186,14 @@ export interface UsageLimitHold {
    * The tickets whose hand-backs wait for their workers to leave the limit: kept for the reset, or
    * on their workers' turns that ended on it.
    */
-  readonly handBacks: Effect.Effect<ReadonlySet<string>>
+  readonly handBacks: Effect.Effect<ReadonlySet<TicketId>>
   /** Keeps the hand-backs due to workers at the limit, to send at the reset as their carry-on. */
   readonly atReset: AtReset
   /**
    * Takes back every hand-back kept for the reset, as the run ends before it: the tickets whose
    * workers were never sent theirs, and what each was to be handed. The reset sends them nothing.
    */
-  readonly unsent: Effect.Effect<ReadonlyMap<string, HandBackMode>>
+  readonly unsent: Effect.Effect<ReadonlyMap<TicketId, HandBackMode>>
 }
 
 /**
@@ -263,7 +264,7 @@ interface HoldState {
   readonly usage: Usage | null
   readonly hold: LimitHold
   /** The tickets whose workers are UsageLimited. */
-  readonly limited: ReadonlySet<string>
+  readonly limited: ReadonlySet<TicketId>
   /** When the run began waiting for the reset with nothing else running; null when it isn't. */
   readonly waiting: number | null
   /** When the countdown was last said. */
@@ -341,9 +342,9 @@ export const make = (options: {
     const lifter = yield* fibers.make("usageLimit lift")
     const state = yield* Ref.make(fresh)
     // The hand-backs kept for the reset, by ticket.
-    const kept = yield* Ref.make<ReadonlyMap<string, Kept>>(new Map())
+    const kept = yield* Ref.make<ReadonlyMap<TicketId, Kept>>(new Map())
     // The tickets whose hand-backs wait for their workers, at the limit on them, to leave it.
-    const onIt = yield* Ref.make<ReadonlySet<string>>(new Set())
+    const onIt = yield* Ref.make<ReadonlySet<TicketId>>(new Set())
     // Changes run one at a time, so the hold is put on and lifted once.
     const one = yield* Semaphore.make(1)
 
@@ -483,7 +484,7 @@ export const make = (options: {
     // What the ticket's worker waiting for the limit is told to carry on with once it resets: its
     // hand-back, while it is Resolving or Fixing; nothing, once what it left was taken from git and
     // its ticket went on to merge; else its ticket.
-    const carryOn = (ticket: string, phase: TicketPhase["_tag"] | undefined) =>
+    const carryOn = (ticket: TicketId, phase: TicketPhase["_tag"] | undefined) =>
       Effect.gen(function* () {
         if (phase === "ToMerge" || phase === "Merging" || phase === "Done") return null
         if (phase !== "Resolving" && phase !== "Fixing") return resetText(ticket)
@@ -630,7 +631,7 @@ export const make = (options: {
     const watched = (waiting: Waiting) =>
       Effect.gen(function* () {
         const tickets = (yield* ledger.current).tickets
-        const limited = new Set<string>()
+        const limited = new Set<TicketId>()
         let at: number | null = null
         for (const [ticket, resets] of waiting) {
           if (!tickets.has(ticket)) continue
@@ -737,7 +738,7 @@ export const make = (options: {
     // One at a time with the lift, so that a hand-back is either sent or taken back.
     const unsent = Effect.map(
       Ref.getAndSet(kept, new Map()),
-      (all): ReadonlyMap<string, HandBackMode> =>
+      (all): ReadonlyMap<TicketId, HandBackMode> =>
         new Map([...all].map(([ticket, handBack]) => [ticket, handBack.mode])),
     ).pipe(one.withPermit)
 
@@ -747,7 +748,7 @@ export const make = (options: {
       look,
       handBacks: Effect.map(
         Effect.all([Ref.get(kept), Ref.get(onIt)]),
-        ([all, waiting]): ReadonlySet<string> => new Set([...all.keys(), ...waiting]),
+        ([all, waiting]): ReadonlySet<TicketId> => new Set([...all.keys(), ...waiting]),
       ),
       atReset: { keep, takeBack, waits },
       unsent,

@@ -2,6 +2,7 @@
 // installs the list in the worker's worktree, requires_readme writes that README's section, both
 // on tutti's in-process MCP server, which each worker's session gets beside workers.mcp_servers
 // (the live AgentHost's ownServer), and which the requires note names in place of the shell command.
+
 import { describe, expect, test } from "bun:test"
 import {
   existsSync,
@@ -34,6 +35,7 @@ import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { builtInWorkerPrompt, requiresNote } from "../src/project/prompt.ts"
 import { requiresEnd, requiresStart } from "../src/project/requires.ts"
 import type { Requirement } from "../src/project/settings.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -189,7 +191,7 @@ const chosen: ChosenServers = {
 const optionsWith = (servers: ChosenServers) =>
   workerOptions({
     config: TestAppConfig.appConfig({}, "/work/project"),
-    ticket: "t-1",
+    ticket: "t-1" as TicketId,
     worktree: "/work/project-tutti/t-1",
     prompt: { text: builtInWorkerPrompt, file: null },
     servers,
@@ -302,7 +304,7 @@ describe("the live AgentHost with ownServer", () => {
       Effect.gen(function* () {
         const agents = yield* AgentHost
         yield* Effect.exit(
-          agents.start("t-1", {
+          agents.start("t-1" as TicketId, {
             sessionId: "11111111-1111-4111-8111-111111111111",
             cwd: dir,
             ...(probe ? { kind: SessionKind.Probe() } : {}),

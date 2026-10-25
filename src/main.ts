@@ -86,7 +86,7 @@ import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
-import { Beads } from "./services/Beads.ts"
+import { Beads, type TicketId } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
 import { Git, GitWriter } from "./services/Git.ts"
 import { layer as notifierLayer } from "./services/Notifier.ts"
@@ -363,7 +363,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const beads = yield* Beads
       const carried = yield* carriedTickets
       const nothingOptions = (): NothingOptions => {
-        const left = Result.isSuccess(unmerged) ? unmerged.success : new Set<string>()
+        const left = Result.isSuccess(unmerged) ? unmerged.success : new Set<TicketId>()
         // A blocker closed by hand while its branch has commits the base lacks holds, as in the run.
         const branches = startBranches({ repo: config.repo, base })
         return {

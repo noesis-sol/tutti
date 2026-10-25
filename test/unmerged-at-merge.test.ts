@@ -5,7 +5,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
 import { unmergedLabel } from "../src/run/scope.ts"
-import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
@@ -19,7 +19,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
   return ran.exit.value
 }
 
-const issueOf = (ran: Ran<unknown>, id: string): Issue => {
+const issueOf = (ran: Ran<unknown>, id: TicketId): Issue => {
   const issue = ran.issues.find((each) => each.id === id)
   if (issue === undefined) throw new Error(`no issue ${id}`)
   return issue
@@ -29,7 +29,7 @@ const issueOf = (ran: Ran<unknown>, id: string): Issue => {
  * A ticket its worker finished: its worktree on tutti/<id> with a commit naming it, closed in Beads,
  * Working in the ledger.
  */
-const finished = (id: string, files: Files) =>
+const finished = (id: TicketId, files: Files) =>
   Effect.gen(function* () {
     const git = yield* Git
     const repository = yield* Repository
@@ -49,7 +49,7 @@ const finished = (id: string, files: Files) =>
   })
 
 /** Merges the tickets, in that order, until the queue settles. */
-const mergeAll = (ids: ReadonlyArray<string>) =>
+const mergeAll = (ids: ReadonlyArray<TicketId>) =>
   Effect.gen(function* () {
     const queue = yield* makeQueue(options)
     const tickets = []
@@ -66,10 +66,10 @@ describe("a carried-over ticket labelled unmerged", () => {
     .ticket("b", { parent: "E", labels: [unmergedLabel] }).seeds
 
   test("loses the label as it merges, and its epic closes when it is the last to", async () => {
-    const ran = await scenario({ backlog: seeds }, mergeAll(["a", "b"]))
+    const ran = await scenario({ backlog: seeds }, mergeAll(["a" as TicketId, "b" as TicketId]))
     resultOf(ran)
-    expect(issueOf(ran, "b").labels).toEqual([])
-    expect(issueOf(ran, "E").status).toBe("closed")
+    expect(issueOf(ran, "b" as TicketId).labels).toEqual([])
+    expect(issueOf(ran, "E" as TicketId).status).toBe("closed")
     expectLog(ran, [/^ {2}b closed/, "  closed epic E: all 2 subtickets are merged"])
   })
 
@@ -84,7 +84,7 @@ describe("a carried-over ticket labelled unmerged", () => {
       { backlog: seeds },
       Effect.gen(function* () {
         const beads = yield* Beads
-        yield* mergeAll(["a", "b"]).pipe(
+        yield* mergeAll(["a" as TicketId, "b" as TicketId]).pipe(
           Effect.provideService(Beads, {
             ...beads,
             removeLabel: (id, label) =>
@@ -94,8 +94,8 @@ describe("a carried-over ticket labelled unmerged", () => {
       }),
     )
     resultOf(ran)
-    expect(issueOf(ran, "b").labels).toEqual([unmergedLabel])
-    expect(issueOf(ran, "E").status).not.toBe("closed")
+    expect(issueOf(ran, "b" as TicketId).labels).toEqual([unmergedLabel])
+    expect(issueOf(ran, "E" as TicketId).status).not.toBe("closed")
     expect(ran.log).toContain(
       "  LABEL_FAILED: bd could not remove b's 'unmerged' label: database is locked; later runs hold the tickets it blocks until it is removed (bd label remove b unmerged)",
     )

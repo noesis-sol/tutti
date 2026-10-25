@@ -16,6 +16,7 @@ import type { BoxRenderable, OptimizedBuffer, Renderable, ScrollBoxRenderable } 
 import { type RefObject, useMemo, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { TicketLink, TicketText } from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { minHeight } from "./Dashboard.tsx"
 import {
   cut,
@@ -251,7 +252,7 @@ export interface TicketPanel {
 }
 
 /** The whole ticket of `ticket`'s worker view, closed as the view opens. */
-export const useTicketPanel = (ticket: string): TicketPanel => {
+export const useTicketPanel = (ticket: TicketId): TicketPanel => {
   const command = useCommand()
   const [open, setOpen] = useState(false)
   const scroll = useRef<ScrollBoxRenderable>(null)

@@ -73,6 +73,7 @@ import { readmeName } from "../project/requires.ts"
 import { checkCommands } from "../project/settings.ts"
 import { detail, Log } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { timeoutAwake } from "../services/Wake.ts"
 import type { AccountProbe } from "./Account.ts"
 import {
@@ -196,7 +197,7 @@ export interface LiveOptions {
 
 // A session tutti has opened: its handle, from Claude Code's spawn until it has exited.
 interface Live {
-  readonly ticket: string
+  readonly ticket: TicketId
   readonly sessionId: string
   /** The MCP servers it was given: the workers', none for the probe, tutti's for the interview. */
   readonly servers: ChosenServers
@@ -363,10 +364,10 @@ export const layer = (
         permissionMode: config.settings.workers.permission_mode,
         billing: options.account.billing,
       })
-      const sessions = new Map<string, Lifecycle>()
+      const sessions = new Map<TicketId, Lifecycle>()
       // The changing notes (changingNotes) each ticket's worker was last given, as its session
       // started or in its last resume's message: a resume with others tells it them (resumedNotes).
-      const notesGiven = new Map<string, string>()
+      const notesGiven = new Map<TicketId, string>()
       const interruptWithin = options.interruptLimit ?? interruptLimit
 
       /**
@@ -378,7 +379,7 @@ export const layer = (
        * closes holds a start waiting for its end for ever.
        */
       const closing = (
-        ticket: string,
+        ticket: TicketId,
         of: Scope.Closeable,
         why: string | undefined,
         setup = false,
@@ -519,7 +520,7 @@ export const layer = (
        * it waits for a Closing one's end in `restore`.
        */
       const reserve = (
-        ticket: string,
+        ticket: TicketId,
         sessionId: string,
         restore: Restore,
       ): Effect.Effect<Scope.Closeable, AgentStartFailed> =>
@@ -545,7 +546,7 @@ export const layer = (
        * Closes the ticket's session, if `of` is still its scope, on purpose (`why` undefined) or
        * gone for `why`, and waits for its end.
        */
-      const closeIn = (ticket: string, of: Scope.Closeable, why: string | undefined) =>
+      const closeIn = (ticket: TicketId, of: Scope.Closeable, why: string | undefined) =>
         Effect.uninterruptible(
           Effect.flatMap(closing(ticket, of, why), (close) => close ?? Effect.void),
         )
@@ -559,7 +560,7 @@ export const layer = (
        * reserving, the forking and the closing on interrupt are uninterruptible together, so an
        * interrupt can't leave the ticket Starting with nothing to close it.
        */
-      const begin = (ticket: string, session: Session, how: SessionStart) =>
+      const begin = (ticket: TicketId, session: Session, how: SessionStart) =>
         Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
             const of = yield* reserve(ticket, session.sessionId, restore)
@@ -572,7 +573,7 @@ export const layer = (
 
       /** Waits for the start `started` in the session's scope `of`, and settles what it ended in. */
       const settle = <A extends { readonly opened: Live; readonly problem: string | undefined }, E>(
-        ticket: string,
+        ticket: TicketId,
         of: Scope.Closeable,
         started: Fiber.Fiber<A, E>,
       ) =>
@@ -595,7 +596,7 @@ export const layer = (
        * with tutti's own server), its options and its changing notes.
        */
       const planOf = (
-        ticket: string,
+        ticket: TicketId,
         session: Session,
         how: SessionStart,
         callbacks: WorkerCallbacks,
@@ -655,7 +656,7 @@ export const layer = (
           })
         })
 
-      const make = (ticket: string, session: Session, how: SessionStart, of: Scope.Closeable) =>
+      const make = (ticket: TicketId, session: Session, how: SessionStart, of: Scope.Closeable) =>
         Effect.gen(function* () {
           const there = yield* fs.exists(session.cwd).pipe(Effect.orElseSucceed(() => false))
           if (!there) {
@@ -777,7 +778,7 @@ export const layer = (
           })
         })
 
-      const sessionOf = (ticket: string) =>
+      const sessionOf = (ticket: TicketId) =>
         Effect.suspend(() => {
           const found = liveOf(sessions.get(ticket))
           return found === undefined
@@ -786,7 +787,7 @@ export const layer = (
         })
 
       /** Closes the ticket's session on purpose, cancelling its start, or waits for its end. */
-      const close = (ticket: string): Effect.Effect<void> =>
+      const close = (ticket: TicketId): Effect.Effect<void> =>
         Effect.suspend(() => {
           const current = sessions.get(ticket)
           if (current === undefined) return Effect.void
@@ -916,7 +917,7 @@ export const layer = (
         compactions: workers.compactions,
         contexts: workers.contexts,
         processes: Effect.sync(() => {
-          const pids = new Map<string, number>()
+          const pids = new Map<TicketId, number>()
           for (const [ticket, lifecycle] of sessions) {
             const pid = liveOf(lifecycle)?.claude.pid()
             if (pid !== undefined) pids.set(ticket, pid)

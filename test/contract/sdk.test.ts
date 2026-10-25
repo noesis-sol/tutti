@@ -18,6 +18,7 @@
 //
 // Usage limits can't be reached on demand: test/fixtures/usage-limit/ holds their messages, and
 // test/usage-limit-fixtures.test.ts folds them through WorkerState.
+
 import { expect } from "bun:test"
 import { randomBytes, randomUUID } from "node:crypto"
 import {
@@ -59,6 +60,7 @@ import { defaultSettings } from "../../src/cli/AppConfig.ts"
 import type { permissionModes } from "../../src/project/settings.ts"
 import type { EventStream } from "../../src/run/eventstream.ts"
 import type { Log } from "../../src/run/log.ts"
+import type { TicketId } from "../../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../../src/testing/AppConfig.ts"
 import { allowAll, layer as attentionLayer, waitForTest } from "../../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../../src/testing/EventStream.ts"
@@ -67,7 +69,7 @@ import { Files, layer as transcriptsLayer } from "../../src/testing/Transcripts.
 import { live } from "../gates.ts"
 import { workersIn } from "../workerEnv.ts"
 
-const ticket = "contract-1"
+const ticket = "contract-1" as TicketId
 
 /** How long a test has, and how long it waits for any one thing the session does. */
 const testLimit = 240_000

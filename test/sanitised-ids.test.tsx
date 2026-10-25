@@ -20,7 +20,7 @@ import { TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
-import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type Issue, type TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
 import type { RunLock } from "../src/services/RunLock.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -36,7 +36,7 @@ import { type Frame, type Rendered, withRender } from "./render.ts"
 
 // An ID a worker filed with a colour escape, a window-title OSC and a bidi override in it; drawn,
 // it reads t-1. A renderer that dropped only the ESC would show the escapes' tails, as [31m.
-const evil = "t-\x1b[31m1\x1b]0;pwned\x07\u202e"
+const evil = "t-\x1b[31m1\x1b]0;pwned\x07\u202e" as TicketId
 const shown = "t-1"
 
 // What a line drawn or printed must not hold: C0 controls but newline, DEL, C1 controls, bidi
@@ -50,7 +50,7 @@ const themeOf = (appearance: Appearance) =>
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
-const entryOf = (ticket: string, worker: number | null, row: number): Entry => ({
+const entryOf = (ticket: TicketId, worker: number | null, row: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
   phase: worker === null ? TicketPhase.Queued() : TicketPhase.Working(),
@@ -63,7 +63,7 @@ const entryOf = (ticket: string, worker: number | null, row: number): Entry => (
   tallies: emptyTallies,
 })
 
-const permission = (id: string, ticket: string): AttentionRequest => ({
+const permission = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
   ticket,
   kind: {
@@ -82,15 +82,15 @@ const permission = (id: string, ticket: string): AttentionRequest => ({
 
 /** RunView for the tickets `ids`, each at work but those `queued`, with `requests` open. */
 const viewOf = (
-  ids: ReadonlyArray<string>,
+  ids: ReadonlyArray<TicketId>,
   requests: ReadonlyArray<AttentionRequest>,
-  queued: ReadonlyArray<string> = [],
+  queued: ReadonlyArray<TicketId> = [],
 ): RunView =>
   project({
     ledger: {
       tickets: new Map([
-        ...ids.map((id, i): [string, Entry] => [id, entryOf(id, i + 1, i)]),
-        ...queued.map((id, i): [string, Entry] => [id, entryOf(id, null, ids.length + i)]),
+        ...ids.map((id, i): [TicketId, Entry] => [id, entryOf(id, i + 1, i)]),
+        ...queued.map((id, i): [TicketId, Entry] => [id, entryOf(id, null, ids.length + i)]),
       ]),
       rows: ids.length + queued.length,
       windDown: null,
@@ -105,17 +105,20 @@ const viewOf = (
 describe("RunView", () => {
   test("sanitises each ticket ID once, as the label of its row, card and requests", () => {
     fc.assert(
-      fc.property(fc.string({ unit: "binary", minLength: 1 }), (id) => {
-        const view = viewOf([id], [permission("r1", id)])
-        expect(view.rows[0]?.label).toBe(sanitizeLine(id))
-        expect(view.cards[0]?.label).toBe(sanitizeLine(id))
-        expect(view.cards[0]?.requests[0]?.label).toBe(sanitizeLine(id))
-        expect(view.requests[0]?.label).toBe(sanitizeLine(id))
-        // The key the run's commands and answers name is the ID as filed.
-        expect(view.rows[0]?.ticket).toBe(id)
-        expect(view.cards[0]?.ticket).toBe(id)
-        expect(view.requests[0]?.ticket).toBe(id)
-      }),
+      fc.property(
+        fc.string({ unit: "binary", minLength: 1 }).map((id) => id as TicketId),
+        (id) => {
+          const view = viewOf([id], [permission("r1", id)])
+          expect(view.rows[0]?.label).toBe(sanitizeLine(id))
+          expect(view.cards[0]?.label).toBe(sanitizeLine(id))
+          expect(view.cards[0]?.requests[0]?.label).toBe(sanitizeLine(id))
+          expect(view.requests[0]?.label).toBe(sanitizeLine(id))
+          // The key the run's commands and answers name is the ID as filed.
+          expect(view.rows[0]?.ticket).toBe(id)
+          expect(view.cards[0]?.ticket).toBe(id)
+          expect(view.requests[0]?.ticket).toBe(id)
+        },
+      ),
     )
   })
 
@@ -189,7 +192,7 @@ describe("the dashboard", () => {
   })
 
   test("the compact layout's Answer box draws the label", async () => {
-    const ids = [evil, "t-2", "t-3", "t-4"]
+    const ids = [evil, "t-2" as TicketId, "t-3" as TicketId, "t-4" as TicketId]
     await scene(
       viewOf(ids, [permission("r1", evil)]),
       async (rendered) => {
@@ -221,7 +224,7 @@ describe("the dashboard", () => {
 })
 
 describe("tutti plan", () => {
-  const ticket = (id: string, files: ReadonlyArray<string>): Issue => ({
+  const ticket = (id: TicketId, files: ReadonlyArray<string>): Issue => ({
     id,
     title: id,
     description: "",
@@ -244,8 +247,8 @@ describe("tutti plan", () => {
   test("a link's line holds no control sequence, whatever its IDs and reason", () => {
     fc.assert(
       fc.property(
-        fc.string({ unit: "binary" }),
-        fc.string({ unit: "binary" }),
+        fc.string({ unit: "binary" }).map((id) => id as TicketId),
+        fc.string({ unit: "binary" }).map((id) => id as TicketId),
         fc.string({ unit: "binary" }),
         (blocker, blocked, why) => {
           const line = linkLine({ blocker, blocked, why }, new Map())
@@ -260,13 +263,16 @@ describe("tutti plan", () => {
   test("a files entry with escapes, as the reason two tickets are linked, is printed sanitised", () => {
     const glob = "web/\x1b]0;pwned\x07*.ts"
     const links = planLinks(
-      [ticket(evil, [glob]), ticket("t-2", [glob])],
+      [ticket(evil, [glob]), ticket("t-2" as TicketId, [glob])],
       [],
       repoFiles(["src/x.ts"]),
       () => "",
     )
     expect(links.map((link) => link.why)).toEqual([glob])
-    const line = linkLine(links[0] ?? { blocker: "", blocked: "", why: "" }, new Map())
+    const line = linkLine(
+      links[0] ?? { blocker: "" as TicketId, blocked: "" as TicketId, why: "" },
+      new Map(),
+    )
     expect(line).toBe(`  t-2 (P9) waits for ${shown} (P9): both touch web/*.ts`)
   })
 

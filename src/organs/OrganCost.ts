@@ -8,13 +8,14 @@
 import { Context, Effect, Layer, Option, Ref } from "effect"
 import { EventStream } from "../run/eventstream.ts"
 import { type Line, Log, line, Tag } from "../run/log.ts"
+import type { TicketId } from "../services/Beads.ts"
 
 /** One organ call's cost, from its session's last result. */
 export interface Cost {
   /** The organ that made the call: `triage`. */
   readonly organ: string
   /** The ticket the call was about, if it was about one. */
-  readonly ticket?: string
+  readonly ticket?: TicketId
   /** The result's total_cost_usd. */
   readonly costUsd: number
   /** The result's num_turns. */
@@ -32,7 +33,7 @@ export interface UnknownCost {
   /** The organ that made the call: `triage`. */
   readonly organ: string
   /** The ticket the call was about, if it was about one. */
-  readonly ticket?: string
+  readonly ticket?: TicketId
   /** How long the call ran. */
   readonly durationMs: number
   /** The call answered, but its provider reports no price; absent when it ended with no result. */

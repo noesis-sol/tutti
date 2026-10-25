@@ -2,6 +2,7 @@
 // the session's running totals (Spending), the `check` records of the checks a run runs, the
 // `organ` record of each organ call (OrganCost), and what a ticket spent on the records that end
 // its part in the run (`closed`, `ticket_end`) and the run's totals on its `end` record.
+
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -21,6 +22,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import { finish, run } from "../src/run/run.ts"
 import { endRecord, nothingSpent, Spending, shareOf, type Totals } from "../src/run/spending.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import {
   type CheckError,
   CheckFailed,
@@ -142,21 +144,37 @@ describe("Spending", () => {
     const { value, records } = await spending(
       Effect.gen(function* () {
         const s = yield* Spending
-        yield* s.message("t-1", { session: "s-1", message: resultMessage(0.5, usage(10, 100)) })
-        yield* s.message("t-1", { session: "s-1", message: resultMessage(0.75, usage(12, 160)) })
+        yield* s.message("t-1" as TicketId, {
+          session: "s-1",
+          message: resultMessage(0.5, usage(10, 100)),
+        })
+        yield* s.message("t-1" as TicketId, {
+          session: "s-1",
+          message: resultMessage(0.75, usage(12, 160)),
+        })
         // The session resumed: its totals go on from its transcript's.
-        yield* s.message("t-1", { session: "s-1", message: resultMessage(1, usage(13, 200)) })
+        yield* s.message("t-1" as TicketId, {
+          session: "s-1",
+          message: resultMessage(1, usage(13, 200)),
+        })
         // A crash's zeroed result spends nothing and leaves the totals as they were.
-        yield* s.message("t-1", {
+        yield* s.message("t-1" as TicketId, {
           session: "s-1",
           message: resultMessage(0, {}, { subtype: "error_during_execution" }),
         })
-        yield* s.message("t-1", { session: "s-1", message: resultMessage(1.25, usage(14, 250)) })
-        yield* s.message("t-2", {
+        yield* s.message("t-1" as TicketId, {
+          session: "s-1",
+          message: resultMessage(1.25, usage(14, 250)),
+        })
+        yield* s.message("t-2" as TicketId, {
           session: "s-2",
           message: resultMessage(0.25, usage(1, 10), { is_error: true }),
         })
-        return { t1: yield* s.ofTicket("t-1"), total: yield* s.total, t3: yield* s.ofTicket("t-3") }
+        return {
+          t1: yield* s.ofTicket("t-1" as TicketId),
+          total: yield* s.total,
+          t3: yield* s.ofTicket("t-3" as TicketId),
+        }
       }),
     )
     const turns = turnsOf(records)
@@ -187,7 +205,7 @@ describe("Spending", () => {
   test("a message that isn't a result is nothing to it", async () => {
     const { records } = await spending(
       Effect.flatMap(Spending, (s) =>
-        s.message("t-1", {
+        s.message("t-1" as TicketId, {
           session: "s-1",
           message: { type: "system", subtype: "init" } as unknown as SDKMessage,
         }),
@@ -204,14 +222,18 @@ describe("OrganCost's organ records", () => {
         const costs = yield* OrganCost
         yield* costs.record({
           organ: "triage",
-          ticket: "t-1",
+          ticket: "t-1" as TicketId,
           costUsd: 0.0123,
           turns: 1,
           durationMs: 4200,
           sessionId: "s-9",
         })
         yield* costs.recordUnknown({ organ: "screen", durationMs: 1500, unpriced: true })
-        yield* costs.recordUnknown({ organ: "predictor", ticket: "t-2", durationMs: 180_000 })
+        yield* costs.recordUnknown({
+          organ: "predictor",
+          ticket: "t-2" as TicketId,
+          durationMs: 180_000,
+        })
         const end = yield* endRecord(0)
         return { records: yield* (yield* Captured).records, end }
       }).pipe(
@@ -252,7 +274,7 @@ const folder = (name: string) =>
   realpathSync(mkdtempSync(join(tmpdir(), `tutti-spending-${name}-`)))
 
 /** Claims, commits and closes its ticket in one turn, its result costing $0.40 so far. */
-const closesAt = (world: World, root: string, id: string) =>
+const closesAt = (world: World, root: string, id: TicketId) =>
   turn(
     [
       ...bash(
@@ -292,7 +314,7 @@ describe("a whole run", () => {
         git: { dir: repo },
         worktrees: { root },
         backlog: backlog().ticket("t-1").seeds,
-        scripts: (world) => ({ "t-1": [closesAt(world, root, "t-1")] }),
+        scripts: (world) => ({ "t-1": [closesAt(world, root, "t-1" as TicketId)] }),
       },
       Effect.gen(function* () {
         yield* (yield* Git).addWorktree(repo, join(root, "t-1"), {
@@ -379,10 +401,13 @@ describe("what a ticket spent, on the records that end its part in the run", () 
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const move = (cause: Move, wait = 0) =>
-          Effect.andThen(TestClock.adjust(wait), ledger.transition("t-1", cause, { title: "T" }))
+          Effect.andThen(
+            TestClock.adjust(wait),
+            ledger.transition("t-1" as TicketId, cause, { title: "T" }),
+          )
         yield* move(Move.Ready())
         yield* move(Move.Dispatched(), 1000)
-        yield* (yield* Spending).message("t-1", {
+        yield* (yield* Spending).message("t-1" as TicketId, {
           session: "s-1",
           message: resultMessage(0.5, usage(1, 10)),
         })
@@ -394,7 +419,7 @@ describe("what a ticket spent, on the records that end its part in the run", () 
         yield* move(Move.CheckHandedBack({ attempt: 1 }), 2000)
         yield* move(Move.Verified({ place: 1 }), 4000)
         yield* move(Move.ItsTurn())
-        yield* ledger.transition("t-1", Move.FastForwarded({ commit: "abc1234" }), {
+        yield* ledger.transition("t-1" as TicketId, Move.FastForwarded({ commit: "abc1234" }), {
           beside: [{ kind: "closed", ticket: "t-1", title: "T", text: "  t-1 closed" }],
         })
       }),
@@ -422,19 +447,19 @@ describe("what a ticket spent, on the records that end its part in the run", () 
     const records = await inLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        for (const id of ["a", "b", "c", "d"]) {
+        for (const id of ["a" as TicketId, "b" as TicketId, "c" as TicketId, "d" as TicketId]) {
           yield* ledger.transition(id, Move.Ready(), { title: id })
           yield* ledger.transition(id, Move.Dispatched())
         }
-        yield* ledger.transition("a", Move.Aside({ why: "CHECKS_FAILED" }), {
+        yield* ledger.transition("a" as TicketId, Move.Aside({ why: "CHECKS_FAILED" }), {
           beside: [{ kind: "warn", ticket: "a", aside: true, detail: "checks failed", text: "x" }],
         })
-        yield* ledger.transition("b", Move.FiledQuestion({ question: "q-1" }))
-        yield* ledger.transition("c", Move.RunEnded({ why: "run ended" }))
-        yield* ledger.transition("d", Move.NoChange())
+        yield* ledger.transition("b" as TicketId, Move.FiledQuestion({ question: "q-1" }))
+        yield* ledger.transition("c" as TicketId, Move.RunEnded({ why: "run ended" }))
+        yield* ledger.transition("d" as TicketId, Move.NoChange())
         // Carried over from an earlier run: its worker resumed, then deferred.
-        yield* ledger.transition("e", Move.Resumed(), { title: "e" })
-        yield* ledger.transition("e", Move.Defer({ why: "by the worker" }), {
+        yield* ledger.transition("e" as TicketId, Move.Resumed(), { title: "e" })
+        yield* ledger.transition("e" as TicketId, Move.Defer({ why: "by the worker" }), {
           beside: [{ kind: "deferred", ticket: "e", title: "e", text: "x" }],
         })
       }),
@@ -543,13 +568,15 @@ describe("a session resumed from an earlier run", () => {
         })
         const host = yield* AgentHost
         yield* host.resume(
-          "t-1",
+          "t-1" as TicketId,
           { sessionId: "s-1", cwd: "/w/t-1" },
           { text: "Carry on.", from: "clientComposed" },
         )
-        yield* host.state("t-1").pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
-        yield* host.end("t-1")
-        return yield* (yield* Spending).ofTicket("t-1")
+        yield* host
+          .state("t-1" as TicketId)
+          .pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
+        yield* host.end("t-1" as TicketId)
+        return yield* (yield* Spending).ofTicket("t-1" as TicketId)
       }),
     )
     if (ran.exit._tag !== "Success") throw new Error(`the scenario failed: ${String(ran.exit)}`)

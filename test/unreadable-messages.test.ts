@@ -1,6 +1,7 @@
 // Messages a CLI of another version may send without the fields tutti reads: they read as
 // Unreadable (src/agent/reading.ts), the reducer takes such a message as no change, the host logs
 // it, and a message that still dies is skipped, so the worker goes on rather than going Gone.
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -25,6 +26,7 @@ import {
 } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { Spending } from "../src/run/spending.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -286,9 +288,9 @@ describe("a result it can't read", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const workers = yield* makeWorkers()
-          const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
+          const entry = yield* workers.open("t-1" as TicketId, { session: "s-1", resumed: false })
           for (const message of results) yield* workers.emit(entry, "s-1", message)
-          return yield* (yield* Spending).ofTicket("t-1")
+          return yield* (yield* Spending).ofTicket("t-1" as TicketId)
         }),
       ).pipe(
         Effect.provide(
@@ -369,9 +371,12 @@ const settle = async (
   return Effect.runPromise(
     Effect.gen(function* () {
       const agents = yield* AgentHost
-      yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-      yield* agents.send("t-1", { text: "go", from: "clientComposed" })
-      const state = yield* agents.state("t-1").pipe(
+      yield* agents.start("t-1" as TicketId, {
+        sessionId: "11111111-1111-4111-8111-111111111111",
+        cwd: dir,
+      })
+      yield* agents.send("t-1" as TicketId, { text: "go", from: "clientComposed" })
+      const state = yield* agents.state("t-1" as TicketId).pipe(
         Stream.filter((s) => s._tag === "Idle" || s._tag === "Failed" || s._tag === "Gone"),
         Stream.runHead,
         Effect.timeoutOrElse({

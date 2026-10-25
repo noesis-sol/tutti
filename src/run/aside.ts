@@ -14,9 +14,10 @@
 // worktree and branch removed once triage has its evidence, as orchestra 0.8.1's dropNothingDone:
 // nothing there is left to review. Its lines say so (nothingLeft) in place of `left open`.
 import { Effect, Result } from "effect"
-import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
+import { gitWhy } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
-import { cleanupWhy, Worktrees } from "../services/Worktrees.ts"
+import { Worktrees } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import type { Line, Log } from "./log.ts"
@@ -26,7 +27,7 @@ import { warn } from "./say.ts"
 
 /** The ticket set aside: its ID and title, as its records name it. */
 export interface AsideTicket {
-  readonly id: string
+  readonly id: TicketId
   readonly title: string
 }
 
@@ -61,7 +62,7 @@ export const reviewNote = (text: Line): string => `tutti: ${text.trimStart()}`
 
 /** Leaves the ticket for review: its note, Review{why} by Aside with its `warn` record, its line. */
 export const leaveForReview = (
-  id: string,
+  id: TicketId,
   review: Review,
 ): Effect.Effect<void, never, Beads | Ledger | Log | Store> =>
   Effect.gen(function* () {
@@ -125,7 +126,7 @@ export const nothingLeft = "nothing done, so its worktree and branch are removed
  * removed.
  */
 export const dropNothingDone = (worktree: {
-  readonly id: string
+  readonly id: TicketId
   readonly path: string
   readonly branch: string
 }): Effect.Effect<void, never, EventStream | Log | Worktrees> =>
@@ -133,6 +134,6 @@ export const dropNothingDone = (worktree: {
     const { id, path, branch } = worktree
     const removed = yield* Effect.result((yield* Worktrees).remove(id))
     if (Result.isSuccess(removed)) return
-    const text = log.detail`${log.Tag.cleanupFailed} for ${path} / ${branch}: ${cleanupWhy(removed.failure)}`
+    const text = log.detail`${log.Tag.cleanupFailed} for ${path} / ${branch}: ${gitWhy(removed.failure)}`
     yield* warn(text, id)
   })

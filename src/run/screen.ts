@@ -13,6 +13,7 @@ import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
 import { type LatestAction, Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { type Commands, makeCommands } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
 import { keepsWorker, Ledger } from "./ledger.ts"
@@ -23,7 +24,7 @@ import { same } from "./same.ts"
 export type Screen = Data.TaggedEnum<{
   Dashboard: Record<never, never>
   /** The worker view of the ticket's worker (§ 7.5). */
-  Worker: { readonly ticket: string }
+  Worker: { readonly ticket: TicketId }
   /** The interview of a new feature (§ 4.10). */
   Interview: Record<never, never>
 }>
@@ -55,14 +56,14 @@ export const workerStates: Effect.Effect<
   const host = yield* AgentHost
   const states = yield* SubscriptionRef.make<ReadonlyMap<string, WorkerState>>(new Map())
   const followed = new Set<string>()
-  const ensure = (ticket: string): Effect.Effect<void, never, Scope.Scope> =>
+  const ensure = (ticket: TicketId): Effect.Effect<void, never, Scope.Scope> =>
     Effect.suspend(() => {
       if (followed.has(ticket)) return Effect.void
       followed.add(ticket)
       return Effect.asVoid(Effect.forkScoped(follow(ticket)))
     })
   // Once its stream ends, a worker the host still knows was started again: it is followed anew.
-  const follow = (ticket: string): Effect.Effect<void, never, Scope.Scope> =>
+  const follow = (ticket: TicketId): Effect.Effect<void, never, Scope.Scope> =>
     host.state(ticket).pipe(
       Stream.runForEach((state) =>
         SubscriptionRef.update(states, (all) => new Map(all).set(ticket, state)),

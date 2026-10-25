@@ -4,6 +4,7 @@ import { Effect } from "effect"
 import { activityEvents, activityHooks } from "../src/agent/hooks.ts"
 import { read } from "../src/agent/reading.ts"
 import { type Doing, initial, step, WorkerEvent } from "../src/agent/WorkerState.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { openFibers } from "./fibers.ts"
 
 // A call that fails (a check exiting non-zero) or is denied ends with PostToolUseFailure or
@@ -44,7 +45,7 @@ describe("a failed or denied tool call", () => {
     const recorded: Array<string> = []
     const hooks = await Effect.runPromise(
       activityHooks(
-        "t",
+        "t" as TicketId,
         {
           activity: (input) => Effect.sync(() => recorded.push(input.hook_event_name)),
           compaction: () => Effect.void,
