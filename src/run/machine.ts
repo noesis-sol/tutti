@@ -310,6 +310,30 @@ export const sharedLine = (reg: Registration): Line =>
 export const endedLine = (reg: Registration): Line =>
   detail`the other ${reg.tool} run in ${reg.repo} has ended`
 
+/**
+ * The machine's other runs registered in `dir` (null: none), those that started first first: what
+ * --overnight's pre-flight names before the run registers. One whose process is gone, or whose PID
+ * another process has taken since, is left out, its file left for the runs' looks to remove.
+ */
+export const otherRuns = (dir: string | null) =>
+  Effect.gen(function* () {
+    if (dir === null) return []
+    const fs = yield* FileSystem.FileSystem
+    const check = yield* Processes
+    const names = yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed(() => []))
+    const found: Array<Registration> = []
+    for (const name of names.toSorted()) {
+      if (!name.endsWith(registrationExt)) continue
+      const text = yield* Effect.result(fs.readFileString(join(dir, name)))
+      const reg = text._tag === "Success" ? readRegistration(text.success) : undefined
+      if (reg === undefined || reg.pid === process.pid || !check.alive(reg.pid)) continue
+      const start = yield* check.start(reg.pid)
+      if (start !== null && start > reg.started + startSlack) continue
+      found.push(reg)
+    }
+    return found.toSorted((a, b) => a.started - b.started)
+  })
+
 /** A registration file's name of its own for process `pid`: runs in one process (tests) share one. */
 const nameFor = (pid: number): string =>
   `run-${pid}-${crypto.getRandomValues(new Uint32Array(1))[0]}${registrationExt}`

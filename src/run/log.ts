@@ -176,6 +176,8 @@ export interface Start {
   readonly base: string
   /** What the run is limited to, if anything, as in `spec .tutti/specs/x.md` or `ticket tut-1`. */
   readonly scope?: string
+  /** An overnight run (--overnight): ` · overnight` after the scope. */
+  readonly overnight?: boolean
   /** How it runs, in order, as label and value: `concurrent: 4`, `ticket limit: none`, … */
   readonly settings: ReadonlyArray<readonly [label: string, value: string]>
   /** What it says once, below: the permission mode or billing in effect, a scheme not used, … */
@@ -185,11 +187,11 @@ export interface Start {
 }
 
 /**
- * The START block: `START tutti <version> in <repo> on <base> (…)`, ` · <ends>` after it if given,
- * then its notes indented.
+ * The START block: `START tutti <version> in <repo> on <base> (…)`, ` · overnight` after its scope
+ * for an overnight run, ` · <ends>` after it if given, then its notes indented.
  */
 export const start = (s: Start): ReadonlyArray<Line> => {
-  const scope = s.scope === undefined ? "" : line` · ${s.scope}`
+  const scope = `${s.scope === undefined ? "" : line` · ${s.scope}`}${s.overnight === true ? " · overnight" : ""}`
   const settings = s.settings.map(([label, value]) => line`${label}: ${value}`).join(", ")
   const ends = s.ends === undefined ? "" : line` · ${s.ends}`
   return [

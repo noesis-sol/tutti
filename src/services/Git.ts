@@ -354,6 +354,21 @@ export const gitOps = {
       ...revisions([`${base}..${head}`], []),
     ],
   },
+  // --only: what the paths hold in the working tree, whatever else is staged; a message given
+  // with -F - would need input, so it goes as -m.
+  commitPaths: {
+    op: "commit",
+    kind: "write",
+    args: (message: string, paths: ReadonlyArray<string>): ReadonlyArray<string> => [
+      "commit",
+      "--quiet",
+      "-m",
+      message,
+      "--only",
+      "--",
+      ...paths,
+    ],
+  },
   status: {
     op: "status",
     kind: "read",
@@ -638,6 +653,15 @@ export class Git extends Context.Service<
     fastForward(repo: string, branch: string): Effect.Effect<void, GitError>
     /** git log base..head: the commits on head (HEAD by default) that aren't on base, newest first. */
     log(repo: string, base: string, head?: string): Effect.Effect<ReadonlyArray<Commit>, GitError>
+    /**
+     * git commit --only: commits what `paths`, tracked files, hold in repo's working tree onto the
+     * branch it has checked out, whatever else is staged.
+     */
+    commitPaths(
+      repo: string,
+      message: string,
+      paths: ReadonlyArray<string>,
+    ): Effect.Effect<void, GitError>
     /** git status --porcelain: each changed or untracked file, under `paths` (pathspecs) when given. */
     status(
       dir: string,
@@ -883,6 +907,8 @@ export class Git extends Context.Service<
             Effect.asVoid(write(gitCall(gitOps.fastForward, branch), repo)),
           log: (repo, base, head = "HEAD") =>
             Effect.map(read(gitCall(gitOps.log, base, head), repo), parseLog),
+          commitPaths: (repo, message, paths) =>
+            Effect.asVoid(write(gitCall(gitOps.commitPaths, message, paths), repo)),
           status: (dir, paths = []) =>
             Effect.map(read(gitCall(gitOps.status, paths), dir), parseStatus),
           changedFiles: (dir, base, head = "HEAD") =>

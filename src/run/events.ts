@@ -159,6 +159,8 @@ export const Start = Schema.Struct({
    * absent without it. tutti's own.
    */
   auto_answer: optional(Count),
+  /** An overnight run (--overnight), cleared by its pre-flight; absent otherwise. tutti's own. */
+  overnight: optional(Schema.Literal(true)),
 })
 
 /** Progress: the START block, worktrees, how workers settled… */

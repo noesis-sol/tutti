@@ -57,7 +57,7 @@ describe("orchestra's settings tutti has no place for", () => {
     [
       "overnight_free_disk_gb",
       30,
-      "tutti has no overnight runs yet, whose pre-flight checks the free disk",
+      "tutti takes it for each run, as --overnight-free-disk (20 GB by default), not from its settings",
     ],
     ["spec_timeout", "90m", "tutti has no spec runs yet, whose breakdown it limits"],
     ["spec_effort", "max", "tutti has no spec runs yet, whose breakdown's effort it sets"],

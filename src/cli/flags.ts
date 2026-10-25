@@ -169,6 +169,20 @@ export const runFlags = {
     description:
       "answer the workers' questions with their recommended option, at once or once one has waited this long for you, e.g. 10m; never one only you can answer, nor a permission (default: off)",
   }),
+  overnight: runFlag("overnight", onOff, {
+    onOff: true,
+    description:
+      "run the current tickets through the night: a pre-flight checklist first, its fixes offered in a terminal, a failed check refusing the run; turns on --keep-awake and --auto-answer (default: off)",
+  }),
+  forceOvernight: runFlag("force-overnight", onOff, {
+    onOff: true,
+    description: "with --overnight, start the run though a pre-flight check failed",
+  }),
+  overnightFreeDisk: runFlag("overnight-free-disk", count(0), {
+    metavar: "GB",
+    description:
+      "the free disk --overnight wants where the worktrees go, in GB; 0 doesn't check (default: 20)",
+  }),
   tickets: runFlag("tickets", onOff, {
     onOff: true,
     description: "run the current tickets without first asking whether to plan a new feature",

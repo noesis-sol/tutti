@@ -119,6 +119,9 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `--machine-workers N` | start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included ([below](#runs-that-share-a-machine)); `0` for no cap (default: `ORCHESTRA_MACHINE_WORKERS`, else half the cores, at least 2) |
 | `--keep-awake` | keep the machine from sleeping when idle while the run goes, its report included: `caffeinate` on macOS, `systemd-inhibit` on Linux; the `START` block warns where there is none. A closed lid still sleeps a laptop ([below](#when-the-machine-sleeps)). `TUTTI_KEEP_AWAKE=1` in your shell's profile keeps every run on that machine awake (default: off) |
 | `--auto-answer`, `--auto-answer=10m` | answer the workers' questions with the option they recommend, at once, or once one has waited that long for you; never one only you can answer, nor a permission ([below](#answering-for-you-while-youre-away); default: off) |
+| `--overnight` | run the current tickets through the night, once a pre-flight has cleared the run; turns on `--keep-awake` and `--auto-answer` ([below](#overnight)) |
+| `--force-overnight` | with `--overnight`, start though a pre-flight check failed |
+| `--overnight-free-disk <GB>` | the free disk `--overnight` wants where the worktrees go; `0` doesn't check (default: 20) |
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
 | `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |
@@ -242,6 +245,85 @@ bd list --all --label auto-answered
 
 It is chosen for each run, like `--keep-awake`, as it depends on whether you are there;
 `TUTTI_AUTO_ANSWER=10m` in your shell's profile sets it for every run on that machine.
+
+### Overnight
+
+`tutti --overnight` (or `TUTTI_OVERNIGHT=1`) runs the current tickets as `--tickets` does, or
+`--ticket <id>` and its subtickets, once a pre-flight has cleared the run to work through the
+night, so that it doesn't stop at 1am on something you could have settled at 11pm. It turns on
+`--keep-awake` and `--auto-answer` ([above](#answering-for-you-while-youre-away)), as nobody is
+there to answer in the night; `--auto-answer=false`, or a time, given with it overrides that. With
+`--feature` it is a setup problem, as is `--force-overnight` without it.
+
+The pre-flight runs once tutti holds the run lock, before the run starts. Each check passes, warns
+or fails: a failure is what would stop the run, or every merge, in the night; a warning what would
+slow the night, cost it tickets or leave something for the morning.
+
+```
+◆ Overnight pre-flight: 1 failed, 2 warnings, 13 passed
+  ✓ no ticket limit
+  ✗ 1 ticket at a time (concurrent in .tutti/settings.json, --concurrent): one slow ticket would hold up the night
+  ! on battery (62%): plug it in, or the run goes only as long as the battery; …
+  …
+```
+
+What fails, refusing the run until it is fixed:
+
+- **A ticket limit** (`--limit`): the run would stop early. Fix: run without one.
+- **One ticket at a time** (`concurrent` 1): one slow ticket holds up the night. Fix: one for each
+  4 cores, 2 to 4, within `--machine-workers`.
+- **A permission mode that asks** (`workers.permission_mode` `default`): a worker would wait on a
+  prompt all night. `auto` and `acceptEdits` pass. Fix: start workers in `auto`.
+- **`--keep-awake` turned off** (`--keep-awake=false`): the merge checks would time out while the
+  machine sleeps. Where tutti has no way to keep it awake, it warns instead: set the machine not
+  to sleep.
+- **Too little free disk** where the worktrees go: under `--overnight-free-disk` GB, 20 by
+  default, `0` not checking. Free space tutti can't read warns.
+- **The merge check failing on the base**: run once on its head in a worktree of its own, the
+  setup first, within the merge check's time limit, `Running the merge check on main…` meanwhile.
+  Where it fails there, every merge would fail; the checklist says what failed, and the whole
+  output is in `.tutti/run/check-base.log`. It comes last, being slow.
+
+Claude Code logged in is listed too, passed, with the account: tutti doesn't start without it.
+
+What warns:
+
+- **The account at its usage limit now**, from one turn of the smallest call at the workers' model,
+  saying when it resets, and that the run would stop where `--usage-limit-wait` runs out first.
+- **`--usage-limit-wait` under 5h**. Fix: wait up to 6h.
+- **No ticket time limit** (`--ticket-limit`, `workers.ticket_limit`). Fix: give each ticket's
+  worker 2h.
+- **Another run on the machine**, named by its repository, PID and workers.
+- **A busy machine**: a 1-minute load over 1.5 per core, or memory pressure at warn or worse, naming
+  the 3 processes using the most; and a virtual machine holding over 4 GB (Docker Desktop's,
+  OrbStack's, …).
+- **On battery**, with its level and what a closed lid does.
+- **A worker prompt or verifier older than tutti's templates**. Fix: bring them up to date as
+  `tutti init --update` does and commit that on the base; the run's workers then follow the prompt
+  committed (`git show` reads the change).
+- **How many tickets are ready**, and how many more wait only on open questions. With none ready
+  the run would end at once.
+
+In a terminal tutti then offers, one by one, each fix it can make (`Run without a limit?`, yes to
+start with), and while a failed check is left without its fix, `Start the run anyway, with 1 check
+failed?`, no to start with. The questions are lines below the checklist, so that you see what they
+are about. Once every answer is in, it makes the fixes you took, for this run only (`◆ Fixed: the
+run has no ticket limit`); Ctrl+D or Ctrl+C at a question exits with code 130, nothing changed. A
+failed check left refuses the run with code 2:
+
+```
+tutti --overnight cannot start: 1 check failed. Fix what the checklist says, or start anyway with --force-overnight.
+```
+
+`--force-overnight` starts the run anyway, without asking, and says so. Without a terminal
+(`--plain`, or stdin or stdout not one), nothing is asked or fixed: the checklist is printed plain,
+and a failed check refuses the run unless `--force-overnight` is given. The log keeps the checklist
+and the fixes made, for the morning.
+
+The `START` line says ` · overnight` after the scope, and the start record has `"overnight": true`.
+There is no overnight badge: the title line's ` keep awake ` and ` auto-answer ` pills say what it
+turned on. Unlike orchestra's, the pre-flight doesn't fetch the base from its upstream: tutti's runs
+never fetch.
 
 ### One ticket and its subtickets
 

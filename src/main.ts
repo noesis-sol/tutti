@@ -18,6 +18,7 @@
 // renderer is gone, exit 4.
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`; the npm bundle from src/npm.ts, which detects musl first.
+import { availableParallelism } from "node:os"
 import { BunServices } from "@effect/platform-bun"
 import {
   Clock,
@@ -51,7 +52,7 @@ import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
-import { Battery, batteryNote, liveBattery } from "./run/battery.ts"
+import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import {
   asking,
@@ -69,11 +70,11 @@ import { layer as fibersLayer } from "./run/fibers.ts"
 import { type GettingReady, gettingReady, readySteps } from "./run/gettingReady.ts"
 import { exitCodes } from "./run/holds.ts"
 import { interview, interviewEnding } from "./run/interview.ts"
-import { keepAwake, keepAwakePlan, lidNote } from "./run/keepAwake.ts"
+import { type KeepAwakePlan, keepAwake, keepAwakePlan, lidNote } from "./run/keepAwake.ts"
 import { Load, liveLoad } from "./run/load.ts"
 import { runStarted } from "./run/localTime.ts"
 import { detail, type Line, Log, type Sink } from "./run/log.ts"
-import { otherWorkers } from "./run/machine.ts"
+import { otherRuns, otherWorkers } from "./run/machine.ts"
 import {
   check as checkNothing,
   endWith,
@@ -83,6 +84,8 @@ import {
   themeStyles,
 } from "./run/nothing.ts"
 import { notifying } from "./run/notices.ts"
+import { type Ask, preflight, refusal } from "./run/overnight.ts"
+import { freeDisk, listNamed } from "./run/processes.ts"
 import { catchSignals, listen, logSuspends, type QuitRequest, quitBy, runMain } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
@@ -98,14 +101,20 @@ import { layer as notifierLayer } from "./services/Notifier.ts"
 import { whichOnPath } from "./services/onPath.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
-import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
+import {
+  outputMode,
+  plainReasonLine,
+  Tty,
+  type TtyValue,
+  layer as ttyLayer,
+} from "./services/Tty.ts"
 import { wakeLayer } from "./services/Wake.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard, interviewScreen } from "./ui/App.tsx"
 import { liveClipboard } from "./ui/clipboard.ts"
 import { liveUrlOpener } from "./ui/openUrl.ts"
 import { askPlan } from "./ui/PlanConfirmation.tsx"
-import { planConfirmation, streamInput } from "./ui/plain/forms.ts"
+import { confirm, planConfirmation, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
 import { closeLimit, open as openRenderer, type RendererFailed } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
@@ -258,6 +267,102 @@ const sayNewer = (newer: string, dashboard: boolean, theme: Effect.Effect<Theme>
     }
   })
 
+/**
+ * The services --overnight's pre-flight runs on, for the run `started` describes: bd, the log, the
+ * worktrees and the checks for the merge check on the base, and the usage probe, billed as workers
+ * are, each built for the pre-flight alone, before the run's own.
+ */
+const preflightLayers = (started: Started) => {
+  const { config } = started
+  const repo = config.repo
+  const env = { subscription: started.account.subscription, billing: config.billing }
+  const first = Layer.mergeAll(
+    Layer.succeed(AppConfig, config),
+    gitLayer,
+    Log.layer({ repo }),
+    Layer.succeed(BranchEnv, branchEnv(env)),
+    Layer.succeed(WorkerEnv, workerEnv(env)),
+  )
+  return Layer.mergeAll(
+    Beads.layer({ cwd: repo }),
+    Worktrees.layer({ repo, root: config.worktrees, base: started.base }),
+    Checks.layer,
+    UsageProbe.layer.pipe(Layer.provide(ClaudeCode.layer), Layer.provideMerge(OrganCost.layer)),
+  ).pipe(Layer.provideMerge(first), Layer.provideMerge(BunServices.layer))
+}
+
+/**
+ * --overnight's pre-flight of the run `started` (src/run/overnight.ts): the run as its fixes left
+ * it, or the exit code of a run that doesn't start, said on stderr. In a terminal (stdin and stdout
+ * both, without --plain) it asks its questions as lines, below the checklist, before any renderer
+ * takes the screen; without one it prints the checklist plain and asks nothing.
+ */
+const overnight = (
+  started: Started,
+  options: {
+    readonly terminal: TtyValue
+    readonly ready: GettingReady
+    readonly awake: KeepAwakePlan
+    readonly battery: BatteryReading | null | undefined
+  },
+): Effect.Effect<
+  | { readonly _tag: "Cleared"; readonly started: Started }
+  | { readonly _tag: "Exit"; readonly code: number }
+> =>
+  Effect.gen(function* () {
+    const { config } = started
+    const { terminal, ready } = options
+    const asks = terminal.stdinIsTty && terminal.stdoutIsTty && !config.plain
+    const depth = terminal.colourDepth === "truecolor" ? "truecolor" : "256"
+    const themeOf = (appearance: Appearance, styled: boolean) =>
+      makeTheme(config.scheme.scheme, { appearance, depth, noColor: config.noColor, styled })
+    const theme = asks
+      ? yield* printedTheme(themeOf, config.appearance, { dumb: terminal.dumb, tty: stdout.tty })
+      : themeOf(appearanceOf(config.appearance, null), false)
+    const printer = makePrinter(stdout, theme)
+    // The checklist follows the getting-ready line, gone first: one line drawn at a time.
+    yield* ready.end
+    const write = (text: string) => process.stdout.write(text)
+    const ask: Ask = (question, initial) =>
+      Effect.scoped(
+        Effect.flatMap(streamInput(process.stdin), (input) =>
+          confirm({ input, write, theme }, { question, initial }),
+        ),
+      )
+    const ran = yield* Effect.result(
+      preflight({
+        started,
+        night: {
+          platform: process.platform,
+          cores: availableParallelism(),
+          awake: options.awake,
+          battery: options.battery,
+          kernel: liveLoad().kernel,
+          processes: listNamed,
+          disk: freeDisk,
+          otherRuns: otherRuns(config.runs),
+        },
+        say: { ...printer, theme },
+        ask: asks ? Option.some(ask) : Option.none(),
+        force: config.forceOvernight,
+      }).pipe(Effect.provide(preflightLayers(started))),
+    )
+    if (Result.isFailure(ran)) {
+      yield* Console.error(`tutti --overnight cannot run its pre-flight: ${String(ran.failure)}`)
+      return { _tag: "Exit", code: exitCodes.setup } as const
+    }
+    const cleared = ran.success
+    switch (cleared._tag) {
+      case "Cleared":
+        return { _tag: "Cleared", started: cleared.started } as const
+      case "Cancelled":
+        return { _tag: "Exit", code: yield* cancelled } as const
+      case "Refused":
+        yield* Console.error(refusal(cleared.failed))
+        return { _tag: "Exit", code: exitCodes.setup } as const
+    }
+  })
+
 /** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
   Effect.gen(function* () {
@@ -322,11 +427,13 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       ...(lid === null ? [] : [lid]),
       ...(onBattery === null ? [] : [onBattery]),
     ]
-    const started: Started =
+    let started: Started =
       notes.length > 0
         ? { ...checked.success, warnings: [...checked.success.warnings, ...notes] }
         : checked.success
-    const { config, base } = started
+    // `config` as --overnight's pre-flight leaves it, below.
+    let config = started.config
+    const { base } = started
     // Whether workers bill the subscription login: the summary's dollars are estimates then.
     const subscription = started.account.billing._tag === "Subscription"
     const at = runStarted(yield* Clock.currentTimeMillis)
@@ -353,6 +460,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     )
     if (Result.isFailure(locked)) return yield* cannot(locked.failure.message)
     const lock = locked.success
+
+    // --overnight's pre-flight (src/run/overnight.ts), with the lock held and before the run's
+    // services are made, so that its fixes reach those that read AppConfig as they are built.
+    if (config.overnight) {
+      const cleared = yield* overnight(started, { terminal, ready, awake, battery })
+      if (cleared._tag === "Exit") return cleared.code
+      started = cleared.started
+      config = started.config
+    }
 
     const mode = outputMode(terminal, config.plain)
     const asks = asking(terminal, config, mode)
@@ -494,6 +610,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             ...(config.autoAnswer === null
               ? {}
               : { auto_answer: Duration.toMillis(config.autoAnswer) }),
+            ...(config.overnight ? { overnight: true as const } : {}),
           })
         })
       /** A new feature chosen at the start question asked as lines: the interview needs the renderer. */

@@ -55,6 +55,9 @@ export class SetupProblem extends Schema.TaggedError<SetupProblem>()("SetupProbl
 /** How long a run with nothing else to do waits for the usage limit to reset (§ 4.12). */
 export const defaultUsageLimitWait: Duration.Duration = Duration.hours(6)
 
+/** The free disk, in GB, --overnight's pre-flight wants by default where the worktrees go. */
+export const defaultOvernightFreeDisk = 20
+
 /** The worker prompt, relative to the project's top (§ 9.1). */
 export const workerPromptFile = join(".tutti", "worker-prompt.md")
 
@@ -127,6 +130,16 @@ export interface AppConfigValue {
    * Chosen for each run, as --keep-awake is (src/run/autoAnswer.ts).
    */
   readonly autoAnswer: Duration.Duration | null
+  /**
+   * An overnight run (--overnight): the current tickets, as with --tickets, once the pre-flight
+   * (src/run/overnight.ts) has cleared it; it turns on --keep-awake and --auto-answer, which their
+   * own flags or variables override.
+   */
+  readonly overnight: boolean
+  /** Start an overnight run though a pre-flight check failed (--force-overnight). */
+  readonly forceOvernight: boolean
+  /** The free disk, in GB, the pre-flight wants where the worktrees go; 0 doesn't check. */
+  readonly overnightFreeDisk: number
   readonly billing: (typeof billings)[number]
   readonly usageLimitWait: Duration.Duration
   /**
@@ -238,8 +251,19 @@ export const resolveAll = (
 
   const ticket = pick("ticket", null)
   const feature = pick("feature", null)
-  const tickets = pick("tickets", false)
+  const overnight = pick("overnight", false)
+  const forceOvernight = pick("forceOvernight", false)
+  // An overnight run never asks what to work on: the current tickets, as --tickets runs them.
+  const tickets = pick("tickets", false) || overnight
   const yes = pick("yes", false)
+  if (overnight && feature !== null) {
+    problems.push(
+      "--overnight can't be combined with --feature: an overnight run works on the current tickets, or --ticket's.",
+    )
+  }
+  if (!overnight && forceOvernight) {
+    problems.push("--force-overnight only applies with --overnight.")
+  }
   if (feature !== null && ticket !== null) {
     problems.push(
       "--feature can't be combined with --ticket (or TUTTI_TICKET): a feature run is scoped to the epic it files.",
@@ -350,8 +374,12 @@ export const resolveAll = (
     runs: runsDir(env),
     machineWorkers,
     machineWorkersFrom,
-    keepAwake: pick("keepAwake", false),
-    autoAnswer: pick("autoAnswer", null),
+    // --overnight turns both on; their own flags or variables, given, say otherwise.
+    keepAwake: pick("keepAwake", overnight),
+    autoAnswer: pick("autoAnswer", overnight ? Duration.zero : null),
+    overnight,
+    forceOvernight,
+    overnightFreeDisk: pick("overnightFreeDisk", defaultOvernightFreeDisk),
     billing: pick("billing", user.billing),
     usageLimitWait: pick("usageLimitWait", defaultUsageLimitWait),
     claude: claude === null || !claude.includes("/") ? claude : pathOf("claude", claude),

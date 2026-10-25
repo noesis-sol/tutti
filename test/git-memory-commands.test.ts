@@ -114,6 +114,11 @@ const calls: ReadonlyArray<{
     call: (git, dir) => git.log(dir, "main"),
   },
   {
+    op: "commit",
+    command: "git commit --quiet -m 'Bring them up' --only -- .tutti/worker-prompt.md",
+    call: (git, dir) => git.commitPaths(dir, "Bring them up", [".tutti/worker-prompt.md"]),
+  },
+  {
     op: "status",
     command: "git status --porcelain -z --untracked-files=all --",
     call: (git, dir) => git.status(dir),

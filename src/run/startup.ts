@@ -523,7 +523,7 @@ export const memoryEstimate = (concurrency: number): string =>
 
 /**
  * The START block of a run that passed its checks: `START tutti <version> in <repo> on <base>`,
- * its scope and settings, ` · auto-answer` with --auto-answer, then its billing, its permission mode in effect, its MCP servers when it
+ * its scope, ` · overnight` for an overnight run, its settings, ` · auto-answer` with --auto-answer, then its billing, its permission mode in effect, its MCP servers when it
  * has none, its `concurrent` above the cap on the machine's workers, the memory its workers take, why its colour scheme isn't used (a line per notice), and
  * its warnings.
  */
@@ -543,6 +543,7 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
     ...(config.ticket === null
       ? {}
       : { scope: `${config.feature === null ? "ticket" : "feature"} ${config.ticket}` }),
+    ...(config.overnight ? { overnight: true } : {}),
     settings: [
       ["limit", config.limit === null ? "none" : String(config.limit)],
       ["concurrent", String(concurrency)],

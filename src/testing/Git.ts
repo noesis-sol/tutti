@@ -873,6 +873,30 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
                 )
             }),
           ),
+        commitPaths: (repo, message, paths) =>
+          operation(gitCall(gitOps.commitPaths, message, paths), repo, (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, repo)
+              const cleaned = cleanMessage(message)
+              if (cleaned === "")
+                return yield* refuse(1, "Aborting commit due to empty commit message.")
+              const head = headOf(checkout)
+              const tree = new Map(treeOf(head))
+              for (const path of paths) {
+                if (!tree.has(path) && !checkout.index.has(path)) {
+                  return yield* refuse(
+                    1,
+                    `error: pathspec '${path}' did not match any file(s) known to git`,
+                  )
+                }
+                setFile(tree, path, checkout.work.get(path))
+                setFile(checkout.index, path, checkout.work.get(path))
+              }
+              const hash = newCommit([head], cleaned, tree)
+              if ("branch" in checkout.head) branches.set(checkout.head.branch, hash)
+              else checkout.head = { detached: hash }
+            }),
+          ),
         status: (dir, paths = []) =>
           operation(gitCall(gitOps.status, paths), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => status(checkout, paths)),

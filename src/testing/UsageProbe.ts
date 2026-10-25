@@ -22,6 +22,8 @@ export class Probed extends Context.Service<
   {
     /** The held limit each probe was asked about, in order. */
     readonly limits: Effect.Effect<ReadonlyArray<string | null>>
+    /** The model each probe was asked at, in order: undefined for probeModel's, null for Claude Code's. */
+    readonly models: Effect.Effect<ReadonlyArray<string | null | undefined>>
   }
 >()("tutti/testing/UsageProbe/Probed") {}
 
@@ -77,10 +79,12 @@ export const layer = (
   Layer.effectContext(
     Effect.gen(function* () {
       const asked = yield* Ref.make<ReadonlyArray<string | null>>([])
+      const models = yield* Ref.make<ReadonlyArray<string | null | undefined>>([])
       const left = yield* Ref.make<ReadonlyArray<Scripted>>(answers)
-      const session: ProbeSession = ({ limit }) =>
+      const session: ProbeSession = ({ limit, model }) =>
         Effect.gen(function* () {
           yield* Ref.update(asked, (all) => [...all, limit])
+          yield* Ref.update(models, (all) => [...all, model])
           const next = yield* Ref.modify(left, (all) => [all[0], all.slice(1)] as const)
           const played = next === undefined ? ProbeAnswer.Allowed() : yield* play(next)
           const turn = Array.isArray(played) ? played : turnOf(played as ProbeAnswer)
@@ -89,7 +93,7 @@ export const layer = (
         })
       const probe = yield* probeWith(session)
       return Context.make(UsageProbe, probe).pipe(
-        Context.add(Probed, Probed.of({ limits: Ref.get(asked) })),
+        Context.add(Probed, Probed.of({ limits: Ref.get(asked), models: Ref.get(models) })),
       )
     }),
   ).pipe(Layer.provideMerge(shared))

@@ -92,8 +92,12 @@ const messageOf = (cause: unknown): string =>
 export class UsageProbe extends Context.Service<
   UsageProbe,
   {
-    /** Asks the account whether the held limit `limit` (null when the hold names none) refuses. */
-    probe(limit: string | null): Effect.Effect<ProbeAnswer>
+    /**
+     * Asks the account whether the held limit `limit` (null when the hold names none) refuses: at
+     * probeModel's model for it, or at `model` where given, null for Claude Code's own, as
+     * --overnight's pre-flight asks at the workers' model.
+     */
+    probe(limit: string | null, model?: string | null): Effect.Effect<ProbeAnswer>
   }
 >()("tutti/agent/UsageProbe") {
   /** The live layer, over Claude Code, billed as workers are, in the run's WorkerEnv. */
@@ -108,7 +112,7 @@ export class UsageProbe extends Context.Service<
       const fs = yield* FileSystem.FileSystem
 
       /** One Claude Code session of the probe's turn, in a fresh temp folder. */
-      const session: ProbeSession = ({ limit, answered }) =>
+      const session: ProbeSession = ({ limit, model, answered }) =>
         Effect.gen(function* () {
           const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "tutti-usage-probe-" })
           const claude = yield* claudeCode.open({
@@ -116,7 +120,12 @@ export class UsageProbe extends Context.Service<
               ...organOptions({
                 turn: { systemPrompt: probeSystemPrompt, userText: [probeMessage] },
                 jsonSchema: undefined,
-                call: { organ: probeOrgan, model: probeModel(limit) },
+                call: {
+                  organ: probeOrgan,
+                  ...(model === null
+                    ? {}
+                    : { model: model === undefined ? probeModel(limit) : model }),
+                },
                 cwd,
               }),
               maxTurns: 1,
@@ -146,6 +155,8 @@ export class UsageProbe extends Context.Service<
 export interface ProbeTurn {
   /** The held limit the probe asks about; null when the hold names none. */
   readonly limit: string | null
+  /** The model asked for, null for Claude Code's own; probeModel's for `limit` when absent. */
+  readonly model?: string | null
   /** Whether the turn's result has come: a session closed before it is a turn not over. */
   readonly answered: () => boolean
 }
@@ -170,7 +181,7 @@ export const probeWith = (
   Effect.gen(function* () {
     const costs = yield* OrganCost
 
-    const played = (limit: string | null) =>
+    const played = (limit: string | null, model: string | null | undefined) =>
       Effect.gen(function* () {
         const startedAt = yield* Clock.currentTimeMillis
         let result: SDKResultMessage | undefined
@@ -182,7 +193,11 @@ export const probeWith = (
             yield* costs.recordUnknown({ organ: probeOrgan, durationMs: endedAt - startedAt })
           }),
         )
-        const messages = yield* session({ limit, answered: () => result !== undefined })
+        const messages = yield* session({
+          limit,
+          ...(model === undefined ? {} : { model }),
+          answered: () => result !== undefined,
+        })
         const all = yield* Stream.runCollect(
           messages.pipe(
             Stream.takeUntil((m) => m.type === "result"),
@@ -196,8 +211,8 @@ export const probeWith = (
         return answerOf(all)
       })
 
-    const probe = (limit: string | null): Effect.Effect<ProbeAnswer> =>
-      Effect.scoped(played(limit)).pipe(
+    const probe = (limit: string | null, model?: string | null): Effect.Effect<ProbeAnswer> =>
+      Effect.scoped(played(limit, model)).pipe(
         Effect.catch((cause) =>
           Effect.succeed(ProbeAnswer.Unanswered({ reason: messageOf(cause) })),
         ),
