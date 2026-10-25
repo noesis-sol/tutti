@@ -3,8 +3,9 @@
 // A read is judged by its output, as orchestra's are: a list that decodes is bd's answer even when
 // bd exits non-zero over something beside the read. An update is judged by its exit code.
 import {
+  Clock,
   Context,
-  type Duration,
+  Duration,
   Effect,
   type FileSystem,
   Layer,
@@ -496,7 +497,25 @@ export interface ListOptions {
   readonly labels?: ReadonlyArray<string>
   /** Only issues whose metadata gives each key this value. */
   readonly metadata?: Readonly<Record<string, string>>
+  /** Only the issues by these very IDs (bd list --id); none for none. Closed ones too with `all`. */
+  readonly ids?: ReadonlyArray<TicketId>
 }
+
+/**
+ * How long the live layer keeps what a list of closed issues with labels gave (the ones left
+ * `unmerged`), which a merge's recheck and the look it wakes both read, as the start does three
+ * times: about one look. A label or status tutti writes drops it; one changed by hand within it
+ * reads as changed that much later.
+ */
+export const labelledKeep: Duration.Duration = Duration.seconds(5)
+
+/** Whether the live layer keeps what this list gave for labelledKeep. */
+const keptList = (list: ListOptions): boolean =>
+  list.status === "closed" &&
+  (list.labels ?? []).length > 0 &&
+  list.ids === undefined &&
+  list.parent === undefined &&
+  list.metadata === undefined
 
 export interface Update {
   /** Assign it to the actor and put it in progress, as bd update --claim does. */
@@ -722,6 +741,58 @@ export class Beads extends Context.Service<
             ]),
           )
 
+        // What a list kept (keptList) gave, by its arguments, and when; `writes` counts the writes
+        // that drop it, so a read made across one isn't kept.
+        const kept = new Map<
+          string,
+          { readonly at: number; readonly issues: ReadonlyArray<Issue> }
+        >()
+        let writes = 0
+        const drop = Effect.sync(() => {
+          writes += 1
+          kept.clear()
+        })
+        const dropping = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+          Effect.ensuring(Effect.andThen(drop, effect), drop)
+
+        const listed = (args: ReadonlyArray<string>) => read(args, decodeIssues)
+
+        const list = (list: ListOptions = {}) => {
+          // No IDs lists none: bd list without --id would list them all.
+          if (list.ids !== undefined && list.ids.length === 0) return Effect.succeed([])
+          const ids = list.ids === undefined ? undefined : new Set<string>(list.ids)
+          const args = [
+            "list",
+            "--json",
+            "--limit=0",
+            ...(list.all ? ["--all"] : []),
+            ...flag("status", list.status),
+            ...flag("parent", list.parent),
+            ...(list.labels ?? []).map((label) => `--label=${label}`),
+            ...Object.entries(list.metadata ?? {}).map(
+              ([key, value]) => `--metadata-field=${key}=${value}`,
+            ),
+            ...listFlag("id", list.ids),
+          ]
+          // bd list --id matches IDs whole; only those asked for are given back all the same.
+          const read = Effect.map(listed(args), (issues) =>
+            ids === undefined ? issues : issues.filter((issue) => ids.has(issue.id)),
+          )
+          if (!keptList(list)) return read
+          const key = args.join("\0")
+          return Effect.gen(function* () {
+            const now = yield* Clock.currentTimeMillis
+            const known = kept.get(key)
+            if (known !== undefined && now - known.at < Duration.toMillis(labelledKeep)) {
+              return known.issues
+            }
+            const before = writes
+            const issues = yield* read
+            if (writes === before) kept.set(key, { at: now, issues })
+            return issues
+          })
+        }
+
         return Beads.of({
           ready: Effect.fn("Beads.ready")((ready = {}) =>
             read(
@@ -737,44 +808,38 @@ export class Beads extends Context.Service<
             ),
           ),
           show: Effect.fn("Beads.show")(show),
-          list: Effect.fn("Beads.list")((list = {}) =>
-            read(
-              [
-                "list",
-                "--json",
-                "--limit=0",
-                ...(list.all ? ["--all"] : []),
-                ...flag("status", list.status),
-                ...flag("parent", list.parent),
-                ...(list.labels ?? []).map((label) => `--label=${label}`),
-                ...Object.entries(list.metadata ?? {}).map(
-                  ([key, value]) => `--metadata-field=${key}=${value}`,
-                ),
-              ],
-              decodeIssues,
+          list: Effect.fn("Beads.list")(list),
+          update: Effect.fn("Beads.update")((id, change) =>
+            change.claim || change.status !== undefined
+              ? dropping(update(id, change))
+              : update(id, change),
+          ),
+          close: Effect.fn("Beads.close")((id, reason) =>
+            dropping(
+              confirmed([id], writeIssue(["close", id, "--json", ...flag("reason", reason)])),
             ),
           ),
-          update: Effect.fn("Beads.update")(update),
-          close: Effect.fn("Beads.close")((id, reason) =>
-            confirmed([id], writeIssue(["close", id, "--json", ...flag("reason", reason)])),
-          ),
           defer: Effect.fn("Beads.defer")((id, deferral = {}) =>
-            confirmed(
-              [id],
-              writeIssue([
-                "defer",
-                id,
-                "--json",
-                ...flag("reason", deferral.reason),
-                ...flag("until", deferral.until),
-              ]),
+            dropping(
+              confirmed(
+                [id],
+                writeIssue([
+                  "defer",
+                  id,
+                  "--json",
+                  ...flag("reason", deferral.reason),
+                  ...flag("until", deferral.until),
+                ]),
+              ),
             ),
           ),
           addLabel: Effect.fn("Beads.addLabel")((id, label) =>
-            confirmed([id], Effect.asVoid(write(["label", "add", id, label, "--json"]))),
+            dropping(confirmed([id], Effect.asVoid(write(["label", "add", id, label, "--json"])))),
           ),
           removeLabel: Effect.fn("Beads.removeLabel")((id, label) =>
-            confirmed([id], Effect.asVoid(write(["label", "remove", id, label, "--json"]))),
+            dropping(
+              confirmed([id], Effect.asVoid(write(["label", "remove", id, label, "--json"]))),
+            ),
           ),
           addDependency: Effect.fn("Beads.addDependency")(
             (id, dependsOn, type = "blocks", options = {}) =>

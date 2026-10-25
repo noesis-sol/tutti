@@ -44,7 +44,7 @@ import {
 } from "effect"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, type Sha } from "../services/Git.ts"
-import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
+import { branchFolder, branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import { type Again, retrying } from "./again.ts"
 import type { ClosedBranches } from "./closedBranches.ts"
 import { EventStream } from "./eventstream.ts"
@@ -74,6 +74,7 @@ import {
   unmerged,
   unreadableHold,
   unsaid,
+  waitedOn,
   waitsLine,
   waitsOnLinks,
 } from "./holds.ts"
@@ -116,9 +117,15 @@ export interface Footprints {
   /**
    * The files the ticket's branch changes on top of the base, but those git merges by union: none
    * without a branch, without commits on it, or if unknown. A ticket with some (reopened, carried
-   * over) is footprinted from them (`branchFootprint`); without `branch`, none is.
+   * over) is footprinted from them (`branchFootprint`); without `branch`, none is. `existing`, the
+   * tickets' branches as `branches` read them, says whether its branch is there without asking git.
    */
-  branch?(ticket: TicketId): Effect.Effect<ReadonlyArray<string>>
+  branch?(ticket: TicketId, existing?: ReadonlySet<string>): Effect.Effect<ReadonlyArray<string>>
+  /**
+   * The tickets' branches there are, in one git call, for `branch`; undefined when git can't say,
+   * and `branch` asks of each.
+   */
+  readonly branches?: Effect.Effect<ReadonlySet<string> | undefined>
   /**
    * Places the functions of the footprints paired in the files comparing them asks about
    * (`askedFiles`), keeping what it reads in `sources`, the fill's, so that each is read once a fill.
@@ -186,16 +193,24 @@ export const footprintsOf = (options: {
           Effect.orElseSucceed((): ReadonlyArray<string> => []),
           Effect.provideContext(context),
         ),
-      branch: (ticket) =>
+      branch: (ticket, existing) =>
         Effect.gen(function* () {
           const branch = branchOf(ticket)
-          if (!(yield* git.branchExists(options.repo, branch))) return []
+          const there =
+            existing === undefined
+              ? yield* git.branchExists(options.repo, branch)
+              : existing.has(branch)
+          if (!there) return []
           const files = yield* git.changedFiles(options.repo, options.base, branch)
           return yield* withoutUnion(options.repo, files)
         }).pipe(
           Effect.orElseSucceed((): ReadonlyArray<string> => []),
           Effect.provideContext(context),
         ),
+      branches: git.branches(options.repo, branchFolder).pipe(
+        Effect.map((names): ReadonlySet<string> | undefined => new Set(names)),
+        Effect.orElseSucceed(() => undefined),
+      ),
       mentions: (pairs, sources) =>
         readMentions(options.repo, pairs, sources).pipe(Effect.provideContext(context)),
     }
@@ -679,8 +694,9 @@ export const make = (
 
     const occupy = (ticket: TicketId, work: Effect.Effect<void>, issue?: Issue, counted = false) =>
       Effect.gen(function* () {
-        const parent = issue?.parent
-        if (parent !== undefined) {
+        // Its parent, or that it has none, so that no look shows it for its parent once it closes.
+        if (issue !== undefined) {
+          const parent = issue.parent ?? null
           yield* remember((m) => ({ ...m, parentOf: new Map(m.parentOf).set(ticket, parent) }))
         }
         yield* Ref.update(slots, (s) => ({
@@ -931,38 +947,78 @@ export const make = (
         }
         const queue = candidates.filter((issue) => !setAsideNow.includes(issue.id))
 
-        // The parents waiting for their subtickets: those of the tickets not closed or left
-        // unmerged by an earlier run, and of the run's tickets not merged yet. bd show gives the
-        // parent of one the run didn't dispatch.
         const open = yield* beads.list()
         const unclosed = unclosedIn(open, options.scope, filter)
         yield* remember((m) => ({ ...m, unclosed }))
-        const left = leftUnmerged(
-          yield* ledger.current,
-          yield* beads.list({ status: "closed", labels: [unmergedLabel] }),
-        )
-        const openIds = new Set(open.map((issue) => issue.id))
-        const parentOf = new Map((yield* Ref.get(memo)).parentOf)
-        for (const id of unmerged(yield* ledger.current)) {
-          if (parentOf.has(id) || openIds.has(id)) continue
-          const read = yield* beads.show(id).pipe(Effect.result)
-          if (Result.isSuccess(read)) parentOf.set(id, read.success.parent ?? null)
-        }
-        yield* remember((m) => ({ ...m, parentOf: new Map([...m.parentOf, ...parentOf]) }))
-        const parents = parentsWaiting([...open, ...left], yield* ledger.current, parentOf)
 
-        // A ticket's links, as bd show gives them, read once a fill; null when bd couldn't.
+        // The tickets left unmerged by an earlier run, and the parents waiting for their subtickets:
+        // those of the tickets not closed or left unmerged, and of the run's tickets not merged yet.
+        // bd show gives the parent of one the run didn't dispatch. They hold back only a ticket in
+        // line, so they are read for the first a fill weighs, and not at all with none.
+        let holders:
+          | { readonly left: ReadonlyArray<Issue>; readonly parents: ReadonlySet<TicketId> }
+          | undefined
+        const holding = Effect.gen(function* () {
+          if (holders !== undefined) return holders
+          const left = leftUnmerged(
+            yield* ledger.current,
+            yield* beads.list({ status: "closed", labels: [unmergedLabel] }),
+          )
+          const openIds = new Set(open.map((issue) => issue.id))
+          const parentOf = new Map((yield* Ref.get(memo)).parentOf)
+          for (const id of unmerged(yield* ledger.current)) {
+            if (parentOf.has(id) || openIds.has(id)) continue
+            const read = yield* beads.show(id).pipe(Effect.result)
+            if (Result.isSuccess(read)) parentOf.set(id, read.success.parent ?? null)
+          }
+          yield* remember((m) => ({ ...m, parentOf: new Map([...m.parentOf, ...parentOf]) }))
+          const parents = parentsWaiting([...open, ...left], yield* ledger.current, parentOf)
+          holders = { left, parents }
+          return holders
+        })
+
+        // A ticket's issue as bd show gives it, read once a fill; null when bd couldn't.
         const shown = new Map<TicketId, Issue | null>()
-        const linksOf = (id: TicketId) =>
+        const showOnce = (id: TicketId) =>
           Effect.gen(function* () {
             if (shown.has(id)) return shown.get(id) ?? null
-            const read = yield* beads.show(id).pipe(Effect.result)
-            if (Result.isFailure(read)) {
-              yield* logs.write(detail`could not read ${id}'s links: ${beadsWhy(read.failure)}`)
-            }
-            const issue = Result.isSuccess(read) ? read.success : null
+            const issue = yield* issueOf(id)
             shown.set(id, issue)
             return issue
+          })
+        // A waiting ticket's links with the issues they link to, as bd show gives them, read once a
+        // fill: bd ready gave the links, and one bd list gives the issues every waiting ticket links
+        // to. bd failing that list, each ticket is shown on its own; null when bd couldn't.
+        let linked: ReadonlyMap<TicketId, Issue> | null | undefined
+        const links = new Map<TicketId, Issue | null>()
+        const linksOf = (issue: Issue) =>
+          Effect.gen(function* () {
+            if (links.has(issue.id)) return links.get(issue.id) ?? null
+            if (linked === undefined) {
+              const ids = [...new Set(queue.flatMap(waitedOn))]
+              const read = yield* beads.list({ all: true, ids }).pipe(Effect.result)
+              if (Result.isFailure(read)) {
+                yield* logs.write(
+                  detail`could not read the linked tickets at once, reading each ticket's links: ${beadsWhy(read.failure)}`,
+                )
+              }
+              linked = Result.isSuccess(read)
+                ? new Map(read.success.map((each) => [each.id, each]))
+                : null
+            }
+            const known = linked
+            const found =
+              known === null
+                ? yield* showOnce(issue.id)
+                : {
+                    ...issue,
+                    dependencies: issue.dependencies.map((link) => {
+                      const other = known.get(link.id)
+                      return other === undefined ? link : { ...link, issue: other }
+                    }),
+                  }
+            links.set(issue.id, found)
+            return found
           })
 
         // The repository's files and the running tickets' changes, read once a fill, and the files'
@@ -981,13 +1037,18 @@ export const make = (
             changes.set(id, files)
             return files
           })
-        // What a waiting ticket's branch changes, read once a fill.
+        // What a waiting ticket's branch changes, read once a fill, as are the tickets' branches
+        // there are, in one git call for them all.
         const branches = new Map<TicketId, ReadonlyArray<string>>()
+        let existing: { readonly names: ReadonlySet<string> | undefined } | undefined
         const branchIn = (id: TicketId) =>
           Effect.gen(function* () {
             const known = branches.get(id)
             if (known !== undefined || footprints?.branch === undefined) return known ?? []
-            const files = yield* footprints.branch(id)
+            existing ??= {
+              names: footprints.branches === undefined ? undefined : yield* footprints.branches,
+            }
+            const files = yield* footprints.branch(id, existing.names)
             branches.set(id, files)
             return files
           })
@@ -1047,15 +1108,16 @@ export const make = (
           Effect.gen(function* () {
             let held: Held | undefined
             const waits = waitsOnLinks(issue)
+            const { left, parents } = yield* holding
             if (parents.has(issue.id)) held = parentHold
             else if (waits && (left.length > 0 || pending(state))) {
-              const links = yield* linksOf(issue.id)
+              const links = yield* linksOf(issue)
               held =
                 links === null
                   ? unreadableHold
                   : mergeHold(state, links, yield* branchesOf(state, links))
             } else if (waits && closed !== undefined) {
-              const links = yield* linksOf(issue.id)
+              const links = yield* linksOf(issue)
               if (links !== null) held = mergeHold(state, links, yield* branchesOf(state, links))
             }
             if (yield* said("waitSaid", issue.id, held?.text ?? "")) {
@@ -1127,7 +1189,7 @@ export const make = (
             if (held === undefined) notHeld.push(issue)
             else holds.set(issue.id, held.why)
           }
-          const s = slot ? yield* withIssues(was, past, linksOf) : was
+          const s = slot ? yield* withIssues(was, past, showOnce) : was
           const overlaps = slot ? yield* overlapping(notHeld, s, past) : new Map<TicketId, Held>()
           for (const [id, held] of overlaps) holds.set(id, held.why)
           const free = notHeld.filter((issue) => !overlaps.has(issue.id))

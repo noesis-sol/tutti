@@ -32,6 +32,7 @@ import {
   noSuchIssueError,
   type ReadyOptions,
   type Status,
+  type TicketId,
   type Update,
 } from "../services/Beads.ts"
 import { TimeLimit } from "../services/exec.ts"
@@ -67,8 +68,8 @@ export interface Seed {
  */
 export interface Fault {
   /**
-   * Only a call about this issue: the ID it is given, or the parent bd list or bd ready lists
-   * under; any call when absent.
+   * Only a call about this issue: the ID it is given, the parent bd list or bd ready lists under,
+   * or one of the IDs bd list --id is given; any call when absent.
    */
   readonly id?: string
   /** The call times out (BeadsTimedOut) instead of failing (BeadsFailed). */
@@ -400,6 +401,7 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
                   ? options.all || issue.status !== "closed"
                   : issue.status === options.status) &&
                 (options.parent === undefined || parentOf(issue) === options.parent) &&
+                (options.ids === undefined || options.ids.includes(issue.id as TicketId)) &&
                 (options.labels ?? []).every((label) => issue.labels.includes(label)) &&
                 Object.entries(options.metadata ?? {}).every(
                   ([key, value]) =>
@@ -512,11 +514,16 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
         id: string | undefined,
         call: Effect.Effect<BdOutput, BeadsError>,
         decode: Decode<A>,
+        ids: ReadonlyArray<string> = [],
       ): Effect.Effect<A, BeadsError> =>
         Effect.suspend(() => {
           const command = commandOf(op, id)
           const found = faults.find(
-            (each) => each.op === op && (each.fault.id === undefined || each.fault.id === id),
+            (each) =>
+              each.op === op &&
+              (each.fault.id === undefined ||
+                each.fault.id === id ||
+                ids.includes(each.fault.id)),
           )
           if (found !== undefined) {
             found.left -= 1
@@ -557,6 +564,7 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
             options?.parent,
             Effect.map(listed(options), (issues) => ok(issues.map(brief))),
             decodeIssues,
+            options?.ids,
           ),
         update: (id, changes) => answer("write", "update", id, update(id, changes), decodeIssue),
         close: (id, reason) =>

@@ -429,6 +429,16 @@ export const gitOps = {
       `refs/heads/${branch}`,
     ],
   },
+  // A pattern ending in / takes every ref under it; the full name can't read as another ref's.
+  branches: {
+    op: "for-each-ref",
+    kind: "read",
+    args: (folder: string): ReadonlyArray<string> => [
+      "for-each-ref",
+      "--format=%(refname)",
+      `refs/heads/${folder}/`,
+    ],
+  },
   commonDir: {
     op: "rev-parse --git-common-dir",
     kind: "read",
@@ -670,6 +680,11 @@ export class Git extends Context.Service<
      * a missing branch, whatever git said; any other failure is git's.
      */
     branchExists(repo: string, branch: string): Effect.Effect<boolean, GitError>
+    /**
+     * git for-each-ref refs/heads/<folder>/: the branches under the folder, by name (`tutti/a-1`),
+     * in one call where branchExists takes one each.
+     */
+    branches(repo: string, folder: string): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git rev-parse --git-common-dir: the absolute path of the git folder every worktree shares. */
     commonDir(dir: string): Effect.Effect<string, GitError>
     /** git rev-parse --show-toplevel: the top of the checkout dir is in, a linked worktree's own. */
@@ -889,6 +904,13 @@ export class Git extends Context.Service<
                 ),
           revParse,
           branchExists,
+          branches: (repo, folder) =>
+            Effect.map(read(gitCall(gitOps.branches, folder), repo), (out) =>
+              out
+                .split("\n")
+                .filter((ref) => ref.startsWith("refs/heads/"))
+                .map((ref) => ref.slice("refs/heads/".length)),
+            ),
           commonDir: (dir) => Effect.map(read(gitCall(gitOps.commonDir), dir), (out) => out.trim()),
           topLevel: (dir) => Effect.map(read(gitCall(gitOps.topLevel), dir), (out) => out.trim()),
           currentBranch: (dir) => {

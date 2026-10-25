@@ -938,6 +938,12 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           operation(gitCall(gitOps.branchExists, branch), repo, (refuse) =>
             Effect.map(inRepo(refuse, repo), () => branches.has(branch)),
           ),
+        branches: (repo, folder) =>
+          operation(gitCall(gitOps.branches, folder), repo, (refuse) =>
+            Effect.map(inRepo(refuse, repo), () =>
+              [...branches.keys()].filter((branch) => branch.startsWith(`${folder}/`)).sort(),
+            ),
+          ),
         commonDir: (dir) =>
           operation(gitCall(gitOps.commonDir), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), () => posix.join(main, ".git")),

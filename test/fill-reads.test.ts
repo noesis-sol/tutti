@@ -60,7 +60,9 @@ describe("a fill with a ticket of the run's pending", () => {
               }),
           },
         })
-        // Every bd show fails: a ticket that needs one waits, one that doesn't goes ahead.
+        // The linked tickets' list and every bd show fail: a ticket that needs its links waits, one
+        // that doesn't goes ahead.
+        yield* (yield* Backlog).fail("list", { id: "x-1" })
         yield* (yield* Backlog).fail("show", { times: Infinity })
         yield* schedule.fillTrying
         const state = yield* (yield* Ledger).current
@@ -75,6 +77,7 @@ describe("a fill with a ticket of the run's pending", () => {
     expect(phases).toEqual(["Working", "HeldBack:merge"])
     expect(lines).toContain("  t-3 waits: its dependencies could not be read")
     expect(lines.filter((text) => text.includes("could not read"))).toEqual([
+      expect.stringContaining("could not read the linked tickets at once"),
       expect.stringContaining("could not read t-3's links"),
     ])
   })

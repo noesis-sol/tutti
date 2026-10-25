@@ -159,9 +159,15 @@ export const mergeHold = (
   return undefined
 }
 
+/** The tickets `issue`, as bd ready gives it, links to and may wait on: its blockers and sources. */
+export const waitedOn = (issue: Pick<Issue, "dependencies">): ReadonlyArray<TicketId> =>
+  issue.dependencies
+    .filter((link) => link.type === "blocks" || link.type === "discovered-from")
+    .map((link) => link.id)
+
 /** Whether `issue`, as bd ready gives it, links to a ticket it waits on: a blocker or a source. */
 export const waitsOnLinks = (issue: Pick<Issue, "dependencies">): boolean =>
-  issue.dependencies.some((link) => link.type === "blocks" || link.type === "discovered-from")
+  waitedOn(issue).length > 0
 
 /**
  * What holds a ticket with footprint `fp` back for a running ticket's (`running`, by ID): the first,

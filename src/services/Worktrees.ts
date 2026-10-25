@@ -77,8 +77,11 @@ const runExcludeComment = "# per-ticket files written by tutti"
  */
 export const trashFolder = ".trash"
 
+/** The folder of the tickets' branches, which git for-each-ref lists in one call. */
+export const branchFolder = "tutti"
+
 /** The branch a ticket's worker commits on, in its own worktree (§ 11). */
-export const branchOf = (id: TicketId): string => `tutti/${id}`
+export const branchOf = (id: TicketId): string => `${branchFolder}/${id}`
 
 /** Whether git refuses the character anywhere in a ref name (git help check-ref-format). */
 const notInRef = (char: string): boolean =>
