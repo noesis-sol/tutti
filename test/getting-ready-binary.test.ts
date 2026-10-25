@@ -113,8 +113,11 @@ const sequences =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: escape sequences are what is stripped
   /\x1b\[[0-9;?$>]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[P_][^\x1b]*\x1b\\|\x1b[78]/g
 
-/** What `text` shows: its escape sequences, the terminal's queries and styles, left out. */
-const visible = (text: string): string => text.replace(sequences, "")
+/**
+ * What `text` shows: its escape sequences, the terminal's queries and styles, left out, and each
+ * line erasing whole, its carriage return with it, so a line drawn after one starts where it does.
+ */
+const visible = (text: string): string => text.replaceAll(eraseLine, "").replace(sequences, "")
 
 /**
  * What tutti wrote, split where the getting-ready line was last erased: the line's frames, drawn
