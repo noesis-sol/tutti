@@ -653,6 +653,12 @@
         },
         "text": {
           "type": "string"
+        },
+        "auto_answering": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
         }
       },
       "required": [
@@ -2174,6 +2180,12 @@
         },
         "default_to_no": {
           "type": "boolean"
+        },
+        "auto_answering": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
         },
         "text": {
           "type": "string"
