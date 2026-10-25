@@ -1285,7 +1285,7 @@ Paste goes to the focused composer or textarea in one piece. A paste left unterm
 
 ### 7.9 Notifications
 
-As orchestra's table (merged, set aside, needs your answer, stopped, finished), plus **needs you** for attention requests (§4.5) and **usage limit** (§4.12). A question `--auto-answer` answers at once (§8.2), a ticket's or the session's, notifies neither: its `asked` or `attention` record has `auto_answering: true`. With a time, or one it leaves to you, it notifies as without the flag.
+As orchestra's table (merged, set aside, needs your answer, stopped, finished), plus **needs you** for attention requests (§4.5) and **usage limit** (§4.12). A question `--auto-answer` answers at once (§8.2), a ticket's or the session's, notifies neither: its `asked` or `attention` record has `auto_answering: true`. With a time, or one it leaves to you, it notifies as without the flag; so does a question ticket filed while the run holds or winds down, as the ready poll answers none then (§5.1).
 
 - macOS: `osascript`, with Notification Center's title the repository's folder name.
 - Linux: `notify-send` when it is installed.

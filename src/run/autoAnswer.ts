@@ -55,6 +55,12 @@ export interface AutoAnswering {
   readonly answered: Ref.Ref<ReadonlyArray<AnsweredQuestion>>
   /** How many times bd couldn't answer each question; at `respondTries`, it is left to you. */
   readonly failed: Ref.Ref<ReadonlyMap<string, number>>
+  /**
+   * Whether the run takes work back now (holds.ts's takesBack), as the run sets it once its gate
+   * is made: the ready poll answers questions only then, so one asked while the run holds or winds
+   * down isn't answered at once.
+   */
+  readonly takesBack: Ref.Ref<Effect.Effect<boolean>>
 }
 
 /** --auto-answer, as the run gives it: null without it, outside a run too. */
@@ -73,6 +79,7 @@ export const makeAutoAnswering = (
       since,
       answered: yield* Ref.make<ReadonlyArray<AnsweredQuestion>>([]),
       failed: yield* Ref.make<ReadonlyMap<string, number>>(new Map()),
+      takesBack: yield* Ref.make<Effect.Effect<boolean>>(Effect.succeed(true)),
     }
   })
 
@@ -109,7 +116,7 @@ export interface AutoAnswerOf {
 
 /**
  * What --auto-answer does with `question`: why it leaves it, or nothing when it answers it or is
- * off, and whether it answers it at once (bare, not after a time). bd shows the question first, as
+ * off, and whether it answers it at once (bare, not after a time, and the run taking work back). bd shows the question first, as
  * a dependency's metadata may be partial; a question it can't show is said nothing of, and
  * notifies.
  */
@@ -121,8 +128,10 @@ export const autoAnswerOf = (question: TicketId): Effect.Effect<AutoAnswerOf, ne
     const shown = yield* Effect.result((yield* Beads).show(question))
     if (Result.isFailure(shown)) return none
     const why = leftWhy(shown.success, auto.since)
+    // While the run holds or winds down, it doesn't answer it now, so it notifies.
+    const now = Duration.isZero(auto.after) && (yield* Effect.flatten(Ref.get(auto.takesBack)))
     return why === undefined
-      ? { leaves: "", atOnce: Duration.isZero(auto.after) }
+      ? { leaves: "", atOnce: now }
       : { leaves: leavesIt(why), atOnce: false }
   })
 

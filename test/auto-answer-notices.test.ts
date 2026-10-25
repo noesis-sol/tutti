@@ -6,10 +6,11 @@ import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
-import { Duration, Effect, Fiber, Layer } from "effect"
+import { Duration, Effect, Fiber, Layer, Queue } from "effect"
 import { TestClock } from "effect/testing"
 import { Attention, type AutoAnswerOptions } from "../src/agent/Attention.ts"
 import { respondTries } from "../src/run/autoAnswer.ts"
+import type { DrainRequest } from "../src/run/drain.ts"
 import { notice, notifying } from "../src/run/notices.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
@@ -183,14 +184,24 @@ const withOptions = {
   recommended: 1,
 }
 
-/** t-1's worker files a question `Which store?` with `metadata`, and puts t-1 back to open. */
-const asks = (world: World, metadata: Readonly<Record<string, unknown>>) =>
+/**
+ * t-1's worker files a question `Which store?` with `metadata`, and puts t-1 back to open, `first`
+ * done before it.
+ */
+const asks = (
+  world: World,
+  metadata: Readonly<Record<string, unknown>>,
+  first: Effect.Effect<void> = Effect.void,
+) =>
   filesQuestion(id, {
     claim: orDie(world.beads.update(id, { claim: true })),
     file: orDie(
       Effect.andThen(
-        world.beads.create({ title: "Which store?", labels: ["human"], blocks: [id], metadata }),
-        world.beads.update(id, { status: "open" }),
+        first,
+        Effect.andThen(
+          world.beads.create({ title: "Which store?", labels: ["human"], blocks: [id], metadata }),
+          world.beads.update(id, { status: "open" }),
+        ),
       ),
     ),
   })
@@ -201,6 +212,8 @@ interface More {
   readonly polls?: number
   /** Before the run starts. */
   readonly before?: Effect.Effect<void, never, Env>
+  /** The run is told to wind down as the worker files its question, as SIGUSR1 does. */
+  readonly drain?: boolean
 }
 
 /** A whole run of t-1, whose worker asks, with --auto-answer `after`. */
@@ -211,19 +224,22 @@ const runs = (
 ): Promise<Ran<Outcome>> => {
   const repo = folder("repo")
   const root = folder("worktrees")
+  const drains = Effect.runSync(Queue.unbounded<DrainRequest>())
+  const first =
+    more.drain === true ? Queue.offer(drains, { on: true, how: "by SIGUSR1" }) : undefined
   return scenario(
     {
       config: { repo, autoAnswer: after, settings: { ...appConfig().settings } },
       backlog: backlog().ticket(id, { title: "One ticket" }).seeds,
       git: { dir: repo },
       worktrees: { root },
-      scripts: (world: World) => ({ [id]: [asks(world, metadata)] }),
+      scripts: (world: World) => ({ [id]: [asks(world, metadata, first)] }),
     },
     Effect.gen(function* () {
       mkdirSync(join(root, id), { recursive: true })
       yield* (yield* Git).addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
       if (more.before !== undefined) yield* more.before
-      const fiber = yield* Effect.forkChild(run({ version: "0.1.0-test", base: "main" }))
+      const fiber = yield* Effect.forkChild(run({ version: "0.1.0-test", base: "main", drains }))
       for (let n = 0; n < (more.polls ?? 0); n++) {
         yield* Effect.promise(() => Bun.sleep(3))
         yield* advance(readyPoll)
@@ -271,6 +287,16 @@ describe("--auto-answer and the notice of a question ticket", () => {
     expectPhases(ran, { [id]: "Asked" })
     expect(ran.log.some((text) => text.includes(`${respondTries} times`))).toBe(true)
     expect(needsYourAnswer(ran)).toEqual(["t-1 needs your answer · Which store?"])
+  })
+
+  test("asked as the run winds down, which answers none: notifies, as it is left to you", async () => {
+    const ran = await runs(Duration.zero, withOptions, { drain: true })
+    expectPhases(ran, { [id]: "Asked" })
+    expect(ran.events.some((record) => record.kind === "auto_answered")).toBe(false)
+    expect(needsYourAnswer(ran)).toEqual(["t-1 needs your answer · Which store?"])
+    expect(ran.events.filter((record) => record.kind === "asked")).toEqual([
+      expect.not.objectContaining({ auto_answering: true }),
+    ])
   })
 
   test("left to you, maintainer_only: notifies", async () => {

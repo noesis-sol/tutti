@@ -418,6 +418,11 @@ const runFrom = (
         limitReached: limit,
       }),
     )
+    // --auto-answer answers a question at once only while the run takes work back.
+    const auto = yield* AutoAnswer
+    if (auto !== null) {
+      yield* Ref.set(auto.takesBack, Effect.map(gate, takesBack))
+    }
     // Why the run takes on no more work, for the merges: no failed check is handed back then.
     const noMore = Effect.map(gate, noMoreWork)
     // A ticket checked once more takes a slot from the scheduler, made after the queue it starts
