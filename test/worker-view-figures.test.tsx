@@ -1,8 +1,9 @@
-// The worker view's figures on line 1 (§ 7.5, worker-view design D2, tutti-cxgo.4): what the
+// The worker view's figures on line 1 (§ 7.5, worker-view design D2, tutti-cxgo.4 and .6): what the
 // worker consumes, on a subscription and on an API key; the estimate's colour and its word, under
-// NO_COLOR too; the context gauge's amounts and colours; compactions once there has been one; the
-// warning near a limit; the two-space gaps; and the breakdown a click on them opens. Line 1 as a
-// whole, its order and its narrow panes, is worker-view-head.test.tsx's.
+// NO_COLOR too; the context's amounts, `context` in the text's colour, no gauge, the figure's
+// colours; compactions once there has been one; the warning near a limit; the two-space gaps; and
+// no click target, Spent being gone from the worker view. Line 1 as a whole, its order and its
+// narrow panes, is worker-view-head.test.tsx's.
 
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
@@ -19,8 +20,6 @@ import {
   figureParts,
   gap,
   shareText,
-  spentLines,
-  spentTarget,
 } from "../src/ui/worker/figures.ts"
 
 const themeOf = (appearance: Appearance) =>
@@ -83,21 +82,19 @@ const lineOf = (r: Resources, over: Partial<FigureInputs> = {}) => segmentsOf(r,
 describe("the figures", () => {
   test("on a subscription: time, the 5-hour share as an estimate, context, memory; no tokens", () => {
     expect(textOf(lineOf(resources()))).toBe(
-      `6m53s  ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
+      `6m53s  ≈1% (estimate)  context 126k of 200k  ${workerMemory(memory)}`,
     )
   })
 
   test("on an API key: its dollars, in the text's colour, and no window", () => {
     const segments = lineOf(resources({ subscription: false, window: null }))
-    expect(textOf(segments)).toBe(
-      `6m53s  $1.84  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
-    )
+    expect(textOf(segments)).toBe(`6m53s  $1.84  context 126k of 200k  ${workerMemory(memory)}`)
     expect(segments.find((each) => each.text === "$1.84")?.look).toBeNull()
   })
 
   test("on a subscription before the window is heard, no share", () => {
     expect(textOf(lineOf(resources({ window: null })))).toBe(
-      `6m53s  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
+      `6m53s  context 126k of 200k  ${workerMemory(memory)}`,
     )
   })
 
@@ -105,15 +102,11 @@ describe("the figures", () => {
     expect(textOf(segmentsOf(undefined))).toBe(`6m53s  ${workerMemory(memory)}`)
   })
 
-  test("the time, estimate, context, compactions and memory open Spent; the gaps and warning don't", () => {
+  test("no part is a click target: a click on the figures opens nothing", () => {
     const resetsAt = new Date(2026, 9, 24, 14, 20, 0).getTime()
     const usage: Usage = { utilization: 0.92, resetsAt, limit: "five-hour" }
     const segments = lineOf(resources({ compactions: 2 }), { usage })
-    const opening = segments.filter((each) => each.target === spentTarget).map((each) => each.text)
-    expect(opening.join("")).toBe(
-      `6m53s≈1% (estimate)context ▰▰▰▰▰▰▱▱▱▱  126k of 200k↻ 2 compactions${workerMemory(memory)}`,
-    )
-    expect(segments.at(-1)?.target).toBeUndefined()
+    expect(segments.every((each) => each.target === undefined)).toBe(true)
   })
 
   test("the estimate in its italic colour, followed by its word, which NO_COLOR keeps", () => {
@@ -128,29 +121,36 @@ describe("the figures", () => {
     expect(shareText(0.126)).toBe("≈13%")
   })
 
-  test("the context gauge's amounts, plain at 50%, yellow from 70%, red near compaction", () => {
+  test("the context's amounts, no gauge, the word in the text's colour, the figure yellow from 70%, red from 90%", () => {
     const at = (tokens: number) => {
       const segments = lineOf(
         resources({ context: { tokens, window: 200_000, percentage: 0, split: [] } }),
       )
-      const figure = segments.findIndex((each) => each.text === "context ")
+      const word = segments.findIndex((each) => each.text === "context ")
       return {
-        gauge: segments[figure + 1],
-        figure: segments[figure + 3],
-        text: textOf(segments.slice(figure, figure + 6)),
+        word: segments[word],
+        figure: segments[word + 1],
+        of: segments[word + 2],
+        text: textOf(segments.slice(word, word + 4)),
       }
     }
     const half = at(100_000)
-    expect(half.text).toBe("context ▰▰▰▰▰▱▱▱▱▱  100k of 200k")
+    expect(half.text).toBe("context 100k of 200k")
+    expect(half.word?.look).toBeNull()
     expect(half.figure?.look).toBeNull()
-    expect(half.gauge?.look).toBe(theme.styles.dim)
-    const three = at(150_000)
-    expect(three.text).toBe("context ▰▰▰▰▰▰▰▰▱▱  150k of 200k")
-    expect(three.gauge?.look).toBe(theme.look("notice"))
+    expect(half.of?.look).toBe(theme.styles.dim)
+    expect(textOf(lineOf(resources()))).not.toMatch(/[▰▱]/)
+    const below = at(139_000)
+    expect(below.figure?.look).toBeNull()
+    const three = at(140_000)
+    expect(three.text).toBe("context 140k of 200k")
     expect(three.figure?.look).toBe(theme.look("notice"))
-    const near = at(190_000)
-    expect(near.text).toBe("context ▰▰▰▰▰▰▰▰▰▰  190k of 200k")
-    expect(near.gauge?.look).toBe(theme.look("needsYou"))
+    expect(three.word?.look).toBeNull()
+    const near = at(180_000)
+    expect(near.text).toBe("context 180k of 200k")
+    expect(near.figure?.look).toBe(theme.look("needsYou"))
+    expect(near.of?.look).toBe(theme.styles.dim)
+    expect(at(179_000).figure?.look).toBe(theme.look("notice"))
     expect(contextLook(0.95, theme)).toBe(theme.look("needsYou"))
     expect(contextLook(0.5, theme)).toBeNull()
   })
@@ -173,49 +173,12 @@ describe("the figures", () => {
     expect(reached.at(-1)?.look).toBe(theme.styles.testing)
   })
 
-  test("every gauge and figure and every part two spaces apart, segments of their own", () => {
+  test("every part two spaces apart, segments of their own", () => {
     const segments = lineOf(resources({ compactions: 2 }))
-    const gauge = segments.findIndex((each) => each.text.startsWith("▰"))
-    expect(segments[gauge + 1]?.text).toBe("  ")
-    expect(segments[gauge + 2]?.text).toBe("126k")
+    const figure = segments.findIndex((each) => each.text === "126k")
+    expect(segments[figure - 1]?.text).toBe("context ")
     // No segment but the gaps starts or ends with a space beside another part.
     const gaps = segments.filter((each) => each.text === "  ")
-    expect(gaps.length).toBe(5)
-  })
-})
-
-describe("the breakdown", () => {
-  const linesText = (r: Resources) =>
-    spentLines(r, theme, 200)
-      .map((line) => textOf(line).trimEnd())
-      .join("\n")
-
-  test("on a subscription: tokens by model, calls, dollars and the window as estimates, context", () => {
-    const text = linesText(resources({ compactions: 2 }))
-    expect(text).toContain("Spent")
-    expect(text).toContain("tokens      1.2M · 85% of the input from the cache")
-    expect(text).toContain(`${model}  1.2M · 2k in, 168k cache writes, 1M cache reads, 30k out`)
-    expect(text).toContain("model calls 41 model calls")
-    expect(text).toContain("dollars     $1.84 at API prices (estimate)")
-    expect(text).toContain("5h window   ≈1% (estimate): the window rose 6% over the run")
-    expect(text).toContain("this ticket's $1.84 of the run's $9.20")
-    expect(text).toContain("context     63% of 200k, 126k tokens: Messages 100k · System tools 26k")
-    expect(text).toContain("compactions ↻ 2")
-    expect(text).toContain("of the run  12% of its 10M tokens")
-    const estimates = spentLines(resources(), theme, 76)
-      .flat()
-      .filter((each) => each.text.includes("(estimate)"))
-    expect(estimates.every((each) => each.look === theme.styles.estimate)).toBe(true)
-  })
-
-  test("on an API key: the dollars spent, plain, and no window", () => {
-    const text = linesText(resources({ subscription: false, window: null }))
-    expect(text).toContain("dollars     $1.84")
-    expect(text).not.toContain("estimate")
-    expect(text).not.toContain("5h window")
-  })
-
-  test("before the session has said, the context is not measured yet", () => {
-    expect(linesText(resources({ context: null }))).toContain("context     not measured yet")
+    expect(gaps.length).toBe(4)
   })
 })

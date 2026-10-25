@@ -1,7 +1,8 @@
 // A transcript view's head (§ 7.5): a blank line above it, as the dashboard has above its title
 // line, then the link back and what the view shows, on as many lines as it takes; and the worker
 // view's own line 1, on one line: its worker's mark, ticket and status, then what it consumes
-// (figures.ts), then the ticket's type and priority; and under it, the ticket's title in bold.
+// (figures.ts), and where the ticket's box isn't drawn, at the minimum size, its type and priority,
+// which the box has in its top border otherwise (TicketHead.tsx); and the ticket's title in bold.
 import { useEffect, useRef } from "react"
 import type { Resources } from "../../run/resources.ts"
 import type { Card } from "../../run/runView.ts"
@@ -13,10 +14,10 @@ import { minHeight, minWidth } from "../Dashboard.tsx"
 import { type FitPart, fitParts } from "../fit.ts"
 import { cut, Line, Lines, type Press, type Segments, seg, styled, wrap } from "../line.tsx"
 import { sanitizeLine } from "../sanitize.ts"
-import { badgesOf, titleSegment } from "../TicketHead.tsx"
+import { badgeLabel, badgesOf, titleSegment } from "../TicketHead.tsx"
 import type { Theme } from "../theme.ts"
 import { useNow, useRunViewPart, useSpinner, useTheme } from "../useRunView.ts"
-import { dropBadges, type FigureInputs, figureParts, gap, spentTarget } from "./figures.ts"
+import { type FigureInputs, figureParts, fromTheEnd, gap } from "./figures.ts"
 
 /**
  * The blank lines above a transcript view's head in a pane `width` by `height`: one, as the
@@ -87,14 +88,16 @@ export interface LineOneInputs {
   /** What its ticket consumes, none before the run has any. */
   readonly resources: Resources | undefined
   readonly figures: Omit<FigureInputs, "took" | "memory">
+  /** Whether it ends with the ticket's type and priority: only where its box isn't drawn. */
+  readonly badges: boolean
 }
 
 /**
  * The worker view's line 1 after its link, `width` wide: the card's mark, ticket and status, never
- * left out; then the figures (figures.ts), the time among them never left out; then the ticket's
- * type and priority, faint. Where it doesn't fit, it drops the memory, then the type and priority,
- * then the warning's reset time, then the compactions, then whole parts from its end, and is cut
- * only once nothing more can go.
+ * left out; then the figures (figures.ts), the time among them never left out; then with `badges`
+ * the ticket's type and priority, coloured as the box's top border has them. Where it doesn't fit,
+ * it drops the memory, then the warning's reset time, then the compactions, then whole parts from
+ * its end, the type and priority first, and is cut only once nothing more can go.
  */
 export const lineOneSegments = (
   card: Card,
@@ -102,7 +105,7 @@ export const lineOneSegments = (
   theme: Theme,
   width: number,
 ): Segments => {
-  const badges = badgesOf(card.issue)
+  const badges = inputs.badges ? badgeLabel(badgesOf(card.issue, theme), theme) : []
   const lead: FitPart = {
     forms: [
       [
@@ -126,15 +129,15 @@ export const lineOneSegments = (
     theme,
   )
   const type: ReadonlyArray<FitPart> =
-    badges === "" ? [] : [{ forms: [[seg(badges, theme.styles.dim)], []], rank: dropBadges }]
+    badges.length === 0 ? [] : [{ forms: [badges, []], rank: fromTheEnd }]
   return fitParts([lead, ...figures, ...type], width, [seg(gap)])
 }
 
 /**
  * The worker view's head: ` ← Dashboard`, which a click follows as `leave`, then line 1
- * (lineOneSegments) on one line, a click on its figures opening Spent as `spent`. Once the worker
- * has `finished`, its card gone, the head says finished, its time stopped where the view first
- * drew it gone (tutti-2n7y). `card` is the last seen: none, the ticket has no worker.
+ * (lineOneSegments) on one line, with the ticket's type and priority where `badges`. Once the
+ * worker has `finished`, its card gone, the head says finished, its time stopped where the view
+ * first drew it gone (tutti-2n7y). `card` is the last seen: none, the ticket has no worker.
  */
 export const WorkerHead = ({
   ticket,
@@ -142,7 +145,7 @@ export const WorkerHead = ({
   resources,
   finished,
   leave,
-  spent,
+  badges,
   width,
   counted,
 }: {
@@ -151,7 +154,7 @@ export const WorkerHead = ({
   readonly resources: Resources | undefined
   readonly finished: boolean
   readonly leave: () => void
-  readonly spent: () => void
+  readonly badges: boolean
   readonly width: number
   readonly counted: (lines: number) => void
 }) => {
@@ -176,6 +179,7 @@ export const WorkerHead = ({
         spin,
         resources,
         figures: { usage: usage ?? null, now: ended.current ?? now },
+        badges,
       },
       theme,
       // After the link and the three spaces ViewHead puts before the head.
@@ -190,31 +194,26 @@ export const WorkerHead = ({
       spinning={!finished && card?.motion === "spinner"}
       width={width}
       counted={counted}
-      press={(target) => {
-        if (target === spentTarget) spent()
-      }}
     />
   )
 }
 
-/** The most lines the title takes under line 1. */
+/** The most lines the title takes. */
 export const titleMost = 2
 
 /**
- * The ticket's `title` under line 1, `width` wide: alone, in bold, two columns in, wrapped at words
- * to at most `titleMost` lines and cut with `…` after.
+ * The ticket's `title`, `width` wide: in bold, wrapped at words to at most `titleMost` lines and cut
+ * with `…` after; in the ticket's box, or alone under line 1 where the box isn't drawn.
  */
 export const titleLines = (title: string, theme: Theme, width: number): ReadonlyArray<Segments> => {
-  const room = Math.max(width - 2, 1)
+  const room = Math.max(width, 1)
   const wrapped = wrap([titleSegment(sanitizeLine(title), theme)], room, {
     limit: titleMost + 1,
     long: "line",
   })
   const shown = wrapped.slice(0, titleMost)
   const last = shown.at(-1) ?? []
-  const lines =
-    wrapped.length > titleMost
-      ? [...shown.slice(0, -1), cut([...last, titleSegment("…", theme)], room)]
-      : shown
-  return lines.map((line) => [seg("  "), ...line])
+  return wrapped.length > titleMost
+    ? [...shown.slice(0, -1), cut([...last, titleSegment("…", theme)], room)]
+    : shown
 }

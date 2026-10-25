@@ -1,11 +1,13 @@
-// The worker view's head as redesigned (§ 7.5, tutti-cxgo.4): a blank line above it, as the
+// The worker view's head as redesigned (§ 7.5, tutti-cxgo.4 and .6): a blank line above it, as the
 // dashboard has above its title line; line 1 on one line, the ticket's ID and status, then the
-// figures (the time in the text's colour, the estimate or dollars, the context, the memory) and
-// the type and priority, the time and memory once and no tokens; a blank line and the title alone
-// in bold; a blank line and the description in a box, its control in the bottom border, which
-// grows into the whole ticket with its control in the same place; a short pane giving up the
-// description's lines, then the blank lines, then the box; a narrow pane dropping line 1's parts
-// in order; a click on the figures opening Spent; and the Interview view's blank line.
+// figures (the time in the text's colour, the estimate or dollars, the context, the memory), the
+// time and memory once and no tokens; a blank line and the box named Ticket, the type and priority
+// at its top border's right, the title in bold in it, a blank line and the description, its
+// control in the bottom border, which grows into the whole ticket with its control in the same
+// place; a short pane giving up the description's lines, then the box's blank line, then the one
+// above the box, then the box, line 1 then ending with the type and priority; a narrow pane
+// dropping line 1's parts in order; and the Interview view's blank line. The border's own narrow
+// steps and the colours are worker-view-ticket-box.test.tsx's.
 
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
@@ -33,7 +35,7 @@ import {
 import { external } from "../src/ui/useRunView.ts"
 import { fullHeadFrom, headExtras } from "../src/ui/WorkerView.tsx"
 import { aboveLines, lineOneSegments } from "../src/ui/worker/Head.tsx"
-import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { type Frame, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -270,7 +272,11 @@ describe("line 1", () => {
   const resources = view.resources[0]
   if (card === undefined || resources === undefined) throw new Error("no card")
   const lineOf = (
-    over: { readonly resources?: Resources; readonly usage?: Usage | null } = {},
+    over: {
+      readonly resources?: Resources
+      readonly usage?: Usage | null
+      readonly badges?: boolean
+    } = {},
     width = 300,
   ) =>
     lineOneSegments(
@@ -280,6 +286,7 @@ describe("line 1", () => {
         spin: "⣻",
         resources: over.resources ?? resources,
         figures: { usage: over.usage ?? null, now },
+        badges: over.badges ?? false,
       },
       theme,
       width,
@@ -288,9 +295,9 @@ describe("line 1", () => {
   const resetsAt = new Date(2026, 9, 25, 14, 20, 0).getTime()
   const usage: Usage = { utilization: 0.92, resetsAt, limit: "five-hour" }
 
-  test("on a subscription: ID, status, time, estimate, context, compactions, memory, type", () => {
+  test("on a subscription: ID, status, time, estimate, context, compactions, memory; no type", () => {
     expect(textOf(lineOf())).toBe(
-      `⣻ t-1  working  12m53s  ≈1% (estimate)  context ▰▰▱▱▱▱▱▱▱▱  40k of 200k  ↻ 2 compactions  ${memoryText}  feature · P2`,
+      `⣻ t-1  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}`,
     )
   })
 
@@ -298,7 +305,7 @@ describe("line 1", () => {
     const api = viewOf({ apiKey: true }).resources[0]
     if (api === undefined) throw new Error("no resources")
     expect(textOf(lineOf({ resources: api }))).toBe(
-      `⣻ t-1  working  12m53s  $1.84  context ▰▰▱▱▱▱▱▱▱▱  40k of 200k  ${memoryText}  feature · P2`,
+      `⣻ t-1  working  12m53s  $1.84  context 40k of 200k  ${memoryText}`,
     )
   })
 
@@ -315,16 +322,15 @@ describe("line 1", () => {
 
   test("the warning near a limit after the memory, still naming its window", () => {
     expect(textOf(lineOf({ usage }))).toBe(
-      `⣻ t-1  working  12m53s  ≈1% (estimate)  context ▰▰▱▱▱▱▱▱▱▱  40k of 200k  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20  feature · P2`,
+      `⣻ t-1  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20`,
     )
   })
 
-  test("a narrow pane drops the memory, the type, the reset time, the compactions, then from the end", () => {
+  test("a narrow pane drops the memory, the reset time, the compactions, then from the end", () => {
     const lead = "⣻ t-1  working  12m53s"
-    const context = "context ▰▰▱▱▱▱▱▱▱▱  40k of 200k"
+    const context = "context 40k of 200k"
     const steps = [
-      `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20  feature · P2`,
-      `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ⚠ 5h window 92% · resets 14:20  feature · P2`,
+      `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20`,
       `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ⚠ 5h window 92% · resets 14:20`,
       `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ⚠ 5h window 92%`,
       `${lead}  ≈1% (estimate)  ${context}  ⚠ 5h window 92%`,
@@ -343,85 +349,92 @@ describe("line 1", () => {
     expect(widthOf(lineOf({ usage }, 10))).toBe(10)
   })
 
-  test("drawn: one line, the time and memory once, tokens only in Spent", async () => {
+  test("where the box isn't drawn: the type and priority at its end, the first whole part from it to go", () => {
+    const lead = "⣻ t-1  working  12m53s"
+    const context = "context 40k of 200k"
+    const steps = [
+      `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20  feature · P2`,
+      `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ⚠ 5h window 92% · resets 14:20  feature · P2`,
+      `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ⚠ 5h window 92%  feature · P2`,
+      `${lead}  ≈1% (estimate)  ${context}  ⚠ 5h window 92%  feature · P2`,
+      `${lead}  ≈1% (estimate)  ${context}  ⚠ 5h window 92%`,
+    ]
+    const at = (width: number) => textOf(lineOf({ usage, badges: true }, width))
+    for (const [i, step] of steps.entries()) {
+      expect(at(Bun.stringWidth(step))).toBe(step)
+      const next = steps[i + 1]
+      if (next !== undefined) expect(at(Bun.stringWidth(step) - 1)).toBe(next)
+    }
+    const segments = lineOf({ badges: true })
+    expect(segments.find((each) => each.text === "feature")?.look).toBe(theme.look("typeFeature"))
+    expect(segments.find((each) => each.text === "P2")?.look).toBe(theme.styles.dim)
+  })
+
+  test("drawn: one line, the time and memory once, no tokens, no type", async () => {
     await scene(viewOf({ compactions: 2 }), { width: 140, height: 40 }, async (rendered) => {
       const frame = await until(rendered, has("Reading the scripts."))
       const lines = linesOf(frame)
       expect(lines[1]).toBe(
-        ` ← Dashboard   ⣻ t-1  working  12m53s  ≈1% (estimate)  context ▰▰▱▱▱▱▱▱▱▱  40k of 200k  ↻ 2 compactions  ${memoryText}  feature · P2`,
+        ` ← Dashboard   ⣻ t-1  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}`,
       )
       expect(frame.chars.split("12m53s").length - 1).toBe(1)
       expect(frame.chars.split(memoryText).length - 1).toBe(1)
       expect(frame.chars).not.toContain("tokens")
-      const time = frame.spans.lines[1]?.spans.find((each) => each.text.includes("12m53s"))
-      const dim = frame.spans.lines[1]?.spans.find((each) => each.text.includes(memoryText))
+      const spans = frame.spans.lines[1]?.spans ?? []
+      const time = spans.find((each) => each.text.includes("12m53s"))
+      const word = spans.find((each) => each.text.includes("context"))
+      const dim = spans.find((each) => each.text.includes(memoryText))
       // Not faint, as the memory is.
       expect(time?.attributes ?? 0).toBe(0)
+      expect(word?.attributes ?? 0).toBe(0)
       expect(dim?.attributes ?? 0).not.toBe(0)
-      const at = find(frame, "12m53s")
-      await rendered.input((setup) => setup.mockMouse.click(at.x + 1, at.y))
-      const open = await until(rendered, has("Spent"))
-      expect(open.chars).toContain("1.2M · 85% of the input from the cache")
-      expect(open.chars).toContain("41 model calls")
-      await rendered.input((setup) => pressEscape(setup))
-      expect((await until(rendered, (f) => !f.chars.includes("Spent"))).chars).not.toContain(
-        "41 model calls",
-      )
     })
-  })
-
-  test("drawn: a click on the context or the memory opens Spent too, one on the type doesn't", async () => {
-    for (const [text, opens] of [
-      ["40k of 200k", true],
-      [memoryText, true],
-      ["feature · P2", false],
-    ] as const) {
-      await scene(viewOf(), { width: 140, height: 40 }, async (rendered) => {
-        const frame = await until(rendered, has("Reading the scripts."))
-        const at = find(frame, text)
-        await rendered.input((setup) => setup.mockMouse.click(at.x + 1, at.y))
-        const after = opens ? await until(rendered, has("Spent")) : await rendered.capture()
-        expect(after.chars.includes("Spent")).toBe(opens)
-      })
-    }
   })
 })
 
-describe("the title and the description's box", () => {
-  test("at 120x40: a blank line, the title in bold, a blank line, the box of 5 lines", async () => {
+describe("the ticket's box", () => {
+  test("at 120x40: a blank line, then the box named Ticket, its type and priority at its top right; the title in bold, a blank line, 5 lines", async () => {
     await scene(viewOf(), { width: 120, height: 40 }, async (rendered) => {
       const frame = await until(rendered, has("Reading the scripts."))
       const lines = linesOf(frame)
       expect(lines[2]).toBe("")
-      expect(lines[3]).toBe(`  ${title}`)
-      const span = frame.spans.lines[3]?.spans.find((each) => each.text.includes("Question"))
+      expect(lines[3]).toMatch(/^╭─ Ticket ─+ feature · P2 ─╮$/)
+      expect(Bun.stringWidth(lines[3] ?? "")).toBe(120)
+      const top = frame.spans.lines[3]?.spans ?? []
+      const name = top.find((each) => each.text === "Ticket")
+      expect((name?.attributes ?? 0) & 1).toBe(1)
+      expect(top.find((each) => each.text === "feature")?.fg.toInts()).toEqual(
+        theme.rgba("typeFeature", "fg").toInts(),
+      )
+      expect(lines[4]).toBe(`│ ${title}${" ".repeat(120 - 4 - title.length)} │`)
+      const span = frame.spans.lines[4]?.spans.find((each) => each.text.includes("Question"))
       expect((span?.attributes ?? 0) & 1).toBe(1)
-      expect(lines[4]).toBe("")
-      expect(lines[5]).toMatch(/^╭─+╮$/)
-      expect(Bun.stringWidth(lines[5] ?? "")).toBe(120)
+      expect(lines[5]).toMatch(/^│ +│$/)
       for (const row of lines.slice(6, 11)) expect(row).toMatch(/^│ \S.*│$/)
       expect(lines[10]).toContain("…")
       expect(lines[11]).toMatch(/^╰─+ ▾ whole ticket {2}t ─╯$/)
       expect(lines[12]).toMatch(/^─+$/)
       const control = frame.spans.lines[11]?.spans.find((each) => each.text.includes("▾"))
       expect(control?.fg.toInts()).toEqual(theme.rgba("link", "fg").toInts())
+      // The title has no line of its own outside the box.
+      expect(lines.filter((line) => line.includes("Question tickets give")).length).toBe(1)
     })
   })
 
-  test("a long title on 2 lines, cut with …", async () => {
+  test("a long title on 2 lines in the box, cut with …", async () => {
     const long = Array.from({ length: 14 }, () => "a long title").join(" ")
     await scene(viewOf({ title: long }), { width: 80, height: 40 }, async (rendered) => {
       const lines = linesOf(await until(rendered, has("Reading the scripts.")))
-      expect(lines[3]).toStartWith("  a long title")
-      expect(lines[4]).toStartWith("  ")
-      expect(lines[4]).toEndWith("…")
-      expect(Bun.stringWidth(lines[4] ?? "")).toBeLessThanOrEqual(80)
-      expect(lines[5]).toBe("")
-      expect(lines[6]).toMatch(/^╭─+╮$/)
+      expect(lines[3]).toMatch(/^╭─ Ticket ─+ feature · P2 ─╮$/)
+      expect(lines[4]).toStartWith("│ a long title")
+      expect(lines[5]).toMatch(/^│ .*… +│$/)
+      expect(Bun.stringWidth(lines[5] ?? "")).toBe(80)
+      expect(lines[6]).toMatch(/^│ +│$/)
+      expect(lines[7]).toStartWith("│ Question tickets carry")
     })
   })
 
-  test("expanded, the same box grows: its top plain, its control still in its bottom border", async () => {
+  test("expanded, the same box grows: its top border, title and blank line kept, its control still in its bottom border", async () => {
     const notes = Array.from({ length: 30 }, (_, i) => `Note ${i + 1}.`).join("\n\n")
     await scene(
       viewOf({ issue: issueOf({ notes }) }),
@@ -432,14 +445,30 @@ describe("the title and the description's box", () => {
         await rendered.input((setup) => setup.mockMouse.click(at.x, at.y))
         const open = await until(rendered, has("▴ less"))
         const lines = linesOf(open)
-        // The box starts where it did, its top border plain.
-        expect(lines[5]).toMatch(/^╭─+╮$/)
+        // The box starts where it did, its top border as it was.
+        expect(lines[3]).toMatch(/^╭─ Ticket ─+ feature · P2 ─╮$/)
+        expect(lines[4]).toStartWith(`│ ${title}`)
+        expect(lines[5]).toMatch(/^│ +│$/)
+        expect(lines[6]).toStartWith("│ Question tickets carry")
         const bottom = lines.findIndex((line) => line.startsWith("╰"))
         expect(bottom).toBeGreaterThan(11)
+        // Up to 60% of the pane, its frame and title included.
+        expect(bottom - 3 + 1).toBeLessThanOrEqual(Math.floor(40 * 0.6))
         expect(lines[bottom]).toMatch(/^╰─+ ↓ \d+ more lines ── ▴ less {2}t · Esc ─╯$/)
         expect(open.chars).not.toContain("▾ whole ticket")
+        // Scrolled, the title and its blank line stay at the box's top.
+        await rendered.input(async (setup) => {
+          await setup.mockMouse.scroll(10, 8, "down")
+          await Bun.sleep(30)
+        })
+        const scrolled = await until(
+          rendered,
+          (frame) => !frame.chars.includes("Question tickets carry"),
+        )
+        expect(linesOf(scrolled)[4]).toStartWith(`│ ${title}`)
+        expect(linesOf(scrolled)[5]).toMatch(/^│ +│$/)
         // Only ▴ less closes it.
-        const less = find(open, "▴ less")
+        const less = find(scrolled, "▴ less")
         await rendered.input((setup) => setup.mockMouse.click(less.x, less.y))
         const shut = await until(rendered, has("▾ whole ticket"))
         expect(linesOf(shut)[11]).toMatch(/^╰─+ ▾ whole ticket {2}t ─╯$/)
@@ -453,8 +482,9 @@ describe("the title and the description's box", () => {
       { width: 80, height: 40 },
       async (rendered) => {
         const lines = linesOf(await until(rendered, has("Reading the scripts.")))
-        expect(lines.slice(5, 8)).toEqual([
-          `╭${"─".repeat(78)}╮`,
+        expect(lines.slice(4, 8)).toEqual([
+          `│ ${title}${" ".repeat(76 - title.length)} │`,
+          `│${" ".repeat(78)}│`,
           `│ Read the second file too.${" ".repeat(52)}│`,
           `╰${"─".repeat(78)}╯`,
         ])
@@ -480,7 +510,7 @@ describe("the title and the description's box", () => {
 })
 
 describe("a shorter pane", () => {
-  test("gives up the description's lines, then the blank lines, then the box", () => {
+  test("gives up the description's lines, then the box's blank line, then the one above it", () => {
     const all = { head: 1, ticket: 1 }
     expect([31, 30, 29, 28, 27, 26, 25, 20].map((height) => headExtras(height, all, 3))).toEqual([
       { headGap: 1, ticketGap: 1, ticketMore: 3 },
@@ -495,29 +525,89 @@ describe("a shorter pane", () => {
     expect(fullHeadFrom).toBe(30)
   })
 
-  /** The head's rows at `height`: the box's description lines, and whether the blanks are there. */
+  /**
+   * The head's rows at `height`: the box's description lines, whether the blank line above it and
+   * the one in it are there, and where the title is.
+   */
   const headAt = async (height: number) => {
-    let shape = { described: 0, gaps: 0, title: false }
-    await scene(viewOf(), { width: 80, height }, async (rendered) => {
+    let shape = { described: 0, above: false, inBox: false, title: "", lineOne: "" }
+    await scene(viewOf(), { width: 120, height }, async (rendered) => {
       const lines = linesOf(await until(rendered, has("Reading the scripts.")))
       const rule = lines.findIndex((line) => /^─+$/.test(line))
       const head = lines.slice(2, rule)
+      const sides = head.filter((line) => line.startsWith("│"))
       shape = {
-        described: head.filter((line) => line.startsWith("│")).length,
-        gaps: head.filter((line) => line === "").length,
-        title: head.some((line) => line === `  ${title}`),
+        described: sides.filter((line) => /^│ (?!Question tickets give)\S/.test(line)).length,
+        above: head[0] === "",
+        inBox: sides.some((line) => /^│ +│$/.test(line)),
+        title: sides.some((line) => line.startsWith(`│ ${title}`))
+          ? "box"
+          : head.some((line) => line === `  ${title}`)
+            ? "alone"
+            : "",
+        lineOne: lines.find((line) => line.includes("← Dashboard")) ?? "",
       }
     })
     return shape
   }
 
   test("drawn, at 30, 28, 26, 24 and 16 rows", async () => {
-    expect(await headAt(30)).toEqual({ described: 5, gaps: 2, title: true })
-    expect(await headAt(28)).toEqual({ described: 3, gaps: 2, title: true })
-    expect(await headAt(26)).toEqual({ described: 2, gaps: 1, title: true })
-    expect(await headAt(24)).toEqual({ described: 2, gaps: 0, title: true })
-    // The minimum size: line 1 and the title.
-    expect(await headAt(16)).toEqual({ described: 0, gaps: 0, title: true })
+    const at = async (height: number) => {
+      const { lineOne, ...shape } = await headAt(height)
+      return { ...shape, badges: lineOne.endsWith("feature · P2") }
+    }
+    expect(await at(30)).toEqual({
+      described: 5,
+      above: true,
+      inBox: true,
+      title: "box",
+      badges: false,
+    })
+    expect(await at(28)).toEqual({
+      described: 3,
+      above: true,
+      inBox: true,
+      title: "box",
+      badges: false,
+    })
+    expect(await at(26)).toEqual({
+      described: 2,
+      above: true,
+      inBox: false,
+      title: "box",
+      badges: false,
+    })
+    expect(await at(24)).toEqual({
+      described: 2,
+      above: false,
+      inBox: false,
+      title: "box",
+      badges: false,
+    })
+    // The minimum size: line 1, ending with the type and priority, and the title alone in bold.
+    expect(await at(16)).toEqual({
+      described: 0,
+      above: false,
+      inBox: false,
+      title: "alone",
+      badges: true,
+    })
+  })
+
+  test("at the minimum size, the type and priority on line 1 in their colours, the title bold under it", async () => {
+    await scene(viewOf(), { width: 120, height: 16 }, async (rendered) => {
+      const frame = await until(rendered, has("Reading the scripts."))
+      const lines = linesOf(frame)
+      expect(lines[1]).toEndWith("feature · P2")
+      expect(frame.chars).not.toContain("Ticket")
+      const spans = frame.spans.lines[1]?.spans ?? []
+      expect(spans.find((each) => each.text === "feature")?.fg.toInts()).toEqual(
+        theme.rgba("typeFeature", "fg").toInts(),
+      )
+      expect(lines[2]).toStartWith("  Question tickets")
+      const span = frame.spans.lines[2]?.spans.find((each) => each.text.includes("Question"))
+      expect((span?.attributes ?? 0) & 1).toBe(1)
+    })
   })
 })
 

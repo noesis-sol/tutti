@@ -82,11 +82,10 @@ describe("the key help's height", () => {
     expect(textOf(keyHelpLines(theme, 60, workerViewKeys, 16))).toMatchInlineSnapshot(`
       [
         "╭──────────────────────────────────────────────────────────╮",
-        "│ Keys  1–12 of 21                                         │",
+        "│ Keys  1–12 of 20                                         │",
         "│ i, a click on the composer  write to the worker; Enter … │",
         "│ Esc, ← Dashboard            leave the composer; close t… │",
         "│ Esc, Tab, Enter             switch workers, by way of t… │",
-        "│ a click on the figures      the whole ticket at Spent: … │",
         "│ t, ▾ whole ticket           the whole ticket; t, ▴ less… │",
         "│ d, Shift+D                  deny the request; deny with… │",
         "│ a                           allow the request, unless i… │",
@@ -95,6 +94,7 @@ describe("the key help's height", () => {
         "│ Ctrl+R, Release             release a steered worker     │",
         "│ Ctrl+T, File as ticket      once the worker has finishe… │",
         "│ Tab, Shift+Tab, arrows      move between items; between… │",
+        "│ Enter, a click              expand or collapse the item… │",
         "│ Esc close · ↑↓ PgUp PgDn scroll                          │",
         "╰──────────────────────────────────────────────────────────╯",
       ]
@@ -103,7 +103,7 @@ describe("the key help's height", () => {
 
   test("scrolled past the end, shows the last window", () => {
     const lines = textOf(keyHelpLines(theme, 60, workerViewKeys, 16, 100))
-    expect(lines[1]).toContain("10–21 of 21")
+    expect(lines[1]).toContain("9–20 of 20")
     expect(lines.at(-3)).toContain("a drag")
   })
 

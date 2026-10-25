@@ -192,7 +192,10 @@ const typeKey = (rendered: Rendered, key: string) =>
 
 const pageDown = "\x1b[6~"
 
-/** The rows of the box at 80x24: its top border, its description's 2 lines, its bottom border. */
+/**
+ * The rows of the box at 80x24: its top border, the title, its description's 2 lines, its bottom
+ * border; `boxTop` is the row above the description's first.
+ */
 const boxTop = 3
 const boxBottom = 6
 
@@ -202,9 +205,9 @@ describe("the ticket's description in the head", () => {
       const frame = await until(rendered, has("Reading the scripts."))
       expect(linesOf(frame).slice(0, 8).join("\n")).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s  $0.00  bug · P2
-          Read Chrome's AccountBookmarks
-        ╭──────────────────────────────────────────────────────────────────────────────╮
+         ← Dashboard   • t-1  done  1m07s  $0.00
+        ╭─ Ticket ────────────────────────────────────────────────────────── bug · P2 ─╮
+        │ Read Chrome's AccountBookmarks                                               │
         │ Chromium keeps bookmarks saved to the Google account in a second file,       │
         │ AccountBookmarks, beside Bookmarks. mnemos reads only Bookmarks, so those…   │
         ╰────────────────────────────────────────────────────────── ▾ whole ticket  t ─╯
@@ -295,12 +298,13 @@ describe("the ticket's description in the head", () => {
     )
   })
 
-  test("line 1 has the ticket's type and priority at its end, the title bold under it", async () => {
+  test("the box's top border has the type and priority, line 1 not; the title bold in the box", async () => {
     await scene(issueOf({ description }), { width: 80, height: 24 }, async ({ rendered }) => {
       const frame = await until(rendered, has("Reading the scripts."))
-      expect(linesOf(frame)[1]).toEndWith("t-1  done  1m07s  $0.00  bug · P2")
-      expect(linesOf(frame)[2]).toBe("  Read Chrome's AccountBookmarks")
-      const span = frame.spans.lines[2]?.spans.find((each) => each.text.includes("Read Chrome"))
+      expect(linesOf(frame)[1]).toEndWith("t-1  done  1m07s  $0.00")
+      expect(linesOf(frame)[2]).toMatch(/^╭─ Ticket ─+ bug · P2 ─╮$/)
+      expect(linesOf(frame)[3]).toStartWith("│ Read Chrome's AccountBookmarks")
+      const span = frame.spans.lines[3]?.spans.find((each) => each.text.includes("Read Chrome"))
       expect((span?.attributes ?? 0) & 1).toBe(1)
     })
   })
@@ -333,8 +337,12 @@ describe("the whole ticket", () => {
         const open = await until(rendered, has("▴ less"))
         expect(taken(commands)).toEqual(["ReadTicket"])
         const lines = linesOf(open)
-        // The box grown from where it was, its top plain, its control in its bottom border.
-        expect(lines[5]).toMatch(/^╭─+╮$/)
+        // The box grown from where it was, its top border as it was, the title and the blank line
+        // under it kept, its control in its bottom border.
+        expect(lines[3]).toMatch(/^╭─ Ticket ─+ bug · P2 ─╮$/)
+        expect(lines[4]).toStartWith("│ Read Chrome's AccountBookmarks")
+        expect(lines[5]).toMatch(/^│ +│$/)
+        expect(lines[6]).toStartWith("│ Chromium keeps")
         expect(lines.find((line) => line.startsWith("╰"))).toMatch(/▴ less {2}t · Esc ─╯$/)
         expect(open.chars).toContain("Acceptance")
         expect(open.chars).toContain("☐ Account bookmarks are indexed under their own label")
@@ -391,8 +399,8 @@ describe("the whole ticket", () => {
         Number(/↓ (\d+) more lines? ── ▴ less/.exec(frame.chars)?.[1] ?? 0)
       const before = more(open)
       expect(before).toBeGreaterThan(20)
-      // A page less a line: what the panel shows less one.
-      const inside = panelCap(24) - 2
+      // A page less a line: what the panel shows less one, under the title and its blank line.
+      const inside = panelCap(24) - 2 - 2
       await rendered.input(async (setup) => {
         setup.mockInput.pressKey(pageDown)
         await Bun.sleep(30)
@@ -401,9 +409,10 @@ describe("the whole ticket", () => {
       expect(more(paged)).toBe(before - (inside - 1))
       // The transcript stays where it was.
       expect(paged.chars).toContain("Reading the scripts.")
-      const y = linesOf(paged).findIndex((line) => line.includes("│"))
+      // The scrollbox's first row: under the top border, the title and the blank line.
+      const y = linesOf(paged).findIndex((line) => line.startsWith("╭─ Ticket")) + 3
       await rendered.input(async (setup) => {
-        await setup.mockMouse.scroll(10, y + 1, "down")
+        await setup.mockMouse.scroll(10, y, "down")
         await Bun.sleep(30)
       })
       const wheeled = await until(rendered, (frame) => more(frame) < more(paged))

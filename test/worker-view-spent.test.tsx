@@ -1,15 +1,12 @@
-// What the worker spent as the whole ticket's last section (§ 7.5, tutti-cxgo.3): a click on line
-// 1's figures opens the whole ticket scrolled to `Spent`, or scrolls it there while it is open
-// (Spent being the last section, as far as the panel scrolls: all of it in view); `t` opens it at
-// its top; a scroll after it was put there stays where you put it; and the section has no Esc line
-// of its own, as the breakdown's box over the view had.
+// Spent gone from the worker view (§ 7.5, tutti-cxgo.6; it was the whole ticket's last section
+// since tutti-cxgo.3): a click on line 1's figures does nothing, the whole ticket ends with its
+// labels, and the ticket's tokens, model calls and dollars at API prices show nowhere in the view.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
-import type { Resources } from "../src/run/resources.ts"
 import { emptyStatus, project, ticketText } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
@@ -24,8 +21,7 @@ import {
   windowOf,
 } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { spentLines } from "../src/ui/worker/figures.ts"
-import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { type Frame, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -62,7 +58,7 @@ const issue: Issue = {
   priority: 2,
   type: "task",
   assignee: "",
-  labels: [],
+  labels: ["bookmarks"],
   dependencies: [],
   metadata: {},
   files: [],
@@ -175,104 +171,63 @@ const inside = (frame: Frame): ReadonlyArray<string> => {
   return top < 0 || bottom < 0 ? [] : lines.slice(top + 1, bottom)
 }
 
-/** The panel's first line inside its frame. */
-const firstInside = (frame: Frame): string => inside(frame)[0] ?? ""
-
-/** Whether the panel shows all of Spent, from its heading to its last row. */
-const showsSpent = (frame: Frame): boolean => {
-  const lines = inside(frame)
-  return (
-    lines.some((line) => /^│ Spent +│$/.test(line)) &&
-    lines.some((line) => line.includes("of the run  100% of its 1.2M tokens"))
-  )
-}
-
-/** Clicks line 1's time, among its figures. */
-const clickFigures = (rendered: Rendered, frame: Frame) => {
+/** Clicks line 1's `text`, among its figures. */
+const clickOn = (rendered: Rendered, frame: Frame, text: RegExp) => {
   const lines = linesOf(frame)
   const y = lines.findIndex((line) => line.includes("← Dashboard"))
-  const x = /\d+m\d+s/.exec(lines[y] ?? "")?.index ?? 0
+  const x = text.exec(lines[y] ?? "")?.index ?? 0
   return rendered.input((setup) => setup.mockMouse.click(x + 1, y))
 }
 
 const taken = (commands: Commands) =>
   Effect.runSync(Queue.clear(commands)).map((command) => command._tag)
 
-describe("Spent in the whole ticket", () => {
-  test("a click on line 1's figures opens the whole ticket scrolled to Spent", async () => {
+const pageDown = "\x1b[6~"
+
+/** What the view shows of the worker's spending: none of it. */
+const spending = ["Spent", "model calls", "at API prices", "1.2M", "cache"]
+
+describe("Spent gone from the worker view", () => {
+  test("a click on line 1's figures opens nothing", async () => {
     await scene(async (rendered, commands) => {
       const frame = await until(rendered, has("Reading the scripts."))
       taken(commands)
-      await clickFigures(rendered, frame)
-      const open = await until(rendered, showsSpent)
-      expect(showsSpent(open)).toBe(true)
-      // Nothing below it: the bottom border counts no more lines.
-      expect(open.chars).not.toContain("more line")
-      expect(open.chars).toContain("41 model calls")
-      expect(open.chars).toContain("$1.84 at API prices (estimate)")
-      expect(open.chars).not.toContain("Note 1.")
-      // The panel has no line of its own to close Spent: its frame's bottom says how.
-      expect(open.chars).not.toContain("Esc close")
-      expect(taken(commands)).toEqual(["ReadTicket"])
-      // Esc closes the whole ticket, as it does opened with t.
-      await rendered.input((setup) => pressEscape(setup))
-      const closed = await until(rendered, (each) => !each.chars.includes("▴ less"))
-      expect(closed.chars).not.toContain("41 model calls")
-      expect(closed.chars).toContain("← Dashboard")
+      for (const text of [/\d+m\d+s/, /≈\d+% \(estimate\)/, /context /, /126k of/]) {
+        await clickOn(rendered, frame, text)
+        await Bun.sleep(50)
+        const after = await rendered.capture()
+        expect(after.chars).not.toContain("▴ less")
+        expect(after.chars).toBe(frame.chars)
+      }
+      expect(taken(commands)).toEqual([])
     })
   })
 
-  test("t opens it at its top, and a click on the figures then scrolls it to Spent", async () => {
+  test("the whole ticket ends with its labels, and nothing of the spending shows", async () => {
     await scene(async (rendered) => {
-      await until(rendered, has("Reading the scripts."))
+      const frame = await until(rendered, has("Reading the scripts."))
+      for (const text of spending) expect(frame.chars).not.toContain(text)
       await rendered.input(async (setup) => {
         await setup.mockInput.typeText("t")
       })
-      const open = await until(rendered, has("▴ less"))
-      expect(firstInside(open)).toContain("The first line of the description.")
-      expect(open.chars).not.toContain("41 model calls")
-      await clickFigures(rendered, open)
-      const scrolled = await until(rendered, showsSpent)
-      expect(showsSpent(scrolled)).toBe(true)
-      expect(firstInside(scrolled)).not.toContain("The first line of the description.")
-    })
-  })
-
-  test("a scroll after it was put at Spent stays where you put it", async () => {
-    await scene(async (rendered) => {
-      const frame = await until(rendered, has("Reading the scripts."))
-      await clickFigures(rendered, frame)
-      const open = await until(rendered, showsSpent)
-      const y = linesOf(open).findIndex((line) => line.includes("│ Spent"))
-      await rendered.input(async (setup) => {
-        await setup.mockMouse.scroll(10, y + 1, "up")
-        await Bun.sleep(30)
-      })
-      const up = await until(rendered, (each) => firstInside(each) !== firstInside(open))
-      expect(firstInside(up)).not.toBe(firstInside(open))
-      expect(up.chars).toContain("more line")
-      // Frames on, it hasn't gone back.
-      await Bun.sleep(100)
-      expect(firstInside(await rendered.capture())).toBe(firstInside(up))
+      await until(rendered, has("▴ less"))
+      for (let i = 0; i < 10; i++) {
+        await rendered.input(async (setup) => {
+          await setup.mockInput.typeText(pageDown)
+        })
+      }
+      const end = await until(rendered, (each) => !each.chars.includes("more line"))
+      const lines = inside(end).filter((line) => !/^│ +│$/.test(line))
+      expect(lines.at(-1)).toMatch(/^│ (\*\*)?Labels(\*\*)? {2}bookmarks +│$/)
+      for (const text of spending) expect(end.chars).not.toContain(text)
     })
   })
 })
 
-describe("the panel's height with Spent", () => {
-  test("Spent's lines and the one over them count, up to the cap", () => {
-    const resources: Resources = {
-      ticket: "t-1" as TicketId,
-      took: began,
-      spent,
-      runTokens: 10_000_000,
-      subscription: true,
-      window: { share: 0.012, rise: 0.06, cost: 1.84, runCost: 9.2 },
-      context,
-      compactions: 0,
-    }
+describe("the panel's height", () => {
+  test("its head's lines count, Spent's no longer, up to the cap", () => {
     const short = ticketText({ ...issue, notes: "" })
-    const lines = spentLines(resources, theme, 76).length
-    expect(panelLines(short, 60, 80, lines)).toBe(panelLines(short, 60, 80) + lines + 1)
-    expect(panelLines(ticketText(issue), 30, 80, lines)).toBe(18)
+    expect(panelLines(short, 60, 80, 2)).toBe(panelLines(short, 60, 80) + 2)
+    expect(panelLines(ticketText(issue), 30, 80, 2)).toBe(18)
   })
 })

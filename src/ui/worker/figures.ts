@@ -1,36 +1,30 @@
-// The worker view's figures (§ 7.5, worker-view design D2, redesigned in tutti-cxgo.4): what the
-// worker is consuming, on line 1 of its head after its status (worker/Head.tsx). Its time on the
-// ticket, in the text's colour; on an API key its dollars, or on a subscription login its ticket's
-// estimated share of the account's five-hour window, `≈1% (estimate)`, in the estimate's italic
-// sand with its word, which keeps the meaning under NO_COLOR; its context window as amounts against
-// the window Claude Code compacts at, `context ▰▰▰▰▰▰▱▱▱▱  126k of 200k`, yellow from 70% and red
-// from 90%; its compactions once there has been one; its processes' memory; and near or at a usage
-// limit, the account's figure as a warning, `⚠ 5h window 92% · resets 14:20`, so you know why the
-// worker may stop. Each part, and a gauge and its figure, are two spaces apart, drawn as segments
-// of their own, so cutting the line never joins them. Tokens are not among them: they are in Spent.
-//
-// A click on the figures opens the breakdown, `Spent`: the tokens by model with the cache's share,
-// the model calls, the dollars (at API prices on a subscription, an estimate), how the window's
-// share is made, the context's split and the ticket's share of the run's tokens. It is the
-// whole-ticket panel's last section (TicketHead.tsx), which the click opens scrolled to it.
+// The worker view's figures (§ 7.5, worker-view design D2, redesigned in tutti-cxgo.4 and .6): what
+// the worker is consuming, on line 1 of its head after its status (worker/Head.tsx). Its time on
+// the ticket, in the text's colour; on an API key its dollars, or on a subscription login its
+// ticket's estimated share of the account's five-hour window, `≈1% (estimate)`, in the estimate's
+// italic sand with its word, which keeps the meaning under NO_COLOR; its context window as amounts
+// against the window Claude Code compacts at, `context 126k of 200k`, the figure yellow from 70%
+// and red from 90%; its compactions once there has been one; its processes' memory; and near or at
+// a usage limit, the account's figure as a warning, `⚠ 5h window 92% · resets 14:20`, so you know
+// why the worker may stop. Each part is two spaces from the next, drawn as segments of its own, so
+// cutting the line never joins them. Tokens, model calls and the dollars at API prices are not
+// shown in the worker view (tutti-cxgo.6): the run's summary has its own Spent line.
 import type { ContextUsage } from "../../agent/contextUsage.ts"
-import type { Tokens } from "../../run/events.ts"
 import { dollarsText, tokenCount } from "../../run/figures.ts"
 import { resetLabel } from "../../run/localTime.ts"
-import { allTokens, type Resources } from "../../run/resources.ts"
+import type { Resources } from "../../run/resources.ts"
 import type { Usage } from "../../run/runView.ts"
 import { elapsed } from "../Card.tsx"
 import type { FitPart } from "../fit.ts"
 import { workerMemory } from "../LoadLine.tsx"
-import { type Look, type Segments, seg, targeting, wrap } from "../line.tsx"
+import { type Look, type Segments, seg } from "../line.tsx"
 import { sanitizeLine } from "../sanitize.ts"
-import { gauge } from "../TitleLine.tsx"
 import type { Theme } from "../theme.ts"
 
-/** The gap between two parts, and between a gauge and its figure. */
+/** The gap between two parts. */
 export const gap = "  "
 
-/** From this full the context gauge is yellow, and from `nearCompaction` red. */
+/** From this full the context's figure is yellow, and from `nearCompaction` red. */
 export const contextNotice = 0.7
 export const nearCompaction = 0.9
 
@@ -78,25 +72,19 @@ export interface FigureInputs {
 
 /**
  * The ranks of line 1's steps down in a narrow pane, the lowest first: the memory dropped, then the
- * ticket's type and priority (worker/Head.tsx), then the warning's reset time, then the
- * compactions, then whole parts from the end of the line.
+ * warning's reset time, then the compactions, then whole parts from the end of the line.
  */
 export const dropMemory = 0
-export const dropBadges = 1
-const shortWarning = 2
-const dropCompactions = 3
-export const fromTheEnd = 4
-
-/** The click target of the figures, which opens Spent. */
-export const spentTarget = 0
+const shortWarning = 1
+const dropCompactions = 2
+export const fromTheEnd = 3
 
 /** A part shown whole or left out, at `rank`. */
 const droppable = (segments: Segments, rank: number): FitPart => ({ forms: [segments, []], rank })
 
 /**
  * The figures' parts, in order, each in its forms for a narrow pane (fitParts): `r`, the ticket's
- * resources, none before the run has any. The time, the estimate or dollars, the context, the
- * compactions and the memory open Spent (`spentTarget`); the time is never left out.
+ * resources, none before the run has any. The time is never left out.
  */
 export const figureParts = (
   r: Resources | undefined,
@@ -104,45 +92,35 @@ export const figureParts = (
   theme: Theme,
 ): ReadonlyArray<FitPart> => {
   const { styles } = theme
-  const opens = (segments: Segments) => targeting(segments, spentTarget)
   const parts: Array<FitPart> = [
-    { forms: [opens([seg(elapsed(inputs.now - inputs.took))])], rank: fromTheEnd },
+    { forms: [[seg(elapsed(inputs.now - inputs.took))]], rank: fromTheEnd },
   ]
   if (r?.subscription === false) {
-    parts.push(droppable(opens([seg(dollarsText(r.spent.costUsd))]), fromTheEnd))
+    parts.push(droppable([seg(dollarsText(r.spent.costUsd))], fromTheEnd))
   } else if (r?.window != null) {
     parts.push(
-      droppable(
-        opens([seg(`${shareText(r.window.share)} (estimate)`, styles.estimate)]),
-        fromTheEnd,
-      ),
+      droppable([seg(`${shareText(r.window.share)} (estimate)`, styles.estimate)], fromTheEnd),
     )
   }
   if (r?.context != null) {
-    const full = fullness(r.context)
-    const look = contextLook(full, theme)
     parts.push(
       droppable(
-        opens([
-          seg("context ", styles.dim),
-          seg(gauge(full), look ?? styles.dim),
-          seg(gap),
-          seg(tokenCount(r.context.tokens), look),
+        [
+          seg("context "),
+          seg(tokenCount(r.context.tokens), contextLook(fullness(r.context), theme)),
           seg(" of ", styles.dim),
           seg(tokenCount(r.context.window)),
-        ]),
+        ],
         fromTheEnd,
       ),
     )
   }
   if (r !== undefined && r.compactions > 0) {
     const word = r.compactions === 1 ? "compaction" : "compactions"
-    parts.push(
-      droppable(opens([seg(`↻ ${r.compactions}`), seg(` ${word}`, styles.dim)]), dropCompactions),
-    )
+    parts.push(droppable([seg(`↻ ${r.compactions}`), seg(` ${word}`, styles.dim)], dropCompactions))
   }
   if (inputs.memory !== undefined) {
-    parts.push(droppable(opens([seg(workerMemory(inputs.memory), styles.dim)]), dropMemory))
+    parts.push(droppable([seg(workerMemory(inputs.memory), styles.dim)], dropMemory))
   }
   const usage = inputs.usage
   if (usage !== null) {
@@ -156,122 +134,4 @@ export const figureParts = (
     })
   }
   return parts
-}
-
-/** The cache's share of the input of `t`: its reads of everything read in. */
-const cacheShare = (t: Tokens): number | null => {
-  const given = t.input + t.cache_write + t.cache_read
-  return given > 0 ? t.cache_read / given : null
-}
-
-/** `n` of 100, to the whole. */
-const percent = (share: number): string => `${Math.round(share * 100)}%`
-
-/** Every model's tokens added up. */
-const summed = (r: Resources): Tokens =>
-  Object.values(r.spent.tokens).reduce(
-    (sum, t) => ({
-      input: sum.input + t.input,
-      output: sum.output + t.output,
-      cache_write: sum.cache_write + t.cache_write,
-      cache_read: sum.cache_read + t.cache_read,
-    }),
-    { input: 0, output: 0, cache_write: 0, cache_read: 0 },
-  )
-
-/** The widest label of the breakdown, which its figures are lined up after. */
-const labelWidth = 12
-
-/**
- * The breakdown's lines (`Spent`), `width` wide within the whole-ticket panel's frame: each row its
- * label, faint, and its figures, wrapped under them.
- */
-export const spentLines = (r: Resources, theme: Theme, width: number): ReadonlyArray<Segments> => {
-  const { styles } = theme
-  const row = (label: string, figures: Segments): ReadonlyArray<Segments> =>
-    wrap([seg(label.padEnd(labelWidth), styles.dim), ...figures], width, {
-      indent: labelWidth,
-    })
-  const total = summed(r)
-  const all = allTokens(r.spent.tokens)
-  const cache = cacheShare(total)
-  const models = Object.entries(r.spent.tokens)
-    .map(([model, t]) => ({ model, t, all: t.input + t.output + t.cache_write + t.cache_read }))
-    .sort((a, b) => b.all - a.all)
-  const lines: Array<Segments> = [[seg("Spent", styles.tickets)], []]
-  lines.push(
-    ...row("tokens", [
-      seg(tokenCount(all)),
-      ...(cache === null
-        ? []
-        : [seg(` · ${percent(cache)} of the input from the cache`, styles.dim)]),
-    ]),
-  )
-  for (const { model, t, all: of } of models) {
-    lines.push(
-      ...row("", [
-        seg(sanitizeLine(model)),
-        seg(gap),
-        seg(tokenCount(of)),
-        seg(
-          ` · ${tokenCount(t.input)} in, ${tokenCount(t.cache_write)} cache writes, ${tokenCount(t.cache_read)} cache reads, ${tokenCount(t.output)} out`,
-          styles.dim,
-        ),
-      ]),
-    )
-  }
-  const calls = r.spent.turns
-  lines.push(...row("model calls", [seg(`${calls} model call${calls === 1 ? "" : "s"}`)]))
-  if (r.subscription) {
-    lines.push(
-      ...row("dollars", [
-        seg(`${dollarsText(r.spent.costUsd)} at API prices (estimate)`, styles.estimate),
-        seg(": a subscription login pays none of it", styles.dim),
-      ]),
-    )
-    lines.push(
-      ...row(
-        "5h window",
-        r.window === null
-          ? [seg("not reported yet", styles.dim)]
-          : [
-              seg(`${shareText(r.window.share)} (estimate)`, styles.estimate),
-              seg(
-                `: the window rose ${percent(r.window.rise)} over the run, shared by dollars at API prices, this ticket's ${dollarsText(r.window.cost)} of the run's ${dollarsText(r.window.runCost)}; it counts what you use beside the run too`,
-                styles.dim,
-              ),
-            ],
-      ),
-    )
-  } else lines.push(...row("dollars", [seg(dollarsText(r.spent.costUsd))]))
-  const context = r.context
-  lines.push(
-    ...row(
-      "context",
-      context === null
-        ? [seg("not measured yet", styles.dim)]
-        : [
-            seg(`${Math.round(context.percentage)}%`, contextLook(fullness(context), theme)),
-            seg(` of ${tokenCount(context.window)}, ${tokenCount(context.tokens)} tokens`),
-            ...(context.split.length === 0
-              ? []
-              : [
-                  seg(
-                    `: ${context.split.map((part) => `${sanitizeLine(part.name)} ${tokenCount(part.tokens)}`).join(" · ")}`,
-                    styles.dim,
-                  ),
-                ]),
-          ],
-    ),
-  )
-  if (r.compactions > 0) {
-    lines.push(...row("compactions", [seg(`↻ ${r.compactions}`)]))
-  }
-  lines.push(
-    ...row("of the run", [
-      seg(r.runTokens > 0 ? percent(Math.min(all / r.runTokens, 1)) : "0%"),
-      seg(` of its ${tokenCount(r.runTokens)} tokens`, styles.dim),
-    ]),
-  )
-  return lines
 }

@@ -41,6 +41,18 @@ Each role has a variant for light backgrounds and one for dark ones. In the `orc
 | `autoAnswer` | `#0F766E` | `#2DD4BF` | the background of the title line's ` auto-answer ` pill, while `--auto-answer` answers questions for you |
 | `autoAnswerText` | `#F0FDFA` | `#042F2E` | text on the auto-answer pill |
 
+**Tickets:** a ticket's type and priority, in the top border of the worker view's ticket box.
+
+| Role | Light | Dark | Used for |
+|---|---|---|---|
+| `typeBug` | `#B91C1C` | `#F87171` | a bug |
+| `typeFeature` | `#15803D` | `#4ADE80` | a feature |
+| `typeTask` | `#1D4ED8` | `#60A5FA` | a task |
+| `typeEpic` | `#6D28D9` | `#A78BFA` | an epic |
+| `typeChore` | `#6B7280` | `#9CA3AF` | a chore; any other type is in the text's colour |
+| `priorityUrgent` | `#B91C1C` | `#F87171` | priority P0 |
+| `priorityHigh` | `#C2410C` | `#FB923C` | priority P1; P2 to P4 are faint |
+
 **The report, transcripts and selection:**
 
 | Role | Light | Dark | Used for |

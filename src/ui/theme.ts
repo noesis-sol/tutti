@@ -13,7 +13,9 @@ import { decodeConfig } from "../project/configFile.ts"
 import { userConfigDir } from "../project/userConfig.ts"
 import orchestraFile from "./schemes/orchestra.json" with { type: "json" }
 
-/** Every role a scheme gives a colour to: § 7.11's status, report and form tables, in order. */
+/**
+ * Every role a scheme gives a colour to: § 7.11's status, ticket, report and form tables, in order.
+ */
 export const roles = [
   "live",
   "done",
@@ -33,6 +35,13 @@ export const roles = [
   "keepAwakeText",
   "autoAnswer",
   "autoAnswerText",
+  "typeBug",
+  "typeFeature",
+  "typeTask",
+  "typeEpic",
+  "typeChore",
+  "priorityUrgent",
+  "priorityHigh",
   "heading1",
   "heading2",
   "heading3",

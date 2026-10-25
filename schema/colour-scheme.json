@@ -76,6 +76,27 @@
         "autoAnswerText": {
           "$ref": "#/$defs/RoleColour"
         },
+        "typeBug": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "typeFeature": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "typeTask": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "typeEpic": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "typeChore": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "priorityUrgent": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "priorityHigh": {
+          "$ref": "#/$defs/RoleColour"
+        },
         "heading1": {
           "$ref": "#/$defs/RoleColour"
         },
