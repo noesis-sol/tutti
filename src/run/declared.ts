@@ -35,13 +35,15 @@ const goMethod = /^func[ \t]*\([^)\n]*\)[ \t]*([A-Za-z_]\w*)/gm
 // A method, a field or a shell function, starting a line after its modifiers: merge(a: A): B,
 // merge(a) {, readonly merge: (a: A) => B, files?: string, name() {. A call starting a line
 // (merge(a)) is none: a method's parameters are followed by its type or its body; nor is a
-// statement (if (x) {).
+// statement (if (x) {). A signature is read up to 200 characters a part, so that a long line (a
+// bundle's) takes no longer than a short one.
 const member = new RegExp(
   String.raw`^[ \t]*(?:(?:${either(`public private protected internal static async readonly
     abstract override get set declare final open`)})[ \t]+)*` +
     String.raw`(?!(?:${either("if for while switch catch with elif else return")})\b)` +
     String.raw`([A-Za-z_$][\w$]*)[?!]?[ \t]*` +
-    String.raw`(?:<[^>\n]*>[ \t]*)?(?:\([^\n]*\)[ \t]*(?::[^\n]*)?\{[ \t]*$|\([^\n]*\)[ \t]*:|:)`,
+    String.raw`(?:<[^>\n]{0,200}>[ \t]*)?(?:\([^\n]{0,200}\)[ \t]*(?::[^\n]{0,200})?\{[ \t]*$|` +
+    String.raw`\([^\n]{0,200}\)[ \t]*:|:)`,
   "gm",
 )
 // An assignment starting a line, at a module's top: MAX_SIZE = 10 (Python), name=value (shell).

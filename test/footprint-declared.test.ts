@@ -123,6 +123,12 @@ describe("the names a source declares", () => {
     expect(declaredIn(text)).toEqual([])
   })
 
+  test("are read at once from a long line that looks like a call", () => {
+    const started = performance.now()
+    declaredIn(`define(${"a?f(b):g(c),".repeat(40_000)}`)
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+
   test("are names written in the text, whatever it holds", () => {
     fc.assert(
       fc.property(fc.string({ maxLength: 300 }), (text) => {
