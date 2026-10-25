@@ -14,8 +14,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { CanUseTool, PermissionResult, PermissionUpdate } from "@anthropic-ai/claude-agent-sdk"
 import { BunFileSystem, BunServices } from "@effect/platform-bun"
-import { Console, Effect, Exit, Layer, Result, Stream } from "effect"
+import { Console, Effect, Exit, Fiber, Layer, Result, Stream } from "effect"
 import { Command } from "effect/cli"
+import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { Attention, type AttentionRequest, denialMessage } from "../src/agent/Attention.ts"
 import {
@@ -41,6 +42,7 @@ import {
   type Given,
   howToAnswer,
   list,
+  lookEvery,
   NoSuchRequest,
   NotTaken,
   show,
@@ -55,15 +57,22 @@ import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { openFibers } from "./fibers.ts"
 
-type Env = Attention | Log | EventStream | Captured
+type Env = Attention | Log | EventStream | Captured | TestClock.TestClock
 
 const tempRepo = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-attention-files-")))
 
 const me = process.getuid?.() ?? 0
 
 /**
+ * The poll the tests serve with, which only TestClock moves: tutti answer's look, so that one step
+ * of the clock wakes both the run's scan and the command waiting for it.
+ */
+const poll = lookEvery
+
+/**
  * Runs `effect` in the repo at `repo`, with the Attention test layer (every request waits for an
- * answer) over captured logs and events, and the run's side of the attention files serving it.
+ * answer) over captured logs and events, and the run's side of the attention files serving it,
+ * under TestClock.
  */
 const run = <A, E>(
   repo: string,
@@ -76,7 +85,7 @@ const run = <A, E>(
         if (options.serving !== false) {
           yield* serve({
             repo,
-            poll: "50 millis",
+            poll,
             ...(options.uid === undefined ? {} : { uid: options.uid }),
           })
         }
@@ -86,6 +95,7 @@ const run = <A, E>(
       Effect.provide(
         attentionLayer().pipe(
           Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer(), BunFileSystem.layer)),
+          Layer.provideMerge(TestClock.layer()),
         ),
       ),
     ),
@@ -133,14 +143,49 @@ const ask = (
 
 const settled = (result: Promise<PermissionResult | null>) => Effect.promise(() => result)
 
-/** Waits up to 5 seconds for `check` to hold, looking every 10 ms. */
-const until = (what: string, check: () => boolean) =>
+const tenMillis = Effect.promise(() => Bun.sleep(10))
+
+/** Looks for `check` to hold up to 500 times, doing `between` between looks. */
+const waitFor = (what: string, check: () => boolean, between: Effect.Effect<void, never, Env>) =>
   Effect.gen(function* () {
     for (let i = 0; i < 500; i++) {
       if (check()) return
-      yield* Effect.sleep("10 millis")
+      yield* between
     }
     return yield* Effect.die(new Error(`timed out waiting for ${what}`))
+  })
+
+/**
+ * Waits up to 5 seconds of real time for `check` to hold, looking every 10 ms: for what follows the
+ * Attention streams, which no clock drives.
+ */
+const until = (what: string, check: () => boolean) => waitFor(what, check, tenMillis)
+
+/**
+ * Waits for `check` to hold, moving the poll on by TestClock at each look, with 10 ms of real time
+ * after it: for what the run's scan of the folder does, which the poll wakes whatever the watch
+ * sees.
+ */
+const polled = (what: string, check: () => boolean) =>
+  waitFor(what, check, Effect.andThen(TestClock.adjust(poll), tenMillis))
+
+/** The call's result, once the run's scan has taken an answer to it. */
+const taken = (result: Promise<PermissionResult | null>) =>
+  Effect.gen(function* () {
+    let settledTo: { readonly value: PermissionResult | null } | undefined
+    result.then((value) => {
+      settledTo = { value }
+    })
+    yield* polled("the answer to be taken", () => settledTo !== undefined)
+    return (settledTo as { readonly value: PermissionResult | null }).value
+  })
+
+/** Runs `effect`, which waits for the run to take an answer, moving the poll and its look on. */
+const answering = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const fiber = yield* Effect.forkChild(effect)
+    yield* polled("tutti answer to end", () => fiber.pollUnsafe() !== undefined)
+    return yield* Fiber.join(fiber)
   })
 
 const present = (repo: string, path: string) => () => existsSync(join(repo, path))
@@ -156,8 +201,8 @@ const writeAnswer = (
 /** What the run said about its refusal of `id`'s answer, once it has. */
 const refusal = (repo: string, id: string) =>
   Effect.gen(function* () {
-    yield* until(`${id}'s refusal`, present(repo, refusedFile(id)))
-    yield* until(`${id}'s answer to go`, absent(repo, answerFile(id)))
+    yield* polled(`${id}'s refusal`, present(repo, refusedFile(id)))
+    yield* polled(`${id}'s answer to go`, absent(repo, answerFile(id)))
     return JSON.parse(readFileSync(join(repo, refusedFile(id)), "utf8")).reason as string
   })
 
@@ -363,7 +408,7 @@ describe("attention files: answers the run takes", () => {
       Effect.gen(function* () {
         const { request, result } = yield* ask("tut-1", "Bash", rm)
         yield* writeAnswer(repo, request.id, { answer: "allow" })
-        const settledResult = yield* settled(result)
+        const settledResult = yield* taken(result)
         yield* until("the answer file to go", absent(repo, answerFile(request.id)))
         yield* until("the request file to go", absent(repo, requestFile(request.id)))
         return {
@@ -396,7 +441,7 @@ describe("attention files: answers the run takes", () => {
           answer: "allow",
           choices: ["SQLite", "Cache, Queue"],
         })
-        return yield* settled(result)
+        return yield* taken(result)
       }),
     )
     expect(result).toEqual({
@@ -415,7 +460,7 @@ describe("attention files: answers the run takes", () => {
       Effect.gen(function* () {
         const { request, result } = yield* ask("tut-1", "Bash", rm)
         yield* writeAnswer(repo, request.id, { answer: "deny", reason: "build is needed" })
-        return yield* settled(result)
+        return yield* taken(result)
       }),
     )
     expect(result).toEqual({
@@ -432,7 +477,7 @@ describe("attention files: answers the run takes", () => {
       Effect.gen(function* () {
         const { request, result } = yield* ask("tut-1", "Bash", rm, held())
         yield* writeAnswer(repo, request.id, { answer: "allow", confirm: true })
-        return yield* settled(result)
+        return yield* taken(result)
       }),
     )
     expect(result).toMatchObject({ behavior: "allow" })
@@ -701,7 +746,7 @@ describe("tutti answer", () => {
       Effect.gen(function* () {
         const { request, result } = yield* ask("tut-1", "Bash", rm, held())
         yield* until("the request file", present(repo, requestFile(request.id)))
-        yield* answer(repo, { request: request.id, answer: "allow", confirm: true })
+        yield* answering(answer(repo, { request: request.id, answer: "allow", confirm: true }))
         expect(existsSync(join(repo, answerFile(request.id)))).toBe(false)
         return yield* settled(result)
       }),
@@ -744,7 +789,7 @@ describe("tutti answer", () => {
       Effect.gen(function* () {
         const { request } = yield* ask("tut-1", "Bash", rm)
         yield* until("the request file", present(repo, requestFile(request.id)))
-        return yield* Effect.exit(answer(repo, { request: request.id, answer: "deny" }))
+        return yield* Effect.exit(answering(answer(repo, { request: request.id, answer: "deny" })))
       }),
       { uid: me + 1 },
     )
@@ -767,7 +812,9 @@ describe("tutti answer", () => {
         mkdirSync(join(repo, attentionFolder), { recursive: true })
         writeFileSync(join(repo, requestFile(request.id)), encodeFile(toRequestFile(request)))
         return yield* Effect.exit(
-          answer(repo, { request: request.id, answer: "deny" }, { within: "300 millis" }),
+          answering(
+            answer(repo, { request: request.id, answer: "deny" }, { within: "300 millis" }),
+          ),
         )
       }),
       { serving: false },
@@ -849,12 +896,10 @@ describe("tutti answer", () => {
           )
           yield* cli(repo, ["--json"], out.console)
           const listed = JSON.parse(out.printed.join("\n"))
-          yield* cli(
-            repo,
-            ["r1", "allow", "--choice", "Postgres", "--choice", "Search"],
-            out.console,
+          yield* answering(
+            cli(repo, ["r1", "allow", "--choice", "Postgres", "--choice", "Search"], out.console),
           )
-          yield* cli(repo, ["r2", "deny", "--reason", "not now"], out.console)
+          yield* answering(cli(repo, ["r2", "deny", "--reason", "not now"], out.console))
           return {
             results: [yield* settled(question.result), yield* settled(permission.result)],
             listed,
