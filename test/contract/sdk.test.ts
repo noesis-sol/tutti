@@ -884,6 +884,26 @@ live.describe("Agent SDK contract: canUseTool", () => {
   }
   const removal =
     "Run exactly this Bash command, as written: `rm -rf $TUTTI_CONTRACT_TARGET/*`. If it is refused, reply exactly REFUSED and stop; don't try another way."
+  /** Whether `request` is a call that removes: a Bash command with `rm` in it. */
+  const removes = (request: AttentionRequest): boolean =>
+    request.kind._tag === "Permission" && /\brm\b/.test(String(request.kind.input.command ?? ""))
+  /**
+   * Allows the calls the model makes before the removal (it may check the variable first, with
+   * echo or ls) and leaves the removal open for the test.
+   */
+  const allowUntilRemoval: Policy = (request) => (removes(request) ? undefined : { _tag: "Allow" })
+  /** The removal's request, once Attention holds it; the calls allowed before it come and go. */
+  const removalRequest = Effect.gen(function* () {
+    const attention = yield* Attention
+    const open = yield* attention.current.pipe(
+      Effect.repeat({
+        until: (open) => open.some(removes),
+        schedule: Schedule.spaced(Duration.millis(50)),
+      }),
+      Effect.timeout(waitLimit),
+    )
+    return open.find(removes) as AttentionRequest
+  })
 
   live.test(
     "in default mode a held removal asks with defaultToNo and no Allow for this run",
@@ -896,13 +916,12 @@ live.describe("Agent SDK contract: canUseTool", () => {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
           const uuid = yield* host.send(ticket, { text: removal, from: "clientComposed" })
-          yield* stateUntil((s) => s._tag === "NeedsYou")
-          const request = yield* onlyRequest
+          const request = yield* removalRequest
           yield* (yield* Attention).answer(request.id, { _tag: "Deny" }, "screen")
           yield* messagesUntil("the turn answered", answered(uuid))
           return { request, state: yield* stateUntil((s) => s._tag === "Idle") }
         }),
-        { mode: "default", env: { TUTTI_CONTRACT_TARGET: "build" } },
+        { mode: "default", policy: allowUntilRemoval, env: { TUTTI_CONTRACT_TARGET: "build" } },
       )
       expect(request.kind._tag === "Permission" && request.kind.tool).toBe("Bash")
       expect(request.kind._tag === "Permission" && request.kind.summary).toContain("rm -rf")
