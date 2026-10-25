@@ -1,7 +1,8 @@
 // What a worker consumes (§ 7.5's resource line, worker-view design D2): its time on the ticket,
-// its tokens and dollars (Spending's sums), how full its context window is (the host's reading
-// after each finished turn), its compactions (the ledger's tallies), and on a subscription login
-// its ticket's estimated share of the account's five-hour window.
+// its tokens and dollars (Spending's sums, live while a turn goes on), how full its context window
+// is (the host's reading after its model calls and each finished turn), its compactions (the
+// ledger's tallies), and on a subscription login its ticket's estimated share of the account's
+// five-hour window.
 //
 // Claude Code reports the account's windows, not a session's: so the share is an estimate, the
 // window's rise over the run (usageWindows.ts riseStep) shared among the run's workers in proportion

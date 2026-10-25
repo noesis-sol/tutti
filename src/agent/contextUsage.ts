@@ -1,7 +1,7 @@
 // A worker's context window (§ 7.5's resource line): how full it is, as the session's
-// query.getContextUsage() answers after each finished turn. The window is the one Claude Code
-// compacts at (the SDK's `maxTokens`, its resolved autocompact window: 200K on a 1M-token model),
-// so a full gauge means "compacts now". The answer is the CLI's, of whatever version: each field is
+// query.getContextUsage() answers after its model calls and each finished turn. The window is the
+// one Claude Code compacts at (the SDK's `maxTokens`, its resolved autocompact window: 200K on a
+// 1M-token model), so a full gauge means "compacts now". The answer is the CLI's, of whatever version: each field is
 // read defensively, and an answer without its figures is none.
 import { Predicate } from "effect"
 

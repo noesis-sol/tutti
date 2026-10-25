@@ -147,7 +147,7 @@ import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
 import { watchSleeps } from "./slept.ts"
-import { endRecord, Spending } from "./spending.ts"
+import { endRecord, Spending, showSums } from "./spending.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold } from "./usageLimit.ts"
@@ -701,12 +701,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* watch(Stream.runForEach(queue.checksAhead, showOn(status, "checksAhead", Object.is)))
     // The environment probe's session shows as a card while it runs.
     yield* watch(Stream.runForEach(environment.probing, showOn(status, "probe")))
-    // What each worker consumes, for its view's resource line (§ 7.5): its tokens and dollars after
-    // each result, and how full its context is after each finished turn.
+    // What each worker consumes, for its view's resource line (§ 7.5): its tokens and dollars, live
+    // while a turn goes on, at most once a second (showSums); and how full its context is, as the
+    // host last asked it.
     if (screen !== null) {
       const spending = yield* Effect.serviceOption(Spending)
       if (Option.isSome(spending)) {
-        yield* watch(Stream.runForEach(spending.value.sums, showOn(status, "spending", Object.is)))
+        yield* watch(
+          Effect.scoped(showSums(spending.value.sums, showOn(status, "spending", Object.is))),
+        )
       }
       yield* watch(Stream.runForEach(host.contexts, showOn(status, "contexts", Object.is)))
     }

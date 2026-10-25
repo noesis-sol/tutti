@@ -41,8 +41,10 @@
 // resume waits for a Closing session's end, so two Claude Codes never share a session; the start
 // itself runs in the session's scope, so closing a Starting session cancels it.
 //
-// After each finished turn the host asks the session how full its context window is
-// (getContextUsage), for the worker view's resource line (§ 7.5).
+// The host asks the session how full its context window is (getContextUsage), for the worker
+// view's resource line (§ 7.5): after an assistant message of its own, not a subagent's, at most
+// once every measureEvery, so the gauge shows from the first model call of a long turn; and after
+// each finished turn.
 //
 // A resumed session keeps the system prompt it recorded as it began (`snapshot: true`, § 4.1), so
 // the standing rules' notes that can change, the requires list's and the check's (changingNotes),
@@ -54,6 +56,7 @@ import { join } from "node:path"
 import type { McpSdkServerConfigWithInstance, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import {
   Cause,
+  Clock,
   Data,
   Deferred,
   Duration,
@@ -163,6 +166,9 @@ export const unansweredWhy = (limit: Duration.Duration): string =>
 /** How long a session's mcpServerStatus() has to be answered before its start goes on unchecked. */
 export const statusLimit: Duration.Duration = Duration.seconds(10)
 
+/** How often a session is asked how full its context window is while a turn goes on, at most. */
+export const measureEvery: Duration.Duration = Duration.seconds(10)
+
 /** Why a worker is gone when its stream ended without tutti closing it. */
 export const endedWhy = "its session ended"
 
@@ -215,6 +221,8 @@ interface Live {
    * till then the stream's end, or a startup failure's result, is the start's to settle (make).
    */
   readonly initialized: Deferred.Deferred<boolean>
+  /** When it was last asked how full its context window is, in epoch milliseconds. */
+  readonly measured: { at: number | undefined }
 }
 
 /**
@@ -465,16 +473,35 @@ export const layer = (
             yield* Deferred.succeed(session.startupFailure, refused)
             if (yield* Deferred.await(session.initialized)) yield* gone(session, refused)
           } else if (reading._tag === "Result") {
-            yield* Effect.forkIn(measure(session), session.scope)
+            yield* measure(session, true)
+          } else if (
+            reading._tag === "Assistant" &&
+            message.type === "assistant" &&
+            (message.parent_tool_use_id ?? null) === null
+          ) {
+            yield* measure(session, false)
           }
         })
 
       /**
-       * How full the session's context window is once a turn has finished, for the worker view
-       * (§ 7.5): asked of the CLI beside the reader, from the last response's usage (`summary`, no
-       * token-count calls). An answer that doesn't come, or can't be read, leaves the last figure.
+       * Asks how full the session's context window is, in a fiber of its own: after a finished turn
+       * (`ended`) always, after its own model call once measureEvery has gone since it was last asked.
        */
-      const measure = (session: Live) =>
+      const measure = (session: Live, ended: boolean) =>
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis
+          const last = session.measured.at
+          if (!ended && last !== undefined && now - last < Duration.toMillis(measureEvery)) return
+          session.measured.at = now
+          yield* Effect.forkIn(asked(session), session.scope)
+        })
+
+      /**
+       * How full the session's context window is, for the worker view (§ 7.5): asked of the CLI
+       * beside the reader, from the last response's usage (`summary`, no token-count calls). An
+       * answer that doesn't come, or can't be read, leaves the last figure.
+       */
+      const asked = (session: Live) =>
         session.claude.contextUsage.pipe(
           Effect.flatMap((answer) => {
             const usage = readContextUsage(answer)
@@ -721,6 +748,7 @@ export const layer = (
                 capabilities: new Set(),
                 startupFailure,
                 initialized,
+                measured: { at: undefined },
               }
               yield* Effect.sync(() => {
                 const current = sessions.get(ticket)

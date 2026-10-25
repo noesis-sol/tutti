@@ -237,8 +237,8 @@ export class AgentHost extends Context.Service<
     /** Every worker's compactions, from now on, as their PreCompact hooks report them (§ 4.2). */
     readonly compactions: Stream.Stream<Compaction>
     /**
-     * How full each worker's context window is, by ticket, as its session last said after a finished
-     * turn (§ 7.5): now, then on each change. A worker ended is left out.
+     * How full each worker's context window is, by ticket, as its session last said after a model
+     * call or a finished turn (§ 7.5): now, then on each change. A worker ended is left out.
      */
     readonly contexts: Stream.Stream<ReadonlyMap<TicketId, ContextUsage>>
     /**
@@ -307,7 +307,8 @@ export interface Workers {
    * logged; an assistant message's calls are kept for the denials that name them, a
    * `permission_denied` is recorded through Attention, a `rate_limit_event` is reported to
    * UsageLimits, when there is one (§ 4.12), and a result, read or not, goes to Spending, when
-   * there is one, for its `turn` record (§ 10). What it read, for the host to read no more of it.
+   * there is one, for its `turn` record (§ 10), as does an assistant message, for its usage counted
+   * live until then (§ 7.5). What it read, for the host to read no more of it.
    */
   readonly emit: (
     entry: WorkerEntry,
@@ -327,7 +328,7 @@ export interface Workers {
   readonly compacted: (entry: WorkerEntry, trigger: string) => Effect.Effect<void>
   /** Every worker's compactions, from now on. */
   readonly compactions: Stream.Stream<Compaction>
-  /** How full the worker's context window is, as its session said after a finished turn. */
+  /** How full the worker's context window is, as its session said after a model call or a turn. */
   readonly measured: (entry: WorkerEntry, usage: ContextUsage) => Effect.Effect<void>
   /** How full each worker's context window is, by ticket: now, then on each change. */
   readonly contexts: Stream.Stream<ReadonlyMap<TicketId, ContextUsage>>
@@ -537,6 +538,10 @@ export const makeWorkers = (
               break
             case "Assistant":
               keepCalls(entry.calls, reading.calls)
+              // Its usage, counted live until the turn's result (§ 7.5).
+              if (Option.isSome(spending)) {
+                yield* spending.value.message(entry.ticket, { session, message })
+              }
               break
             case "Denied": {
               const denied = reading.message

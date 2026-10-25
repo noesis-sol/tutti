@@ -92,7 +92,8 @@ export type Step = Data.TaggedEnum<{
   Sleep: { readonly duration: Duration.Input }
   /**
    * The session answers getContextUsage() with `answer` from now on, as the live host asks it after
-   * each finished turn, for the worker's context (§ 7.5); before, the request fails.
+   * its model calls and each finished turn, for the worker's context (§ 7.5); before, the request
+   * fails. A function `answer` is called for each request, its value the answer.
    */
   Context: { readonly answer: unknown }
   /** Runs `effect`: what the worker does outside the session, to an in-memory Beads or Git. */
@@ -516,7 +517,10 @@ const playing = (
       contextUsage: Effect.suspend(() =>
         state.context === undefined
           ? Effect.fail(failed("the script gives no getContextUsage() answer"))
-          : Effect.succeed(state.context),
+          : Effect.sync(() => {
+              const answer = state.context
+              return typeof answer === "function" ? answer() : answer
+            }),
       ),
       interrupt: (cancelQueued) =>
         Effect.gen(function* () {
