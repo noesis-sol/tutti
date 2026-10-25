@@ -129,8 +129,12 @@ export interface Sources<R> {
   readonly cwd: string
   /** The embedded file, in $bunfs; null from source. */
   readonly embedded: string | null
+  /** The copy of the embedded file extracted before, where it is still whole; else null. */
+  readonly copied: (file: string) => string | null
   /** A real file with the embedded one's content: `extractFromBunfs`, its argument if it fails. */
   readonly extract: (file: string) => string
+  /** Runs an extraction, with the run's getting-ready line saying so (src/run/gettingReady.ts). */
+  readonly unpacking: (extracting: Effect.Effect<string>) => Effect.Effect<string>
   /** Keeps the extracted copy at a path in use, and removes other versions' stale copies. */
   readonly tidy: (path: string) => void
   /** Where a command name with no `/` is on PATH, or null. */
@@ -194,7 +198,9 @@ export const resolveWith = <R>(
     }
     if (sources.embedded === null) return { path: null, warnings: [], problems: [] }
     const file = sources.embedded
-    const path = yield* Effect.sync(() => sources.extract(file))
+    const path =
+      (yield* Effect.sync(() => sources.copied(file))) ??
+      (yield* sources.unpacking(Effect.sync(() => sources.extract(file))))
     if (!inBunfs(path)) {
       yield* Effect.sync(() => sources.tidy(path))
       return { path, warnings: [], problems: [] }
@@ -224,16 +230,14 @@ const claudeVersion = (path: string) =>
     ),
   )
 
-/** The embedded `file` as a real file: the copy already extracted, else `extractFromBunfs`'s. */
-const extract = (file: string): string => {
+/** The copy of the embedded `file` already extracted, where it is still whole; else null. */
+const copied = (file: string): string | null => {
   const known = embeddedTarget === null ? null : knownFor(embeddedTarget)
   const uid = process.getuid?.()
   const base = extractionBase(process.env, process.platform, uid)
-  const copy =
-    known === null || base === null || uid === undefined
-      ? null
-      : extractedCopy(file, known, base, uid)
-  return copy ?? extractFromBunfs(file)
+  return known === null || base === null || uid === undefined
+    ? null
+    : extractedCopy(file, known, base, uid)
 }
 
 const tidy = (path: string): void => {
@@ -244,12 +248,22 @@ const tidy = (path: string): void => {
   }
 }
 
-/** The Claude Code this tutti's sessions run, `given` being --claude as given, from `cwd`. */
-export const resolveClaude = (given: string | null, cwd: string) =>
+/**
+ * The Claude Code this tutti's sessions run, `given` being --claude as given, from `cwd`; an
+ * extraction run under `unpacking`.
+ */
+export const resolveClaude = (
+  given: string | null,
+  cwd: string,
+  unpacking: (extracting: Effect.Effect<string>) => Effect.Effect<string> = (extracting) =>
+    extracting,
+) =>
   resolveWith(given, {
     cwd,
     embedded: embeddedFile,
-    extract,
+    copied,
+    extract: extractFromBunfs,
+    unpacking,
     tidy,
     which: whichOnPath,
     version: claudeVersion,

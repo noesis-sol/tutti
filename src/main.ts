@@ -63,6 +63,7 @@ import type { DrainRequest } from "./run/drain.ts"
 import { EventStream } from "./run/eventstream.ts"
 import { type FeatureIO, inRenderer, planAndFile, scopedTo } from "./run/feature.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
+import { type GettingReady, gettingReady, readySteps } from "./run/gettingReady.ts"
 import { exitCodes } from "./run/holds.ts"
 import { interview, interviewEnding } from "./run/interview.ts"
 import { keepAwake, keepAwakePlan } from "./run/keepAwake.ts"
@@ -72,7 +73,6 @@ import { detail, type Line, Log, type Sink } from "./run/log.ts"
 import { otherWorkers } from "./run/machine.ts"
 import {
   check as checkNothing,
-  endIfNothing,
   endWith,
   heldAtStart,
   type Options as NothingOptions,
@@ -213,8 +213,12 @@ const exitNow =
       process.exit(code)
     })
 
-/** Says `message` on stderr, and gives the exit code of a run that can't start. */
-const cannotStart = (message: string) => Effect.as(Console.error(message), exitCodes.setup)
+/**
+ * Says `message` on stderr, once the getting-ready line `ready` has gone, and gives the exit code
+ * of a run that can't start.
+ */
+export const cannotStart = (ready: GettingReady) => (message: string) =>
+  ready.end.pipe(Effect.andThen(Console.error(message)), Effect.as(exitCodes.setup))
 
 /**
  * Says that release `newer` is out (§ 7.11 "A newer release"), below the run's end: on stdout after
@@ -244,6 +248,17 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       drain: (signal) => Queue.offerUnsafe(drains, { on: true, how: `by ${signal}` }),
       suspend: () => Queue.offerUnsafe(suspends, undefined),
     })
+    // What the environment says of the terminal; then the line saying what tutti is doing until
+    // the first thing it draws (src/run/gettingReady.ts), gone with the run's scope at the latest.
+    const terminal = yield* Effect.provide(
+      Effect.gen(function* () {
+        return yield* Tty
+      }),
+      ttyLayer,
+    )
+    const ready = yield* gettingReady(stdout, terminal)
+    yield* Effect.addFinalizer(() => ready.end)
+    const cannot = cannotStart(ready)
     // A release build's daily check for a newer release (§ 12), in the background (not the npm
     // package's, which tutti update leaves to the package manager); its answer, if
     // it has one by then, is said once the run has ended.
@@ -256,11 +271,14 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           now: Date.now,
         })
       : Effect.succeed(Option.none<string>())
-    const checked = yield* Effect.result(check(live(cwd, flags)).pipe(Effect.provide(gitLayer)))
+    const checked = yield* Effect.result(
+      check(live(cwd, flags, ready.unpacking)).pipe(Effect.provide(gitLayer)),
+    )
     if (Result.isFailure(checked)) {
       const failed = checked.failure
-      return yield* cannotStart(failed instanceof StartupFailed ? failed.message : String(failed))
+      return yield* cannot(failed instanceof StartupFailed ? failed.message : String(failed))
     }
+    yield* ready.step(readySteps.starting)
     // --keep-awake (src/run/keepAwake.ts): the command started as the run begins, or the warning
     // the START block gives where there is none.
     const awake = keepAwakePlan({
@@ -283,7 +301,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       Effect.flatMap(Git, (git) => git.commonDir(config.repo)).pipe(Effect.provide(gitLayer)),
     )
     if (Result.isFailure(commonDir)) {
-      return yield* cannotStart(`tutti cannot find the git folder of ${config.repo}`)
+      return yield* cannot(`tutti cannot find the git folder of ${config.repo}`)
     }
     const holder: Holder = {
       pid: process.pid,
@@ -298,15 +316,9 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         lock.acquire({ repo: config.repo, commonDir: commonDir.success, holder }),
       ).pipe(Effect.provide(RunLock.layer)),
     )
-    if (Result.isFailure(locked)) return yield* cannotStart(locked.failure.message)
+    if (Result.isFailure(locked)) return yield* cannot(locked.failure.message)
     const lock = locked.success
 
-    const terminal = yield* Effect.provide(
-      Effect.gen(function* () {
-        return yield* Tty
-      }),
-      ttyLayer,
-    )
     const mode = outputMode(terminal, config.plain)
     const asks = asking(terminal, config, mode)
     const runtime = yield* Effect.acquireRelease(
@@ -319,7 +331,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     const runScope = yield* Effect.scope
     const services = yield* Effect.result(runtime.contextEffect)
     if (Result.isFailure(services)) {
-      return yield* cannotStart(`tutti cannot start its run: ${String(services.failure)}`)
+      return yield* cannot(`tutti cannot start its run: ${String(services.failure)}`)
     }
 
     const code = yield* Effect.gen(function* () {
@@ -357,6 +369,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
 
       // The run's scope: --ticket's, or the epic --feature filed.
       let scope = config.ticket
+      yield* ready.step(readySteps.backlog)
       // bd failing to list the tickets left unmerged is something to run: the run lists them again,
       // and stops on it.
       const unmerged = yield* Effect.result(stillUnmerged({ repo: config.repo, base }))
@@ -377,21 +390,27 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           held: heldAtStart(beads, left, branches),
         }
       }
-      /** Whether there is nothing to run, which it then reports on the main screen. */
-      const nothingReported = Effect.gen(function* () {
-        if (Result.isFailure(unmerged)) return false
-        return (yield* endIfNothing(nothingOptions(), output)) !== null
-      })
       /** Nothing to run, to report once the renderer has gone; null when there is something. */
       const nothingYet = Effect.gen(function* () {
+        yield* ready.step(readySteps.backlog)
         const nothing = Result.isSuccess(unmerged)
           ? yield* Effect.result(checkNothing(nothingOptions()))
           : Result.succeed(null)
+        yield* ready.step(readySteps.starting)
         return Result.isSuccess(nothing) && nothing.success !== null
           ? ({ _tag: "Nothing", nothing: nothing.success } as const)
           : null
       })
+      /** Whether there is nothing to run, which it then reports on the main screen. */
+      const nothingReported = Effect.gen(function* () {
+        const nothing = yield* nothingYet
+        if (nothing === null) return false
+        yield* ready.end
+        yield* endWith(nothing.nothing, output)
+        return true
+      })
       const count = asks === "no" ? TicketCount.Unknown() : yield* ticketCount(nothingOptions())
+      yield* ready.step(readySteps.starting)
 
       // Whether the keep-awake command holds the machine awake, for the title line's badge.
       const keepingAwake = yield* SubscriptionRef.make(false)
@@ -404,6 +423,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const begin = (work: Work) =>
         Effect.gen(function* () {
           if (awake._tag === "Command") {
+            // Its line goes to the log, which plain output prints.
+            if (mode._tag === "Plain") yield* ready.end
             yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(Scope.provide(runScope))
           }
           const feature = work._tag === "Feature" ? work.description : config.feature
@@ -425,6 +446,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         })
       /** A new feature chosen at the start question asked as lines: the interview needs the renderer. */
       const noInterview = Effect.gen(function* () {
+        yield* ready.end
         yield* Console.error(interviewUnavailable)
         yield* Effect.flatMap(endRecord(exitCodes.ok), events.emit)
         return exitCodes.ok
@@ -440,6 +462,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       }) =>
         Effect.gen(function* () {
           if (config.feature === null) return undefined
+          // Its own organ lines follow the getting-ready line: one spinner at a time.
+          yield* ready.end
           const theme = yield* printedThemeOf(io.out)
           const featured = yield* planAndFile(
             { request: config.feature, repo: config.repo, yes: config.yes },
@@ -480,7 +504,10 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       if (mode._tag === "Plain") {
         const work = yield* askThenBegin(
           asks === "lines" && mainTheme !== undefined
-            ? askLines(process.stdin, (text) => process.stdout.write(text), mainTheme, count)
+            ? Effect.andThen(
+                ready.end,
+                askLines(process.stdin, (text) => process.stdout.write(text), mainTheme, count),
+              )
             : Effect.succeed(Work.Tickets()),
           begin,
         )
@@ -507,6 +534,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         })
         if (stopped !== undefined) return stopped
         if (yield* nothingReported) return exitCodes.ok
+        yield* ready.end
         const ran = yield* listening(
           scoped(
             run({
@@ -537,12 +565,14 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const shown = yield* Effect.scoped(
         Effect.gen(function* () {
           const opened = yield* Effect.scope
+          // The getting-ready line gone before the renderer takes the screen.
+          const open = openRenderer({ chosen: config.appearance, mouse: config.mouse }).pipe(
+            Scope.provide(opened),
+          )
           const screen = inRenderer({
             out: stdout,
             error,
-            open: openRenderer({ chosen: config.appearance, mouse: config.mouse }).pipe(
-              Scope.provide(opened),
-            ),
+            open: ready.end.pipe(Effect.andThen(open)),
             ask: (shell, plan, question) => askPlan(shell, themeOf, plan, question),
           })
           // Added before the renderer opens, so it runs once the renderer has closed.
@@ -606,7 +636,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         }),
       ).pipe(Effect.result)
       if (Result.isFailure(shown)) {
-        return yield* cannotStart(`tutti cannot open its screen: ${shown.failure.message}`)
+        return yield* cannot(`tutti cannot open its screen: ${shown.failure.message}`)
       }
       const ended = shown.success
       switch (ended._tag) {

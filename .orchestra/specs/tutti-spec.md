@@ -1046,6 +1046,7 @@ As orchestra: every section of evidence goes between `<evidence id="<random>">` 
 | Interview view | New feature | §4.10, the worker view's components |
 | Plan confirmation | `--feature`, or the end of an interview | the epic and its tickets (type, priority, files, `after:`), then `[y/N]` |
 | Init form | `tutti init` on a TTY | two steps, **Workers** and **Checks**, under a stepper; the scout with a spinner, `Esc` skips it (§8.3) |
+| Getting ready | a run starting, until its first screen | an organ line on the main screen: `⣾ Getting ready  checking the setup and your Claude login · 0:03` |
 | Nothing to run | no dashboard | a box printed on the main screen |
 | Summary | after the dashboard closes | printed on the main screen: title, totals, the run's figures, every ticket, the closing line, the scope line, organ lines with spinners, the report |
 
@@ -1056,6 +1057,8 @@ As orchestra: every section of evidence goes between `<evidence id="<random>">` 
 - the report, rendered by a terminal Markdown renderer (headings, lists, emphasis, code, links), chosen in M3
 
 `tutti init` has its own single renderer for its form.
+
+**Getting ready.** Before its first screen a bare `tutti` (the run, not `tutti init`, `tutti answer` or the other commands) says what it is doing, on one spinner line on the main screen, from the moment its flags are parsed, before the startup checks, until the first thing it writes or draws: the start question, `--feature`'s organ lines and plan confirmation, the dashboard, the Nothing to run box, the start block of a plain run, or why it can't start (a startup problem or warning, `tutti init`'s message in a project not set up). It is the printer's organ line (`src/run/gettingReady.ts`, over `src/print/organLine.ts`), `Getting ready` and the step under way: `unpacking Claude Code` while a compiled build's embedded one is extracted (a frame is drawn first, as the copy holds the thread), `checking the setup and your Claude login` during the startup checks, `reading the backlog` for the tickets left unmerged, the carried ones and the ticket count, or the nothing check, and `starting the run` for the rest. It ends with no final line, so what follows looks as it would without it, and `--feature`'s own organ lines start after it: never two spinners. Its first frame comes after the spinner's interval, so a fast start shows nothing; it is drawn only where stdout is a terminal and `TERM` isn't dumb, so `tutti --plain | …` and scripts get nothing. Ctrl+C, a signal or a failure erases it, leaving no half line. The appearance is read after it starts, so it is drawn in styles that don't depend on it: the spinner bold and the text in the terminal's own colour, the time faint, as under `NO_COLOR`.
 
 **The run's figures.** Under the summary's totals, a short block says where the time and the tokens went and how the checks did, without opening DuckDB:
 
@@ -1545,7 +1548,7 @@ On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI u
 Carried over too, and not part of any scheme:
 
 - rounded frames (`╭╮╰╯`)
-- the spinner, Bubbles' `Dot`: frames `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷`, ten a second
+- the spinner, Bubbles' `Dot`: frames `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷`, ten a second; on the dashboard, in init's form, on the organ lines, and on the line a run draws while it gets ready (§7.1 "Getting ready")
 - the state glyphs `▶ ✓ ↷ ! ■ ? ◷ ◼ ◆ ⟳ •`, and `○ ♪`
 - tutti's latest-action glyph, `▸`
 

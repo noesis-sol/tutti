@@ -55,9 +55,11 @@ const fakeClaude = (dir: string, version: string, name = "claude") => {
 const sources = (overrides: Partial<Sources<never>> = {}): Sources<never> => ({
   cwd: "/work/project",
   embedded: null,
+  copied: () => null,
   extract: () => {
     throw new Error("nothing is embedded")
   },
+  unpacking: (extracting) => extracting,
   tidy: () => {},
   which: () => null,
   version: () => Effect.succeed(`${embeddedVersion} (Claude Code)`),

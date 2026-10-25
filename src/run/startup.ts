@@ -491,14 +491,21 @@ export const check = <R>(checking: Checking<R>) =>
     } satisfies Started
   })
 
-/** The checks as a run makes them: the flags' configuration, bd, and the Agent SDK's probe. */
-export const live = (cwd: string, flags: RunFlags) =>
+/**
+ * The checks as a run makes them: the flags' configuration, bd, and the Agent SDK's probe; the
+ * embedded Claude Code extracted under `unpacking` (src/run/gettingReady.ts).
+ */
+export const live = (
+  cwd: string,
+  flags: RunFlags,
+  unpacking?: (extracting: Effect.Effect<string>) => Effect.Effect<string>,
+) =>
   ({
     cwd,
     env: process.env,
     config: (repo) => load(flags, repo, cwd),
     beads: (repo) => Beads.layer({ cwd: repo }),
-    claude: (given) => resolveClaude(given, cwd),
+    claude: (given) => resolveClaude(given, cwd, unpacking),
     account: Account.layer,
   }) satisfies Checking<FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner>
 

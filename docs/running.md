@@ -13,6 +13,20 @@ git switch -c batch/$(date +%F)
 tutti
 ```
 
+**While it starts**, before its first screen, `tutti` says what it is doing on one line that
+updates in place:
+
+```
+⣾ Getting ready  checking the setup and your Claude login · 0:03
+⣾ Getting ready  reading the backlog · 0:06
+```
+
+Its steps are `unpacking Claude Code` (a release build, the first run after an update), `checking the
+setup and your Claude login`, `reading the backlog` and `starting the run`. The line goes once the
+first thing appears, the start question, the dashboard, the Nothing to run box or why the run can't
+start, leaving nothing behind. A start under a tenth of a second shows none, and neither does
+output that isn't a terminal or `TERM=dumb`: `tutti --plain | …` and scripts see what they did.
+
 `tutti` checks its setup first and lists every problem at once, with exit code 2:
 
 ```
