@@ -59,9 +59,17 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   before anything reaches the main branch.
 - If the ticket needs a decision only the maintainer can make, ask it as a question and stop; don't
   wait for an answer in this session. Commit any finished work first, then run
-  `bd create --type=task --labels human --deps blocks:TICKET_ID --title "<the question, at most 60 characters>" --description "<the context, the options and your recommendation>"`
+  `bd create --type=task --labels human --deps blocks:TICKET_ID --title "<the question, at most 60 characters>" --description "<the context, the options and your recommendation>" --metadata '<the options, as below>'`
   and `bd update TICKET_ID --status open --append-notes "Waiting on <the question's ID>: <the question>"`.
   The ticket comes back to a worker once the question is answered.
+- Every question gives 2 to 4 options, each a short label and a one-line trade-off, one of them
+  recommended, in its description and in its metadata, in the same order:
+  `--metadata '{"options": [{"label": "<label>", "description": "<its trade-off>"}, ...], "recommended": <the recommended option's index, from 0>}'`
+  (or that JSON in a file of your scratchpad, `--metadata @<the file>`, where a quote is in it).
+  A question that asks the maintainer to do or give something rather than choose (make a key, run
+  a step by hand, act under their own account), or to say yes to something done in their name,
+  adds `"maintainer_only": true` to that metadata, still with its options where it has any: tutti
+  never answers such a question for them.
 - If the ticket depends on an answered question, read the answer first with `bd show <the question's ID>`.
 - If the ticket needs work from another ticket that isn't on your base yet, don't build on that
   ticket's branch or copy its code, and leave nothing committed or changed. Add the link

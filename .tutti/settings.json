@@ -23,7 +23,7 @@
     "effort": "high"
   },
   "templates": {
-    "worker_prompt": 6,
+    "worker_prompt": 7,
     "verifier": 2,
     "check_suite_skill": 1
   }

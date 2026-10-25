@@ -116,6 +116,12 @@ Each rule of the template prevents a way a run goes wrong:
 - **Ask, don't wait.** A decision for you that can wait is a question ticket labelled `human` that
   blocks the ticket, and the worker stops; the run goes on. A quick choice you are likely there to
   make is asked in the session itself ([questions](#attention-requests)).
+- **A question gives its options.** Each question ticket has 2 to 4 options, each a label and a
+  one-line trade-off, one of them recommended, in its description and in its metadata (`options`,
+  `recommended`, as orchestra's), so tutti can tell which one the worker recommends. A question that
+  asks you to do or give something rather than choose (a key, a step by hand, something under your
+  own account), or to say yes to something done in your name, is marked `maintainer_only`: tutti
+  never answers it for you.
 - **Wait for work not merged yet.** A ticket that needs another ticket's unmerged work links it as a
   blocker, reopens and stops; tutti puts it back in the queue until the other merges.
 - **Working unattended.** A turn that ends without a tool call ends the worker's work, so it doesn't

@@ -103,6 +103,18 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     what: "what a ticket needs of the machine goes in the project's requires list, never installed by hand outside it",
     marker: requiresRule,
   },
+  {
+    version: 7,
+    section: "Close",
+    what: "a question gives its options and the recommended one in its metadata too",
+    marker: `"recommended": <the recommended option's index, from 0>`,
+  },
+  {
+    version: 7,
+    section: "Close",
+    what: "a question that asks the maintainer to act rather than choose is marked maintainer_only, never answered for them",
+    marker: `"maintainer_only": true`,
+  },
 ]
 
 /** The changes to the verifier's template, verifier.md. */

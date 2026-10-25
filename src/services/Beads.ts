@@ -14,6 +14,7 @@ import {
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { formatDuration } from "../project/configFile.ts"
+import { sanitizeLine } from "../ui/sanitize.ts"
 import {
   type Command,
   defaultMaxOutputBytes,
@@ -98,10 +99,16 @@ export interface Issue {
   readonly closeReason: string
 }
 
-/** The metadata keys tutti reads, shared with orchestra (§ 11). */
+/** The metadata keys tutti reads, shared with orchestra (§ 11) but maintainer_only, tutti's own. */
 export const MetadataKey = {
   files: "files",
   predictedFiles: "predicted_files",
+  /** A question's 2 to 4 options, each `{label, description}`, as its description gives them. */
+  options: "options",
+  /** The index of the option the worker recommends, from 0. */
+  recommended: "recommended",
+  /** A question only the maintainer can answer: one asking them to act, not to choose. */
+  maintainerOnly: "maintainer_only",
 } as const
 
 /** The label of a question for the maintainer (§ 2). */
@@ -228,6 +235,55 @@ export const metadataList = (
     .map((word) => word.replace(/^["'`[\]]+|["'`[\]]+$/g, ""))
     .filter((word) => word !== "")
 }
+
+/** One of a question's options, its label and its trade-off, each sanitised to one line (§ 7.10). */
+export interface QuestionOption {
+  readonly label: string
+  readonly description: string
+}
+
+const OptionsList = Schema.Array(
+  Schema.Struct({
+    label: Schema.String,
+    description: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  }),
+)
+
+const metadataValue = (metadata: Readonly<Record<string, unknown>>, key: string): unknown =>
+  Object.hasOwn(metadata, key) ? metadata[key] : undefined
+
+/**
+ * The options a question's metadata gives, as orchestra's questionOptions reads them: the
+ * recommended one first and the rest in their order; undefined unless the metadata gives 2 to 4
+ * options, each with a label, and `recommended` the index of one of them. A worker wrote them, so
+ * each label and description is sanitised to a line, and a label that is nothing once it is, is
+ * none. The metadata is an object or one encoded in a string, as bd gives it.
+ */
+export const questionOptions = (metadata: unknown): ReadonlyArray<QuestionOption> | undefined => {
+  const object = metadataOf(metadata)
+  const listed = Schema.decodeUnknownOption(OptionsList)(metadataValue(object, MetadataKey.options))
+  const recommended = metadataValue(object, MetadataKey.recommended)
+  if (Option.isNone(listed) || listed.value.length < 2 || listed.value.length > 4) return undefined
+  if (typeof recommended !== "number" || !Number.isInteger(recommended)) return undefined
+  if (recommended < 0 || recommended >= listed.value.length) return undefined
+  const options = listed.value.map((option) => ({
+    label: sanitizeLine(option.label).trim(),
+    description: sanitizeLine(option.description ?? "").trim(),
+  }))
+  if (options.some((option) => option.label === "")) return undefined
+  return [
+    ...options.slice(recommended, recommended + 1),
+    ...options.slice(0, recommended),
+    ...options.slice(recommended + 1),
+  ]
+}
+
+/**
+ * Whether a question asks the maintainer to do or give something, or to say yes to something done
+ * in their name, which tutti never answers for them: only for `maintainer_only` the boolean true.
+ */
+export const maintainerOnly = (metadata: unknown): boolean =>
+  metadataValue(metadataOf(metadata), MetadataKey.maintainerOnly) === true
 
 const text = (value: string | null | undefined): string => value ?? ""
 
