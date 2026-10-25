@@ -26,7 +26,7 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { waitForTest } from "../src/testing/Attention.ts"
-import type { ChecksScript } from "../src/testing/Checks.ts"
+import type { Script as ChecksScript } from "../src/testing/Checks.ts"
 import type { Files } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import {
