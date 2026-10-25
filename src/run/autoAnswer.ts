@@ -51,8 +51,8 @@ export interface AutoAnswering {
   readonly since: number
   /** The questions answered so far, in order: for the resumed worker's message and the summary. */
   readonly answered: Ref.Ref<ReadonlyArray<AnsweredQuestion>>
-  /** The questions bd couldn't answer, each warned of once; each poll tries them again. */
-  readonly failed: Ref.Ref<ReadonlySet<string>>
+  /** How many times bd couldn't answer each question; at `respondTries`, it is left to you. */
+  readonly failed: Ref.Ref<ReadonlyMap<string, number>>
 }
 
 /** --auto-answer, as the run gives it: null without it, outside a run too. */
@@ -70,7 +70,7 @@ export const makeAutoAnswering = (
       after,
       since,
       answered: yield* Ref.make<ReadonlyArray<AnsweredQuestion>>([]),
-      failed: yield* Ref.make<ReadonlySet<string>>(new Set()),
+      failed: yield* Ref.make<ReadonlyMap<string, number>>(new Map()),
     }
   })
 
@@ -139,24 +139,46 @@ const openQuestions = (issue: Issue): ReadonlyArray<TicketId> =>
       : [],
   )
 
-/** Answers `question`, which `ticket` waits on, with `option`: its record, line and label. */
+/**
+ * How many times tutti asks bd to answer a question, a look apart, before it leaves it to you: bd
+ * failing at once is mostly its database busy, and a run kept open for a bd that never answers
+ * wouldn't end.
+ */
+export const respondTries = 3
+
+/**
+ * Answers `question`, which `ticket` waits on, with `option`: its record, line and label. Whether
+ * it is answered, or is to be tried again at the next look, bd having failed to answer it.
+ */
 const answer = (
   auto: AutoAnswering,
   ticket: TicketId,
   question: Issue,
   option: QuestionOption,
-): Effect.Effect<void, never, Beads | Log | EventStream> =>
+): Effect.Effect<"answered" | "again" | "left", never, Beads | Log | EventStream> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const { id, title } = question
     const responded = yield* Effect.result(beads.respond(id, responseText(option.label)))
     if (Result.isFailure(responded)) {
-      if ((yield* Ref.get(auto.failed)).has(id)) return
-      yield* Ref.update(auto.failed, (all) => new Set([...all, id]))
-      const text = ticketLine(
-        Tag.autoAnswered,
-      )`bd could not answer ${id} (${title}) by --auto-answer: ${beadsWhy(responded.failure)}; ${ticket} still waits on you, and the next look tries again`
-      return yield* warn(text, ticket)
+      const tries = ((yield* Ref.get(auto.failed)).get(id) ?? 0) + 1
+      yield* Ref.update(auto.failed, (all) => new Map(all).set(id, tries))
+      const why = beadsWhy(responded.failure)
+      // Said the first time, and as it gives up.
+      if (tries >= respondTries) {
+        const text = ticketLine(
+          Tag.autoAnswered,
+        )`bd could not answer ${id} (${title}) by --auto-answer, ${respondTries} times: ${why}; it is left to you: bd human respond ${id}`
+        yield* warn(text, ticket)
+        return "left"
+      }
+      if (tries === 1) {
+        const text = ticketLine(
+          Tag.autoAnswered,
+        )`bd could not answer ${id} (${title}) by --auto-answer: ${why}; the next look tries again`
+        yield* warn(text, ticket)
+      }
+      return "again"
     }
     yield* Ref.update(auto.answered, (all) => [
       ...all,
@@ -180,12 +202,14 @@ const answer = (
       )`bd could not label ${id} ${autoAnsweredLabel}: ${beadsWhy(labelled.failure)}; label it with: bd label add ${id} ${autoAnsweredLabel}`
       yield* warn(failed, ticket)
     }
+    return "answered"
   })
 
 /**
  * Answers by --auto-answer each question it takes (`leftWhy`) that blocks one of the run's Asked
  * tickets and has waited --auto-answer's time: what the ready poll's fill does before takeAnswers.
- * Whether a question it takes still waits for its time, which keeps the run from ending on it.
+ * Whether a question it takes still waits, for its time or for bd to answer it again, which keeps
+ * the run from ending on it.
  */
 export const answerQuestions: Effect.Effect<boolean, never, Beads | Ledger | Log | EventStream> =
   Effect.gen(function* () {
@@ -207,11 +231,13 @@ export const answerQuestions: Effect.Effect<boolean, never, Beads | Ledger | Log
         if (leftWhy(question, auto.since) !== undefined || options === undefined) continue
         const recommended = options[0]
         if (recommended === undefined) continue
+        // Left to you once bd has failed to answer it `respondTries` times.
+        if (((yield* Ref.get(auto.failed)).get(id) ?? 0) >= respondTries) continue
         if (after > 0 && (yield* awakeSince(Date.parse(question.createdAt))) < after) {
           waiting = true
           continue
         }
-        yield* answer(auto, entry.ticket, question, recommended)
+        if ((yield* answer(auto, entry.ticket, question, recommended)) === "again") waiting = true
       }
     }
     return waiting

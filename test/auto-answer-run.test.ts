@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
-import { autoAnsweredLabel, responseText } from "../src/run/autoAnswer.ts"
+import { autoAnsweredLabel, respondTries, responseText } from "../src/run/autoAnswer.ts"
 import { askedWhy, questionKey } from "../src/run/carry.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
@@ -18,7 +18,7 @@ import { Git } from "../src/services/Git.ts"
 import type { TicketRecord } from "../src/services/Store.ts"
 import { bash, filesQuestion, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
-import type { Seed } from "../src/testing/Beads.ts"
+import { Backlog, type Seed } from "../src/testing/Beads.ts"
 import {
   advance,
   backlog,
@@ -279,6 +279,46 @@ describe("--auto-answer and a question ticket", () => {
     expect(questionIn(ran, "Which way?").status).toBe("open")
     expectLog(ran, [
       "  t-1, carried over from the last run, still waits on your answer to q-1 (Which way?); answer with: bd human respond q-1; --auto-answer leaves it to you: it was open before the run",
+    ])
+  })
+
+  test("bd refusing the answer is warned of once, and the next look tries again", async () => {
+    const ran = await runs({
+      after: Duration.zero,
+      scripts: (world, root) => [asks(world), finishes(world, root)],
+      before: Effect.flatMap(Backlog, (backlog) =>
+        backlog.fail("human respond", { stderr: "Error: database is locked", times: 2 }),
+      ),
+      during: polls(4),
+    })
+    expectExitCode(ran, 0)
+    expectPhases(ran, { [id]: "Done" })
+    expect(ran.log.filter((text) => text.includes("could not answer"))).toEqual([
+      expect.stringMatching(
+        /^ {2}AUTO_ANSWERED: bd could not answer \S+ \(Which store\?\) by --auto-answer: .*database is locked.*; the next look tries again$/,
+      ),
+    ])
+    expectLog(ran, [/could not answer/, /AUTO_ANSWERED: \S+ \(Which store\?\), which t-1 waits on/])
+  })
+
+  test("bd refusing it every time: left to you after the third try, and the run ends", async () => {
+    const ran = await runs({
+      after: Duration.zero,
+      scripts: (world) => [asks(world)],
+      before: Effect.flatMap(Backlog, (backlog) =>
+        backlog.fail("human respond", { stderr: "Error: no", times: Infinity }),
+      ),
+      during: polls(6),
+    })
+    expectPhases(ran, { [id]: "Asked" })
+    expect(questionIn(ran).status).toBe("open")
+    expect(ran.log.filter((text) => text.includes("could not answer"))).toEqual([
+      expect.stringMatching(/: .*Error: no.*; the next look tries again$/),
+      expect.stringMatching(
+        new RegExp(
+          `by --auto-answer, ${respondTries} times: .*; it is left to you: bd human respond \\S+$`,
+        ),
+      ),
     ])
   })
 
