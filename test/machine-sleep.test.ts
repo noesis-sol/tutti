@@ -359,7 +359,9 @@ describe("what the run says of a sleep", () => {
           log: yield* TestLog.texts,
           records: yield* (yield* TestEvents.Captured).records,
         }
-      }).pipe(Effect.provide(Layer.merge(TestLog.layer(), TestEvents.layer()))),
+      }).pipe(
+        Effect.provide(Layer.mergeAll(TestLog.layer(), TestEvents.layer(), BunServices.layer)),
+      ),
     )
 
   const later: Sleep = { from: at(16, 0), to: at(16, 20) }

@@ -1,0 +1,10 @@
+PM ASL data store: /var/log/powermanagement
+2026-10-25 08:58:53 +0200 Assertions          	PID 568(powerd) Created InternalPreventSleep "Holding in darkwake for up to 20 seconds" 00:00:00  id:0x0xd0000a277 [System: PrevIdle DeclUser SRPrevSleep IntPrevDisp kCPU kDisp]          
+2026-10-25 09:41:23 +0200 Sleep               	Entering Sleep state due to 'Clamshell Sleep':TCPKeepAlive=active Using Batt (Charge:80%) 235 secs  
+2026-10-25 09:45:18 +0200 Wake                	DarkWake to FullWake from Deep Idle [CDNVA] : due to UserActivity Assertion Using BATT (Charge:79%)          
+2026-10-25 10:46:05 +0200 Sleep               	Entering Sleep state due to 'Idle Sleep':TCPKeepAlive=active Using AC (Charge:61%) 12 secs   
+2026-10-25 10:47:02 +0200 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using AC (Charge:62%) 5 secs    
+2026-10-25 12:31:29 +0200 Sleep               	Entering Sleep state due to 'Sleep Service Back to Sleep':TCPKeepAlive=active Using Batt (Charge:31%) 1042 secs 
+2026-10-25 14:03:05 +0200 Sleep               	Entering Sleep state due to 'Low Power Sleep':TCPKeepAlive=active Using Batt (Charge:1%) 2059 secs 
+2026-10-25 16:00:00 +0200 Sleep               	Entering Sleep state due to 'Software Sleep pid=412':TCPKeepAlive=active Using AC (Charge:90%) 1200 secs 
+2026-10-25 18:20:40 +0200 Sleep               	Entering Sleep state due to 'Software Sleep':TCPKeepAlive=active Using AC (Charge:91%) 300 secs 

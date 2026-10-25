@@ -1,0 +1,11 @@
+PM ASL data store: /var/log/powermanagement
+2026-10-25 09:41:23 Sleep               	Entering Sleep state due to 'Clamshell Sleep':TCPKeepAlive=active
+2026-13-25 09:41:23 +0200 Sleep               	Entering Sleep state due to 'Clamshell Sleep':TCPKeepAlive=active
+2026-10-25 09:61:23 +0200 Sleep               	Entering Sleep state due to 'Clamshell Sleep':TCPKeepAlive=active
+2026-10-25 09:41:23 +2500 Sleep               	Entering Sleep state due to 'Clamshell Sleep':TCPKeepAlive=active
+2026-10-25 09:41:23 +0200 Sleep               	Entering Sleep state due to Clamshell Sleep:TCPKeepAlive=active
+2026-10-25 09:41:23 +0200 Wake                	Entering Sleep state due to 'Clamshell Sleep'
+2026-10-25 09:41:23 +0200 Sleep               	Entering Sleep state due to 'Clamshell Sleep
+9:41:23 +0200 Sleep Entering Sleep state due to 'Clamshell Sleep'
+
+garbage [31m 'Idle Sleep' ]0;title

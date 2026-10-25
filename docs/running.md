@@ -117,7 +117,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 |---|---|
 | `-c N`, `--concurrent N` | tickets at the same time, 1 to 16 (default: the settings', else 1) |
 | `--machine-workers N` | start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included ([below](#runs-that-share-a-machine)); `0` for no cap (default: `ORCHESTRA_MACHINE_WORKERS`, else half the cores, at least 2) |
-| `--keep-awake` | keep the machine from sleeping while the run goes, its report included: `caffeinate` on macOS, `systemd-inhibit` on Linux; the `START` block warns where there is none. `TUTTI_KEEP_AWAKE=1` in your shell's profile keeps every run on that machine awake (default: off) |
+| `--keep-awake` | keep the machine from sleeping when idle while the run goes, its report included: `caffeinate` on macOS, `systemd-inhibit` on Linux; the `START` block warns where there is none. A closed lid still sleeps a laptop ([below](#when-the-machine-sleeps)). `TUTTI_KEEP_AWAKE=1` in your shell's profile keeps every run on that machine awake (default: off) |
 | `--auto-answer`, `--auto-answer=10m` | answer the workers' questions with the option they recommend, at once, or once one has waited that long for you; never one only you can answer, nor a permission ([below](#answering-for-you-while-youre-away); default: off) |
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
@@ -165,6 +165,26 @@ SLEPT: the machine slept 34m (14:03-14:37); checks and limits don't count it
 The second line comes once, in a run without `--keep-awake`. tutti takes a gap of more than 15
 seconds in its own once-a-second look at the clock for a sleep, so tutti stopped as long (`kill
 -STOP`) reads as one too.
+
+On macOS the line also says why the Mac slept, as `pmset -g log` gives it for the sleep that began
+as tutti last saw it awake: `lid closed`, `battery low`, `idle` or `asked to sleep`. It says
+nothing more when the log has no such sleep within a minute, or can't be read within 15 seconds,
+and on Linux.
+
+```
+SLEPT: the machine slept 4m (09:41-09:45, lid closed); checks and limits don't count it
+  --keep-awake can't prevent a closed lid's sleep: keep the Mac on power with an external display, or run sudo pmset -a disablesleep 1 (and 0 after)
+```
+
+`--keep-awake` prevents idle sleep only. Closing a laptop's lid sleeps it all the same: a Mac
+unless it runs on power with an external display (clamshell mode), a Linux laptop unless it is
+docked or has an external display, as logind ignores the inhibitor lock for the lid
+(`LidSwitchIgnoreInhibited` is `yes` by default). A run kept awake on a machine with a battery says
+so in its `START` block, and a closed lid's sleep in such a run adds the second line above; in a
+run without `--keep-awake`, a closed lid's sleep doesn't say to use it. To keep a closed Mac awake,
+`sudo pmset -a disablesleep 1`, and `sudo pmset -a disablesleep 0` afterwards; on Linux,
+`HandleLidSwitch=ignore` in `/etc/systemd/logind.conf`. Both are the whole machine's settings,
+which tutti never changes itself.
 
 ### On battery
 

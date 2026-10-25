@@ -161,7 +161,7 @@ export const runFlags = {
   keepAwake: runFlag("keep-awake", onOff, {
     onOff: true,
     description:
-      "keep the machine from sleeping while the run goes, its report included: caffeinate on macOS, systemd-inhibit on Linux (default: off)",
+      "keep the machine from sleeping when idle while the run goes, its report included: caffeinate on macOS, systemd-inhibit on Linux; a closed lid still sleeps a laptop without an external display, or a Mac on battery (default: off)",
   }),
   autoAnswer: runFlag("auto-answer", autoAnswerAfter, {
     onOff: true,

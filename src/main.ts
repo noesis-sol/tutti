@@ -69,7 +69,7 @@ import { layer as fibersLayer } from "./run/fibers.ts"
 import { type GettingReady, gettingReady, readySteps } from "./run/gettingReady.ts"
 import { exitCodes } from "./run/holds.ts"
 import { interview, interviewEnding } from "./run/interview.ts"
-import { keepAwake, keepAwakePlan } from "./run/keepAwake.ts"
+import { keepAwake, keepAwakePlan, lidNote } from "./run/keepAwake.ts"
 import { Load, liveLoad } from "./run/load.ts"
 import { runStarted } from "./run/localTime.ts"
 import { detail, type Line, Log, type Sink } from "./run/log.ts"
@@ -85,6 +85,7 @@ import {
 import { notifying } from "./run/notices.ts"
 import { catchSignals, listen, logSuspends, type QuitRequest, quitBy, runMain } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
+import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
 import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { layer as trashLayer } from "./run/trash.ts"
@@ -152,6 +153,8 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Layer.succeed(Load, liveLoad()),
     // The battery, which the run reads every minute to warn before it runs low.
     Layer.succeed(Battery, liveBattery()),
+    // Why the machine slept, which the run reads for each SLEPT line (src/run/sleepCause.ts).
+    Layer.succeed(SleepCauses, liveSleepCauses()),
     // The environment of the setup, the checks and the requires list's commands: the workers' but
     // tutti's variables, the API key handled as theirs is (§ 4.13).
     Layer.succeed(
@@ -306,10 +309,17 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       pid: process.pid,
       which: whichOnPath,
     })
-    // A run that starts on battery says so in its START block (src/run/battery.ts).
-    const onBattery = batteryNote(yield* liveBattery().read)
+    // A run that starts on battery says so in its START block (src/run/battery.ts); one kept
+    // awake on a machine with a battery, a laptop, that a closed lid still sleeps it.
+    const battery = yield* liveBattery().read
+    const onBattery = batteryNote(battery)
+    const lid =
+      awake._tag === "Command" && battery !== null && battery !== undefined
+        ? lidNote(process.platform)
+        : null
     const notes = [
       ...(awake._tag === "Missing" ? [awake.warning] : []),
+      ...(lid === null ? [] : [lid]),
       ...(onBattery === null ? [] : [onBattery]),
     ]
     const started: Started =

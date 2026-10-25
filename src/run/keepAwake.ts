@@ -16,7 +16,7 @@ export type AwakeCommand = Pick<Command, "command" | "args">
  * The keep-awake command of `platform` for the process `pid`, or null where tutti knows none:
  * caffeinate on macOS, which prevents idle sleep (-i) until the process -w names exits, and on
  * Linux systemd-inhibit, which holds off idle and sleep while the command it runs goes, there a tail
- * that ends with the process.
+ * that ends with the process. Neither keeps a closed laptop awake (`lidNote`).
  */
 export const awakeCommandOf = (platform: string, pid: number): AwakeCommand | null => {
   switch (platform) {
@@ -73,6 +73,25 @@ export const keepAwakePlan = (options: {
     }
   }
   return { _tag: "Command", command: awake }
+}
+
+/**
+ * What the START block says of a closed lid on `platform`, in a run kept awake on a machine with a
+ * battery, a laptop; null where tutti knows nothing to say. caffeinate -i prevents idle sleep only,
+ * so a closed lid sleeps a Mac but in clamshell mode. logind ignores systemd-inhibit's sleep lock
+ * for the lid (LidSwitchIgnoreInhibited defaults to yes), so a closed lid suspends a Linux laptop
+ * but when it is docked (HandleLidSwitchDocked, whose default ignores the lid). tutti changes
+ * neither setting itself: each is the whole machine's.
+ */
+export const lidNote = (platform: string): string | null => {
+  switch (platform) {
+    case "darwin":
+      return "--keep-awake prevents idle sleep only: closing the lid still sleeps the Mac unless it runs on power with an external display; sudo pmset -a disablesleep 1 keeps a closed Mac awake, system-wide, until sudo pmset -a disablesleep 0, which tutti never runs itself"
+    case "linux":
+      return "--keep-awake holds off idle sleep and suspend, but closing the lid still suspends the machine unless it is docked or has an external display, as logind ignores the lock for the lid (LidSwitchIgnoreInhibited); HandleLidSwitch=ignore in logind.conf keeps a closed laptop awake, system-wide, which tutti never sets itself"
+    default:
+      return null
+  }
 }
 
 /** How long the keep-awake command has between SIGTERM and SIGKILL as it is stopped. */
