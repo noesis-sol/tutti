@@ -46,6 +46,7 @@ describe("probeOptions", () => {
       extraArgs: { "no-chrome": null },
       disallowedTools: [...unusedTools, "Skill", "AskUserQuestion"],
       persistSession: false,
+      settings: { disableAllHooks: true },
     })
   })
 
@@ -91,6 +92,7 @@ describe("probeOptions", () => {
             cwd: _probeCwd,
             mcpServers: _probeServers,
             persistSession: _persist,
+            settings: _settings,
             ...probe
           } = probeOptions({ config })
           const {

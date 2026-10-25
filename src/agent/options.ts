@@ -254,13 +254,16 @@ export interface ProbeOptionsInput {
  * The login probe's SDK options (§ 4.13): the workers' shared options, in the main checkout, with
  * no MCP servers, no Chrome and no session saved. It is sent no prompt, so it has no ticket, standing rules,
  * session ID, permission callbacks or hooks: nothing it could call them for. Nor does it need Skill,
- * whatever skills the project has.
+ * whatever skills the project has. Nor the hooks of the settings files and plugins
+ * (`disableAllHooks`, in the flag settings): a project's SessionStart hook, `bd prime` say, would
+ * hold up its initialization, and every start with it, for nothing the probe reads.
  */
 export const probeOptions = (input: ProbeOptionsInput): SessionSpec => ({
   ...sharedOptions({ ...input, chrome: false, skills: false }),
   cwd: input.config.repo,
   mcpServers: {},
   persistSession: false,
+  settings: { disableAllHooks: true },
 })
 
 /** The built-in tools an interview's session has (§ 4.10): the whole set, so there's nothing to deny. */
