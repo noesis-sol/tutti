@@ -10,13 +10,21 @@
 import { Effect, Option, type Scope } from "effect"
 import { paint } from "../line.tsx"
 import {
+  choicesOf,
   confirmHint,
   describeDescription,
   describeTitle,
   FormCancelled,
+  leaveOpen,
+  noAnswerTyped,
   noDescription,
+  type OpenQuestion,
+  otherChoice,
   type Plan,
   planLines,
+  type QuestionAt,
+  questionHeading,
+  type Reply,
   startDescription,
   startOptions,
   startTitle,
@@ -260,4 +268,38 @@ export const planConfirmation = (
     for (const line of planLines(plan, io.theme)) io.write(`${paint(line)}\n`)
     io.write("\n")
     return yield* confirm(io, { question })
+  })
+
+/**
+ * An open question put before an overnight run (src/run/overnightQuestions.ts), a line at a time:
+ * its heading, title and description, then its options numbered, the recommended one first, Other
+ * and Leave open; Other reads your own answer on the next line.
+ */
+export const openQuestion = (
+  io: LineIO,
+  question: OpenQuestion,
+  at: QuestionAt,
+): Effect.Effect<Reply, FormCancelled> =>
+  Effect.gen(function* () {
+    io.write(`${io.theme.form.description.paint(questionHeading(question, at))}\n`)
+    const choices = choicesOf(question)
+    const chosen = yield* select(io, {
+      title: question.title,
+      ...(question.description === "" ? {} : { description: question.description }),
+      options: choices.map((choice) =>
+        choice._tag === "Option"
+          ? `${choice.label}${choice.description === "" ? "" : ` — ${choice.description}`}`
+          : choice._tag === "Other"
+            ? `${otherChoice}: type your own`
+            : leaveOpen,
+      ),
+    })
+    const choice = choices[chosen]
+    if (choice === undefined || choice._tag === "LeaveOpen") return { _tag: "LeaveOpen" } as const
+    if (choice._tag === "Option") return { _tag: "Answer", answer: choice.answer } as const
+    const answer = yield* text(io, {
+      title: `Your answer to ${question.id}`,
+      validate: (typed) => (typed.trim() === "" ? noAnswerTyped(cancelKey) : null),
+    })
+    return { _tag: "Answer", answer } as const
   })

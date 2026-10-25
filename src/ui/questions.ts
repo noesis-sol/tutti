@@ -5,6 +5,7 @@
 // A plan is an organ's words, or tickets' from bd: each of its texts is sanitised (§ 7.10) before
 // it is shown, and kept on one line where a line is all it has.
 import { Data, Schema } from "effect"
+import type { QuestionOption, TicketId } from "../services/Beads.ts"
 import { type Segments, seg } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import type { Theme } from "./theme.ts"
@@ -171,3 +172,76 @@ export const planLines = (plan: Plan, theme: Theme): ReadonlyArray<Segments> => 
   }
   return lines
 }
+
+/** An open question put before an overnight run (src/run/overnightQuestions.ts). */
+export interface OpenQuestion {
+  readonly id: TicketId
+  /** Its title, on one line, sanitised (§ 7.10). */
+  readonly title: string
+  /** Its description, sanitised, its lines kept. */
+  readonly description: string
+  /** Its options, the recommended one first; none where the metadata gives no well-formed ones. */
+  readonly options: ReadonlyArray<QuestionOption> | undefined
+  readonly maintainerOnly: boolean
+  /** The tickets it keeps waiting: those it blocks that aren't closed, within the run's scope. */
+  readonly waiting: ReadonlyArray<TicketId>
+}
+
+/** Where an open question is among those put: `index` of `of`, from 0. */
+export interface QuestionAt {
+  readonly index: number
+  readonly of: number
+}
+
+/** What the maintainer said to an open question: an answer to record, or to leave it open. */
+export type Reply =
+  | { readonly _tag: "Answer"; readonly answer: string }
+  | { readonly _tag: "LeaveOpen" }
+
+/** The label the recommended option is marked with, after its own. */
+export const recommendedMark = "(recommended)"
+
+/** The choice that leaves an open question open. */
+export const leaveOpen = "Leave open"
+
+/** The choice that types your own answer. */
+export const otherChoice = "Other"
+
+/** One of the choices an open question is put with: an option of its own, Other, or Leave open. */
+export type Choice =
+  | {
+      readonly _tag: "Option"
+      /** As shown: the recommended one marked. */
+      readonly label: string
+      readonly description: string
+      /** What bd human respond records: the option's label. */
+      readonly answer: string
+    }
+  | { readonly _tag: "Other" }
+  | { readonly _tag: "LeaveOpen" }
+
+/** The choices `question` is put with: its options, the recommended one first, Other, Leave open. */
+export const choicesOf = (question: OpenQuestion): ReadonlyArray<Choice> => [
+  ...(question.options ?? []).map(
+    (option, at): Choice => ({
+      _tag: "Option",
+      label: at === 0 ? `${option.label} ${recommendedMark}` : option.label,
+      description: option.description,
+      answer: option.label,
+    }),
+  ),
+  { _tag: "Other" },
+  { _tag: "LeaveOpen" },
+]
+
+/** An open question's line above its title: `Open question 1 of 2 · tutti-9x`, and who alone answers it. */
+export const questionHeading = (question: OpenQuestion, at: QuestionAt): string =>
+  `Open question ${at.index + 1} of ${at.of} · ${question.id}${question.maintainerOnly ? " · only you can answer it" : ""}`
+
+/** Under an open question in the renderer: what an answer does. */
+export const questionDescription =
+  "An answer closes the question and frees the tickets it keeps waiting, before the run starts."
+
+/** What the form says to Other chosen with nothing typed; `cancel` names the key that stops. */
+export const noAnswerTyped = (cancel: string): string =>
+  `type your answer first, or press ${cancel} to stop before the run starts`

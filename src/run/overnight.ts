@@ -644,9 +644,10 @@ const beadsWhy = (error: BeadsError): string =>
 
 /**
  * How many tickets in the run's scope are ready, and how many more wait only on open questions: a
- * warning where none is ready, the run then ending at once.
+ * warning where none is ready, the run then ending at once, unless some wait on questions that are
+ * put to you before the first ticket (`puts`: a terminal to put them in; overnightQuestions.ts).
  */
-export const readyCheck = (config: AppConfigValue) =>
+export const readyCheck = (config: AppConfigValue, puts: boolean) =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const filter = { excludeTypes: config.settings.queue.exclude_types }
@@ -667,11 +668,13 @@ export const readyCheck = (config: AppConfigValue) =>
         ? ""
         : `, and ${w} more ${w === 1 ? "waits" : "wait"} only on questions, to be ready once ${w === 1 ? "it is" : "they are"} answered`
     if (n > 0) return passed(`${ticketCount(n)} ${n === 1 ? "is" : "are"} ready${more}`)
-    return warned(
-      w === 0
-        ? "no ticket is ready: with nothing to work on, the run would end at once"
-        : `no ticket is ready${more}: unless they are answered first (tutti answer), the run would end at once`,
-    )
+    if (w === 0)
+      return warned("no ticket is ready: with nothing to work on, the run would end at once")
+    return puts
+      ? passed(`no ticket is ready${more}: the questions are put to you before the first ticket`)
+      : warned(
+          `no ticket is ready${more}: unless they are answered first (bd human respond), the run would end at once`,
+        )
   })
 
 /** What the merge check on the base said of its failure, for the checklist: its first 3 lines. */
@@ -774,8 +777,11 @@ export const baseCheck = (started: Started, say: Say) =>
     )
   })
 
-/** Every check of the pre-flight, in the checklist's order, the merge check on the base last. */
-export const checks = (started: Started, night: Night, say: Say) =>
+/**
+ * Every check of the pre-flight, in the checklist's order, the merge check on the base last; `puts`
+ * whether the open questions are put to you before the first ticket.
+ */
+export const checks = (started: Started, night: Night, say: Say, puts: boolean) =>
   Effect.gen(function* () {
     const { config, account } = started
     const usage = yield* say.organ("Asking the account whether it is at its usage limit…")
@@ -797,7 +803,7 @@ export const checks = (started: Started, night: Night, say: Say) =>
       vmCheck(processes),
       batteryCheck(night.battery, night.platform),
       yield* templatesCheck(started),
-      yield* readyCheck(config),
+      yield* readyCheck(config, puts),
       yield* baseCheck(started, say),
     ] satisfies ReadonlyArray<Found>
   })
@@ -844,19 +850,21 @@ export const refusal = (failedLeft: number): string =>
  * The pre-flight of the overnight run `started`: its checks, their checklist printed through `say`
  * and written to the log, then, with `ask` (a terminal), each fix offered and, while a failed check
  * is left, whether to start anyway; the fixes taken made once every answer is in. A failed check
- * left refuses the run unless `force` (--force-overnight) or the answer starts it.
+ * left refuses the run unless `force` (--force-overnight) or the answer starts it. `puts`: the open
+ * questions are put to you once it has cleared the run (a terminal; overnightQuestions.ts).
  */
 export const preflight = (options: {
   readonly started: Started
   readonly night: Night
   readonly say: Say
   readonly ask: Option.Option<Ask>
+  readonly puts: boolean
   readonly force: boolean
 }): Effect.Effect<Cleared, never, Env> =>
   Effect.gen(function* () {
     const { night, say, force } = options
     const logs = yield* Log
-    const found = yield* checks(options.started, night, say)
+    const found = yield* checks(options.started, night, say, options.puts)
     yield* say.say(headline(found))
     yield* say.print(found.map((each) => checklistLine(each, say.theme)).join("\n"))
     yield* logs.write(

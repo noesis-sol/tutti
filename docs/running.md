@@ -303,7 +303,7 @@ What warns:
   `tutti init --update` does and commit that on the base; the run's workers then follow the prompt
   committed (`git show` reads the change).
 - **How many tickets are ready**, and how many more wait only on open questions. With none ready
-  the run would end at once.
+  the run would end at once, unless some wait on questions put to you first (below).
 
 In a terminal tutti then offers, one by one, each fix it can make (`Run without a limit?`, yes to
 start with), and while a failed check is left without its fix, `Start the run anyway, with 1 check
@@ -320,6 +320,28 @@ tutti --overnight cannot start: 1 check failed. Fix what the checklist says, or 
 (`--plain`, or stdin or stdout not one), nothing is asked or fixed: the checklist is printed plain,
 and a failed check refuses the run unless `--force-overnight` is given. The log keeps the checklist
 and the fixes made, for the morning.
+
+Once the pre-flight has cleared the run, before the first ticket, tutti puts to you the open
+questions in the run's scope: every open question ticket (labelled `human`), or with `--ticket`
+those that block it or a ticket under it, or are under it. `--auto-answer` leaves a question open
+before the run to you, and a `maintainer_only` one always, so without this the tickets they block
+would wait all night. They come one by one, in the dashboard's screen (as lines with `--plain`):
+the question's title and description, its options from its metadata, the recommended one first and
+marked `(recommended)`, then Other, to type your own, and Leave open. A question without options
+has Other and Leave open alone. ↑ and ↓ choose, Enter confirms, PgUp and PgDn scroll a long
+description. An answer is recorded with `bd human respond`, which closes the question and frees
+what it blocked for the run (`◆ Answered 2 questions`); those left open are listed with the tickets
+they keep waiting and how to answer them later:
+
+```
+◆ Overnight pre-flight: 1 question left open
+  ! tutti-9x (Which flag name?): tutti-5k waits on it. Answer it with bd human respond tutti-9x "<answer>"
+```
+
+Without a terminal every one is listed so, nothing asked. Esc or Ctrl+C at a question (Ctrl+D as
+lines) exits with code 130 before the run starts, the answers already given kept. The log says each
+question answered, with its answer, and each left open. In the dashboard what it says is printed
+once the screen is gone, before the run's report.
 
 The `START` line says ` · overnight` after the scope, and the start record has `"overnight": true`.
 There is no overnight badge: the title line's ` keep awake ` and ` auto-answer ` pills say what it

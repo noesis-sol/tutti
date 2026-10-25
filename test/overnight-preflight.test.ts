@@ -108,6 +108,8 @@ interface Scenario {
   /** The answers to the questions, in order; undefined cancels. Without them, nothing is asked. */
   readonly answers?: ReadonlyArray<boolean | undefined>
   readonly force?: boolean
+  /** Whether the open questions are put to you once it clears the run (a terminal). */
+  readonly puts?: boolean
 }
 
 /** Runs the pre-flight of `scenario`: how it ended, what it printed, logged and asked. */
@@ -147,6 +149,7 @@ const runPreflight = async (scenario: Scenario) => {
         night: { ...quietNight, ...scenario.night },
         say: { ...printer, theme },
         ask: scenario.answers === undefined ? Option.none() : Option.some(ask),
+        puts: scenario.puts ?? false,
         force: scenario.force ?? false,
       })
       const probed = yield* Probed
@@ -377,9 +380,24 @@ describe("an overnight pre-flight", () => {
       lines.find((line) => line.startsWith("  ! the account is at its five-hour limit now")),
     ).toContain(": no ticket starts until it resets, at ")
     expect(lines).toContain(
-      "  ! no ticket is ready, and 1 more waits only on questions, to be ready once it is answered: unless they are answered first (tutti answer), the run would end at once",
+      "  ! no ticket is ready, and 1 more waits only on questions, to be ready once it is answered: unless they are answered first (bd human respond), the run would end at once",
     )
     expect(printed).toContain("◆ Overnight pre-flight: 2 warnings, 14 passed")
+  })
+
+  test("with none ready but some waiting on questions put to you first, passes", async () => {
+    const repo = project()
+    const { printed } = await runPreflight({
+      config: goodConfig(repo),
+      tickets: [
+        { id: "q-1", title: "Which?", labels: ["human"] },
+        { id: "tut-2", title: "Waits", blockedBy: ["q-1"] },
+      ],
+      puts: true,
+    })
+    expect(checklist(printed)).toContain(
+      "  ✓ no ticket is ready, and 1 more waits only on questions, to be ready once it is answered: the questions are put to you before the first ticket",
+    )
   })
 
   test("with no ticket ready and none waiting, warns that the run would end at once", async () => {

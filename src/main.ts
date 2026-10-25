@@ -86,6 +86,12 @@ import {
 } from "./run/nothing.ts"
 import { notifying } from "./run/notices.ts"
 import { type Ask, preflight, refusal } from "./run/overnight.ts"
+import {
+  openQuestions,
+  type Put,
+  putQuestions,
+  stoppedAtQuestions,
+} from "./run/overnightQuestions.ts"
 import { freeDisk, listNamed } from "./run/processes.ts"
 import { catchSignals, listen, logSuspends, type QuitRequest, quitBy, runMain } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
@@ -95,7 +101,7 @@ import { check, live, type Started, StartupFailed, startBlock } from "./run/star
 import { layer as trashLayer } from "./run/trash.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
-import { Beads, type TicketId } from "./services/Beads.ts"
+import { Beads, beadsWhy, type TicketId } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
 import { Git, GitWriter } from "./services/Git.ts"
 import { layer as notifierLayer } from "./services/Notifier.ts"
@@ -113,9 +119,10 @@ import { wakeLayer } from "./services/Wake.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard, interviewScreen } from "./ui/App.tsx"
 import { liveClipboard } from "./ui/clipboard.ts"
+import { askOpenQuestion } from "./ui/OpenQuestion.tsx"
 import { liveUrlOpener } from "./ui/openUrl.ts"
 import { askPlan } from "./ui/PlanConfirmation.tsx"
-import { confirm, planConfirmation, streamInput } from "./ui/plain/forms.ts"
+import { confirm, openQuestion, planConfirmation, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
 import { closeLimit, open as openRenderer, type RendererFailed } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
@@ -357,6 +364,7 @@ const overnight = (
         },
         say: { ...printer, theme },
         ask: asks ? Option.some(ask) : Option.none(),
+        puts: terminal.stdinIsTty && terminal.stdoutIsTty,
         force: config.forceOvernight,
       }).pipe(Effect.provide(preflightLayers(started))),
     )
@@ -677,6 +685,45 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             running,
           ),
         )
+      // --overnight's open questions in the run's scope, put to you before the first ticket
+      // (src/run/overnightQuestions.ts): in the renderer below with a dashboard, as lines in plain
+      // output, and listed, nothing asked, without a terminal. bd failing to list them leaves them
+      // to you, saying so.
+      const questions = config.overnight
+        ? yield* openQuestions(scope).pipe(
+            Effect.catch((failure) =>
+              Effect.as(
+                Effect.andThen(
+                  ready.end,
+                  Console.error(
+                    `tutti --overnight couldn't read the open questions to put to you first: ${beadsWhy(failure)}`,
+                  ),
+                ),
+                [],
+              ),
+            ),
+          )
+        : []
+      const putInRenderer = questions.length > 0 && canAsk && mode._tag === "Dashboard"
+      /** The questions put as lines in a terminal, or listed without one, on the main screen. */
+      const putOnMainScreen = Effect.gen(function* () {
+        if (questions.length === 0) return null
+        yield* ready.end
+        const theme = mainTheme ?? (yield* printedThemeOf(stdout))
+        const write = (text: string) => process.stdout.write(text)
+        const put: Put = (question, at) =>
+          Effect.scoped(
+            Effect.flatMap(streamInput(process.stdin), (input) =>
+              openQuestion({ input, write, theme }, question, at),
+            ),
+          )
+        const putting = yield* putQuestions({
+          questions,
+          put: canAsk ? Option.some(put) : Option.none(),
+          say: { ...makePrinter(stdout, theme), theme },
+        })
+        return putting._tag === "Cancelled" ? yield* stoppedAtQuestions(putting.answered) : null
+      })
       const why = mode._tag === "Plain" ? plainReasonLine(mode.reason, tty.term) : undefined
       const start = () => [
         ...startBlock({ ...started, config: { ...config, ticket: scope } }, version),
@@ -684,6 +731,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       ]
 
       if (mode._tag === "Plain") {
+        const stoppedAt = yield* putOnMainScreen
+        if (stoppedAt !== null) return stoppedAt
         const work = yield* askThenBegin(
           asks === "lines" && mainTheme !== undefined
             ? Effect.andThen(
@@ -737,7 +786,12 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         const theme = mainTheme === undefined ? printedThemeOf(stdout) : Effect.succeed(mainTheme)
         return yield* finish(ran, Effect.flatMap(theme, reportOut), false)
       }
-      if (asks === "no") {
+      if (!putInRenderer) {
+        const stoppedAt = yield* putOnMainScreen
+        if (stoppedAt !== null) return stoppedAt
+      }
+      // The questions put in the renderer come first: the run begins below, once they are.
+      if (asks === "no" && !putInRenderer) {
         yield* begin(Work.Tickets())
         if (config.feature === null && (yield* nothingReported)) return exitCodes.ok
       }
@@ -773,6 +827,21 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           const shell = yield* screen.shell
           const clipboard = yield* liveClipboard(shell.renderer, tty.overSsh)
           const desktop = { clipboard, urlOpener: yield* liveUrlOpener(clipboard, tty.overSsh) }
+          if (putInRenderer) {
+            // What it says is held for the main screen until the renderer is gone, in its theme now.
+            const theme = themeOf(shell.appearance.get())
+            const putting = yield* putQuestions({
+              questions,
+              put: Option.some((question, at) => askOpenQuestion(shell, themeOf, question, at)),
+              say: { ...makePrinter(screen.out, theme), theme },
+            })
+            if (putting._tag === "Cancelled") {
+              return { _tag: "AtQuestions", answered: putting.answered } as const
+            }
+            yield* begin(Work.Tickets())
+            const nothing = yield* nothingYet
+            if (nothing !== null) return nothing
+          }
           if (asks !== "no") {
             const work = yield* askThenBegin(askStart(shell, themeOf, count), begin)
             if (work === null) return { _tag: "Cancelled" } as const
@@ -824,6 +893,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       switch (ended._tag) {
         case "Cancelled":
           return yield* cancelled
+        case "AtQuestions":
+          return yield* stoppedAtQuestions(ended.answered)
         case "Stopped":
           return ended.exitCode
         case "Interviewed": {
