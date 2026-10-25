@@ -49,6 +49,10 @@ A run started with `--keep-awake` shows ` keep awake ` after the version, a warm
 its keep-awake command holds the machine awake (`--keep-awake`, see [Running](running.md)). Where the machine has
 no such command, or it isn't on the PATH, the START block warns instead, and there is no badge.
 
+A run started with `--auto-answer` shows ` auto-answer ` (` auto-answer after 10m ` with a time)
+after the version, a teal pill, for the whole run: tutti answers the workers' questions with their
+recommended options for you (see [Running](running.md#answering-for-you-while-youre-away)).
+
 On the right, the banners:
 
 - **The account's windows**, faint, all the time on a subscription login, once a worker's session
@@ -63,7 +67,8 @@ On the right, the banners:
   `USAGE_LIMIT · resets 14:05` while the usage limit does, with `· in 1h12m` while the run has
   nothing else to do but wait for it (see [The usage limit](running.md#the-usage-limit)).
 
-In a narrow pane the line gives up the least needed first: the keep-awake badge, then the branch and
+In a narrow pane the line gives up the least needed first: the keep-awake badge, then the
+auto-answer pill, then the branch and
 the time, then the usage banner's detail (`usage 85% · resets 14:05`, then `usage 85%`, then
 nothing), or the windows' (the tighter first without the gauge, `This week 41% · Current usage 17%`,
 then `This week 41%`, then nothing), then the states, cut from their end, then what the holds say

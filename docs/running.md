@@ -118,6 +118,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `-c N`, `--concurrent N` | tickets at the same time, 1 to 16 (default: the settings', else 1) |
 | `--machine-workers N` | start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included ([below](#runs-that-share-a-machine)); `0` for no cap (default: `ORCHESTRA_MACHINE_WORKERS`, else half the cores, at least 2) |
 | `--keep-awake` | keep the machine from sleeping while the run goes, its report included: `caffeinate` on macOS, `systemd-inhibit` on Linux; the `START` block warns where there is none. `TUTTI_KEEP_AWAKE=1` in your shell's profile keeps every run on that machine awake (default: off) |
+| `--auto-answer`, `--auto-answer=10m` | answer the workers' questions with the option they recommend, at once, or once one has waited that long for you; never one only you can answer, nor a permission ([below](#answering-for-you-while-youre-away); default: off) |
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
 | `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |
@@ -164,6 +165,41 @@ SLEPT: the machine slept 34m (14:03-14:37); checks and limits don't count it
 The second line comes once, in a run without `--keep-awake`. tutti takes a gap of more than 15
 seconds in its own once-a-second look at the clock for a sleep, so tutti stopped as long (`kill
 -STOP`) reads as one too.
+
+### Answering for you while you're away
+
+A run you leave going overnight or while you are out stops each ticket that asks you something
+until you come back. With `--auto-answer`, tutti answers for you with the option the worker
+recommends, and the ticket carries on:
+
+```bash
+tutti --auto-answer        # answer at once
+tutti --auto-answer=10m    # give me 10 minutes to answer first
+```
+
+It answers a question ticket a worker files during the run, when its metadata gives 2 to 4 options
+with one recommended, as the worker prompt asks: `bd human respond` records the option, saying
+tutti chose it, not you, which closes the question, and the label `auto-answered` marks it. It
+answers an `AskUserQuestion` in a worker's session too, with the option marked `(Recommended)`, else
+the first. With a time, the time counts only while the machine is awake, a question you answer
+first is yours, and the run doesn't end while one it will answer waits.
+
+It leaves to you, and the question's `ASKED` line says why: a question that asks you to do
+something only you can (`maintainer_only` in its metadata), one without options, and one already
+open when the run started, which may have been left open on purpose. It never answers a permission
+request.
+
+You see it everywhere: the `START` line ends ` · auto-answer` (` · auto-answer after 10m`), the
+dashboard's title line has an ` auto-answer ` pill, each answer has its `AUTO_ANSWERED` or
+`QUESTION` line, and the run's summary lists what it answered, with each choice. Later, find the
+questions with:
+
+```bash
+bd list --all --label auto-answered
+```
+
+It is chosen for each run, like `--keep-awake`, as it depends on whether you are there;
+`TUTTI_AUTO_ANSWER=10m` in your shell's profile sets it for every run on that machine.
 
 ### One ticket and its subtickets
 

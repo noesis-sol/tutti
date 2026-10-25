@@ -45,7 +45,7 @@ the time.
 
 | `kind` | What happened | Its other fields |
 |---|---|---|
-| `start` | the run's first record, once its startup checks pass and it knows its work | `version`; `repo`, the main checkout; `branch`, where finished tickets land; `scope`, the ticket of a `--ticket` or feature run; `feature`, the feature request; `concurrency`; `billing` (`subscription` or `api`); `permission_mode`, the mode workers run in |
+| `start` | the run's first record, once its startup checks pass and it knows its work | `version`; `repo`, the main checkout; `branch`, where finished tickets land; `scope`, the ticket of a `--ticket` or feature run; `feature`, the feature request; `concurrency`; `billing` (`subscription` or `api`); `permission_mode`, the mode workers run in; `auto_answer` with `--auto-answer`, how long a question waits for you first, in ms, 0 for at once |
 | `info` | progress about a ticket: its worktree, a hand-back, a recheck, a ticket carried over, an epic closed, … | `ticket`, `text` |
 | `warn` | something to review while the run goes on: `CHECKS_FAILED`, `MERGE_CONFLICT`, `LIKELY_CONFLICT`, `FLAKY`, `LONG_RUNNING`, … | `ticket` when it is about one; `aside: true` when that ticket is left for review, with `detail`, why in a few words (`checks failed`, `closed without a commit`, …), and `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd`; `blocked` when its work is done but it can't merge until you act (`merge conflict in a.ts, b.ts`); `text` |
 | `hold` | something holds the run: no new tickets while the running ones finish; or a hold is lifted | `text` (`HOLD: <WORD>: …`, or `PROBE: …` for the environment probe's wait); `ticket` and `blocked` on some; `lifted: true` when it is lifted (`HOLD lifted: …`, `HOLD: USAGE_LIMIT lifted`) |
@@ -72,6 +72,7 @@ the time.
 | `deferred` | a ticket was set aside, deferred | `ticket`, `title`; `detail`, why (`by the worker`, `still in_progress, noted for review`, …); `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd`; `text` |
 | `asked` | a ticket waits on a question ticket for you | `ticket`, `title`; `detail`, the question's ID and title; `text` |
 | `answered` | its question was answered: it comes back | `ticket`, `title`, `detail`, `text` |
+| `auto_answered` | tutti answered a question ticket with its recommended option, by `--auto-answer` | `ticket`, the one waiting on it; `question`; `title`, the question's; `option`, the one chosen; `text` |
 | `waits` | a ticket's worker stopped with nothing done, having found it needs a ticket not merged yet: back in the queue until that merges (`WAITS_FOR_MERGE`) | `ticket`, `title`; `detail`, the tickets it waits for; `text` |
 | `reopened` | a ticket set aside for failing at once was reopened by an environment hold | `ticket`; `detail`; `text` |
 | `triage` | triage's verdict on a deferred ticket | `ticket`; `title`, the verdict; `detail`, as in `environment · high`; `text` |
@@ -82,7 +83,7 @@ the time.
 | `kind` | What happened | Its other fields |
 |---|---|---|
 | `attention` | a worker waits on you (see [Attention requests](workers.md#attention-requests)) | `ticket`; `request`, the ID `tutti answer` takes; `type`: `permission`, `question` or `elicitation` (an MCP server's); `tool` and `summary` for a permission (for an elicitation, the server and its message); `questions` for a question, each with `question`, `header`, `options` (`label`, `description`) and `multi_select`; `default_to_no`, whether allowing it needs `--confirm` |
-| `attention_answered` | a request was answered, or withdrawn | `ticket`, `request`; `answer`: `allow`, `deny`, `allow_run`, or the chosen labels, one per question; `via`: `screen` or `answer_command`; `after_ms`, how long it was open; `cancelled: true` when Claude Code withdrew it |
+| `attention_answered` | a request was answered, or withdrawn | `ticket`, `request`; `answer`: `allow`, `deny`, `allow_run`, or the chosen labels, one per question; `via`: `screen`, `answer_command`, or `auto_answer` when `--auto-answer` answered it; `after_ms`, how long it was open; `cancelled: true` when Claude Code withdrew it |
 | `denied` | Claude Code refused a tool call without asking | `ticket`, `tool`; `reason_type`: `classifier`, `safetyCheck`, `mode`, `rule`, another the SDK gives, or `unknown`; `reason` |
 | `usage_limit` | the usage limit's status changed (see [The usage limit](running.md#the-usage-limit)) | `status`: `warning`, `rejected` or `lifted`; `limit`: `five_hour`, `seven_day`, … or `unknown`; `resets_at`; `utilization`, from 0 to 1; `text` on a warning |
 | `usage_window` | a figure of one of the account's usage windows, as the workers' sessions report it: the first the run hears, then each that differs | `window`: `five_hour`, `seven_day`, …; `utilization`, from 0 to 1; `resets_at` |
