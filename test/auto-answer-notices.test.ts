@@ -9,6 +9,7 @@ import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import { Duration, Effect, Fiber, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { Attention, type AutoAnswerOptions } from "../src/agent/Attention.ts"
+import { respondTries } from "../src/run/autoAnswer.ts"
 import { notice, notifying } from "../src/run/notices.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
@@ -17,11 +18,20 @@ import { Git } from "../src/services/Git.ts"
 import { filesQuestion } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as appConfigLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
+import { Backlog } from "../src/testing/Beads.ts"
 import { layer as eventsLayer, Captured as Records } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { Captured, layer as notifierLayer } from "../src/testing/Notifier.ts"
 import { openFibers } from "./fibers.ts"
-import { advance, backlog, expectPhases, type Ran, scenario, type World } from "./harness.ts"
+import {
+  advance,
+  backlog,
+  type Env,
+  expectPhases,
+  type Ran,
+  scenario,
+  type World,
+} from "./harness.ts"
 
 const id = "t-1" as TicketId
 
@@ -185,11 +195,19 @@ const asks = (world: World, metadata: Readonly<Record<string, unknown>>) =>
     ),
   })
 
-/** A whole run of t-1, whose worker asks, with --auto-answer `after`; the clock moved `polls`. */
+/** What a run does beside the worker's question. */
+interface More {
+  /** How many ready polls the clock is moved on by. */
+  readonly polls?: number
+  /** Before the run starts. */
+  readonly before?: Effect.Effect<void, never, Env>
+}
+
+/** A whole run of t-1, whose worker asks, with --auto-answer `after`. */
 const runs = (
   after: Duration.Duration,
   metadata: Readonly<Record<string, unknown>>,
-  polls = 0,
+  more: More = {},
 ): Promise<Ran<Outcome>> => {
   const repo = folder("repo")
   const root = folder("worktrees")
@@ -204,8 +222,9 @@ const runs = (
     Effect.gen(function* () {
       mkdirSync(join(root, id), { recursive: true })
       yield* (yield* Git).addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
+      if (more.before !== undefined) yield* more.before
       const fiber = yield* Effect.forkChild(run({ version: "0.1.0-test", base: "main" }))
-      for (let n = 0; n < polls; n++) {
+      for (let n = 0; n < (more.polls ?? 0); n++) {
         yield* Effect.promise(() => Bun.sleep(3))
         yield* advance(readyPoll)
       }
@@ -213,6 +232,11 @@ const runs = (
     }),
   )
 }
+
+/** bd refuses every answer. */
+const refusesRespond = Effect.flatMap(Backlog, (backlog) =>
+  backlog.fail("human respond", { stderr: "Error: no", times: Infinity }),
+)
 
 const needsYourAnswer = (ran: Ran<unknown>) =>
   ran.notices.filter((text) => text.includes("needs your answer"))
@@ -228,9 +252,25 @@ describe("--auto-answer and the notice of a question ticket", () => {
   })
 
   test("after a time: notifies, so you can answer first", async () => {
-    const ran = await runs(Duration.minutes(10), withOptions, 24)
+    const ran = await runs(Duration.minutes(10), withOptions, { polls: 24 })
     expect(needsYourAnswer(ran)).toEqual(["t-1 needs your answer · Which store?"])
     expect(ran.events.some((record) => record.kind === "auto_answered")).toBe(true)
+  })
+
+  test("answered at once but bd refusing it every time: notifies as it is left to you", async () => {
+    const ran = await runs(Duration.zero, withOptions, { polls: 6, before: refusesRespond })
+    expectPhases(ran, { [id]: "Asked" })
+    expect(needsYourAnswer(ran)).toEqual(["t-1 needs your answer · Which store?"])
+  })
+
+  test("after a time, bd refusing it every time: notified once, as it asked", async () => {
+    const ran = await runs(Duration.minutes(10), withOptions, {
+      polls: 30,
+      before: refusesRespond,
+    })
+    expectPhases(ran, { [id]: "Asked" })
+    expect(ran.log.some((text) => text.includes(`${respondTries} times`))).toBe(true)
+    expect(needsYourAnswer(ran)).toEqual(["t-1 needs your answer · Which store?"])
   })
 
   test("left to you, maintainer_only: notifies", async () => {

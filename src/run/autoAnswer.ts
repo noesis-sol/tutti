@@ -24,10 +24,12 @@ import {
   questionOptions,
   type TicketId,
 } from "../services/Beads.ts"
+import { Notifier } from "../services/Notifier.ts"
 import { awakeSince } from "../services/Wake.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, type Log, line, Tag, ticketLine } from "./log.ts"
+import { about } from "./notices.ts"
 import { say, warn } from "./say.ts"
 
 /** The label of a question tutti answered by --auto-answer. */
@@ -171,7 +173,7 @@ const answer = (
   ticket: TicketId,
   question: Issue,
   option: QuestionOption,
-): Effect.Effect<"answered" | "again" | "left", never, Beads | Log | EventStream> =>
+): Effect.Effect<"answered" | "again" | "left", never, Beads | Log | EventStream | Notifier> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const { id, title } = question
@@ -186,6 +188,10 @@ const answer = (
           Tag.autoAnswered,
         )`bd could not answer ${id} (${title}) by --auto-answer, ${respondTries} times: ${why}; it is left to you: bd human respond ${id}`
         yield* warn(text, ticket)
+        // Bare, its asked record didn't notify (autoAnswerOf), so you are told now.
+        if (Duration.isZero(auto.after)) {
+          yield* (yield* Notifier).notify(about(`${ticket} needs your answer`, title))
+        }
         return "left"
       }
       if (tries === 1) {
@@ -227,34 +233,37 @@ const answer = (
  * Whether a question it takes still waits, for its time or for bd to answer it again, which keeps
  * the run from ending on it.
  */
-export const answerQuestions: Effect.Effect<boolean, never, Beads | Ledger | Log | EventStream> =
-  Effect.gen(function* () {
-    const auto = yield* AutoAnswer
-    if (auto === null) return false
-    const beads = yield* Beads
-    const after = Duration.toMillis(auto.after)
-    let waiting = false
-    for (const entry of (yield* (yield* Ledger).current).tickets.values()) {
-      if (entry.phase._tag !== "Asked") continue
-      const issue = yield* Effect.result(beads.show(entry.ticket))
-      if (Result.isFailure(issue)) continue
-      for (const id of openQuestions(issue.success)) {
-        // Shown on its own for its whole metadata; one closed meanwhile was answered by you.
-        const shown = yield* Effect.result(beads.show(id))
-        if (Result.isFailure(shown) || shown.success.status === "closed") continue
-        const question = shown.success
-        const options = questionOptions(question.metadata)
-        if (leftWhy(question, auto.since) !== undefined || options === undefined) continue
-        const recommended = options[0]
-        if (recommended === undefined) continue
-        // Left to you once bd has failed to answer it `respondTries` times.
-        if (((yield* Ref.get(auto.failed)).get(id) ?? 0) >= respondTries) continue
-        if (after > 0 && (yield* awakeSince(Date.parse(question.createdAt))) < after) {
-          waiting = true
-          continue
-        }
-        if ((yield* answer(auto, entry.ticket, question, recommended)) === "again") waiting = true
+export const answerQuestions: Effect.Effect<
+  boolean,
+  never,
+  Beads | Ledger | Log | EventStream | Notifier
+> = Effect.gen(function* () {
+  const auto = yield* AutoAnswer
+  if (auto === null) return false
+  const beads = yield* Beads
+  const after = Duration.toMillis(auto.after)
+  let waiting = false
+  for (const entry of (yield* (yield* Ledger).current).tickets.values()) {
+    if (entry.phase._tag !== "Asked") continue
+    const issue = yield* Effect.result(beads.show(entry.ticket))
+    if (Result.isFailure(issue)) continue
+    for (const id of openQuestions(issue.success)) {
+      // Shown on its own for its whole metadata; one closed meanwhile was answered by you.
+      const shown = yield* Effect.result(beads.show(id))
+      if (Result.isFailure(shown) || shown.success.status === "closed") continue
+      const question = shown.success
+      const options = questionOptions(question.metadata)
+      if (leftWhy(question, auto.since) !== undefined || options === undefined) continue
+      const recommended = options[0]
+      if (recommended === undefined) continue
+      // Left to you once bd has failed to answer it `respondTries` times.
+      if (((yield* Ref.get(auto.failed)).get(id) ?? 0) >= respondTries) continue
+      if (after > 0 && (yield* awakeSince(Date.parse(question.createdAt))) < after) {
+        waiting = true
+        continue
       }
+      if ((yield* answer(auto, entry.ticket, question, recommended)) === "again") waiting = true
     }
-    return waiting
-  })
+  }
+  return waiting
+})

@@ -835,7 +835,7 @@ const runFrom = (
       yield* machine.sayRunning(yield* scheduler.slots)
     })
     // The loop (look.ts): it looks at each wake until nothing is left, then ends the run.
-    const fillContext = yield* Effect.context<WorkEnv | FileSystem.FileSystem>()
+    const fillContext = yield* Effect.context<WorkEnv | FileSystem.FileSystem | Notifier>()
     const { untilEnd } = yield* makeLoop({
       fill: Effect.provideContext(fill, fillContext),
       wakes,
