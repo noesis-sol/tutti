@@ -109,7 +109,7 @@ import {
   type RebaseStop,
   toHandBack,
 } from "./handback.ts"
-import { Ledger } from "./ledger.ts"
+import { type Entry, Ledger } from "./ledger.ts"
 import { type Arg, branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import type { OvernightAside } from "./overnightAside.ts"
 import { Detail, Move } from "./phase.ts"
@@ -1301,6 +1301,12 @@ export const closeEpics = (id: TicketId, read?: Result.Result<Issue, BeadsError>
     let parent = Result.isSuccess(shown) ? shown.success.parent : undefined
     while (parent !== undefined) {
       const epic = parent
+      // A subticket of it the run still holds, not Done, keeps it open: bd needn't be asked. One the
+      // run doesn't hold, or holds without its issue, is bd's to judge.
+      const held = [...(yield* ledger.current).tickets.values()]
+      const open = (entry: Entry) =>
+        entry.ticket !== id && entry.issue?.parent === epic && entry.phase._tag !== "Done"
+      if (held.some(open)) return
       const read = yield* Effect.result(
         Effect.all({ issue: beads.show(epic), children: beads.list({ parent: epic, all: true }) }),
       )
