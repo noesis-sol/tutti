@@ -15,6 +15,7 @@ import {
   type FormCancelled,
   type SpecAsk,
   specChosenFrom,
+  specLine,
   TicketCount,
   type Work,
 } from "../ui/questions.ts"
@@ -98,8 +99,8 @@ export const askLines = (
 
 /**
  * What the start question needs to ask for a spec in the repository `repo`, `home` the home folder:
- * a URL is fetched with `fetch`, the run's (fetchOnce), so that reading the spec once chosen doesn't
- * fetch it again, run in `context`.
+ * a URL is fetched with `fetch`, a fetchOnce keeping only what was fetched, so that reading the spec
+ * once chosen doesn't fetch it again and a URL that failed is fetched again; run in `context`.
  */
 export const specAsk = <R>(
   repo: string,
@@ -117,6 +118,38 @@ export const specAsk = <R>(
 
 /** What a run says on stderr when the spec chosen at the start question can't be run, before exit 2. */
 export const cannotRunSpec = (problem: string): string => `tutti cannot run that spec: ${problem}`
+
+/** How a spec chosen at the start question was taken: the spec, or the exit code that ends the run. */
+export type TakenSpec =
+  | { readonly _tag: "Taken"; readonly spec: Spec }
+  | { readonly _tag: "Refused"; readonly exitCode: number }
+
+/**
+ * The spec chosen at the start question, `work`, taken as --spec takes one: what was chosen said on
+ * `out` (specLine), then the spec read with readChosenSpec, from the main checkout `repo`, and the
+ * run lock's holder rewritten with it by `rewrite` (held all the same if it can't be). Refused with
+ * exit 2 where it can't be run, having said why on `error`.
+ */
+export const takeSpec = <E>(
+  work: Extract<Work, { readonly _tag: "Spec" }>,
+  io: {
+    readonly repo: string
+    readonly fetch: SpecFetch<LiveFetch>
+    readonly out: (text: string) => void
+    readonly error: (text: string) => Effect.Effect<void>
+    readonly rewrite: (spec: Spec) => Effect.Effect<void, E>
+  },
+): Effect.Effect<TakenSpec, never, FileSystem.FileSystem | Git | LiveFetch> =>
+  Effect.gen(function* () {
+    io.out(`${specLine(work.given, work.refine)}\n`)
+    const read = yield* readChosenSpec(work.given, io.repo, io.fetch)
+    if (Result.isFailure(read)) {
+      yield* io.error(read.failure)
+      return { _tag: "Refused", exitCode: exitCodes.setup } as const
+    }
+    yield* Effect.ignore(io.rewrite(read.success))
+    return { _tag: "Taken", spec: read.success } as const
+  })
 
 /**
  * The spec chosen at the start question, `given` (its path, absolute, or its URL), read as the

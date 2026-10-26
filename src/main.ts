@@ -70,8 +70,8 @@ import {
   askThenBegin,
   cancelled,
   interviewUnavailable,
-  readChosenSpec,
   specAsk,
+  takeSpec,
   ticketCount,
 } from "./run/choose.ts"
 import { startBranches } from "./run/closedBranches.ts"
@@ -145,7 +145,7 @@ import { showOrgans } from "./ui/OrganScreen.tsx"
 import { liveUrlOpener } from "./ui/openUrl.ts"
 import { askPlan } from "./ui/PlanConfirmation.tsx"
 import { confirm, openQuestion, planConfirmation, streamInput } from "./ui/plain/forms.ts"
-import { chosenLines, specLine, TicketCount, Work } from "./ui/questions.ts"
+import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
 import { closeLimit, open as openRenderer, type RendererFailed, type Shell } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
 import {
@@ -445,7 +445,9 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     // terminal (§ 4.14): what that wrote is committed with the spec.
     // A spec at a URL is fetched once (§ 4.14), by the setup or the checks, whichever reads it first.
     const fetch = fetchOnce(fetchSpecLive)
-    // What fetches it runs on, for a spec chosen at the start question.
+    // A spec at a URL chosen at the start question: fetched again after a failure, for the URL to
+    // be fixed or tried again, and what was fetched read once chosen; and what fetches run on.
+    const fieldFetch = fetchOnce(fetchSpecLive, { failures: false })
     const fetchContext = yield* Effect.context<LiveFetch>()
     const setup = yield* setUpFromFlags({
       cwd,
@@ -626,7 +628,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         return true
       })
       // What the start question needs to ask for a spec.
-      const specAsking = specAsk(config.repo, homedir(), fetch, fetchContext)
+      const specAsking = specAsk(config.repo, homedir(), fieldFetch, fetchContext)
       const count =
         asks === "no"
           ? TicketCount.Unknown()
@@ -776,27 +778,24 @@ const runFrom = (cwd: string, flags: RunFlags) =>
        * said on `out`, then the spec read as the startup checks read it, the run, the lock and the
        * spec's start wired to it. The exit code where it can't be run, having said why on `error`.
        */
-      const takeSpec = (
+      const takeChosen = (
         work: Extract<Work, { readonly _tag: "Spec" }>,
         out: Out,
         error: (text: string) => Effect.Effect<void>,
       ) =>
         Effect.gen(function* () {
-          out.write(`${specLine(work.given, work.refine)}\n`)
-          const read = yield* readChosenSpec(work.given, config.repo, fetch).pipe(
-            Effect.provide(gitLayer),
-            Effect.provideContext(fetchContext),
-          )
-          if (Result.isFailure(read)) {
-            yield* error(read.failure)
-            return exitCodes.setup
-          }
-          spec = read.success
+          const taken = yield* takeSpec(work, {
+            repo: config.repo,
+            fetch: fieldFetch,
+            out: (text) => out.write(text),
+            error,
+            rewrite: (read) => lock.rewrite({ ...holder, spec: read.path }),
+          }).pipe(Effect.provide(gitLayer), Effect.provideContext(fetchContext))
+          if (taken._tag === "Refused") return taken.exitCode
+          spec = taken.spec
           config = { ...config, refine: work.refine }
-          started = { ...started, spec: read.success, config }
-          holder = { ...holder, spec: read.success.path }
-          // The lock is held all the same if its holder can't be rewritten.
-          yield* Effect.ignore(lock.rewrite(holder))
+          started = { ...started, spec: taken.spec, config }
+          holder = { ...holder, spec: taken.spec.path }
           specStarting = wireSpec()
           return undefined
         })
@@ -883,7 +882,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         if (work._tag === "Feature") return yield* noInterview
         if (work._tag === "Spec") {
           // A spec chosen as lines, run as it is: refining it needs the renderer.
-          const failed = yield* takeSpec(work, stdout, error)
+          const failed = yield* takeChosen(work, stdout, error)
           if (failed !== undefined) return failed
           const chosenStopped = yield* startSpec({ out: stdout, error, refine: Option.none() })
           if (chosenStopped !== undefined) return chosenStopped
@@ -1060,7 +1059,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             if (work._tag === "Spec") {
               // The spec chosen, then refined in the Interview view, or broken down with its organ
               // lines drawn in this renderer (Ctrl+C stops it); then the run, once it has begun.
-              const failed = yield* takeSpec(work, screen.out, screen.error)
+              const failed = yield* takeChosen(work, screen.out, screen.error)
               if (failed !== undefined) return { _tag: "Stopped", exitCode: failed } as const
               const specStopped = work.refine
                 ? yield* startSpec({

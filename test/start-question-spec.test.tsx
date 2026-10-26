@@ -7,9 +7,15 @@ import { chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Result } from "effect"
 import { specAsk } from "../src/run/choose.ts"
-import { fetchSpec, type LiveFetch, type SpecFetch } from "../src/run/specSource.ts"
+import {
+  fetchOnce,
+  fetchSpec,
+  type LiveFetch,
+  type SpecFetch,
+  specUrl,
+} from "../src/run/specSource.ts"
 import { type Answer, layer as httpLayer } from "../src/testing/HttpClient.ts"
 import { browserRowsShown, specFilesOnly } from "../src/ui/FileBrowser.tsx"
 import { type SpecAsk, TicketCount, Work } from "../src/ui/questions.ts"
@@ -502,6 +508,38 @@ describe("a spec at a URL", () => {
       expect(fieldLine(frame)).toBe(`┃ > ${url}`)
     })
     expect(answers).toEqual([])
+  })
+
+  test("a URL that failed is fetched again on the next Enter, and what was fetched is kept", async () => {
+    const repo = fixture({})
+    let fetches = 0
+    const flaky: SpecFetch<LiveFetch> = (target) => {
+      fetches++
+      return Effect.provide(
+        fetchSpec(target, join(repo, "no-gh-here")),
+        httpLayer(fetches === 1 ? { [url]: { status: 503 } } : { [url]: { body: "# Shop\n" } }),
+      )
+    }
+    const once = fetchOnce(flaky, { failures: false })
+    const { answers, node } = start(specAsk(repo, "", once, services))
+    await withRender(node, size, async (rendered) => {
+      await chooseSpec(rendered)
+      await type(rendered, url)
+      await enter(rendered)
+      await until(rendered, (f) => flat(f).includes("HTTP 503 Service Unavailable"))
+      await enter(rendered)
+      await until(rendered, (f) => f.chars.includes("Refine it with Claude first?"))
+      await enter(rendered)
+    })
+    expect(fetches).toBe(2)
+    expect(answers).toEqual([Work.Spec({ given: url, refine: false })])
+    // What was fetched is read again without fetching.
+    await Effect.runPromise(
+      once(Result.getOrThrow(specUrl(url, "chosen at the start"))).pipe(
+        Effect.provideContext(services),
+      ),
+    )
+    expect(fetches).toBe(2)
   })
 
   test("Esc during the fetch stops it, the question kept", async () => {

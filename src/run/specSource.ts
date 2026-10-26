@@ -8,7 +8,8 @@
 // - fetchSpec: the text, through Effect's HttpClient, within 30 s, at most 5 MB, redirects followed
 //   up to 5 and only over https, no credentials or cookies sent; a GitHub file whose raw fetch
 //   answers 404 is read through the maintainer's own gh login (`gh api`), its token never leaving gh;
-// - fetchOnce: one fetch a run, for the setup of an empty repository and the startup checks both.
+// - fetchOnce: one fetch a run, for the setup of an empty repository and the startup checks both,
+//   and for the start question's field and the spec it reads, there keeping only what was fetched.
 //
 // Each problem is a line of the startup checks' report. The URL is recorded and shown without its
 // query and fragment, which may hold a token.
@@ -440,8 +441,16 @@ export type LiveFetch = ChildProcessSpawner.ChildProcessSpawner | FileSystem.Fil
 export const fetchSpecLive: SpecFetch<LiveFetch> = (target) =>
   Effect.provide(fetchSpec(target), FetchHttpClient.layer)
 
-/** `fetch`, fetching each URL once: a second call for it gets what the first got. */
-export const fetchOnce = <R>(fetch: SpecFetch<R>): SpecFetch<R> => {
+/**
+ * `fetch`, fetching each URL once: a second call for it gets what the first got. With `failures`
+ * false, only what was fetched is kept, and a URL whose fetch failed is fetched again: the start
+ * question's field, where a URL that failed is fixed or tried again.
+ */
+export const fetchOnce = <R>(
+  fetch: SpecFetch<R>,
+  options: { readonly failures?: boolean } = {},
+): SpecFetch<R> => {
+  const keepFailures = options.failures ?? true
   const got = new Map<string, Result.Result<Fetched, string>>()
   return (target) =>
     Effect.suspend(() => {
@@ -449,7 +458,9 @@ export const fetchOnce = <R>(fetch: SpecFetch<R>): SpecFetch<R> => {
       return had !== undefined
         ? Effect.succeed(had)
         : Effect.tap(fetch(target), (result) =>
-            Effect.sync(() => void got.set(target.url.href, result)),
+            Effect.sync(() => {
+              if (keepFailures || Result.isSuccess(result)) got.set(target.url.href, result)
+            }),
           )
     })
 }

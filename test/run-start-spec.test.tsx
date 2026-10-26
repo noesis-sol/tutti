@@ -1,7 +1,7 @@
 // A spec chosen at the start question, on the run's side (§ 5 item 3, § 4.14): the line that keeps
-// it in sight once the renderer has gone, the spec read as --spec's is (one git ignores, or in .git,
-// ends the run with exit 2, naming it `chosen at the start`), and its breakdown's organ lines drawn
-// in the renderer, Ctrl+C stopping it.
+// it in sight once the renderer has gone, the spec read as --spec's is and taken (one git ignores,
+// or in .git, ends the run with exit 2, naming it `chosen at the start`; else the lock is rewritten
+// with it), and its breakdown's organ lines drawn in the renderer, Ctrl+C stopping it.
 import { describe, expect, test } from "bun:test"
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -9,7 +9,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer, Result } from "effect"
 import { eraseLine } from "../src/print/organLine.ts"
 import { screenOut } from "../src/print/screenOut.ts"
-import { cannotRunSpec, readChosenSpec } from "../src/run/choose.ts"
+import { cannotRunSpec, readChosenSpec, takeSpec } from "../src/run/choose.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"
 import { OrganScreen, organLines } from "../src/ui/OrganScreen.tsx"
 import { chosenLines, specLine, Work } from "../src/ui/questions.ts"
@@ -74,6 +74,61 @@ describe("the spec chosen, read as --spec's", () => {
         ),
       ),
     )
+  })
+})
+
+describe("the spec chosen, taken", () => {
+  const layer = Git.layer().pipe(
+    Layer.provideMerge(GitWriter.layer),
+    Layer.provideMerge(BunServices.layer),
+  )
+  /** `given` taken in `repo`: what it said, the holders the lock was rewritten with, its outcome. */
+  const take = async (repo: string, given: string, refine = false) => {
+    const out: Array<string> = []
+    const error: Array<string> = []
+    const rewritten: Array<string> = []
+    const taken = await Effect.runPromise(
+      takeSpec(Work.Spec({ given, refine }) as Extract<Work, { _tag: "Spec" }>, {
+        repo,
+        fetch: () => Effect.never,
+        out: (text) => {
+          out.push(text)
+        },
+        error: (text) =>
+          Effect.sync(() => {
+            error.push(text)
+          }),
+        rewrite: (spec) =>
+          Effect.sync(() => {
+            rewritten.push(spec.path)
+          }),
+      }).pipe(Effect.provide(layer)),
+    )
+    return { out, error, rewritten, taken }
+  }
+
+  slow.test("prints the line, then rewrites the lock with the spec", async () => {
+    const repo = makeRepo()
+    repo.write({ "docs/shop.md": "# Shop\n" })
+    const given = join(repo.dir, "docs/shop.md")
+    const { out, error, rewritten, taken } = await take(repo.dir, given, true)
+    expect(out).toEqual([`Spec: ${given}, refined with Claude first\n`])
+    expect(error).toEqual([])
+    expect(rewritten).toEqual(["docs/shop.md"])
+    expect(taken).toMatchObject({ _tag: "Taken", spec: { path: "docs/shop.md" } })
+  })
+
+  slow.test("an ignored spec: the line, why, and exit 2, the lock left as it is", async () => {
+    const repo = makeRepo()
+    repo.commit("ignore drafts", { ".gitignore": "drafts/\n" })
+    repo.write({ "drafts/shop.md": "# Shop\n" })
+    const given = join(repo.dir, "drafts/shop.md")
+    const { out, error, rewritten, taken } = await take(repo.dir, given)
+    expect(out).toEqual([`Spec: ${given}, run as it is\n`])
+    expect(error).toHaveLength(1)
+    expect(error[0]).toStartWith("tutti cannot run that spec: git ignores drafts/shop.md")
+    expect(rewritten).toEqual([])
+    expect(taken).toEqual({ _tag: "Refused", exitCode: 2 })
   })
 })
 
