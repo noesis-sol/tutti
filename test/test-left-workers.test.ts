@@ -176,6 +176,26 @@ const pidIn = async (file: string): Promise<number> => {
   return Number(readFileSync(file, "utf8").trim())
 }
 
+describe("userProcesses", () => {
+  slow.test("reads a live process's command line and TMPDIR", async () => {
+    const temp = mkdtempSync(join(tmpdir(), "tutti-user-processes-"))
+    // Bun, as a test worker is: macOS's ps shows no environment for its own binaries, /bin/sleep's.
+    const sleeper = Bun.spawn([process.execPath, "-e", "await Bun.sleep(30000)"], {
+      env: { ...testEnv, TMPDIR: temp },
+      stdout: "ignore",
+      stderr: "ignore",
+    })
+    try {
+      const [read] = userProcesses().filter((p) => p.pid === sleeper.pid)
+      expect(read?.command).toStartWith(`${process.execPath} -e await Bun.sleep(30000)`)
+      expect(read?.tmpdir).toBe(temp)
+    } finally {
+      sleeper.kill("SIGKILL")
+      await sleeper.exited
+    }
+  })
+})
+
 describe("a run's leaked test worker", () => {
   slow.test(
     "is killed by the next run once its run has gone",
@@ -207,9 +227,16 @@ describe("a run's leaked test worker", () => {
       })
       const workers = [await pidIn(join(dir, "one.pid")), await pidIn(join(dir, "two.pid"))]
       try {
-        // bun test killed outright leaves its workers running.
         run.kill("SIGKILL")
         await run.exited
+        if (process.platform === "linux") {
+          // On Linux, Bun spawns each test worker with PR_SET_PDEATHSIG set to SIGKILL (its
+          // src/runtime/cli/test/parallel/Worker.rs), so the kernel kills them with their
+          // coordinator, and none is left to kill.
+          expect(await within(() => !workers.some(alive), 3000)).toBe(true)
+          return
+        }
+        // Elsewhere, bun test killed outright leaves its workers running.
         await Bun.sleep(300)
         expect(workers.every(alive)).toBe(true)
         const mine = userProcesses().filter((p) => workers.includes(p.pid))
