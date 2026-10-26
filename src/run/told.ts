@@ -8,6 +8,7 @@ import { type Commit, shortHash } from "../services/Git.ts"
 import { failedHow, saidOf } from "./check.ts"
 import type { HandedCheck } from "./checkback.ts"
 import type { HandBackMode, RebaseStop } from "./handback.ts"
+import { isDocument } from "./repoFiles.ts"
 
 /** The continue nudge (settle.ts), to a worker idle with its ticket still in progress. */
 export const nudgeText = (id: TicketId): string =>
@@ -82,7 +83,7 @@ export const resetHandBackText = (
 ): string => {
   const what =
     mode === "resolving"
-      ? `the rebase of ${branch} onto ${base} tutti handed back to you, resolving its conflicts, finishing it and running the tests`
+      ? `the rebase of ${branch} onto ${base} tutti handed back to you, resolving its conflicts and finishing it`
       : `the failing check tutti handed back to you, fixing ${branch} so that it passes and committing the fix`
   return (
     `tutti: the account's usage limit has reset. Carry on where you left off with ${what}, ` +
@@ -95,22 +96,44 @@ export const resetHandBackText = (
  * What the worker is asked to do with a rebase stopped on conflicts, as orchestra asks it: the
  * tests of its change and of the files that conflicted, the whole check left to tutti's, which
  * follows; `setup` says when to run the project's setup, if it is to (setup.ts's setupToResolve).
+ * A stop on documents alone (repoFiles.ts's isDocument) asks for the resolution only, the check
+ * following anyway, unless a later commit stops on conflicts in code: a departure from orchestra,
+ * whose worker ran the tests of its change after a conflict in the spec alone (tutti-gr4z.4).
  */
-export const resolvePrompt = (stop: RebaseStop, base: string, check: string, setup = ""): string =>
-  `tutti: ${base} moved on while you worked; rebasing ${stop.ticket.branch} onto it stopped on ` +
-  `conflicts in ${stop.files.join(", ")}. ` +
-  `Resolve them keeping the intent of both your change and what landed on ${base}, ` +
-  "then git add the files and run GIT_EDITOR=true git rebase --continue; " +
-  "if the rebase stops on another commit, resolve that one the same way. " +
-  `If ${base} has a commit's change already, wholly or as the part that conflicts, run git rebase ` +
-  "--skip for that commit instead of resolving it. " +
-  setup +
-  "Once the rebase has finished, run the tests of the code you changed and of the files that " +
-  "conflicted in the foreground until they pass, since the commits that applied cleanly may " +
-  "break them too; fold any fix into the branch's last commit with git commit --amend --no-edit. " +
-  `Leave the whole check, '${check}', to tutti: it runs it on the branch next. ` +
-  "Don't do anything else: no new commits beyond the rebase, no merge, no push, no ticket changes. " +
-  "Say DONE when the rebase is complete and those tests pass."
+export const resolvePrompt = (
+  stop: RebaseStop,
+  base: string,
+  check: string,
+  setup = "",
+): string => {
+  const documents = stop.files.length > 0 && stop.files.every(isDocument)
+  const tests = documents
+    ? "As only documents conflicted, run no tests once the rebase has finished: " +
+      `leave the whole check, '${check}', to tutti, which runs it on the branch next. ` +
+      "If the rebase stops on another commit on conflicts in code, then once it has finished run " +
+      "the tests of the code you changed and of those files in the foreground until they pass, " +
+      "and fold any fix into the branch's last commit with git commit --amend --no-edit " +
+      "before you say DONE. " +
+      "Don't do anything else: no new commits beyond the rebase, no merge, no push, no ticket " +
+      "changes. Say DONE when the rebase is complete."
+    : "Once the rebase has finished, run the tests of the code you changed and of the files that " +
+      "conflicted in the foreground until they pass, since the commits that applied cleanly may " +
+      "break them too; fold any fix into the branch's last commit with git commit --amend --no-edit. " +
+      `Leave the whole check, '${check}', to tutti: it runs it on the branch next. ` +
+      "Don't do anything else: no new commits beyond the rebase, no merge, no push, no ticket " +
+      "changes. Say DONE when the rebase is complete and those tests pass."
+  return (
+    `tutti: ${base} moved on while you worked; rebasing ${stop.ticket.branch} onto it stopped on ` +
+    `conflicts in ${stop.files.join(", ")}. ` +
+    `Resolve them keeping the intent of both your change and what landed on ${base}, ` +
+    "then git add the files and run GIT_EDITOR=true git rebase --continue; " +
+    "if the rebase stops on another commit, resolve that one the same way. " +
+    `If ${base} has a commit's change already, wholly or as the part that conflicts, run git rebase ` +
+    "--skip for that commit instead of resolving it. " +
+    setup +
+    tests
+  )
+}
 
 /** The most commits a check hand-back lists of those that landed on the base. */
 export const maxLanded = 30

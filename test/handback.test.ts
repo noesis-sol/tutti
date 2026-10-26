@@ -261,7 +261,7 @@ describe("a resolution accepted", () => {
     const sent = composed(ran)
     expect(sent).toHaveLength(1)
     expect(sent[0]).toContain("rebasing tutti/a onto it stopped on conflicts in a.txt")
-    expect(sent[0]).toContain(`Leave the whole check, '${check}', to tutti`)
+    expect(sent[0]).toContain(`leave the whole check, '${check}', to tutti`)
     // The resolution is checked once, in its worktree, before it goes back in line.
     expect(ran.checkRuns).toHaveLength(1)
     expect(ran.checkRuns[0]?.cwd).toBe(worktreeOf("a"))
