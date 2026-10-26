@@ -43,6 +43,9 @@
         "spec": {
           "type": "string"
         },
+        "spec_source": {
+          "type": "string"
+        },
         "concurrency": {
           "type": "integer",
           "minimum": 0,
