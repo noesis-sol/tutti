@@ -1,7 +1,7 @@
 // What a fill reads of bd and git where it read once a ticket (tutti-ejkt.6): the issues the waiting
-// tickets link to in one bd list, falling back to a bd show each when it fails; no bd show for the
-// parent of a ticket the run took up without one; no list of the tickets left unmerged nor parents'
-// shows with no ticket in line; and the tickets' branches listed in one git call a fill.
+// tickets link to from the lists the fill has read (tutti-gr4z.7), with no bd show; no bd show for
+// the parent of a ticket the run took up without one; no list of the tickets left unmerged nor
+// parents' shows with no ticket in line; and the tickets' branches listed in one git call a fill.
 import { describe, expect, test } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer, Ref, type Scope } from "effect"
@@ -119,7 +119,7 @@ const linkedSeeds: ReadonlyArray<Seed> = [
 ]
 
 describe("the waiting tickets' links", () => {
-  test("are read in one bd list of the tickets they link to, with no bd show", async () => {
+  test("are read from the fill's lists, with no bd show nor bd list by ID", async () => {
     const [started, phases, calls, lines] = await run(
       linkedSeeds,
       Effect.gen(function* () {
@@ -129,34 +129,13 @@ describe("the waiting tickets' links", () => {
       }),
     )
     expect(started).toEqual(["t-2", "t-3", "t-4", "o-1"])
-    // The source's label came with the list, as bd show gives it.
+    // The source's label came with the list of the tickets labelled unmerged.
     expect(phases).toEqual(["HeldBack:merge"])
     expect(lines).toContain(
       "  t-1 waits: filed by u-1's worker; u-1 closed but not merged (labelled unmerged)",
     )
     expect(shows(calls)).toEqual([])
-    expect(byId(calls)).toEqual([["c-1", "o-1", "u-1"]])
-  })
-
-  test("are shown a ticket at a time when that list fails, with the same holds", async () => {
-    const [started, phases, calls, lines] = await run(
-      linkedSeeds,
-      Effect.gen(function* () {
-        const { schedule, started, calls } = yield* scheduler({ concurrent: 4 })
-        yield* (yield* Backlog).fail("list", { id: "u-1" })
-        yield* schedule.fillTrying
-        return [yield* started, [yield* phaseOf("t-1")], yield* calls, yield* texts] as const
-      }),
-    )
-    expect(started).toEqual(["t-2", "t-3", "t-4", "o-1"])
-    expect(phases).toEqual(["HeldBack:merge"])
-    expect(lines).toContain(
-      "  t-1 waits: filed by u-1's worker; u-1 closed but not merged (labelled unmerged)",
-    )
-    expect(lines).toContainEqual(
-      expect.stringContaining("could not read the linked tickets at once"),
-    )
-    expect([...shows(calls)].sort()).toEqual(["t-1", "t-2", "t-3"])
+    expect(byId(calls)).toEqual([])
   })
 })
 

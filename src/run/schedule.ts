@@ -74,9 +74,7 @@ import {
   takesBack,
   takesNew,
   unmerged,
-  unreadableHold,
   unsaid,
-  waitedOn,
   waitsLine,
   waitsOnLinks,
 } from "./holds.ts"
@@ -973,14 +971,16 @@ export const make = (
         // bd show gives the parent of one the run didn't dispatch. They hold back only a ticket in
         // line, so they are read for the first a fill weighs, and not at all with none.
         let holders:
-          | { readonly left: ReadonlyArray<Issue>; readonly parents: ReadonlySet<TicketId> }
+          | {
+              readonly labelled: ReadonlyArray<Issue>
+              readonly left: ReadonlyArray<Issue>
+              readonly parents: ReadonlySet<TicketId>
+            }
           | undefined
         const holding = Effect.gen(function* () {
           if (holders !== undefined) return holders
-          const left = leftUnmerged(
-            yield* ledger.current,
-            yield* beads.list({ status: "closed", labels: [unmergedLabel] }),
-          )
+          const labelled = yield* beads.list({ status: "closed", labels: [unmergedLabel] })
+          const left = leftUnmerged(yield* ledger.current, labelled)
           const openIds = new Set(open.map((issue) => issue.id))
           const parentOf = new Map((yield* Ref.get(memo)).parentOf)
           for (const id of unmerged(yield* ledger.current)) {
@@ -990,7 +990,7 @@ export const make = (
           }
           yield* remember((m) => ({ ...m, parentOf: new Map([...m.parentOf, ...parentOf]) }))
           const parents = parentsWaiting([...open, ...left], yield* ledger.current, parentOf)
-          holders = { left, parents }
+          holders = { labelled, left, parents }
           return holders
         })
 
@@ -1003,39 +1003,25 @@ export const make = (
             shown.set(id, issue)
             return issue
           })
-        // A waiting ticket's links with the issues they link to, as bd show gives them, read once a
-        // fill: bd ready gave the links, and one bd list gives the issues every waiting ticket links
-        // to. bd failing that list, each ticket is shown on its own; null when bd couldn't.
-        let linked: ReadonlyMap<TicketId, Issue> | null | undefined
-        const links = new Map<TicketId, Issue | null>()
+        // A waiting ticket's links with the issues they link to, as bd show gives them, from the lists
+        // the fill has read: bd's open list and its closed tickets labelled unmerged. An issue in
+        // neither is closed without the label, or one bd hides from both (a tombstone), and reads as
+        // closed (closedLink): git says whether its work is on the base (asksGit).
+        let linked: ReadonlyMap<TicketId, Issue> | undefined
         const linksOf = (issue: Issue) =>
           Effect.gen(function* () {
-            if (links.has(issue.id)) return links.get(issue.id) ?? null
             if (linked === undefined) {
-              const ids = [...new Set(queue.flatMap(waitedOn))]
-              const read = yield* beads.list({ all: true, ids }).pipe(Effect.result)
-              if (Result.isFailure(read)) {
-                yield* logs.write(
-                  detail`could not read the linked tickets at once, reading each ticket's links: ${beadsWhy(read.failure)}`,
-                )
-              }
-              linked = Result.isSuccess(read)
-                ? new Map(read.success.map((each) => [each.id, each]))
-                : null
+              const { labelled } = yield* holding
+              linked = new Map([...open, ...labelled].map((each) => [each.id, each]))
             }
             const known = linked
-            const found =
-              known === null
-                ? yield* showOnce(issue.id)
-                : {
-                    ...issue,
-                    dependencies: issue.dependencies.map((link) => {
-                      const other = known.get(link.id)
-                      return other === undefined ? link : { ...link, issue: other }
-                    }),
-                  }
-            links.set(issue.id, found)
-            return found
+            return {
+              ...issue,
+              dependencies: issue.dependencies.map((link) => {
+                const other = known.get(link.id)
+                return other === undefined ? link : { ...link, issue: other }
+              }),
+            }
           })
 
         // The repository's files and the running tickets' changes, read once a fill, and the files'
@@ -1118,24 +1104,20 @@ export const make = (
           })
 
         // What holds a waiting ticket back for a parent or a ticket not merged, saying why once. bd
-        // ready gives a ticket's links, so one linking to none it waits on has no bd show. With
-        // nothing of the run's pending, only a closed blocker's branch could hold one back: a ticket
-        // whose links bd can't show then goes ahead, as orchestra's does.
+        // ready gives a ticket's links and the fill's lists the issues they link to, so none has a
+        // bd show. With nothing of the run's pending, only a closed blocker's branch could hold one
+        // back.
         const heldFor = (issue: Issue, state: State) =>
           Effect.gen(function* () {
             let held: Held | undefined
-            const waits = waitsOnLinks(issue)
             const { left, parents } = yield* holding
             if (parents.has(issue.id)) held = parentHold
-            else if (waits && (left.length > 0 || pending(state))) {
+            else if (
+              waitsOnLinks(issue) &&
+              (left.length > 0 || pending(state) || closed !== undefined)
+            ) {
               const links = yield* linksOf(issue)
-              held =
-                links === null
-                  ? unreadableHold
-                  : mergeHold(state, links, yield* branchesOf(state, links))
-            } else if (waits && closed !== undefined) {
-              const links = yield* linksOf(issue)
-              if (links !== null) held = mergeHold(state, links, yield* branchesOf(state, links))
+              held = mergeHold(state, links, yield* branchesOf(state, links))
             }
             if (yield* said("waitSaid", issue.id, held?.text ?? "")) {
               yield* logs.write(waitsLine(issue.id, held?.text ?? ""))

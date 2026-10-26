@@ -60,9 +60,8 @@ describe("a fill with a ticket of the run's pending", () => {
               }),
           },
         })
-        // The linked tickets' list and every bd show fail: a ticket that needs its links waits, one
-        // that doesn't goes ahead.
-        yield* (yield* Backlog).fail("list", { id: "x-1" })
+        // Every bd show fails: the fill's lists give t-3's link, open and not running, so it goes
+        // ahead, as does one with no links (tutti-gr4z.7).
         yield* (yield* Backlog).fail("show", { times: Infinity })
         yield* schedule.fillTrying
         const state = yield* (yield* Ledger).current
@@ -73,13 +72,9 @@ describe("a fill with a ticket of the run's pending", () => {
         ] as const
       }),
     )
-    expect(started).toEqual(["a-1", "t-2"])
-    expect(phases).toEqual(["Working", "HeldBack:merge"])
-    expect(lines).toContain("  t-3 waits: its dependencies could not be read")
-    expect(lines.filter((text) => text.includes("could not read"))).toEqual([
-      expect.stringContaining("could not read the linked tickets at once"),
-      expect.stringContaining("could not read t-3's links"),
-    ])
+    expect(started).toEqual(["a-1", "t-2", "t-3"])
+    expect(phases).toEqual(["Working", "Working"])
+    expect(lines.filter((text) => text.includes("could not read"))).toEqual([])
   })
 })
 

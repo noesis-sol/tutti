@@ -89,9 +89,6 @@ export const parentHold: Held = {
   text: "its subtickets are not all closed and merged",
 }
 
-/** The hold of a ticket whose links bd couldn't show: it waits. */
-export const unreadableHold: Held = { why: "merge", text: "its dependencies could not be read" }
-
 /**
  * Whether the run knows nothing of the linked ticket that says it hasn't merged, though bd shows it
  * closed: not merged by the run, nor running, waiting to merge or set aside unmerged in it, nor
@@ -104,7 +101,10 @@ export const asksGit = (state: State, link: Dependency): boolean => {
   return ledgerView(state).unmerged(link.issue ?? closedLink(link)) === undefined
 }
 
-/** A link bd show didn't describe, taken for closed: bd ready lists a ticket once its blockers are. */
+/**
+ * A link the fill's lists didn't describe, taken for closed: bd ready lists a ticket once its
+ * blockers are, and bd hides a tombstone from its lists.
+ */
 const closedLink = (link: Dependency) => ({ id: link.id, status: "closed", labels: [] })
 
 /**
@@ -160,7 +160,7 @@ export const mergeHold = (
 }
 
 /** The tickets `issue`, as bd ready gives it, links to and may wait on: its blockers and sources. */
-export const waitedOn = (issue: Pick<Issue, "dependencies">): ReadonlyArray<TicketId> =>
+const waitedOn = (issue: Pick<Issue, "dependencies">): ReadonlyArray<TicketId> =>
   issue.dependencies
     .filter((link) => link.type === "blocks" || link.type === "discovered-from")
     .map((link) => link.id)
