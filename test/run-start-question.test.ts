@@ -17,6 +17,7 @@ import { layer as gitLayer } from "../src/testing/Git.ts"
 import { layer as memoryLock } from "../src/testing/RunLock.ts"
 import { TicketCount, Work } from "../src/ui/questions.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const undecided: Deciding = {
   tickets: false,
@@ -161,6 +162,7 @@ describe("the line form over stdin", () => {
         },
         theme,
         TicketCount.Ready({ n: 3 }),
+        noSpecAsk,
       ),
     )
     return { exit, output }
@@ -170,7 +172,7 @@ describe("the line form over stdin", () => {
     const tickets = await ask("1\n")
     expect(tickets.exit).toEqual(Exit.succeed(Work.Tickets()))
     expect(tickets.output).toContain("Current tickets: 3 ready")
-    const feature = await ask("2\ndark mode for the dashboard\n")
+    const feature = await ask("3\ndark mode for the dashboard\n")
     expect(feature.exit).toEqual(
       Exit.succeed(Work.Feature({ description: "dark mode for the dashboard" })),
     )

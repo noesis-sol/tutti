@@ -26,6 +26,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptState } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, leap, parserWait, type Rendered, withRender } from "./render.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -172,7 +173,13 @@ describe("the start question takes clicks", () => {
   test("Current tickets answers; New feature asks for its description, focused", async () => {
     const { all, say } = said()
     const node = (
-      <StartQuestion theme={dark} count={TicketCount.Ready({ n: 3 })} answer={say} cancel={never} />
+      <StartQuestion
+        spec={noSpecAsk}
+        theme={dark}
+        count={TicketCount.Ready({ n: 3 })}
+        answer={say}
+        cancel={never}
+      />
     )
     await withRender(node, size, async (rendered) => {
       await click(rendered, "New feature")

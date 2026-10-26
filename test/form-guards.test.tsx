@@ -16,6 +16,7 @@ import { askStart } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { leap, parserWait, TestClock } from "./render.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -75,6 +76,7 @@ const split = (setup: TestRendererSetup, start: string, rest: string) =>
 /** The start question at its description, Feature chosen. */
 const describing = async (setup: TestRendererSetup) => {
   await input(setup, () => setup.mockInput.pressArrow("down"))
+  await input(setup, () => setup.mockInput.pressArrow("down"))
   await input(setup, () => setup.mockInput.pressEnter())
 }
 
@@ -97,7 +99,7 @@ describe("the forms ask() shows, taking the mouse", () => {
   test("a mouse report split after its Esc doesn't cancel the start question", async () => {
     const { setup, shell } = await shellOf()
     try {
-      const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 })))
+      const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 }), noSpecAsk))
       await input(setup, () => setup.renderOnce())
       await split(setup, "\x1b", "[<35;10;5M")
       expect(fiber.pollUnsafe()).toBeUndefined()
@@ -112,7 +114,7 @@ describe("the forms ask() shows, taking the mouse", () => {
   test("a mouse report split after its ESC [ types nothing into the description", async () => {
     const { setup, shell } = await shellOf()
     try {
-      const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 })))
+      const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 }), noSpecAsk))
       await input(setup, () => setup.renderOnce())
       await describing(setup)
       await split(setup, "\x1b[", "<64;87;26M")
@@ -153,7 +155,7 @@ describe("one set of guards a renderer", () => {
       await act(async () => {
         other.render(<InputGuards />)
       })
-      const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 })))
+      const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 }), noSpecAsk))
       await input(setup, () => setup.renderOnce())
       await describing(setup)
       await split(setup, "\x1b[", "<64;87;26M")

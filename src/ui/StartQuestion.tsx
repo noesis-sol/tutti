@@ -1,24 +1,34 @@
 // The start question (§ 5 item 3, § 7.1), in the command's renderer, before the dashboard: a
-// select of the current tickets (with their count) or a new feature, and for a new feature a
-// textarea for its description. As orchestra's huh form: ↑ and ↓ (or k and j) move the selector,
-// Enter chooses; in the description Enter submits and Alt+Enter or Ctrl+J starts a new line
-// (Ctrl+J for terminals whose legacy encoding can't tell Alt+Enter from Enter, § 7.7), and
-// Shift+Tab goes back to the select, keeping what was typed. Esc or Ctrl+C cancels: nothing has
-// started yet. A click on an option chooses it, as Enter on it does (D9, § 7.3); one on the
-// description focuses it, as the renderer focuses what is clicked.
+// select of the current tickets (with their count), a spec or a new feature; for a spec, the field
+// for its file or URL (SpecField.tsx), then whether to refine it with Claude first; for a new
+// feature, a textarea for its description. As orchestra's huh form: ↑ and ↓ (or k and j) move the
+// selector, Enter chooses; in the description Enter submits and Alt+Enter or Ctrl+J starts a new
+// line (Ctrl+J for terminals whose legacy encoding can't tell Alt+Enter from Enter, § 7.7), and
+// Shift+Tab goes back a step, keeping what was typed. Esc or Ctrl+C cancels: nothing has started
+// yet. A click on an option chooses it, as Enter on it does (D9, § 7.3); one on a field focuses it,
+// as the renderer focuses what is clicked.
 import type { KeyBinding, TextareaRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
+import { FileBrowser, rowsShown } from "./FileBrowser.tsx"
 import { type Answers, ask, Field, formHintSegments, targetLines } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
-import { Lines, type Look, seg, wrap } from "./line.tsx"
+import { Lines, type Look, type Segments, seg, wrap } from "./line.tsx"
 import {
   describeDescription,
   describeTitle,
   type FormCancelled,
   newLineHint,
   noDescription,
+  optionAt,
+  refineDescription,
+  refineOptions,
+  refineTitle,
+  type SpecAsk,
+  specDescription,
+  specKeysHint,
+  specTitle,
   startDescription,
   startOptions,
   startTitle,
@@ -26,6 +36,14 @@ import {
   Work,
 } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
+import {
+  Listing,
+  listedLines,
+  type SpecFieldActions,
+  SpecInput,
+  specFieldCommands,
+  useSpecField,
+} from "./SpecField.tsx"
 import type { Appearance, Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 
@@ -39,25 +57,37 @@ export const descriptionKeys: KeyBinding[] = [
   { name: "j", ctrl: true, action: "newline" },
 ]
 
+/** The start question's steps: the select, a feature's description, a spec's file, then refining. */
+export type Step = "choose" | "describe" | "spec" | "refine"
+
 /** What the start question's keys do, in its step `step` now. */
 export interface StartActions {
-  readonly step: () => "choose" | "describe"
+  readonly step: () => Step
   /** Moves the selector by one. */
   readonly move: (by: number) => void
   /** Chooses the option the selector is on. */
   readonly choose: () => void
-  /** Goes back from the description to the select, keeping what was typed. */
+  /** Goes back a step, keeping what was typed. */
   readonly back: () => void
   readonly cancel: () => void
+  /** The spec's field. */
+  readonly field: SpecFieldActions
+  /** Moves the refine step's selector by one. */
+  readonly moveRefine: (by: number) => void
+  /** Chooses the refine step's option the selector is on. */
+  readonly chooseRefine: () => void
 }
 
 /**
- * The start question's keys: the select's while it chooses, the description's while it is typed
- * in, whose Enter, Alt+Enter and Ctrl+J are the textarea's own (descriptionKeys).
+ * The start question's keys: the select's while it chooses, the spec field's while it is answered
+ * (specFieldCommands), the refine step's, and the description's while it is typed in, whose Enter,
+ * Alt+Enter and Ctrl+J are the textarea's own (descriptionKeys).
  */
 export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
   const choosing = () => act.step() === "choose"
   const describing = () => act.step() === "describe"
+  const refining = () => act.step() === "refine"
+  const field = act.field
   return [
     {
       keys: ["up", "k"],
@@ -73,6 +103,20 @@ export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
       when: choosing,
       hint: { keys: "Enter", does: "confirm" },
     },
+    ...specFieldCommands(field, () => act.step() === "spec", act.back),
+    {
+      keys: ["up", "k"],
+      run: () => act.moveRefine(-1),
+      when: refining,
+      hint: { keys: "↑↓", does: "choose" },
+    },
+    { keys: ["down", "j"], run: () => act.moveRefine(1), when: refining },
+    {
+      keys: ["return", "kpenter"],
+      run: act.chooseRefine,
+      when: refining,
+      hint: { keys: "Enter", does: "confirm" },
+    },
     { keys: [], run: () => {}, when: describing, hint: { keys: "Enter", does: "submit" } },
     {
       keys: [],
@@ -83,9 +127,10 @@ export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
     {
       keys: ["shift+tab"],
       run: act.back,
-      when: describing,
+      when: () => describing() || refining(),
       hint: { keys: "Shift+Tab", does: "back" },
     },
+    // Esc closes the browser, or stops a fetch, where one is open (specFieldCommands).
     { keys: ["escape", "ctrl+c"], run: act.cancel, hint: { keys: "Esc", does: "cancel" } },
   ]
 }
@@ -102,16 +147,43 @@ const hintInset = 2
 export const StartQuestion = ({
   theme,
   count,
+  spec,
   answer,
   cancel,
-}: { readonly theme: Theme; readonly count: TicketCount } & Answers<Work>) => {
-  // The keys of one read each see the ones before them: Down and Enter together choose New feature.
-  const [step, setStep, stepNow] = useKeyState<"choose" | "describe">(() => "choose")
+}: {
+  readonly theme: Theme
+  readonly count: TicketCount
+  readonly spec: SpecAsk
+} & Answers<Work>) => {
+  // The keys of one read each see the ones before them: Down and Enter together choose Spec.
+  const [step, setStep, stepNow] = useKeyState<Step>(() => "choose")
   const [highlighted, setHighlighted, highlightedNow] = useKeyState(() => 0)
+  const [refineAt, setRefineAt, refineAtNow] = useKeyState(() => 0)
+  // The spec the field took, absolute or a URL, which the refine step runs.
+  const [, setGiven, givenNow] = useKeyState<string | null>(() => null)
   const [error, setError] = useState<string | null>(null)
   const description = useRef<TextareaRenderable>(null)
+  // How many rows the browser shows, as last drawn.
+  const browserRows = useRef(rowsShown(0))
   const options = startOptions(count)
   const { form } = theme
+  const { width, height } = useTerminalDimensions()
+
+  const field = useSpecField(
+    spec,
+    (taken) => {
+      setGiven(() => taken)
+      setRefineAt(() => 0)
+      setStep(() => "refine")
+      field.input.current?.blur()
+    },
+    () => browserRows.current,
+  )
+
+  const chooseRefine = (at: number) => {
+    const taken = givenNow()
+    if (taken !== null) answer(Work.Spec({ given: taken, refine: at === 1 }))
+  }
 
   const hint = useFormCommands(
     startCommands({
@@ -119,21 +191,36 @@ export const StartQuestion = ({
       move: (by) => setHighlighted((at) => Math.min(options.length - 1, Math.max(0, at + by))),
       choose: () => choose(highlightedNow()),
       back: () => {
+        if (stepNow() === "refine") {
+          setStep(() => "spec")
+          field.input.current?.focus()
+          return
+        }
+        field.act.leave()
         setStep(() => "choose")
-        // The read's keys after Shift+Tab are the select's, not the description's.
+        // The read's keys after Shift+Tab are the select's, not a field's.
         description.current?.blur()
+        field.input.current?.blur()
       },
       cancel,
+      field: field.act,
+      moveRefine: (by) =>
+        setRefineAt((at) => Math.min(refineOptions.length - 1, Math.max(0, at + by))),
+      chooseRefine: () => chooseRefine(refineAtNow()),
     }),
   )
 
-  // Option `at` chosen: the current tickets answer; a new feature asks for its description.
+  // Option `at` chosen: the current tickets answer; a spec asks for its file, a new feature for its
+  // description.
   const choose = (at: number) => {
-    if (at === 0) answer(Work.Tickets())
-    else if (stepNow() === "choose") {
+    if (at === optionAt.tickets) answer(Work.Tickets())
+    else if (stepNow() === "choose" && at === optionAt.spec) {
+      setStep(() => "spec")
+      // The read's keys after this Enter are the field's, before React draws it.
+      field.input.current?.focus()
+    } else if (stepNow() === "choose") {
       setError(null)
       setStep(() => "describe")
-      // The read's keys after this Enter are the description's, before React draws it.
       description.current?.focus()
     }
   }
@@ -145,10 +232,9 @@ export const StartQuestion = ({
   }
 
   // Each part as tall as its lines, wrapped by tutti's wrap, and the select given the lines left
-  // above the description, cut from its top; none where none are left. Left to Yoga, a screen too
+  // above the field answered, cut from its top; none where none are left. Left to Yoga, a screen too
   // short for the form shrank its texts, which drew their lines over each other, and OpenTUI cuts
   // nothing of what a box with no height draws (tutti-lfii).
-  const { width, height } = useTerminalDimensions()
   const room = Math.max(width - fieldInset, 1)
   const paragraph = (text: string, look: Look) => wrap([seg(text, look)], room)
   const heading = [
@@ -168,15 +254,42 @@ export const StartQuestion = ({
     ...paragraph(`${describeDescription} ${newLineHint}`, form.description),
   ]
   const errorLines = error === null ? [] : paragraph(error, form.error)
+  const specHeading = [
+    ...paragraph(specTitle, form.fieldTitle),
+    ...paragraph(`${specDescription} ${specKeysHint}`, form.description),
+  ]
+  const specErrorLines = field.error === null ? [] : paragraph(field.error, form.error)
+  const listing = listedLines(field.listed, theme)
+  const refineHeading = [
+    ...paragraph(refineTitle, form.fieldTitle),
+    ...paragraph(refineDescription, form.description),
+  ]
+  const refineChoices: ReadonlyArray<Segments> = targetLines(
+    refineOptions.map((option, at) =>
+      at === refineAt
+        ? [seg("> ", form.selector), seg(option, form.selected)]
+        : [seg(`  ${option}`, form.option)],
+    ),
+    room,
+  )
   const hintLines = wrap(formHintSegments(hint, theme), Math.max(width - hintInset, 1))
+  const specLines = 1 + specHeading.length + 1 + listing.length + specErrorLines.length
   const below =
-    step === "describe" ? 1 + describing.length + descriptionLines + errorLines.length : 0
+    step === "describe"
+      ? 1 + describing.length + descriptionLines + errorLines.length
+      : step === "spec"
+        ? specLines
+        : step === "refine"
+          ? specLines + 1 + refineHeading.length + refineChoices.length
+          : 0
   const left = height - 1 - below - 1 - hintLines.length
   // The select, while it is the field answered, keeps its options.
   const shown = Math.min(
     heading.length + choices.length,
     Math.max(left, step === "choose" ? choices.length : 0),
   )
+  const specShown = step === "spec" || step === "refine"
+  browserRows.current = rowsShown(height - 1 - hintLines.length)
 
   return (
     <box flexDirection="column" paddingX={1} paddingTop={1}>
@@ -200,6 +313,33 @@ export const StartQuestion = ({
               />
             </Field>
           </box>
+        </box>
+      )}
+      {/* Mounted while hidden, so that the keys of the read that chose Spec reach it. */}
+      <box flexDirection="column" paddingTop={1} visible={specShown} flexShrink={0}>
+        <Field theme={theme} focused={step === "spec"}>
+          <Lines lines={specHeading} />
+          <SpecInput
+            theme={theme}
+            field={field}
+            focused={step === "spec" && field.browsing === null && field.fetching === null}
+          />
+          <Listing theme={theme} field={field} />
+          <Lines lines={specErrorLines} />
+        </Field>
+      </box>
+      {step !== "refine" ? null : (
+        <box flexDirection="column" paddingTop={1} flexShrink={0}>
+          <Field theme={theme} focused>
+            <Lines lines={refineHeading} />
+            <Lines
+              lines={refineChoices}
+              press={(at) => {
+                setRefineAt(() => at)
+                chooseRefine(at)
+              }}
+            />
+          </Field>
         </box>
       )}
       {/* Mounted while hidden, so that the keys of the read that chose New feature reach it. */}
@@ -227,19 +367,33 @@ export const StartQuestion = ({
       <box flexDirection="column" paddingTop={1} flexShrink={0}>
         <Lines lines={hintLines} />
       </box>
+      {step !== "spec" || field.browsing === null ? null : (
+        <FileBrowser
+          theme={theme}
+          browsing={field.browsing}
+          home={spec.where.home}
+          width={width}
+          height={height - 1 - hintLines.length}
+          shown={browserRows.current}
+          press={field.act.browser.press}
+          scroll={field.act.browser.scroll}
+        />
+      )}
     </box>
   )
 }
 
 /**
  * Asks the start question in `shell`'s renderer: the current tickets, as `count` says of them,
- * or a new feature and its description. Fails with FormCancelled on Esc or Ctrl+C.
+ * a spec, as `spec` reads it, or a new feature and its description. Fails with FormCancelled on Esc
+ * or Ctrl+C.
  */
 export const askStart = (
   shell: Shell,
   themeOf: (appearance: Appearance) => Theme,
   count: TicketCount,
+  spec: SpecAsk,
 ): Effect.Effect<Work, FormCancelled> =>
   ask<Work>(shell, themeOf, (theme, answers) => (
-    <StartQuestion theme={theme} count={count} {...answers} />
+    <StartQuestion theme={theme} count={count} spec={spec} {...answers} />
   ))

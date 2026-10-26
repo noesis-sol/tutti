@@ -15,22 +15,30 @@ import {
   describeDescription,
   describeTitle,
   FormCancelled,
+  fetchingLine,
   leaveOpen,
   noAnswerTyped,
   noDescription,
+  noSpecPath,
   type OpenQuestion,
+  optionAt,
   otherChoice,
   type Plan,
   planLines,
   type QuestionAt,
   questionHeading,
   type Reply,
+  type SpecAsk,
+  specDescription,
+  specTitle,
   startDescription,
   startOptions,
   startTitle,
   type TicketCount,
   Work,
 } from "../questions.ts"
+import { exists, fileProblem } from "../specFiles.ts"
+import { readTyped, unquoted } from "../specPath.ts"
 import type { Theme } from "../theme.ts"
 
 /** Lines read from the terminal: the next, or none once input has ended. */
@@ -238,17 +246,60 @@ export const text = (
 }
 
 /**
- * The start question, a line at a time: the current tickets, as `count` says of them, or a new
- * feature, whose description it then reads.
+ * The spec's file or URL, a line at a time, as the renderer's field checks it (SpecField.tsx),
+ * without its completion or browser: asked again while the path names no file of text with
+ * something in it, or the URL can't be fetched (`spec.checkUrl`). The spec, its path absolute.
  */
-export const startQuestion = (io: LineIO, count: TicketCount): Effect.Effect<Work, FormCancelled> =>
+export const specFile = (io: LineIO, spec: SpecAsk): Effect.Effect<string, FormCancelled> =>
+  Effect.gen(function* () {
+    heading(io, specTitle, specDescription)
+    while (true) {
+      io.write(prompt(io, ""))
+      const line = yield* io.input.readLine
+      if (Option.isNone(line)) {
+        io.write("\n")
+        return yield* new FormCancelled()
+      }
+      const read = readTyped(line.value, spec.where, exists)
+      const problem =
+        read._tag === "Empty"
+          ? noSpecPath(false)
+          : read._tag === "Url"
+            ? yield* Effect.andThen(
+                Effect.sync(() =>
+                  io.write(`${io.theme.form.description.paint(fetchingLine(read.url))}\n`),
+                ),
+                spec.checkUrl(read.url),
+              )
+            : fileProblem(read.path, unquoted(line.value))
+      if (problem === null) {
+        io.write("\n")
+        return read._tag === "Url" ? read.url : read._tag === "Path" ? read.path : ""
+      }
+      io.write(`${io.theme.form.error.paint(problem)}\n`)
+    }
+  })
+
+/**
+ * The start question, a line at a time: the current tickets, as `count` says of them, a spec,
+ * whose file or URL it then reads (specFile), run as it is, as refining it needs the renderer; or a
+ * new feature, whose description it then reads.
+ */
+export const startQuestion = (
+  io: LineIO,
+  count: TicketCount,
+  spec: SpecAsk,
+): Effect.Effect<Work, FormCancelled> =>
   Effect.gen(function* () {
     const chosen = yield* select(io, {
       title: startTitle,
       description: startDescription,
       options: startOptions(count),
     })
-    if (chosen === 0) return Work.Tickets()
+    if (chosen === optionAt.tickets) return Work.Tickets()
+    if (chosen === optionAt.spec) {
+      return Work.Spec({ given: yield* specFile(io, spec), refine: false })
+    }
     const description = yield* text(io, {
       title: describeTitle,
       description: describeDescription,

@@ -33,6 +33,7 @@ import {
   TestClock,
   withRender,
 } from "./render.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -58,33 +59,38 @@ const recorder = <A,>() => {
   }
 }
 
-/** The colour of the first span holding `text`. */
-const colourOf = (frame: Frame, text: string) =>
-  frame.spans.lines
-    .flatMap((line) => line.spans)
-    .find((span) => span.text.includes(text))
-    ?.fg.toInts()
+/** The colour of the first span that is `text`, else of the first holding it. */
+const colourOf = (frame: Frame, text: string) => {
+  const spans = frame.spans.lines.flatMap((line) => line.spans)
+  return (
+    spans.find((span) => span.text === text) ?? spans.find((span) => span.text.includes(text))
+  )?.fg
+    .toInts()
     .slice(0, 3)
+}
 
 /** The colour a form style draws its text in. */
 const hex = (style: FormStyleName) => dark.form[style].fg?.toInts().slice(0, 3)
 
 const start = (count: TicketCount = TicketCount.Ready({ n: 3 })) => {
   const said = recorder<Work>()
-  const node = <StartQuestion theme={dark} count={count} {...said.props} />
+  const node = <StartQuestion spec={noSpecAsk} theme={dark} count={count} {...said.props} />
   return { said, node }
 }
 
 const press = (rendered: Rendered, drive: Parameters<Rendered["input"]>[0]) => rendered.input(drive)
 
 describe("the start question in the renderer", () => {
-  test("offers the current tickets, with their count, then a new feature", async () => {
+  test("offers the current tickets, with their count, then a spec, then a new feature", async () => {
     const { node } = start()
     await withRender(node, size, async (rendered) => {
       const frame = await rendered.capture()
       expect(frame.chars).toContain("What should this run work on?")
       expect(frame.chars).toContain("> Current tickets: 3 ready")
+      expect(frame.chars).toContain("  Spec: build what a spec file describes")
       expect(frame.chars).toContain("  New feature: describe it, talk it through, run its tickets")
+      expect(frame.chars.indexOf("Spec: build")).toBeLessThan(frame.chars.indexOf("New feature"))
+      expect(frame.chars).toContain("tutti --spec <file or URL> builds a")
       // The form roles: the title, the selector, the selected option, the others.
       expect(colourOf(frame, "What should this run")).toEqual(hex("fieldTitle"))
       expect(colourOf(frame, "> ")).toEqual(hex("selector"))
@@ -104,6 +110,7 @@ describe("the start question in the renderer", () => {
   test("a new feature asks for its description, with its new lines", async () => {
     const { said, node } = start()
     await withRender(node, size, async (rendered) => {
+      await press(rendered, (setup) => setup.mockInput.pressArrow("down"))
       await press(rendered, (setup) => setup.mockInput.pressArrow("down"))
       expect((await rendered.capture()).chars).toContain("> New feature")
       await press(rendered, (setup) => setup.mockInput.pressEnter())
@@ -130,6 +137,7 @@ describe("the start question in the renderer", () => {
     const { said, node } = start()
     await withRender(node, size, async (rendered) => {
       await press(rendered, (setup) => setup.mockInput.pressKey("j"))
+      await press(rendered, (setup) => setup.mockInput.pressKey("j"))
       await press(rendered, (setup) => setup.mockInput.pressEnter())
       await press(rendered, async (setup) => {
         await setup.mockInput.typeText("   ")
@@ -151,8 +159,10 @@ describe("the start question in the renderer", () => {
     const { said, node } = start()
     await withRender(node, size, async (rendered) => {
       await press(rendered, (setup) => setup.mockInput.pressArrow("down"))
+      await press(rendered, (setup) => setup.mockInput.pressArrow("down"))
       await press(rendered, (setup) => setup.mockInput.pressEnter())
       await press(rendered, (setup) => setup.mockInput.pressTab({ shift: true }))
+      await press(rendered, (setup) => setup.mockInput.pressArrow("up"))
       await press(rendered, (setup) => setup.mockInput.pressArrow("up"))
       await press(rendered, (setup) => setup.mockInput.pressEnter())
     })
@@ -162,8 +172,8 @@ describe("the start question in the renderer", () => {
   test.each([
     ["Esc at the select", [] as const, "escape"],
     ["Ctrl+C at the select", [] as const, "ctrl+c"],
-    ["Esc in the description", ["down", "enter"] as const, "escape"],
-    ["Ctrl+C in the description", ["down", "enter"] as const, "ctrl+c"],
+    ["Esc in the description", ["down", "down", "enter"] as const, "escape"],
+    ["Ctrl+C in the description", ["down", "down", "enter"] as const, "ctrl+c"],
   ])("%s cancels", async (_, before, key) => {
     const { said, node } = start()
     await withRender(node, size, async (rendered) => {
@@ -237,7 +247,7 @@ describe("askStart", () => {
   test("shows the question in the renderer and unmounts it once answered", async () => {
     const { setup, shell } = await shellOf()
     try {
-      const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 })))
+      const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 }), noSpecAsk))
       expect(await idleFrame(setup)).toContain("Current tickets: 2 ready")
       await act(async () => {
         setup.mockInput.pressEnter()
@@ -253,7 +263,7 @@ describe("askStart", () => {
   test("fails with FormCancelled on Esc", async () => {
     const { setup, shell } = await shellOf()
     try {
-      const fiber = await forked(askStart(shell, themeOf, TicketCount.Unknown()))
+      const fiber = await forked(askStart(shell, themeOf, TicketCount.Unknown(), noSpecAsk))
       await act(async () => {
         await setup.renderOnce()
         await pressEscape(setup)
@@ -269,7 +279,7 @@ describe("askStart", () => {
   test("interrupted, it unmounts the question", async () => {
     const { setup, shell } = await shellOf()
     try {
-      const fiber = await forked(askStart(shell, themeOf, TicketCount.Unknown()))
+      const fiber = await forked(askStart(shell, themeOf, TicketCount.Unknown(), noSpecAsk))
       expect(await idleFrame(setup)).toContain("What should this run work on?")
       await act(async () => {
         await Effect.runPromise(Fiber.interrupt(fiber))

@@ -6,6 +6,7 @@ import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { type Rendered, withRender } from "./render.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 const size = { width: 100, height: 24 }
@@ -15,6 +16,7 @@ const start = () => {
   const answers: Array<Work> = []
   const node = (
     <StartQuestion
+      spec={noSpecAsk}
       theme={theme}
       count={TicketCount.Ready({ n: 3 })}
       answer={(work) => {
@@ -33,11 +35,11 @@ const read = (rendered: Rendered, data: string) =>
     await Bun.sleep(40)
   })
 
-test("the keys after Down and Enter in one read are the description's", async () => {
+test("the keys after Down, Down and Enter in one read are the description's", async () => {
   const { answers, node } = start()
   await withRender(node, size, async (rendered) => {
     expect((await rendered.capture()).chars).not.toContain("Describe the feature")
-    await read(rendered, "\x1b[B\rundo stack")
+    await read(rendered, "\x1b[B\x1b[B\rundo stack")
     const frame = await rendered.capture()
     expect(frame.chars).toContain("Describe the feature")
     expect(frame.chars).toContain("undo stack")
@@ -52,9 +54,9 @@ test("the keys after Down and Enter in one read are the description's", async ()
 test("the keys after Shift+Tab in one read are the select's, not the description's", async () => {
   const { answers, node } = start()
   await withRender(node, size, async (rendered) => {
-    await read(rendered, "\x1b[B\rundo stack")
-    // Shift+Tab, Up and Enter: the Enter chooses the current tickets and submits no description.
-    await read(rendered, "\x1b[Z\x1b[A\r")
+    await read(rendered, "\x1b[B\x1b[B\rundo stack")
+    // Shift+Tab, Up, Up and Enter: the Enter chooses the current tickets and submits no description.
+    await read(rendered, "\x1b[Z\x1b[A\x1b[A\r")
   })
   expect(answers.map((work) => work._tag)).toEqual(["Tickets"])
 })
@@ -62,7 +64,7 @@ test("the keys after Shift+Tab in one read are the select's, not the description
 test("Shift+Tab hides the description and keeps what was typed in it", async () => {
   const { answers, node } = start()
   await withRender(node, size, async (rendered) => {
-    await read(rendered, "\x1b[B\rundo stack")
+    await read(rendered, "\x1b[B\x1b[B\rundo stack")
     // The x after Shift+Tab, in its read, is the select's: it doesn't reach the hidden description.
     await read(rendered, "\x1b[Zx")
     const frame = await rendered.capture()

@@ -1,21 +1,29 @@
 // The start question's side of the run (§ 5 item 3, § 7.1): whether a run asks it, what it says
-// of the current tickets, and how a run asks it. A run asks once the startup checks have passed
+// of the current tickets, how a run asks it, and how it reads a spec chosen there. A run asks once the startup checks have passed
 // and it holds the run lock, when stdin and stdout are TTYs and no flag decides: --tickets,
 // --ticket (or TUTTI_TICKET), --feature, --spec and --plain each do, and so does a --limit the run has
 // already reached, as orchestra's. It asks in the command's one renderer, before the dashboard,
 // or as lines (plain/forms.ts) when the terminal can't show one: TERM=dumb, or fewer than 256
 // colours. A cancelled question ends the run before it started, exit 130.
-import { Console, Effect, Result } from "effect"
+import { Console, type Context, Effect, type FileSystem, Result } from "effect"
 import type { AppConfigValue } from "../cli/AppConfig.ts"
 import { Beads } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import type { OutputMode, TtyValue } from "../services/Tty.ts"
 import { startQuestion, streamInput } from "../ui/plain/forms.ts"
-import { type FormCancelled, TicketCount, type Work } from "../ui/questions.ts"
+import {
+  type FormCancelled,
+  type SpecAsk,
+  specChosenFrom,
+  TicketCount,
+  type Work,
+} from "../ui/questions.ts"
 import type { Theme } from "../ui/theme.ts"
 import { exitCodes } from "./holds.ts"
 import * as nothing from "./nothing.ts"
 import * as scope from "./scope.ts"
+import { fetchUrlSpec, readSpec, type Spec } from "./spec.ts"
+import type { LiveFetch, SpecFetch } from "./specSource.ts"
 
 /** How the run asks the start question: in the renderer, as lines, or not at all. */
 export type Asking = "renderer" | "lines" | "no"
@@ -80,10 +88,47 @@ export const askLines = (
   write: (text: string) => void,
   theme: Theme,
   count: TicketCount,
+  spec: SpecAsk,
 ): Effect.Effect<Work, FormCancelled> =>
   Effect.scoped(
-    Effect.flatMap(streamInput(stdin), (input) => startQuestion({ input, write, theme }, count)),
+    Effect.flatMap(streamInput(stdin), (input) =>
+      startQuestion({ input, write, theme }, count, spec),
+    ),
   )
+
+/**
+ * What the start question needs to ask for a spec in the repository `repo`, `home` the home folder:
+ * a URL is fetched with `fetch`, the run's (fetchOnce), so that reading the spec once chosen doesn't
+ * fetch it again, run in `context`.
+ */
+export const specAsk = <R>(
+  repo: string,
+  home: string,
+  fetch: SpecFetch<R>,
+  context: Context.Context<R>,
+): SpecAsk => ({
+  where: { repo, home },
+  checkUrl: (url) =>
+    fetchUrlSpec(url, specChosenFrom, fetch).pipe(
+      Effect.map((fetched) => (Result.isFailure(fetched) ? fetched.failure : null)),
+      Effect.provideContext(context),
+    ),
+})
+
+/** What a run says on stderr when the spec chosen at the start question can't be run, before exit 2. */
+export const cannotRunSpec = (problem: string): string => `tutti cannot run that spec: ${problem}`
+
+/**
+ * The spec chosen at the start question, `given` (its path, absolute, or its URL), read as the
+ * startup checks read --spec's, in the main checkout `repo`, a URL fetched with `fetch`: the spec,
+ * or what the run says before it exits 2 (cannotRunSpec), such as a spec git ignores.
+ */
+export const readChosenSpec = (
+  given: string,
+  repo: string,
+  fetch: SpecFetch<LiveFetch>,
+): Effect.Effect<Result.Result<Spec, string>, never, FileSystem.FileSystem | Git | LiveFetch> =>
+  Effect.map(readSpec(given, specChosenFrom, repo, repo, fetch), Result.mapError(cannotRunSpec))
 
 /**
  * Asks the start question with `ask`, then begins the run on the work chosen with `begin`: the

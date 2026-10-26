@@ -17,9 +17,15 @@ import {
 import { type Command, hintOf, useFormCommands } from "../src/ui/keyCommands.ts"
 import { PlanConfirmation, planCommands } from "../src/ui/PlanConfirmation.tsx"
 import { type Plan, TicketCount, Work } from "../src/ui/questions.ts"
-import { type StartActions, StartQuestion, startCommands } from "../src/ui/StartQuestion.tsx"
+import {
+  type StartActions,
+  StartQuestion,
+  type Step,
+  startCommands,
+} from "../src/ui/StartQuestion.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { type Frame, withRender } from "./render.ts"
+import { fieldActions, noSpecAsk } from "./specAsk.ts"
 
 const dark = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 
@@ -185,12 +191,15 @@ describe("init's form", () => {
 })
 
 describe("the start question", () => {
-  const act = (step: "choose" | "describe"): StartActions => ({
+  const act = (step: Step): StartActions => ({
     step: () => step,
     move: nothing,
     choose: nothing,
     back: nothing,
     cancel: nothing,
+    field: fieldActions(),
+    moveRefine: nothing,
+    chooseRefine: nothing,
   })
 
   test("names the select's keys while it chooses, the description's while it is typed in", () => {
@@ -204,6 +213,7 @@ describe("the start question", () => {
     const { all, say } = said()
     const node = (
       <StartQuestion
+        spec={noSpecAsk}
         theme={dark}
         count={TicketCount.Ready({ n: 3 })}
         answer={say}
@@ -212,6 +222,7 @@ describe("the start question", () => {
     )
     await withRender(node, size, async (rendered) => {
       await rendered.input((setup) => {
+        setup.mockInput.pressKey("j")
         setup.mockInput.pressKey("j")
         setup.mockInput.pressEnter()
       })

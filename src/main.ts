@@ -18,11 +18,12 @@
 // renderer is gone, exit 4.
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`; the npm bundle from src/npm.ts, which detects musl first.
-import { availableParallelism } from "node:os"
+import { availableParallelism, homedir } from "node:os"
 import { BunServices } from "@effect/platform-bun"
 import {
   Clock,
   Console,
+  Deferred,
   Duration,
   Effect,
   Layer,
@@ -59,7 +60,7 @@ import { tuttiVersion } from "./cli/version.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
-import { guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
+import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
 import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import {
@@ -68,6 +69,8 @@ import {
   askThenBegin,
   cancelled,
   interviewUnavailable,
+  readChosenSpec,
+  specAsk,
   ticketCount,
 } from "./run/choose.ts"
 import { startBranches } from "./run/closedBranches.ts"
@@ -111,7 +114,7 @@ import {
 } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
-import { fetchOnce, fetchSpecLive } from "./run/specSource.ts"
+import { fetchOnce, fetchSpecLive, type LiveFetch } from "./run/specSource.ts"
 import { setUpFromFlags, specStart } from "./run/specStart.ts"
 import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
@@ -137,11 +140,12 @@ import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard, interviewScreen } from "./ui/App.tsx"
 import { liveClipboard } from "./ui/clipboard.ts"
 import { askOpenQuestion } from "./ui/OpenQuestion.tsx"
+import { screenOut, showOrgans } from "./ui/OrganScreen.tsx"
 import { liveUrlOpener } from "./ui/openUrl.ts"
 import { askPlan } from "./ui/PlanConfirmation.tsx"
 import { confirm, openQuestion, planConfirmation, streamInput } from "./ui/plain/forms.ts"
-import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
-import { closeLimit, open as openRenderer, type RendererFailed } from "./ui/renderer.ts"
+import { chosenLines, specLine, TicketCount, Work } from "./ui/questions.ts"
+import { closeLimit, open as openRenderer, type RendererFailed, type Shell } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
 import {
   type Appearance,
@@ -440,6 +444,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     // terminal (§ 4.14): what that wrote is committed with the spec.
     // A spec at a URL is fetched once (§ 4.14), by the setup or the checks, whichever reads it first.
     const fetch = fetchOnce(fetchSpecLive)
+    // What fetches it runs on, for a spec chosen at the start question.
+    const fetchContext = yield* Effect.context<LiveFetch>()
     const setup = yield* setUpFromFlags({
       cwd,
       flags,
@@ -496,7 +502,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     if (Result.isFailure(commonDir)) {
       return yield* cannot(`tutti cannot find the git folder of ${config.repo}`)
     }
-    const holder: Holder = {
+    let holder: Holder = {
       pid: process.pid,
       started: at,
       version,
@@ -572,7 +578,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
 
       // The run's scope: --ticket's, the epic --feature filed, or a spec's root epic.
       let scope = config.ticket
-      const spec = started.spec ?? null
+      // The spec: --spec's, or the one chosen at the start question.
+      let spec = started.spec ?? null
       yield* ready.step(readySteps.backlog)
       // bd failing to list the tickets left unmerged is something to run: the run lists them again,
       // and stops on it. Only the nothing check needs them: read once, as the start question opens
@@ -617,6 +624,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         yield* endWith(nothing.nothing, output)
         return true
       })
+      // What the start question needs to ask for a spec.
+      const specAsking = specAsk(config.repo, homedir(), fetch, fetchContext)
       const count =
         asks === "no"
           ? TicketCount.Unknown()
@@ -668,6 +677,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             ...(config.overnight ? { overnight: true as const } : {}),
           })
         })
+      /** A spec chosen at the start question begins the run once its breakdown has scoped it. */
+      const beginUnlessSpec = (work: Work) => (work._tag === "Spec" ? Effect.void : begin(work))
       /** A new feature chosen at the start question asked as lines: the interview needs the renderer. */
       const noInterview = Effect.gen(function* () {
         yield* ready.end
@@ -712,24 +723,35 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       // where it needs to be, then the run scoped to its root epic, which the lock then names. What
       // it says goes to `out` and `error`; a refinement is shown with `refine`. The exit code when
       // it stopped the run.
-      const specStarting = specStart({
-        setup,
-        holder,
-        rewrite: lock.rewrite,
-        runScope,
-        quit: Queue.offer(quits, breakdownFailed),
-      })
+      const wireSpec = () =>
+        specStart({
+          setup,
+          holder,
+          rewrite: lock.rewrite,
+          runScope,
+          quit: Queue.offer(quits, breakdownFailed),
+        })
+      let specStarting = wireSpec()
+      // `screen`, an Out on the renderer's screen, draws the organ lines there as well, unstyled.
       const startSpec = (io: {
         readonly out: Out
         readonly error: (text: string) => Effect.Effect<void>
         readonly refine: Option.Option<InterviewScreen>
+        readonly screen?: { readonly out: Out; readonly appearance: Appearance }
       }) =>
         Effect.gen(function* () {
           if (spec === null) return undefined
           yield* ready.end
           const theme = yield* printedThemeOf(io.out)
+          const printer = makePrinter(io.out, theme)
           const begun = yield* specStarting.start(spec, config, {
-            printer: makePrinter(io.out, theme),
+            printer:
+              io.screen === undefined
+                ? printer
+                : bothPrinters(
+                    printer,
+                    makePrinter(io.screen.out, themeOf(io.screen.appearance, false)),
+                  ),
             error: io.error,
             refine: io.refine,
           })
@@ -738,6 +760,35 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             return begun.exitCode
           }
           scope = begun.root
+          return undefined
+        })
+      /**
+       * The spec chosen at the start question, `work`, taken as --spec takes one: what was chosen
+       * said on `out`, then the spec read as the startup checks read it, the run, the lock and the
+       * spec's start wired to it. The exit code where it can't be run, having said why on `error`.
+       */
+      const takeSpec = (
+        work: Extract<Work, { readonly _tag: "Spec" }>,
+        out: Out,
+        error: (text: string) => Effect.Effect<void>,
+      ) =>
+        Effect.gen(function* () {
+          out.write(`${specLine(work.given, work.refine)}\n`)
+          const read = yield* readChosenSpec(work.given, config.repo, fetch).pipe(
+            Effect.provide(gitLayer),
+            Effect.provideContext(fetchContext),
+          )
+          if (Result.isFailure(read)) {
+            yield* error(read.failure)
+            return exitCodes.setup
+          }
+          spec = read.success
+          config = { ...config, refine: work.refine }
+          started = { ...started, spec: read.success, config }
+          holder = { ...holder, spec: read.success.path }
+          // The lock is held all the same if its holder can't be rewritten.
+          yield* Effect.ignore(lock.rewrite(holder))
+          specStarting = wireSpec()
           return undefined
         })
       const canAsk = tty.stdinIsTty && tty.stdoutIsTty
@@ -808,13 +859,27 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           asks === "lines" && mainTheme !== undefined
             ? Effect.andThen(
                 ready.end,
-                askLines(process.stdin, (text) => process.stdout.write(text), mainTheme, count),
+                askLines(
+                  process.stdin,
+                  (text) => process.stdout.write(text),
+                  mainTheme,
+                  count,
+                  specAsking,
+                ),
               )
             : Effect.succeed(Work.Tickets()),
-          begin,
+          beginUnlessSpec,
         )
         if (work === null) return yield* cancelled
         if (work._tag === "Feature") return yield* noInterview
+        if (work._tag === "Spec") {
+          // A spec chosen as lines, run as it is: refining it needs the renderer.
+          const failed = yield* takeSpec(work, stdout, error)
+          if (failed !== undefined) return failed
+          const chosenStopped = yield* startSpec({ out: stdout, error, refine: Option.none() })
+          if (chosenStopped !== undefined) return chosenStopped
+          yield* begin(Work.Tickets())
+        }
         // The plan confirmation, a line at a time.
         const stopped = yield* planFeature<never>({
           out: stdout,
@@ -889,6 +954,33 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           })
           // Added before the renderer opens, so it runs once the renderer has closed.
           yield* Effect.addFinalizer(() => screen.release)
+          /**
+           * The breakdown of a spec chosen at the start question and run as it is, as --spec breaks
+           * one down, with the renderer open: its organ lines drawn there meanwhile, unstyled, and
+           * held for the main screen; Ctrl+C stops it, as on the main screen, with exit 130.
+           */
+          const breakdownOnScreen = (shell: Shell) =>
+            Effect.scoped(
+              Effect.gen(function* () {
+                const drawn = screenOut(() => shell.renderer.width)
+                const stop = yield* Deferred.make<void>()
+                yield* showOrgans(shell, themeOf, drawn.text, () => {
+                  Effect.runFork(Deferred.succeed(stop, undefined))
+                })
+                const ended = yield* Effect.raceFirst(
+                  startSpec({
+                    out: { ...screen.out, tty: false },
+                    error: screen.error,
+                    refine: Option.none(),
+                    screen: { out: drawn.out, appearance: shell.appearance.get() },
+                  }),
+                  Effect.as(Deferred.await(stop), "stopped" as const),
+                )
+                if (ended !== "stopped") return ended
+                yield* Effect.flatMap(endRecord(exitCodes.interrupted), events.emit)
+                return exitCodes.interrupted
+              }),
+            )
           const refining = spec !== null && config.refine
           if (spec !== null && !refining) {
             // A headless breakdown on the main screen, its spinner there, before the dashboard
@@ -949,8 +1041,28 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             if (nothing !== null) return nothing
           }
           if (asks !== "no") {
-            const work = yield* askThenBegin(askStart(shell, themeOf, count), begin)
+            const work = yield* askThenBegin(
+              askStart(shell, themeOf, count, specAsking),
+              beginUnlessSpec,
+            )
             if (work === null) return { _tag: "Cancelled" } as const
+            if (work._tag === "Spec") {
+              // The spec chosen, then refined in the Interview view, or broken down with its organ
+              // lines drawn in this renderer (Ctrl+C stops it); then the run, once it has begun.
+              const failed = yield* takeSpec(work, screen.out, screen.error)
+              if (failed !== undefined) return { _tag: "Stopped", exitCode: failed } as const
+              const specStopped = work.refine
+                ? yield* startSpec({
+                    out: screen.out,
+                    error: screen.error,
+                    refine: Option.some(interviewScreen(shell, themeOf, desktop)),
+                  })
+                : yield* breakdownOnScreen(shell)
+              if (specStopped !== undefined) {
+                return { _tag: "Stopped", exitCode: specStopped } as const
+              }
+              yield* begin(Work.Tickets())
+            }
             if (work._tag === "Feature") {
               // The interview, in this renderer; once its epic is filed and you say y, the run.
               const outcome = yield* interview(work.description, {

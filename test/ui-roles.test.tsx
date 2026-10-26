@@ -50,6 +50,7 @@ import {
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { workersDoing } from "./activity.ts"
 import { type Frame, type Rendered, type Size, withRender } from "./render.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 /** § 7.11's tables: each role's colour in the `orchestra` scheme, light and dark. */
 const orchestraColours: { readonly [R in Role]: readonly [light: string, dark: string] } = {
@@ -286,6 +287,7 @@ const Toast = ({ text, failure }: { readonly text: string; readonly failure: boo
 /** The start question, answering nothing. */
 const startQuestion = (theme: Theme) => (
   <StartQuestion
+    spec={noSpecAsk}
     theme={theme}
     count={TicketCount.Ready({ n: 3 })}
     answer={() => {}}
@@ -953,7 +955,7 @@ const scenes: ReadonlyArray<Scene> = [
     size: { width: 80, height: 24 },
     view: viewOf([]),
     children: (theme) => startQuestion(theme),
-    keys: ["down", "enter", "enter"],
+    keys: ["down", "down", "enter", "enter"],
     ready: "What should it do, and why?",
     checks: [
       ["Describe the feature", look("formTitle", "bold")],

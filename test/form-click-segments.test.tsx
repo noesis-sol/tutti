@@ -21,6 +21,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptState } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, withRender } from "./render.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -69,6 +70,7 @@ describe("the start question on a narrow screen", () => {
     const said: Array<unknown> = []
     const node = (
       <StartQuestion
+        spec={noSpecAsk}
         theme={themeOf("dark")}
         count={TicketCount.Ready({ n: 3 })}
         answer={(work) => said.push(work)}

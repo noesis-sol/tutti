@@ -213,20 +213,26 @@ const recordedSource = (
 export const isWebPage = (contentType: string | null, text: string): boolean =>
   /^\s*text\/html\b/i.test(contentType ?? "") || /^\s*<(!doctype\s+html|html)\b/i.test(text)
 
+/** A spec fetched from its URL: the URL as read, the bytes fetched, and their text. */
+export interface FetchedSpec {
+  readonly target: SpecUrl
+  readonly bytes: Uint8Array
+  readonly text: string
+}
+
 /**
- * The spec at the URL `given` (by `from`), fetched by `fetch` and checked as a file from outside the
- * repository is, its copy named after the URL; or the problem with it.
+ * The spec at the URL `given` (by `from`), fetched by `fetch` and checked as text with something in
+ * it, not a web page; or the problem with it. The start question's field checks a URL with it.
  */
-const readUrlSpec = <R>(
+export const fetchUrlSpec = <R>(
   given: string,
   from: string,
-  repo: string,
   fetch: SpecFetch<R>,
-): Effect.Effect<Result.Result<Spec, string>, never, Git | R> =>
+): Effect.Effect<Result.Result<FetchedSpec, string>, never, R> =>
   Effect.gen(function* () {
     const target: Result.Result<SpecUrl, string> = specUrl(given, from)
     if (Result.isFailure(target)) return Result.fail(target.failure)
-    const { label, shown, name } = target.success
+    const { label } = target.success
     const got = yield* fetch(target.success)
     if (Result.isFailure(got)) return Result.fail(got.failure)
     const page = `The spec ${label} gave a web page, not a spec: give the URL of the raw file.`
@@ -241,6 +247,24 @@ const readUrlSpec = <R>(
     if (text.value.trim() === "") {
       return Result.fail(`The spec ${label} is empty: write what to build in it first.`)
     }
+    return Result.succeed({ target: target.success, bytes: got.success.bytes, text: text.value })
+  })
+
+/**
+ * The spec at the URL `given` (by `from`), fetched by `fetch` and checked as a file from outside the
+ * repository is, its copy named after the URL; or the problem with it.
+ */
+const readUrlSpec = <R>(
+  given: string,
+  from: string,
+  repo: string,
+  fetch: SpecFetch<R>,
+): Effect.Effect<Result.Result<Spec, string>, never, Git | R> =>
+  Effect.gen(function* () {
+    const fetched = yield* fetchUrlSpec(given, from, fetch)
+    if (Result.isFailure(fetched)) return Result.fail(fetched.failure)
+    const { target, bytes, text } = fetched.success
+    const { label, shown, name } = target
     const path = `${specsFolder}/${name}`
     const ignored = yield* ignoredProblem(repo, path, from)
     if (ignored !== null) return Result.fail(ignored)
@@ -256,8 +280,8 @@ const readUrlSpec = <R>(
       source: shown,
       path,
       copy: true,
-      text: text.value,
-      sha256: createHash("sha256").update(got.success.bytes).digest("hex"),
+      text,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
       url: shown,
     })
   })

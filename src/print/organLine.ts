@@ -107,6 +107,24 @@ const lineWidth = (out: Out): number => {
 const cut = (line: string, width: number): string =>
   Bun.stringWidth(line) <= width ? line : `${Bun.sliceAnsi(line, 0, width)}\x1b[0m`
 
+/** A printer that prints to `first` and `second` both, each organ line drawn on each. */
+export const bothPrinters = (first: Printer, second: Printer): Printer => {
+  const each = (f: (printer: Printer) => Effect.Effect<void>): Effect.Effect<void> =>
+    Effect.andThen(f(first), f(second))
+  return {
+    print: (text) => each((printer) => printer.print(text)),
+    say: (text) => each((printer) => printer.say(text)),
+    warn: (text) => each((printer) => printer.warn(text)),
+    organ: (text) =>
+      Effect.zipWith(first.organ(text), second.organ(text), (a, b) => ({
+        detail: (detail) => Effect.andThen(a.detail(detail), b.detail(detail)),
+        done: (done) => Effect.andThen(a.done(done), b.done(done)),
+        warn: (warned) => Effect.andThen(a.warn(warned), b.warn(warned)),
+        drop: Effect.andThen(a.drop, b.drop),
+      })),
+  }
+}
+
 /** The printer on `out`, in `theme`'s styles. */
 export const makePrinter = (out: Out, theme: Theme): Printer => {
   const { organ, say, deferred, picked, dim } = theme.styles

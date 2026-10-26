@@ -17,6 +17,7 @@ import {
 } from "../src/ui/plain/forms.ts"
 import { fileQuestion, type Plan, planLines, TicketCount, type Work } from "../src/ui/questions.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const plainTheme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
 const colourTheme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
@@ -154,19 +155,20 @@ describe("a text", () => {
 
 describe("the start question as lines", () => {
   const ask = (input: string, count: TicketCount = TicketCount.Ready({ n: 3 })) =>
-    answer(input, (io) => startQuestion(io, count))
+    answer(input, (io) => startQuestion(io, count, noSpecAsk))
 
   test("1 is the current tickets, with their count", async () => {
     const { exit, output } = await ask("1\n")
     expect(value(exit)).toEqual({ _tag: "Tickets" } as Work)
     expect(output).toContain("What should this run work on?\n")
     expect(output).toContain("1. Current tickets: 3 ready\n")
-    expect(output).toContain("2. New feature: describe it, talk it through, run its tickets\n")
+    expect(output).toContain("2. Spec: build what a spec file describes\n")
+    expect(output).toContain("3. New feature: describe it, talk it through, run its tickets\n")
     expect(output).not.toContain("Describe the feature")
   })
 
-  test("2 is a new feature, whose description it then reads", async () => {
-    const { exit, output } = await ask("2\n  an undo stack  \n")
+  test("3 is a new feature, whose description it then reads", async () => {
+    const { exit, output } = await ask("3\n  an undo stack  \n")
     expect(value(exit)).toEqual({ _tag: "Feature", description: "an undo stack" } as Work)
     expect(output).toContain("Describe the feature\n")
     // One line: no new-line keys to name.
@@ -174,14 +176,14 @@ describe("the start question as lines", () => {
   })
 
   test("an empty description is refused until one is typed", async () => {
-    const { exit, output } = await ask("2\n\n \nx\n")
+    const { exit, output } = await ask("3\n\n \nx\n")
     expect(value(exit)).toEqual({ _tag: "Feature", description: "x" } as Work)
     expect(output.split("describe the feature first, or press Ctrl+D to cancel\n")).toHaveLength(3)
   })
 
   test("the end of input cancels it, at the select or at the description", async () => {
     expect(cancelled((await ask("")).exit)).toBe(true)
-    expect(cancelled((await ask("2\n")).exit)).toBe(true)
+    expect(cancelled((await ask("3\n")).exit)).toBe(true)
   })
 
   test("says why there is nothing to run", async () => {

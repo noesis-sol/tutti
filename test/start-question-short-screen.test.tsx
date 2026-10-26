@@ -5,12 +5,14 @@ import { TicketCount } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { type Size, withRender } from "./render.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
 
 const node = () => (
   <StartQuestion
+    spec={noSpecAsk}
     theme={themeOf("dark")}
     count={TicketCount.Ready({ n: 3 })}
     answer={() => {}}

@@ -15,6 +15,7 @@ import { layer as gitLayer } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { FormCancelled, TicketCount, type Work } from "../src/ui/questions.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const repo = "/repo"
 
@@ -82,7 +83,7 @@ const askedAsLines = (typed: string) => {
   const stdin = new PassThrough()
   stdin.end(typed)
   const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
-  return askLines(stdin, () => {}, theme, TicketCount.AllDone())
+  return askLines(stdin, () => {}, theme, TicketCount.AllDone(), noSpecAsk)
 }
 
 describe("a cancelled start question", () => {

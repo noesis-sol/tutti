@@ -4,10 +4,12 @@
 //
 // A plan is an organ's words, or tickets' from bd: each of its texts is sanitised (§ 7.10) before
 // it is shown, and kept on one line where a line is all it has.
-import { Data, Schema } from "effect"
+import { Data, type Effect, Schema } from "effect"
+import { isSpecUrl, shownUrl } from "../run/specSource.ts"
 import type { QuestionOption, TicketId } from "../services/Beads.ts"
 import { type Segments, seg } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
+import type { Where } from "./specPath.ts"
 import type { Theme } from "./theme.ts"
 
 /** A form was cancelled: Esc or Ctrl+C in the renderer, the end of input (Ctrl+D) in a line form. */
@@ -17,6 +19,11 @@ export class FormCancelled extends Schema.TaggedError<FormCancelled>()("FormCanc
 export type Work = Data.TaggedEnum<{
   /** The current tickets, as --tickets runs them. */
   Tickets: Record<never, never>
+  /**
+   * A spec, as --spec runs it (§ 4.14): its file, absolute, or its URL as typed; refined with
+   * Claude first, as --refine, or run as it is.
+   */
+  Spec: { readonly given: string; readonly refine: boolean }
   /** A new feature, talked through in the interview (§ 4.10): its description, trimmed. */
   Feature: { readonly description: string }
 }>
@@ -42,7 +49,7 @@ const plural = (n: number, noun: string): string => (n === 1 ? `1 ${noun}` : `${
 export const startTitle = "What should this run work on?"
 
 export const startDescription =
-  'tutti --tickets runs the current tickets without asking, and tutti --feature "<request>" plans a feature.'
+  'tutti --tickets runs the current tickets without asking, tutti --spec <file or URL> builds a spec, and tutti --feature "<request>" plans a feature.'
 
 /** The current tickets' option: how many are ready, or why none is. */
 export const ticketsOption = (count: TicketCount): string =>
@@ -53,13 +60,71 @@ export const ticketsOption = (count: TicketCount): string =>
     Unknown: () => "Current tickets",
   })
 
+export const specOption = "Spec: build what a spec file describes"
+
 export const featureOption = "New feature: describe it, talk it through, run its tickets"
 
-/** The start question's options, in order: the current tickets, then a new feature. */
+/** The start question's options, in order: the current tickets, a spec, then a new feature. */
 export const startOptions = (count: TicketCount): ReadonlyArray<string> => [
   ticketsOption(count),
+  specOption,
   featureOption,
 ]
+
+/** Where each work is among the start question's options. */
+export const optionAt = { tickets: 0, spec: 1, feature: 2 } as const
+
+/** What the start question needs to ask for a spec, in the renderer and as lines. */
+export interface SpecAsk {
+  /** Where a path typed starts: the repository, and the home folder for `~`. */
+  readonly where: Where
+  /** Fetches the spec at a URL and checks it: its problem, or null where it can be run. */
+  readonly checkUrl: (url: string) => Effect.Effect<string | null>
+}
+
+export const specTitle = "Spec file"
+
+export const specDescription =
+  "The Markdown or text file that describes what to build, or its https:// URL. A relative path starts at the repository, and ~ is your home folder."
+
+/** In the renderer, under the spec's description: its keys. */
+export const specKeysHint = "Tab completes its path, and Ctrl+O browses for it."
+
+/** The spec's error while nothing is typed; `browse` says Ctrl+O browses, as in the renderer. */
+export const noSpecPath = (browse: boolean): string =>
+  browse
+    ? "type the spec's path or URL, or press Ctrl+O to browse for it"
+    : "type the spec's path or URL"
+
+/** The spinner's words while the spec at a URL is fetched. */
+export const fetchingLine = (url: string): string => {
+  const host = URL.canParse(url) ? new URL(url).host : url
+  return `Fetching ${sanitizeLine(host)}…`
+}
+
+export const refineTitle = "Refine it with Claude first?"
+
+export const refineDescription =
+  "As it is, Claude breaks it down without asking, taking the spec as final. Refined, Claude first asks you about the gaps it leaves (tutti --spec <file> --refine)."
+
+/** The refine step's options, in order: as it is (false), then refined (true). */
+export const refineOptions: ReadonlyArray<string> = [
+  "Run it as it is",
+  "Refine it with Claude first",
+]
+
+/** What gave a spec chosen at the start question, as its problems name it: `(chosen at the start)`. */
+export const specChosenFrom = "chosen at the start"
+
+/** The spec `given` as it is shown: a path as it is, a URL without its query and fragment. */
+export const shownSpec = (given: string): string => {
+  if (isSpecUrl(given) && URL.canParse(given.trim())) return shownUrl(new URL(given.trim()))
+  return sanitizeLine(given)
+}
+
+/** The line that keeps a chosen spec in sight: `Spec: <path or URL>, run as it is`. */
+export const specLine = (given: string, refine: boolean): string =>
+  `Spec: ${shownSpec(given)}, ${refine ? "refined with Claude first" : "run as it is"}`
 
 export const describeTitle = "Describe the feature"
 
@@ -73,10 +138,11 @@ export const newLineHint = "Alt+Enter or Ctrl+J starts a new line."
 export const noDescription = (cancel: string): string =>
   `describe the feature first, or press ${cancel} to cancel`
 
-/** What stays in sight once the start question is answered: a feature's description. */
+/** What stays in sight once the start question is answered: a spec, or a feature's description. */
 export const chosenLines = (work: Work): ReadonlyArray<string> =>
   Work.$match(work, {
     Tickets: () => [],
+    Spec: ({ given, refine }) => [specLine(given, refine)],
     Feature: ({ description }) => [
       "New feature:",
       ...sanitize(description)
