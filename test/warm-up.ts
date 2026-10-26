@@ -6,23 +6,44 @@
 import { beforeAll } from "bun:test"
 import { spawn } from "node:child_process"
 
+/** What waitForExit reads of a child: its 'exit' event, and the code or signal it exited with. */
+export interface Exiting {
+  readonly once: (event: "exit", listener: () => void) => unknown
+  readonly exitCode: number | null
+  readonly signalCode: string | null
+}
+
+/**
+ * Resolves on the child's 'exit', or at the deadline. A lost exit still sets exitCode or
+ * signalCode, checked every `poll` ms: past `lost` ms after either is set, the 'exit' isn't coming.
+ */
+export const waitForExit = (
+  child: Exiting,
+  { deadline = 5000, lost = 1000, poll = 100 } = {},
+): Promise<void> =>
+  new Promise((resolve) => {
+    let lostBy: ReturnType<typeof setTimeout> | undefined
+    const done = () => {
+      clearTimeout(timeout)
+      clearInterval(check)
+      clearTimeout(lostBy)
+      resolve()
+    }
+    const timeout = setTimeout(done, deadline)
+    const check = setInterval(() => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        clearInterval(check)
+        lostBy = setTimeout(done, lost)
+      }
+    }, poll)
+    child.once("exit", done)
+  })
+
 beforeAll(async () => {
   const child = spawn("/bin/sh", ["-c", "exit 0"], {
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   })
   child.on("error", () => {})
-  let exited = false
-  child.on("exit", () => {
-    exited = true
-  })
-  // A lost exit still sets exitCode: past a second after it, the 'exit' isn't coming.
-  const deadline = Date.now() + 5000
-  let lostBy: number | undefined
-  while (!exited && Date.now() < deadline && (lostBy === undefined || Date.now() < lostBy)) {
-    if (lostBy === undefined && (child.exitCode !== null || child.signalCode !== null)) {
-      lostBy = Date.now() + 1000
-    }
-    await Bun.sleep(10)
-  }
+  await waitForExit(child)
 })
