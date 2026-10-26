@@ -41,7 +41,8 @@ terminal shows what it showed before, followed by the run's summary.
 ### The title line
 
 The ` Tutti ` pill, the version, then, faint, the branch finished tickets land on, how long the run
-has gone, and the scope of a `--ticket` or feature run (`· ticket tut-8f2`). It also says
+has gone, and the scope of a `--ticket` or feature run (`· ticket tut-8f2`), or a spec run's spec
+(`· spec .tutti/specs/shop.md`), beside the breakdown's banner while it files. It also says
 `· stopping` while something holds the run, `Quitting…` while it quits, and
 `· solo <id> running` or `· solo <id> next` around a ticket labelled `solo`.
 

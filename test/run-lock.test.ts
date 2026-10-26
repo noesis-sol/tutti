@@ -200,11 +200,13 @@ describe("the live lock", () => {
     expect(error).toBeInstanceOf(AlreadyRunning)
     const refused = error as AlreadyRunning
     expect(refused.program).toBe("orchestra")
+    // orchestra's names a spec run's spec, as tutti's does (§ 4.14).
     expect(refused.holder).toEqual({
       pid: orchestra.pid,
       started: "2026-10-17T08:31:00.123456+03:00",
       version: "v0.8.0",
       branch: "main",
+      spec: ".orchestra/specs/feature.md",
     })
     expect(refused.message).toMatch(
       new RegExp(

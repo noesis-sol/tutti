@@ -233,6 +233,19 @@ below are the coverage report's uncovered lines at 368899e.
   card, Enter, the number keys, g and G, a click on an entry).
 - **Untested**: nothing found.
 
+## Spec runs
+
+- **Reached by**: `tutti --spec <file>`, `--refine`, `--spec-timeout`, `--spec-effort`.
+- **Tests**: `spec-tree.test.ts` (the answer checked and filed), `spec-run.test.ts` (the run's
+  start with the scripted host: a new spec, unchanged, built, changed, carried on, two root epics,
+  no tree), `spec-early.test.ts` (the run started on the environment ticket), `spec-breakdown.test.ts`
+  (the instructions, the session's options, a refinement filed or left, the time limit),
+  `spec-file.test.ts` (slow: the spec read and committed with real git), `spec-startup.test.ts`,
+  `spec-settings.test.ts`, `spec-scope.test.ts`, `spec-refine-view.test.tsx`.
+- **Untested**: `src/main.ts`'s wiring of it (the setup of a repository init hasn't set up, before
+  the startup checks; the run quit by a breakdown that fails after the early start), tried by hand
+  in an empty repository.
+
 ## Plain output, the log, the report, notifications
 
 - **Reached by**: `--plain`, a terminal that can't draw the dashboard, `.tutti/run/log`, the

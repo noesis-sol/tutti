@@ -459,6 +459,7 @@ for a project that sets them all; the table below gives each one's default:
   },
   "templates": { "worker_prompt": 6, "verifier": 2, "check_suite_skill": 1 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
+  "spec": { "timeout": "60m", "effort": "high" },
   "queue": { "exclude_types": ["epic"], "footprint": true, "shared_files": ["test/FEATURES.md"] },
   "merge": {
     "resolve_conflicts": true,
@@ -494,6 +495,7 @@ for a project that sets them all; the table below gives each one's default:
 | `organs.effort`, `organs.model` | each organ's | every organ's effort and model; [Organs](organs.md) |
 | `organs.triage` | `true` | the triage organ; `--triage` for a run |
 | `organs.review` | `true` | the run report; `--review` for a run |
+| `spec.timeout`, `spec.effort` | `"60m"`, `"high"` | how long a spec's breakdown may take, and its effort; `--spec-timeout`, `--spec-effort` for a run; [A whole app from a spec](running.md#a-whole-app-from-a-spec) |
 | `queue.exclude_types` | `["epic"]` | issue types a run never takes; epics never run whatever it says |
 | `queue.footprint` | `true` | keep tickets that touch the same code apart; [Footprints](running.md#footprints) |
 | `queue.shared_files` | `[]` | files whose overlap doesn't hold two tickets apart, paths or globs (a name without a slash matches in any folder), as the features map `init` lists as it files the test work; [Footprints](running.md#footprints) |

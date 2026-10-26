@@ -121,6 +121,7 @@ How a run goes:
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets |
 | `--feature "<request>"` | plan a request as an epic and its tickets, and run them |
+| `--spec <file>` | break a spec down into tickets under a root epic, and run them; again, carry on or update them |
 | `--ticket-limit 2h` | hold the run if a worker is still going this long after its ticket started |
 | `--limit N` | the most tickets this run starts (no limit by default) |
 | `--plain` | log lines instead of the dashboard |

@@ -126,6 +126,9 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
 | `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |
 | `--yes` | with `--feature`, file the plan without asking |
+| `--spec <file>` | build what a spec describes: commit it, break it down into tickets under a root epic, and run them; run again, carry on or update them ([below](#a-whole-app-from-a-spec)) |
+| `--refine` | with `--spec`, break the spec down with you ([below](#refined-with-you)) |
+| `--spec-timeout 90m`, `--spec-effort <level>` | how long a spec's breakdown may take, and its effort (default: the settings', else 60m and `high`) |
 | `--limit N` | the most tickets this run starts (default: no limit) |
 | `--ticket-limit 2h` | hold the run when a worker is still going this long after dispatch; `0` for none |
 | `--worker-effort <level>` | the effort workers and the feature interview start at: `low`, `medium`, `high` (default), `xhigh` or `max` |
@@ -443,6 +446,113 @@ to ask on and without `--yes`, nothing is filed (exit 2). Nothing is filed befor
 
 `--feature` can't be combined with `--ticket` or `--tickets`, nor run with `--limit 0`, which would
 file the plan and start none of it.
+
+### A whole app from a spec
+
+```
+tutti --spec ~/specs/shop.md
+```
+
+`--spec <file>` (or `TUTTI_SPEC`) builds what a spec describes, a feature or a whole app written
+down in a Markdown or plain-text file, with nobody there: tutti commits the spec, has Claude break it
+down into Beads tickets under a root epic, and runs them as `--ticket <root epic>` would, asking
+nothing on the way. The `START` line says `· spec <path>`, with `spec: epic <root>, broken down
+from: <path>` under it; so do the dashboard's title line and the summary. `--refine` breaks it down
+with you instead ([below](#refined-with-you)).
+
+The spec must be text, in UTF-8, and not empty; one where git ignores it is refused, as workers only
+see committed files. `--spec` can't be combined with `--feature`, `--ticket`, `--tickets` or
+`--overnight`, nor with `--limit 0`. Problems with it are setup problems (exit 2), listed with the
+others before anything is changed.
+
+**Committed.** Once the run holds its lock, tutti commits the spec alone, on the branch checked out:
+a file in the repository where it is (it may be left uncommitted), one outside it as a copy in
+`.tutti/specs/<its name>`, whose commits record where it came from (`Spec-Source: ~/specs/shop.md`).
+That path in the repository names the spec from one run to the next. A spec from another folder with
+the same file name is refused, as it would take the other's tickets: give it another name. The
+message is `tutti: add spec <name>`, or `tutti: update spec <name>` once it has changed, with its
+SHA-256; a spec committed already as it is stays as it is.
+
+#### The breakdown
+
+Without `--refine` the spec is taken as complete and final. A Claude session in the main checkout
+reads the spec, the README, `CLAUDE.md` or `AGENTS.md` and the code there is, and breaks it down
+into:
+
+- a **root epic** for the spec, summing it up;
+- **child epics** where the spec has separable parts;
+- **tickets**, each one worker's session of work, citing the spec's sections by heading, with
+  acceptance criteria, a type, a priority, the files it changes (new ones included), the tickets it
+  builds on, and `solo` where it restructures code most tickets touch;
+- an **environment setup ticket** first, P0 and `solo`, when the spec needs a tool the repository
+  doesn't have or the repository has no code yet, which every other ticket waits for: its worker
+  writes the project's [requires list](setup.md), scaffolds the project, wires up its checks and
+  sets the setup command;
+- **spikes** for the facts the spec marks unverified that tickets rest on.
+
+Where the spec leaves a choice open, it takes the most conservative reading and writes it down
+(`Assumed: …` in the tickets that rest on it); tutti prints them at the end and keeps them under
+`Assumptions` in the root epic's notes, for you to read in the morning.
+
+The session can only read: its tools are Read, Grep, Glob and Agent, and tutti's own, which file the
+tickets. It files the root epic and the environment ticket first, then hands the rest of the tree to
+tutti in one answer, which tutti checks (a key used twice, a ticket naming one that isn't there, an
+epic waiting for a ticket under it) and files: a refused answer goes back to the session with every
+reason, and nothing of it is filed. It may take an hour (`spec.timeout` in the
+[settings](setup.md#the-settings), or `--spec-timeout 90m`), at effort `high` (`spec.effort`, or
+`--spec-effort`). On a terminal a spinner counts what it files; plain output and the log get `SPEC:`
+lines.
+
+**The run starts early.** The environment ticket doesn't wait for the rest of the tree: once the
+root epic and it are filed, the run starts on it (`◆ Starting on <id>, the environment ticket, while
+the breakdown files the rest`), the title line saying what the breakdown has filed meanwhile, and the
+run waits for the rest rather than end. A breakdown that fails after that stops the run as `Ctrl+C`
+does, exit 2.
+
+Then tutti checks the tree, warns of open tickets without files or acceptance criteria, marks the root
+epic as filed for this version of the spec, and the run goes on without asking. A breakdown that
+fails, runs out of time or gives no tree ends the run with exit 2, saying what it filed and
+`Run it again to carry on: tutti --spec <file>`; `Ctrl+C` stops it, exit 130. What was filed stays
+filed.
+
+#### Refined with you
+
+`--refine` (or `TUTTI_REFINE=1`) is for a spec with decisions still open. The same session talks it
+through with you in tutti's [interview](#talked-through) view: it takes the spec as mostly settled,
+asks only where it leaves a decision open that changes what gets built, sums up what it will file and
+files nothing until you agree, with the decisions under `Decisions` in the root epic. Once it has
+filed the tree, the view goes and the run starts. `Esc` asks `End the breakdown? Nothing has been
+filed.` while nothing is filed. It needs tutti's screen: with `--plain`, or no terminal, it stops
+with exit 2 once the spec is committed.
+
+#### Carrying on across nights
+
+Run again, the same command carries on. tutti finds the root epic an earlier run filed (the epic
+whose `spec` metadata is the spec's path; `bd list --metadata-field spec=<path> --all` lists the
+spec's issues) and its `spec_sha256`:
+
+- **The spec unchanged** and the root epic open: no breakdown; the run carries on with what is left.
+- **Unchanged and the root epic closed**: `✓ <path> is built (<root>)`, exit 0.
+- **The spec changed**: the new version is committed, and the breakdown updates the tree for the
+  change alone, reading the spec's diff and the tree from `.tutti/run/spec-update.md`: it files what
+  the change adds under the same root epic, updates the open tickets it alters, defers those it makes
+  obsolete, never changes a closed one, and leaves one in progress alone.
+- **No `spec_sha256`**: the breakdown that filed the root epic didn't finish; it is carried on.
+
+So a nightly job's command stays the same; to change what gets built, change the spec by day. Two
+root epics for one spec are a setup problem, saying how to keep one.
+
+#### From an empty repository
+
+```
+mkdir shop && cd shop && git init && tutti --spec ~/specs/shop.md
+```
+
+In a repository `tutti init` hasn't set up, even one with no commit yet, a spec run sets it up first,
+as `tutti init` does without a terminal: Beads, the worker prompt, the settings (`-c`'s concurrency,
+no MCP servers) and runners that check nothing yet, the verifier and the rest it offers declined. It
+commits that with the spec, as `tutti: set up for spec <name>`; the breakdown's environment ticket
+then sets up the toolchain, the scaffold and the checks.
 
 ## Several tickets at once
 

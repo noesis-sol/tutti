@@ -52,7 +52,7 @@ jq . .tutti/run/state.json                  # the sessions the last run saved, f
 A run holds `<git-common-dir>/tutti.lock` (`.git/tutti.lock` from the main checkout) for as long as
 it runs, with `flock`, and the system lets go of it however tutti exits, `kill -9` included, so only
 a running tutti has it open. The file is JSON: `pid`, `started` (the same as the run's `run` in the
-event stream), `version`, `branch`, and `scope` (`--ticket`) or `feature`; `tutti init` writes it
+event stream), `version`, `branch`, and `scope` (`--ticket`), `feature` or `spec`; `tutti init` writes it
 too, with `"init": true`. A run that ends empties it; one killed with `kill -9` or crashed leaves
 its JSON behind, so whether `lsof` lists a PID is what says a run is going. A run also holds orchestra's `.git/orchestra.lock`, so neither tool runs while the other does.
 
@@ -167,6 +167,13 @@ then runs them. Without a terminal it can't ask whether to file the plan: it pri
 `tutti has no terminal to ask on: nothing was filed. Pass --yes to file the plan without asking.`
 and exits 2. Show the user that plan, and pass `--yes` only once they approve it. The interview
 (**New feature** at the start question) needs the dashboard: leave it to a user at the keyboard.
+
+`--spec <file>` builds what a spec describes, unattended: tutti commits it, breaks it down into
+tickets under a root epic and runs them, starting on its environment ticket while the rest is filed.
+Run again, the same command carries on, or updates the tickets for a changed spec; `✓ <path> is
+built` (exit 0) once its root epic is closed. A request for a feature run by an agent goes in a file
+for `--spec`. `--refine` breaks the spec down with the user and needs the dashboard: leave it to a
+user at the keyboard.
 
 Useful flags (each also a `TUTTI_*` variable, `--concurrent` as `TUTTI_CONCURRENT`; on-or-off ones
 take `=false` or `0`): `-c N` / `--concurrent N`, `--limit N` (tickets this run starts, default 40),
