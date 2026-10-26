@@ -241,10 +241,11 @@ below are the coverage report's uncovered lines at 368899e.
   no tree), `spec-early.test.ts` (the run started on the environment ticket), `spec-breakdown.test.ts`
   (the instructions, the session's options, a refinement filed or left, the time limit),
   `spec-file.test.ts` (slow: the spec read and committed with real git), `spec-startup.test.ts`,
-  `spec-settings.test.ts`, `spec-scope.test.ts`, `spec-refine-view.test.tsx`.
-- **Untested**: `src/main.ts`'s wiring of it (the setup of a repository init hasn't set up, before
-  the startup checks; the run quit by a breakdown that fails after the early start), tried by hand
-  in an empty repository.
+  `spec-settings.test.ts`, `spec-scope.test.ts`, `spec-refine-view.test.tsx`, `spec-wiring.test.ts`
+  (the setup of a repository init hasn't set up, the run scoped, an early start's breakdown that
+  fails stopping the run).
+- **Untested**: `src/main.ts`'s own lines between those pieces (tutti-kkb.58), tried by hand in an
+  empty repository.
 
 ## Plain output, the log, the report, notifications
 

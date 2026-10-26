@@ -19,14 +19,12 @@
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`; the npm bundle from src/npm.ts, which detects musl first.
 import { availableParallelism } from "node:os"
-import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import {
   Clock,
   Console,
   Duration,
   Effect,
-  FileSystem,
   Layer,
   ManagedRuntime,
   Option,
@@ -62,7 +60,6 @@ import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
-import { settingsFile } from "./project/settings.ts"
 import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import {
@@ -114,22 +111,16 @@ import {
 } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
-import { type SpecOutcome, specRun } from "./run/specRun.ts"
+import { followRest, type SpecOutcome, specRun } from "./run/specRun.ts"
+import { specSetup } from "./run/specSetup.ts"
 import { endRecord, Spending } from "./run/spending.ts"
-import {
-  check,
-  findRepository,
-  live,
-  type Started,
-  StartupFailed,
-  startBlock,
-} from "./run/startup.ts"
+import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { layer as trashLayer } from "./run/trash.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
 import { Beads, beadsWhy, type TicketId } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
-import { Git, GitWriter, type StatusEntry } from "./services/Git.ts"
+import { Git, GitWriter } from "./services/Git.ts"
 import { layer as notifierLayer } from "./services/Notifier.ts"
 import { whichOnPath } from "./services/onPath.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
@@ -411,42 +402,36 @@ const overnight = (
   })
 
 /**
- * A spec run's setup (§ 4.14): where --spec (or TUTTI_SPEC) is given in a repository init hasn't
- * set up, and no worker prompt of its own, init without a terminal, after `before` (the line saying
- * what tutti is doing ended); the files it wrote, for the run to commit with the spec. None where
- * there is nothing to set up, the startup checks saying what else is amiss; null when init failed,
- * having said why.
+ * A spec run's setup (src/run/specSetup.ts), from the flags and their variables: the files it wrote,
+ * or an earlier one left, for the run to commit with the spec; null when it failed, having said why.
+ * `before` ends the line saying what tutti is doing.
  */
-const setUpForSpecRun = (cwd: string, flags: RunFlags, before: Effect.Effect<void>) =>
-  Effect.gen(function* () {
-    const variable = (name: string) => {
-      const value = process.env[name]
-      return value === undefined || value === "" ? Option.none<string>() : Option.some(value)
-    }
-    const given = (key: "spec" | "prompt" | "concurrent") =>
-      Option.orElse(flags[key], () => variable(runFlags[key].variable))
-    if (Option.isNone(given("spec")) || Option.isSome(given("prompt"))) return []
-    const found = yield* findRepository(cwd)
-    if (Result.isFailure(found)) return []
-    const { repo } = found.success
-    const fs = yield* FileSystem.FileSystem
-    if (yield* fs.exists(join(repo, settingsFile)).pipe(Effect.orElseSucceed(() => true))) return []
-    const git = yield* Git
-    const status = git.status(repo).pipe(Effect.orElseSucceed((): ReadonlyArray<StatusEntry> => []))
-    const already = new Set((yield* status).map((entry) => entry.path))
-    yield* before
-    yield* Console.log(
-      "tutti init hasn't set this repository up: setting it up as init does without a terminal",
-    )
-    const concurrent = Option.getOrNull(
-      Option.flatMap(given("concurrent"), (text) =>
-        Result.getSuccess(runFlags.concurrent.read(text)),
-      ),
-    )
-    const ok = yield* setUpForSpec(cwd, concurrent)
-    if (!ok) return null
-    return (yield* status).map((entry) => entry.path).filter((path) => !already.has(path))
+const setUpForSpecRun = (cwd: string, flags: RunFlags, before: Effect.Effect<void>) => {
+  const variable = (name: string) => {
+    const value = process.env[name]
+    return value === undefined || value === "" ? Option.none<string>() : Option.some(value)
+  }
+  const given = (key: "spec" | "prompt" | "concurrent") =>
+    Option.orElse(flags[key], () => variable(runFlags[key].variable))
+  const concurrent = Option.getOrNull(
+    Option.flatMap(given("concurrent"), (text) =>
+      Result.getSuccess(runFlags.concurrent.read(text)),
+    ),
+  )
+  return specSetup({
+    cwd,
+    spec: Option.match(given("spec"), {
+      onNone: () => null,
+      onSome: (text) => ({
+        given: text.trim(),
+        from: Option.isSome(flags.spec) ? "--spec" : runFlags.spec.variable,
+      }),
+    }),
+    ownPrompt: Option.isSome(given("prompt")),
+    setUp: setUpForSpec(cwd, concurrent),
+    say: (text) => Effect.andThen(before, Console.log(text)),
   })
+}
 
 /** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
@@ -780,19 +765,14 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             early.breakdown = outcome
             // The rest of the breakdown, as the run goes on its environment ticket: one that fails,
             // or is stopped, stops the run, whose exit code is then the breakdown's.
-            yield* outcome.rest.pipe(
-              Effect.flatMap((rest) =>
-                rest._tag === "Stopped"
-                  ? Effect.andThen(
-                      Effect.sync(() => {
-                        early.code = rest.exitCode
-                      }),
-                      Queue.offer(quits, breakdownFailed),
-                    )
-                  : Effect.void,
+            yield* followRest(outcome.rest, (code) =>
+              Effect.andThen(
+                Effect.sync(() => {
+                  early.code = code
+                }),
+                Queue.offer(quits, breakdownFailed),
               ),
-              Effect.forkIn(runScope),
-            )
+            ).pipe(Effect.forkIn(runScope))
           }
           scope = outcome.root
           // The lock is held all the same if its holder can't be rewritten.

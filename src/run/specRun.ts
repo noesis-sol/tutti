@@ -116,6 +116,19 @@ export type SpecOutcome = Data.TaggedEnum<{
 
 export const SpecOutcome = Data.taggedEnum<SpecOutcome>()
 
+/**
+ * Follows an early start's breakdown, `rest`, as the run goes on its environment ticket: one that
+ * ends Stopped, failing or stopped, stops the run with `stop`, given its exit code, which is then
+ * the run's; one that filed the rest leaves the run to go on.
+ */
+export const followRest = (
+  rest: Effect.Effect<SpecOutcome>,
+  stop: (exitCode: number) => Effect.Effect<unknown>,
+): Effect.Effect<void> =>
+  Effect.flatMap(rest, (ended) =>
+    ended._tag === "Stopped" ? Effect.asVoid(stop(ended.exitCode)) : Effect.void,
+  )
+
 /** The most issues a breakdown that didn't finish lists. */
 export const listedAtMost = 20
 
