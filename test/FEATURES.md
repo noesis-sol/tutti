@@ -235,7 +235,8 @@ below are the coverage report's uncovered lines at 368899e.
 
 ## Spec runs
 
-- **Reached by**: `tutti --spec <file>`, `--refine`, `--spec-timeout`, `--spec-effort`.
+- **Reached by**: `tutti --spec <file>` (or an `https://` URL), `--refine`, `--spec-timeout`,
+  `--spec-effort`.
 - **Tests**: `spec-tree.test.ts` (the answer checked and filed), `spec-run.test.ts` (the run's
   start with the scripted host: a new spec, unchanged, built, changed, carried on, two root epics,
   no tree), `spec-early.test.ts` (the run started on the environment ticket), `spec-breakdown.test.ts`
@@ -243,7 +244,9 @@ below are the coverage report's uncovered lines at 368899e.
   `spec-file.test.ts` (slow: the spec read and committed with real git), `spec-startup.test.ts`,
   `spec-settings.test.ts`, `spec-scope.test.ts`, `spec-refine-view.test.tsx`, `spec-wiring.test.ts`
   (the setup of a repository init hasn't set up, the run scoped, an early start's breakdown that
-  fails stopping the run).
+  fails stopping the run), `spec-url.test.ts` (a spec at a URL: fetched through the HttpClient's
+  test layer, a GitHub page as its raw file, a private one through gh, refused, committed with its
+  source).
 - **Untested**: `src/main.ts`'s own lines between those pieces (tutti-kkb.58), tried by hand in an
   empty repository.
 

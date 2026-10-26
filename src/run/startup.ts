@@ -44,6 +44,7 @@ import { autoAnswerName } from "./autoAnswer.ts"
 import { type Line, start, Tag } from "./log.ts"
 import { aboveCapNote, machineWorkersLabel } from "./machine.ts"
 import { readSpec, type Spec } from "./spec.ts"
+import type { LiveFetch, SpecFetch } from "./specSource.ts"
 
 /** The exit code of a run that can't start: a setup problem. */
 export const exitSetup = 2
@@ -107,6 +108,8 @@ export interface Checking<R> {
   readonly account: Layer.Layer<Account, never, AppConfig | R>
   /** Files a spec run's setup wrote, which its run commits with the spec: no clean-tree problem. */
   readonly uncommitted?: ReadonlyArray<string>
+  /** Fetches a spec at a URL: the run's one fetch, which its setup shares (fetchOnce). */
+  readonly fetch?: SpecFetch<LiveFetch>
 }
 
 /** The report of a run that can't start, for stderr: the not-set-up message first. */
@@ -428,7 +431,7 @@ export const check = <R>(checking: Checking<R>) =>
     const spec =
       config.spec === null
         ? Result.succeed(null)
-        : yield* readSpec(config.spec, config.specFrom, checking.cwd, repo)
+        : yield* readSpec(config.spec, config.specFrom, checking.cwd, repo, checking.fetch)
     const specPath = [
       ...(Result.isSuccess(spec) && spec.success !== null ? [spec.success.path] : []),
       ...(checking.uncommitted ?? []),
@@ -526,10 +529,12 @@ export const live = (
   flags: RunFlags,
   unpacking?: (extracting: Effect.Effect<string>) => Effect.Effect<string>,
   uncommitted: ReadonlyArray<string> = [],
+  fetch?: SpecFetch<LiveFetch>,
 ) =>
   ({
     cwd,
     uncommitted,
+    ...(fetch === undefined ? {} : { fetch }),
     env: process.env,
     config: (repo) => load(flags, repo, cwd),
     beads: (repo) => Beads.layer({ cwd: repo }),
@@ -563,7 +568,7 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
     // A --feature run is scoped to the epic it filed, as orchestra's ScopeLabel says; a spec run is
     // named by its spec, its root epic in a note.
     ...(spec !== null
-      ? { scope: `spec ${spec.path}` }
+      ? { scope: `spec ${spec.path}${spec.url === undefined ? "" : ` from ${spec.url}`}` }
       : config.ticket === null
         ? {}
         : { scope: `${config.feature === null ? "ticket" : "feature"} ${config.ticket}` }),

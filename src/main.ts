@@ -112,6 +112,7 @@ import {
 import { finish, run } from "./run/run.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
 import { setUpFromFlags, specStart } from "./run/specStart.ts"
+import { fetchOnce, fetchSpecLive } from "./run/specSource.ts"
 import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { layer as trashLayer } from "./run/trash.ts"
@@ -437,16 +438,19 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       : Effect.succeed(Option.none<string>())
     // A spec run in a repository init hasn't set up sets it up first, as init does without a
     // terminal (§ 4.14): what that wrote is committed with the spec.
+    // A spec at a URL is fetched once (§ 4.14), by the setup or the checks, whichever reads it first.
+    const fetch = fetchOnce(fetchSpecLive)
     const setup = yield* setUpFromFlags({
       cwd,
       flags,
       env: (name) => process.env[name],
       setUp: (concurrent) => setUpForSpec(cwd, concurrent),
       say: (text) => Effect.andThen(ready.end, Console.log(text)),
+      fetch,
     }).pipe(Effect.provide(gitLayer))
     if (setup === null) return exitCodes.setup
     const checked = yield* Effect.result(
-      check(live(cwd, flags, ready.unpacking, setup)).pipe(Effect.provide(gitLayer)),
+      check(live(cwd, flags, ready.unpacking, setup, fetch)).pipe(Effect.provide(gitLayer)),
     )
     if (Result.isFailure(checked)) {
       const failed = checked.failure
@@ -654,6 +658,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             ...(scope === null ? {} : { scope }),
             ...(feature === null ? {} : { feature }),
             ...(spec === null ? {} : { spec: spec.path }),
+            ...(spec?.url === undefined ? {} : { spec_source: spec.url }),
             concurrency: config.settings.concurrent,
             billing: config.billing,
             permission_mode: started.account.permissionMode.inEffect,

@@ -12,6 +12,7 @@ import { Effect, FileSystem, Result } from "effect"
 import { settingsFile } from "../project/settings.ts"
 import { Git, type StatusEntry } from "../services/Git.ts"
 import { readSpec } from "./spec.ts"
+import type { LiveFetch, SpecFetch } from "./specSource.ts"
 import { findRepository } from "./startup.ts"
 
 /** The runners init writes, beside `.tutti/`. */
@@ -32,6 +33,8 @@ export interface SpecSetup<R = never> {
   readonly setUp: Effect.Effect<boolean, never, R>
   /** Says a line before the setup: what it is doing. */
   readonly say: (text: string) => Effect.Effect<void>
+  /** Fetches a spec at a URL: the run's one fetch, which the startup checks share (fetchOnce). */
+  readonly fetch?: SpecFetch<LiveFetch>
 }
 
 /** What a spec run's setup says as it begins. */
@@ -60,7 +63,11 @@ export const leftSetup = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<str
  */
 export const specSetup = <R>(
   setup: SpecSetup<R>,
-): Effect.Effect<ReadonlyArray<string> | null, never, FileSystem.FileSystem | Git | R> =>
+): Effect.Effect<
+  ReadonlyArray<string> | null,
+  never,
+  FileSystem.FileSystem | Git | LiveFetch | R
+> =>
   Effect.gen(function* () {
     if (setup.spec === null || setup.ownPrompt) return []
     const found = yield* findRepository(setup.cwd)
@@ -80,7 +87,7 @@ export const specSetup = <R>(
       return left
     }
     // A spec the run can't read sets nothing up: the checks say why.
-    const spec = yield* readSpec(setup.spec.given, setup.spec.from, setup.cwd, repo)
+    const spec = yield* readSpec(setup.spec.given, setup.spec.from, setup.cwd, repo, setup.fetch)
     if (Result.isFailure(spec)) return []
     const already = new Set((yield* status).map((entry) => entry.path))
     yield* setup.say(settingUpLine)

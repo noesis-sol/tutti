@@ -195,10 +195,10 @@ export const runFlags = {
     metavar: "request",
     description: "plan this feature request as an epic and its tickets, then run them",
   }),
-  spec: runFlag("spec", text("a file"), {
-    metavar: "file",
+  spec: runFlag("spec", text("a file or an https:// URL"), {
+    metavar: "file|url",
     description:
-      "build what this spec, a Markdown or plain-text file, describes: commit it, break it down into tickets under a root epic, and run them; run again, carry on or update them",
+      "build what this spec, a Markdown or plain-text file or one at an https:// URL, describes: commit it, break it down into tickets under a root epic, and run them; run again, carry on or update them",
   }),
   refine: runFlag("refine", onOff, {
     onOff: true,

@@ -5,7 +5,9 @@
 // - readSpec, a startup check: the file is there, text in UTF-8, not empty, not in .git, not where
 //   git ignores it (workers only see committed files); one outside the repository is committed as a
 //   copy, `.tutti/specs/<its name>`, whose commits record where it came from (`Spec-Source:`), so a
-//   spec of the same name from another folder is refused rather than take the other's tickets;
+//   spec of the same name from another folder is refused rather than take the other's tickets; a
+//   spec at an https:// URL is fetched (specSource.ts), checked as a file is, and committed as a
+//   copy recording its URL, refused where it is a web page;
 // - commitSpec: the spec committed alone on the branch checked out, `tutti: add spec <name>` or
 //   `tutti: update spec <name>` with its SHA-256, or left as it is when committed already;
 // - specState: the root epic an earlier run filed for the spec, found by its metadata (`spec`, the
@@ -25,6 +27,14 @@ import { Beads, type BeadsError, type Issue, type TicketId } from "../services/B
 import { Git, type GitError, type Sha } from "../services/Git.ts"
 import { runFolder } from "../services/Worktrees.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import {
+  fetchSpecLive,
+  isSpecUrl,
+  type LiveFetch,
+  type SpecFetch,
+  type SpecUrl,
+  specUrl,
+} from "./specSource.ts"
 import { specKey } from "./start.ts"
 
 /** Where a spec from outside the repository is committed, as a copy named after its file. */
@@ -52,7 +62,7 @@ export interface Spec {
   readonly given: string
   /** What gave it: `--spec` or `TUTTI_SPEC`. */
   readonly from: string
-  /** The file, absolute. */
+  /** The file, absolute; for a spec at a URL, the URL as `url` has it. */
   readonly source: string
   /** Where it is committed, from the repository's top: where it is, or its copy. */
   readonly path: string
@@ -61,6 +71,8 @@ export interface Spec {
   readonly text: string
   /** Its SHA-256, in hex. */
   readonly sha256: string
+  /** The URL it was fetched from, without its query and fragment (§ 4.14); none for a file. */
+  readonly url?: string
 }
 
 /** The first 12 hex digits of a SHA-256 or a commit, as lines show them. */
@@ -98,18 +110,20 @@ export const sourceOf = (message: string): string | undefined => {
 }
 
 /**
- * The spec `given` names (by `from`, `--spec` or `TUTTI_SPEC`), a path from `cwd`, as a run in the
- * main checkout `repo` commits it; or the problem with it, a line of the startup checks' report.
+ * The spec `given` names (by `from`, `--spec` or `TUTTI_SPEC`), a path from `cwd` or a URL that
+ * `fetch` fetches, as a run in the main checkout `repo` commits it; or the problem with it, a line
+ * of the startup checks' report.
  */
 export const readSpec = (
   given: string,
   from: string,
   cwd: string,
   repo: string,
-): Effect.Effect<Result.Result<Spec, string>, never, FileSystem.FileSystem | Git> =>
+  fetch: SpecFetch<LiveFetch> = fetchSpecLive,
+): Effect.Effect<Result.Result<Spec, string>, never, FileSystem.FileSystem | Git | LiveFetch> =>
   Effect.gen(function* () {
+    if (isSpecUrl(given)) return yield* readUrlSpec(given, from, repo, fetch)
     const fs = yield* FileSystem.FileSystem
-    const git = yield* Git
     const shown = `${sanitizeLine(given)} (${from})`
     const source = resolve(cwd, given)
     const info = yield* Effect.result(fs.stat(source))
@@ -145,17 +159,10 @@ export const readSpec = (
         `The spec ${shown} is in the repository's .git folder, which git doesn't commit: move it.`,
       )
     }
-    const ignored = yield* Effect.result(git.ignored(repo, path))
-    if (Result.isSuccess(ignored) && ignored.success) {
-      return Result.fail(
-        `git ignores ${path}, where the spec (${from}) is kept, and workers only see committed files: move the spec, or stop ignoring that path (git check-ignore -v ${path} says where).`,
-      )
-    }
+    const ignored = yield* ignoredProblem(repo, path, from)
+    if (ignored !== null) return Result.fail(ignored)
     if (copy) {
-      // The copy's last commit names the file it was copied from: another file of that name isn't
-      // this spec. A copy committed without one, by hand, is taken.
-      const last = yield* git.lastCommit(repo, path).pipe(Effect.orElseSucceed(() => Option.none()))
-      const recorded = Option.isSome(last) ? sourceOf(last.value.message) : undefined
+      const recorded = yield* recordedSource(repo, path)
       if (recorded !== undefined && recorded !== tildePath(real) && recorded !== real) {
         return Result.fail(
           `The spec ${shown} has the name of another: ${path} holds the copy of another spec, ${sanitizeLine(recorded)}, and would take its tickets. Give it another file name, which its copy takes; or, if it is that spec moved, copy it over ${path} and give ${from} that path.`,
@@ -170,6 +177,86 @@ export const readSpec = (
       copy,
       text: text.value,
       sha256: createHash("sha256").update(read.success).digest("hex"),
+    })
+  })
+
+/** The problem of a spec kept at `path`, where git ignores it, or null. */
+const ignoredProblem = (
+  repo: string,
+  path: string,
+  from: string,
+): Effect.Effect<string | null, never, Git> =>
+  Effect.gen(function* () {
+    const ignored = yield* Effect.result((yield* Git).ignored(repo, path))
+    return Result.isSuccess(ignored) && ignored.success
+      ? `git ignores ${path}, where the spec (${from}) is kept, and workers only see committed files: move the spec, or stop ignoring that path (git check-ignore -v ${path} says where).`
+      : null
+  })
+
+/**
+ * The source the last commit of the copy at `path` records, or none: another file or URL whose copy
+ * has that name isn't this spec. A copy committed without one, by hand, is taken.
+ */
+const recordedSource = (
+  repo: string,
+  path: string,
+): Effect.Effect<string | undefined, never, Git> =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const last = yield* git.lastCommit(repo, path).pipe(Effect.orElseSucceed(() => Option.none()))
+    return Option.isSome(last) ? sourceOf(last.value.message) : undefined
+  })
+
+/** Whether `text`, fetched with the media type `contentType`, is a web page rather than a spec. */
+export const isWebPage = (contentType: string | null, text: string): boolean =>
+  /^\s*text\/html\b/i.test(contentType ?? "") || /^\s*<(!doctype\s+html|html)\b/i.test(text)
+
+/**
+ * The spec at the URL `given` (by `from`), fetched by `fetch` and checked as a file from outside the
+ * repository is, its copy named after the URL; or the problem with it.
+ */
+const readUrlSpec = <R>(
+  given: string,
+  from: string,
+  repo: string,
+  fetch: SpecFetch<R>,
+): Effect.Effect<Result.Result<Spec, string>, never, Git | R> =>
+  Effect.gen(function* () {
+    const target: Result.Result<SpecUrl, string> = specUrl(given, from)
+    if (Result.isFailure(target)) return Result.fail(target.failure)
+    const { label, shown, name } = target.success
+    const got = yield* fetch(target.success)
+    if (Result.isFailure(got)) return Result.fail(got.failure)
+    const page = `The spec ${label} gave a web page, not a spec: give the URL of the raw file.`
+    if (isWebPage(got.success.contentType, "")) return Result.fail(page)
+    const text = isText(got.success.bytes)
+    if (Option.isNone(text)) {
+      return Result.fail(
+        `The spec ${label} isn't text: give a Markdown or plain-text file, in UTF-8.`,
+      )
+    }
+    if (isWebPage(null, text.value)) return Result.fail(page)
+    if (text.value.trim() === "") {
+      return Result.fail(`The spec ${label} is empty: write what to build in it first.`)
+    }
+    const path = `${specsFolder}/${name}`
+    const ignored = yield* ignoredProblem(repo, path, from)
+    if (ignored !== null) return Result.fail(ignored)
+    const recorded = yield* recordedSource(repo, path)
+    if (recorded !== undefined && recorded !== shown) {
+      return Result.fail(
+        `The spec ${label} has the name of another: ${path} holds the copy of another spec, ${sanitizeLine(recorded)}, and would take its tickets. Give the URL of a file of another name, which its copy takes; or, if it is that spec moved, remove ${path} in a commit of its own and run again.`,
+      )
+    }
+    return Result.succeed({
+      given,
+      from,
+      source: shown,
+      path,
+      copy: true,
+      text: text.value,
+      sha256: createHash("sha256").update(got.success.bytes).digest("hex"),
+      url: shown,
     })
   })
 
@@ -196,7 +283,7 @@ export const commitMessage = (spec: Spec, how: "add" | "update" | "setup"): stri
       : `tutti: ${how} spec ${basename(spec.path)}`,
     "",
     `sha256 ${spec.sha256}`,
-    ...(spec.copy ? ["", `${sourceTrailer}: ${tildePath(spec.source)}`] : []),
+    ...(spec.copy ? ["", `${sourceTrailer}: ${spec.url ?? tildePath(spec.source)}`] : []),
   ].join("\n")
 
 export const commitSpec = (

@@ -126,7 +126,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
 | `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |
 | `--yes` | with `--feature`, file the plan without asking |
-| `--spec <file>` | build what a spec describes: commit it, break it down into tickets under a root epic, and run them; run again, carry on or update them ([below](#a-whole-app-from-a-spec)) |
+| `--spec <file\|url>` | build what a spec describes, a file or one at an `https://` URL: commit it, break it down into tickets under a root epic, and run them; run again, carry on or update them ([below](#a-whole-app-from-a-spec)) |
 | `--refine` | with `--spec`, break the spec down with you ([below](#refined-with-you)) |
 | `--spec-timeout 90m`, `--spec-effort <level>` | how long a spec's breakdown may take, and its effort (default: the settings', else 60m and `high`) |
 | `--limit N` | the most tickets this run starts (default: no limit) |
@@ -472,6 +472,34 @@ That path in the repository names the spec from one run to the next. A spec from
 the same file name is refused, as it would take the other's tickets: give it another name. The
 message is `tutti: add spec <name>`, or `tutti: update spec <name>` once it has changed, with its
 SHA-256; a spec committed already as it is stays as it is.
+
+**From a web URL.** `--spec https://…` fetches the spec, once a run, with the startup checks, and
+commits it as a copy in `.tutti/specs/`, named after the URL's last path segment (`.md` added unless
+it ends in `.md`, `.markdown` or `.txt`); its commits record the URL as `Spec-Source:`, without its
+query and fragment, which may hold a token. Each run fetches it again: the same text is committed
+already, and changed text is an update, as for a file. orchestra's `--spec` takes a file only.
+
+```
+tutti --spec https://github.com/me/shop/blob/main/docs/shop.md
+```
+
+- Over `https://` only, an `http://` URL refused; redirects are followed up to 5, and only over
+  https. The fetch may take 30 s and 5 MB, and sends no credentials or cookies; a URL with a user
+  name or password in it is refused.
+- A GitHub file page (`github.com/<owner>/<repo>/blob/<ref>/<path>`) is fetched as its raw file, and
+  a gist page (`gist.github.com/<user>/<id>`) as its file when it holds one. Any other URL is fetched
+  as it is.
+- A private GitHub file, whose raw file answers 404, is read through your own `gh` login (`gh api`);
+  its token stays with gh. Without gh, or with gh logged out: `<url> is private or missing; if it is
+  private, log gh in (gh auth login) and run again.`
+- What it gives is checked as a file is (empty, not text), and a web page is refused: `<url> gave a
+  web page, not a spec: give the URL of the raw file.` A fetch that fails is a setup problem (exit
+  2), saying why: `Cannot fetch the spec <url> (--spec): HTTP 404 Not Found.`, `took more than
+  30s`, `is more than 5 MB`, `redirected to <host> over http`, or the DNS or TLS error.
+- A copy of the same name that records another source, a file or another URL, is refused as for a
+  file, naming both.
+- The `START` line says `· spec .tutti/specs/shop.md from https://…`, and the start record has
+  `spec_source`.
 
 #### The breakdown
 

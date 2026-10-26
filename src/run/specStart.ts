@@ -11,6 +11,7 @@ import type { Holder, LockFailed } from "../services/RunLock.ts"
 import type { Spec } from "./spec.ts"
 import { followRest, type SpecIO, type SpecOutcome, specRun } from "./specRun.ts"
 import { specSetup } from "./specSetup.ts"
+import type { LiveFetch, SpecFetch } from "./specSource.ts"
 
 /** What a spec run's setup reads of the flags, each else its variable (`env`). */
 export const setupFlags = (
@@ -54,6 +55,8 @@ export const setUpFromFlags = <R>(options: {
   readonly env: (name: string) => string | undefined
   readonly setUp: (concurrent: number | null) => Effect.Effect<boolean, never, R>
   readonly say: (text: string) => Effect.Effect<void>
+  /** Fetches a spec at a URL: the run's one fetch, which the startup checks share (fetchOnce). */
+  readonly fetch?: SpecFetch<LiveFetch>
 }) => {
   const read = setupFlags(options.flags, options.env)
   return specSetup({
@@ -62,6 +65,7 @@ export const setUpFromFlags = <R>(options: {
     ownPrompt: read.ownPrompt,
     setUp: options.setUp(read.concurrent),
     say: options.say,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   })
 }
 

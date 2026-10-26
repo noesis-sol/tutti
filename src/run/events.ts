@@ -152,6 +152,8 @@ export const Start = Schema.Struct({
   feature: optional(Schema.String),
   /** A spec run's spec, its path in the repository; `scope` is its root epic. */
   spec: optional(Schema.String),
+  /** The URL a spec run's spec was fetched from, without its query and fragment. tutti's own. */
+  spec_source: optional(Schema.String),
   concurrency: Count,
   billing: Schema.Literals(billings),
   /** The permission mode in effect, as the login probe reports it (§ 4.13). */

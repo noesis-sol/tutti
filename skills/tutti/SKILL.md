@@ -168,7 +168,8 @@ then runs them. Without a terminal it can't ask whether to file the plan: it pri
 and exits 2. Show the user that plan, and pass `--yes` only once they approve it. The interview
 (**New feature** at the start question) needs the dashboard: leave it to a user at the keyboard.
 
-`--spec <file>` builds what a spec describes, unattended: tutti commits it, breaks it down into
+`--spec <file>` (or an `https://` URL, fetched and committed as a copy) builds what a spec
+describes, unattended: tutti commits it, breaks it down into
 tickets under a root epic and runs them, starting on its environment ticket while the rest is filed.
 Run again, the same command carries on, or updates the tickets for a changed spec; `✓ <path> is
 built` (exit 0) once its root epic is closed. A request for a feature run by an agent goes in a file
