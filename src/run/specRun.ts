@@ -174,39 +174,48 @@ export const specRun = (
 
     // The spec committed, so that workers can read it.
     const setup = request.setup ?? []
-    const committed = yield* Effect.result(commitSpec(spec, repo, setup))
-    if (Result.isFailure(committed)) {
-      const failure = committed.failure
-      const why =
-        "_tag" in failure && (failure._tag === "GitFailed" || failure._tag === "GitTimedOut")
-          ? gitWhy(failure)
-          : sanitizeLine(String(failure.message))
-      return yield* fail(
-        exitCodes.tool,
-        [`tutti couldn't commit the spec ${spec.path}: ${why}`],
-        specLine`couldn't commit ${spec.path}: ${why}`,
-      )
-    }
-    const { commit } = committed.success
-    if (committed.success.committed && setup.length > 0) {
-      const files = plural(new Set([...setup, spec.path]).size, "file")
-      yield* io.printer.print(
-        `committed the setup with the spec ${spec.path} as ${short(commit)} (${files})`,
-      )
-      yield* log.write(
-        specLine`committed the setup with ${spec.path} as ${short(commit)} (${files}; sha256 ${short(spec.sha256)})`,
-      )
-    } else if (committed.success.committed) {
-      yield* io.printer.print(`committed the spec ${spec.path} (sha256 ${short(spec.sha256)})`)
-      yield* log.write(specLine`committed ${spec.path} (sha256 ${short(spec.sha256)})`)
-    } else {
-      yield* io.printer.print(
-        `the spec ${spec.path} is committed already (sha256 ${short(spec.sha256)})`,
-      )
-      yield* log.write(
-        specLine`${spec.path} is committed already (sha256 ${short(spec.sha256)}, commit ${short(commit)})`,
-      )
-    }
+    // The commit and what it says go together, uninterruptible: a stop as it commits says what was
+    // committed, the setup included.
+    const said = yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const committed = yield* Effect.result(commitSpec(spec, repo, setup))
+        if (Result.isFailure(committed)) {
+          const failure = committed.failure
+          const why =
+            "_tag" in failure && (failure._tag === "GitFailed" || failure._tag === "GitTimedOut")
+              ? gitWhy(failure)
+              : sanitizeLine(String(failure.message))
+          return yield* fail(
+            exitCodes.tool,
+            [`tutti couldn't commit the spec ${spec.path}: ${why}`],
+            specLine`couldn't commit ${spec.path}: ${why}`,
+          )
+        }
+        const { commit } = committed.success
+        if (committed.success.committed && setup.length > 0) {
+          const files = plural(new Set([...setup, spec.path]).size, "file")
+          yield* io.printer.print(
+            `committed the setup with the spec ${spec.path} as ${short(commit)} (${files})`,
+          )
+          yield* log.write(
+            specLine`committed the setup with ${spec.path} as ${short(commit)} (${files}; sha256 ${short(spec.sha256)})`,
+          )
+        } else if (committed.success.committed) {
+          yield* io.printer.print(`committed the spec ${spec.path} (sha256 ${short(spec.sha256)})`)
+          yield* log.write(specLine`committed ${spec.path} (sha256 ${short(spec.sha256)})`)
+        } else {
+          yield* io.printer.print(
+            `the spec ${spec.path} is committed already (sha256 ${short(spec.sha256)})`,
+          )
+          yield* log.write(
+            specLine`${spec.path} is committed already (sha256 ${short(spec.sha256)}, commit ${short(commit)})`,
+          )
+        }
+        return { _tag: "Committed", commit: committed.success.commit } as const
+      }),
+    )
+    if (said._tag !== "Committed") return said
+    const { commit } = said
 
     // The tree an earlier run filed for it.
     const listed = yield* Effect.result(specIssues(spec.path))
