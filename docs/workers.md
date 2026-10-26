@@ -308,7 +308,9 @@ back to its worker, which has the whole change in mind (see
 - **Conflicts**: the worker is told which files conflict, to resolve them keeping the intent of both
   sides and finish the rebase, to skip a commit the base has already, and to run the tests of the
   code it changed and of the files that conflicted until they pass, leaving the whole check to tutti,
-  doing nothing else. At most twice per ticket, within 20 minutes each (`merge.resolve_timeout`).
+  doing nothing else. When only documents conflict (`.md`, `.txt` and the like), it runs no tests:
+  the whole check follows anyway, unless a later commit stops on conflicts in code, whose tests it
+  then runs. At most twice per ticket, within 20 minutes each (`merge.resolve_timeout`).
 - **A failing check**: the worker is told what failed, where the whole output is, and what landed on
   the base since its branch was cut, to run what failed and the tests of the code it changed until
   they pass, leaving the whole check to tutti, and to commit a fix naming the ticket, or nothing when
