@@ -9,6 +9,8 @@
 // (specFiles.ts readFolder); the keys are the start question's (StartQuestion.tsx), each a command.
 import { type MouseEvent, RGBA } from "@opentui/core"
 import { Result } from "effect"
+import type { Key } from "../run/runView.ts"
+import { formHintSegments } from "./Form.tsx"
 import {
   boxSides,
   cut,
@@ -20,6 +22,7 @@ import {
   seg,
   targeting,
   widthOf,
+  wrap,
 } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
 import { sanitizeLine } from "./sanitize.ts"
@@ -169,8 +172,14 @@ export const enterRow = (
 export const rowsShown = (height: number): number =>
   Math.max(Math.min(browserRowsShown, height - browserChrome), 1)
 
-/** The browser's lines besides its rows: its frame, a blank line and its note. */
-const browserChrome = 4
+/** The lines the browser's note takes, wrapped: its error, or the note on greyed files. */
+const noteLines = 3
+
+/** The lines the browser's keys take, wrapped, as the question's hint names them. */
+const keyLines = 2
+
+/** The browser's lines besides its rows: its frame, a blank line, its note and its keys. */
+const browserChrome = 3 + noteLines + keyLines
 
 /** The widest the browser gets, its frame included. */
 const browserMaxWidth = 76
@@ -190,7 +199,8 @@ const rowText = (row: Row, theme: Theme): { readonly text: string; readonly look
 
 /**
  * The browser's lines `width` wide, its frame included: its folder in the top border, `shown` rows
- * from its first shown, each its click target (its index), then its error or its note.
+ * from its first shown, each its click target (its index), then its error or its note, then its
+ * `keys`, as the question's hint names them.
  */
 export const browserLines = (
   browsing: Browsing,
@@ -198,6 +208,7 @@ export const browserLines = (
   width: number,
   shown: number,
   home: string,
+  keys: ReadonlyArray<Key> = [],
 ): ReadonlyArray<Segments> => {
   const { form } = theme
   const inner = Math.max(width - 4, 1)
@@ -215,18 +226,25 @@ export const browserLines = (
   })
   const empty = browsing.rows.length === 0 ? [[seg("  (no files here)", form.faint)]] : []
   const greyed = browsing.rows.some((row) => row._tag === "File" && !row.spec)
-  const note: Segments =
+  const said: Segments =
     browsing.error !== null
       ? [seg(browsing.error, form.error)]
       : greyed
         ? [seg(specFilesOnly, form.faint)]
         : []
+  const wrapped = wrap(said, inner, { long: "line" }).slice(0, noteLines)
+  const note = [
+    ...wrapped,
+    ...Array.from({ length: noteLines - wrapped.length }, (): Segments => []),
+  ]
+  // Its keys inside it, as the box over the question may hide the question's hint.
+  const hint = wrap(formHintSegments(keys, theme), inner).slice(0, keyLines)
   const frame = form.bar
   const blank = Array.from({ length: shown - rows.length - empty.length }, (): Segments => [])
   const label = [seg(sanitizeLine(folderLabel(browsing.folder, home)), form.fieldTitle)]
   return [
     labelledTop(width, frame, label),
-    ...boxSides([...rows, ...empty, ...blank, [], note], width, frame),
+    ...boxSides([...rows, ...empty, ...blank, [], ...note, ...hint], width, frame),
     frameEdge("bottom", width, frame),
   ]
 }
@@ -253,6 +271,7 @@ export const FileBrowser = ({
   width,
   height,
   shown,
+  keys,
   press,
   scroll,
 }: {
@@ -262,11 +281,12 @@ export const FileBrowser = ({
   readonly width: number
   readonly height: number
   readonly shown: number
+  readonly keys: ReadonlyArray<Key>
   readonly press: (index: number) => void
   readonly scroll: (by: number) => void
 }) => {
   const outer = browserWidth(width)
-  const lines = browserLines(browsing, theme, outer, shown, home)
+  const lines = browserLines(browsing, theme, outer, shown, home, keys)
   const wheel = (event: MouseEvent) => {
     const step = event.scroll?.direction === "down" ? 1 : event.scroll?.direction === "up" ? -1 : 0
     scroll(step * Math.max(event.scroll?.delta ?? 1, 1))

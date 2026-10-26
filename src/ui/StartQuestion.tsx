@@ -130,8 +130,15 @@ export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
       when: () => describing() || refining(),
       hint: { keys: "Shift+Tab", does: "back" },
     },
-    // Esc closes the browser, or stops a fetch, where one is open (specFieldCommands).
-    { keys: ["escape", "ctrl+c"], run: act.cancel, hint: { keys: "Esc", does: "cancel" } },
+    // Esc closes the browser, or stops a fetch, where one is open (specFieldCommands); Ctrl+C
+    // cancels all the same.
+    {
+      keys: ["escape", "ctrl+c"],
+      run: act.cancel,
+      when: () => act.step() !== "spec" || (!field.browsingNow() && !field.fetchingNow()),
+      hint: { keys: "Esc", does: "cancel" },
+    },
+    { keys: ["ctrl+c"], run: act.cancel },
   ]
 }
 
@@ -375,6 +382,7 @@ export const StartQuestion = ({
           width={width}
           height={height - 1 - hintLines.length}
           shown={browserRows.current}
+          keys={hint}
           press={field.act.browser.press}
           scroll={field.act.browser.scroll}
         />

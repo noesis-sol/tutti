@@ -105,8 +105,9 @@ export const useSpecField = (
     readonly fiber: Fiber.Fiber<string | null>
   } | null>(() => null)
 
-  // A fetch going on as the field goes is stopped.
-  useEffect(() => () => fetchingNow()?.fiber.interruptUnsafe(), [fetchingNow])
+  // A fetch going on as the field goes is stopped: once, as it unmounts.
+  const stopOnUnmount = useRef(() => fetchingNow()?.fiber.interruptUnsafe())
+  useEffect(() => stopOnUnmount.current, [])
 
   const put = (text: string) => {
     const field = input.current
