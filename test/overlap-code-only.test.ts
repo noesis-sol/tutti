@@ -1,6 +1,7 @@
 // A function is mentioned by a file's code, not its comments, strings or documents (tutti-gr4z.2):
 // a ticket naming Beads.respond met any file importing Beads with a log string saying "bd human
 // respond", and was held back behind a ticket that changed neither file.
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: the strings are source text with holes
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { codeExtensions, codeIn } from "../src/run/codeText.ts"

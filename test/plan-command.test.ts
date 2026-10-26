@@ -107,16 +107,26 @@ describe("planLinks", () => {
 
   test("tickets naming different functions of one file aren't linked", () => {
     const open = [
-      ticket("a" as TicketId, 1, "Change `waitSettled` in README.md."),
-      ticket("b" as TicketId, 2, "Change refreshBranch() in README.md."),
-      ticket("c" as TicketId, 2, "Reword README.md."),
+      ticket("a" as TicketId, 1, "Change `waitSettled` in src/run/merge.ts."),
+      ticket("b" as TicketId, 2, "Change refreshBranch() in src/run/merge.ts."),
+      ticket("c" as TicketId, 2, "Tidy src/run/merge.ts."),
     ]
-    const readme = sourceOf({ "README.md": "Call waitSettled, then refreshBranch.\n" })
+    const merge = sourceOf({ "src/run/merge.ts": "waitSettled()\nrefreshBranch()\n" })
     // c names no function, so the file decides for it: it waits for b, the nearest ticket before
     // it, and for a, which b doesn't.
-    expect(shown(planLinks(open, [], repoFiles(tracked), readme))).toEqual([
+    expect(shown(planLinks(open, [], repoFiles(tracked), merge))).toEqual([
+      "b>c:src/run/merge.ts",
+      "a>c:src/run/merge.ts",
+    ])
+    // A document mentions no function (tutti-gr4z.2): two tickets changing one are linked.
+    const docs = open.map((t) => ({
+      ...t,
+      description: t.description.replace("src/run/merge.ts", "README.md"),
+    }))
+    const readme = sourceOf({ "README.md": "Call waitSettled, then refreshBranch.\n" })
+    expect(shown(planLinks(docs, [], repoFiles(tracked), readme))).toEqual([
+      "a>b:README.md",
       "b>c:README.md",
-      "a>c:README.md",
     ])
   })
 
