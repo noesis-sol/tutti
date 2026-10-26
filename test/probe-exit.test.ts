@@ -28,8 +28,8 @@ setDefaultTimeout(30_000)
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
-/** How long the fake lingers once its session is closed, before it exits. */
-const linger = 1500
+/** How long the fake lingers once its session is closed, before it exits: as long as Claude Code. */
+const linger = 750
 
 const untrusted =
   "Ignoring 1 permissions.allow entry from /work/.claude/settings.json: this workspace has not been trusted.\n"

@@ -52,6 +52,8 @@ const drawn = (text: string, steps: ReadonlyArray<string>) => {
     <Markdown content={content} streaming={streaming} />,
     { width: 40, height: 16 },
     async (rendered) => {
+      // Each step waits for the frames it causes, not for a 60 fps frame gap in real time.
+      rendered.setup.renderer.maxFps = 1000
       await rendered.capture()
       for (const step of steps.slice(1)) {
         await rendered.input(() => content.set(step))
@@ -62,7 +64,7 @@ const drawn = (text: string, steps: ReadonlyArray<string>) => {
         streaming.set(false)
       })
       // Markdown is drawn once it has been highlighted: wait for each of its words, then for the
-      // frame to hold.
+      // frame to hold, each capture waiting for the renderer to go idle.
       const words = text.match(/\w+/g) ?? []
       const deadline = Date.now() + 10_000
       let last: ReadonlyArray<string> = []
@@ -72,7 +74,6 @@ const drawn = (text: string, steps: ReadonlyArray<string>) => {
         const whole = words.every((word) => frame.chars.includes(word))
         if ((whole && lines.join("\n") === last.join("\n")) || Date.now() > deadline) return lines
         last = whole ? lines : []
-        await Bun.sleep(30)
       }
     },
   )

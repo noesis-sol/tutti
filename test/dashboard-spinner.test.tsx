@@ -14,7 +14,13 @@ import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
-import { external, type Settable, type ShellValue, spinnerTick } from "../src/ui/useRunView.ts"
+import {
+  external,
+  type Interval,
+  type Settable,
+  type ShellValue,
+  spinnerTick,
+} from "../src/ui/useRunView.ts"
 import { type Size, withRender } from "./render.ts"
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
@@ -68,11 +74,38 @@ const counted = (view: RunView) => {
   return { view: counting, reads: () => reads }
 }
 
-/** The shell over `view`, its clock a spinner's frame on at each read while it `turns`. */
-const shellOf = (view: Settable<RunView>, clock: { turns: boolean; reads: number }): ShellValue => {
+/** The shell's intervals, which a test fires by hand: none fires by itself. */
+const handIntervals = () => {
+  const running = new Set<{ readonly run: () => void; readonly ms: number }>()
+  const interval: Interval = (run, ms) => {
+    const timer = { run, ms }
+    running.add(timer)
+    return () => {
+      running.delete(timer)
+    }
+  }
+  return {
+    interval,
+    /** Fires every interval of `ms`. */
+    fire: (ms: number) => {
+      for (const timer of [...running]) if (timer.ms === ms) timer.run()
+    },
+  }
+}
+
+/**
+ * The shell over `view`, its clock a spinner's frame on at each read while it `turns`, its
+ * intervals `interval`.
+ */
+const shellOf = (
+  view: Settable<RunView>,
+  clock: { turns: boolean; reads: number },
+  interval: Interval,
+): ShellValue => {
   let at = began
   return {
     view,
+    interval,
     screen: external<Screen>(Screen.Dashboard()),
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
@@ -94,13 +127,18 @@ const actEnvironment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 const turnsOf = async (shown: RunView, size: Size) => {
   const { view, reads } = counted(shown)
   const clock = { turns: false, reads: 0 }
-  return withRender(<Root value={shellOf(view, clock)} />, size, async () => {
+  const intervals = handIntervals()
+  return withRender(<Root value={shellOf(view, clock, intervals.interval)} />, size, async (r) => {
     const before = reads()
-    // Ten turns outside act(), as the terminal draws them: act() would draw them once.
+    // Ten turns outside act(), as the terminal draws them: act() would draw them once. Each waits
+    // for the frame it causes.
     actEnvironment.IS_REACT_ACT_ENVIRONMENT = false
     clock.turns = true
     try {
-      await Bun.sleep(spinnerTick * 10)
+      for (let turn = 0; turn < 10; turn++) {
+        intervals.fire(spinnerTick)
+        await r.setup.flush()
+      }
     } finally {
       clock.turns = false
       actEnvironment.IS_REACT_ACT_ENVIRONMENT = true

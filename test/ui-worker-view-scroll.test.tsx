@@ -92,7 +92,12 @@ const scrolling = async (count: number, body: (rendered: Rendered) => Promise<vo
     transcripts: feed,
   }
   try {
-    await withRender(<Root value={shell} />, { width: 60, height: 20 }, body)
+    await withRender(<Root value={shell} />, { width: 60, height: 20 }, (rendered) => {
+      // Each key or wheel turn waits for the frames it causes, not for a 60 fps frame gap in real
+      // time.
+      rendered.setup.renderer.maxFps = 1000
+      return body(rendered)
+    })
   } finally {
     Effect.runSync(Scope.close(scope, Exit.void))
   }
@@ -130,17 +135,11 @@ const pageUp = "\x1b[5~"
 const pageDown = "\x1b[6~"
 
 const press = (rendered: Rendered, key: string) =>
-  rendered.input(async (setup) => {
-    setup.mockInput.pressKey(key)
-    await Bun.sleep(30)
-  })
+  rendered.input((setup) => setup.mockInput.pressKey(key))
 
-/** Turns the wheel `direction` once, over the transcript. */
+/** Turns the wheel `direction` once, over the transcript, and waits for the frame. */
 const wheel = (rendered: Rendered, direction: "up" | "down") =>
-  rendered.input(async (setup) => {
-    await setup.mockMouse.scroll(20, 8, direction)
-    await Bun.sleep(30)
-  })
+  rendered.input((setup) => setup.mockMouse.scroll(20, 8, direction))
 
 const last = (items: ReadonlyArray<number>) => items.at(-1) ?? 0
 const first = (items: ReadonlyArray<number>) => items[0] ?? 0

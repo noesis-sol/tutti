@@ -42,7 +42,7 @@ const runLosing = (command: Command, groups: Set<number>) =>
       return yield* Effect.exit(
         exec(command).pipe(
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.provideService(LostExitGrace, Duration.millis(300)),
+          Effect.provideService(LostExitGrace, Duration.millis(100)),
           Effect.provideService(ProcessGroups, groups),
         ),
       )
@@ -90,7 +90,7 @@ describe("exec, when the command's exit is lost", () => {
         const fiber = yield* Effect.forkChild(
           exec({ command: "sh", args: ["-c", "exit 0"], timeLimit: "20 seconds" }).pipe(
             Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-            Effect.provideService(LostExitGrace, Duration.seconds(2)),
+            Effect.provideService(LostExitGrace, Duration.seconds(1)),
             Effect.provideService(ProcessGroups, groups),
           ),
         )

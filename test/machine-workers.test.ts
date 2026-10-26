@@ -339,11 +339,12 @@ describe("--machine-workers", () => {
           ),
         )
         yield* started(["a" as TicketId], ["machine_hold"])
-        yield* passes("45 seconds")
+        // Nothing changes while b is held: a step of 5 seconds is a look or two fewer.
+        yield* passes("45 seconds", "5 seconds")
         const since = looks
         writeFileSync(join(runs, "run-4242-1.json"), other(1))
         yield* untilDispatched("b", since, "15 seconds")
-        yield* passes("11 minutes", "30 seconds")
+        yield* passes("11 minutes", "1 minute")
         return yield* Fiber.join(fiber)
       }),
     )
@@ -388,7 +389,7 @@ describe("--machine-workers", () => {
         yield* passes("5 seconds")
         // Waits, in real time, until the second run holds, then finishes f.
         yield* Effect.promise(() => firstEnds.promise)
-        yield* passes("11 minutes", "30 seconds")
+        yield* passes("11 minutes", "1 minute")
         return repo
       }),
     )
@@ -398,8 +399,9 @@ describe("--machine-workers", () => {
         for (let i = 0; i < 300 && !(yield* said(/^HOLD: MACHINE/)); i++) yield* passes("1 second")
         firstEnds.resolve()
         yield* Effect.promise(() => gone(runs, first))
-        yield* passes("15 seconds")
-        yield* passes("21 minutes", "30 seconds")
+        // These runs count no looks: a second at a time until t is dispatched.
+        yield* untilDispatched("t", looks, "15 seconds")
+        yield* passes("21 minutes", "1 minute")
       }),
     )
     const [ranFirst, ranSecond] = await Promise.all([firstRun, secondRun])

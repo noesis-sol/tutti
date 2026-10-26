@@ -170,14 +170,17 @@ describe("the live layer", () => {
   })
 
   test("each kind runs its own command within its own time limit", async () => {
+    // What fast's limit stops hangs; what full's lets end takes longer than fast's limit. The setup
+    // sleeps as long as its folder's `wait` says.
     const commands = {
-      setup: `sleep 1; echo set up`,
-      fast: `sleep 1; echo fast`,
-      full: `sleep 1; echo full`,
+      setup: `sleep "$(cat wait)"; echo set up`,
+      fast: `sleep 30; echo fast`,
+      full: `sleep 0.5; echo full`,
       fastLimit: "200 millis",
       fullLimit: "10 seconds",
     }
     const wt = worktree("")
+    writeFileSync(join(wt.cwd, "wait"), "30\n")
     const timedOut = (exit: Exit.Exit<unknown, unknown>) => {
       const error = failure(exit)
       expect(error).toBeInstanceOf(CheckTimedOut)
@@ -192,6 +195,7 @@ describe("the live layer", () => {
     expect(setup).toMatchObject({ check: "setup", command: commands.setup })
     expect(Duration.toMillis(setup.timeLimit)).toBe(200)
 
+    writeFileSync(join(wt.cwd, "wait"), "0.5\n")
     const full = await runExit(commands, (checks) => checks.full(wt))
     expect(Exit.isSuccess(full) && full.value).toMatchObject({ _tag: "CheckPassed", check: "full" })
     expect(readFileSync(wt.outputFile, "utf8")).toBe("full\n")

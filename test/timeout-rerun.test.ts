@@ -125,45 +125,53 @@ describe("scripts/test.ts on a timed-out test", () => {
     return { code: proc.exitCode, out: proc.stdout.toString(), err: proc.stderr.toString() }
   }
 
+  // The next test, which runs until a timed-out test's late expect has failed: the test writes
+  // `late` just before it fails it.
+  const untilLate = `test("after", async () => {
+  while (!existsSync("late")) await new Promise((r) => setTimeout(r, 10))
+})
+`
+
   // Runs past its time limit the first time it runs in its folder, failing an expect after bun has
   // moved on to the next test, so bun counts an error between tests; passes at once after.
-  const timesOutOnce = `import { existsSync, writeFileSync } from "node:fs"
+  const timesOutOnce = `import { existsSync, rmSync, writeFileSync } from "node:fs"
 import { describe, expect, test } from "bun:test"
 describe("group", () => {
   test("slow", async () => {
+    rmSync("late", { force: true })
     const seen = existsSync("seen")
     writeFileSync("seen", "")
     if (seen) return
     await new Promise((r) => setTimeout(r, 600))
+    writeFileSync("late", "")
     expect(seen).toBe(true)
   }, 200)
 })
-test("after", async () => {
-  await new Promise((r) => setTimeout(r, 1500))
-})
-`
+${untilLate}`
 
   // Runs past its time limit on every run, failing an expect after.
-  const timesOutAlways = `import { expect, test } from "bun:test"
+  const timesOutAlways = `import { existsSync, rmSync, writeFileSync } from "node:fs"
+import { expect, test } from "bun:test"
 test("slow", async () => {
+  rmSync("late", { force: true })
   await new Promise((r) => setTimeout(r, 600))
+  writeFileSync("late", "")
   expect(1).toBe(2)
 }, 200)
-test("after", async () => {
-  await new Promise((r) => setTimeout(r, 1500))
-})
-`
+${untilLate}`
 
-  // A test that passes, but leaves a timer that throws while the file's afterAll runs: an error
-  // between tests from a file with no test that timed out.
-  const strayError = `import { afterAll, test } from "bun:test"
+  // A test that passes, but leaves a timer that throws while the file's afterAll runs, until it
+  // has: an error between tests from a file with no test that timed out.
+  const strayError = `import { existsSync, writeFileSync } from "node:fs"
+import { afterAll, test } from "bun:test"
 test("leaves a timer", () => {
   setTimeout(() => {
+    writeFileSync("stray", "")
     throw new Error("stray")
   }, 100)
 })
 afterAll(async () => {
-  await new Promise((r) => setTimeout(r, 600))
+  while (!existsSync("stray")) await new Promise((r) => setTimeout(r, 10))
 })
 `
 

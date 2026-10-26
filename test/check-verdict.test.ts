@@ -37,8 +37,11 @@ const project = () => {
   return { root, bin }
 }
 
+// One project for every test: macOS checks an executable file the first time it runs, about 0.2 s
+// each, and longer on a loaded machine. Nothing in it changes; TUTTI_FAKE_FAIL picks what fails.
+const { root, bin } = project()
+
 const runCheck = (env: Record<string, string>) => {
-  const { root, bin } = project()
   const proc = Bun.spawnSync([join(root, "scripts", "check.sh")], {
     env: {
       ...testEnv,
