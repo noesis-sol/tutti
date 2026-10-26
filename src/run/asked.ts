@@ -12,13 +12,17 @@
 // a slot, counting toward no limit (the scheduler's carry), and its ticket goes on as a dispatched
 // one does: settled, read, and moved as its worker leaves it. With no slot for it (every slot
 // taken, a solo ticket running, the machine at --machine-workers, a hold), it stays Asked, and a
-// later poll brings it back. A session that can't be resumed (its
+// later poll brings it back. Within a look, answerQuestions and takeAnswers share what they read
+// (AskedLook): bd's open list, read once at the look's start where a ticket is Asked, and each
+// Asked ticket's bd show. A ticket whose question that list has still open, labelled human, isn't
+// shown at all, as it can't come back yet; one answered by hand drops out of the list and is shown
+// and resumed at that look. A session that can't be resumed (its
 // worktree or transcript gone, the spawn failing) drops its ticket: WORKER_GONE, left for review,
 // its record in state.json forgotten, as sessions.ts's workerGone does. Only bd ready brings it back
 // then, so its line says a later run takes it up when it is open, and to reopen it when it is in
 // progress, or else to finish it by hand. A ticket bd can't show waits for the next poll.
 import { Clock, Effect, Result } from "effect"
-import { Beads, type Issue, type TicketId } from "../services/Beads.ts"
+import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
@@ -47,6 +51,57 @@ export interface AnswerOptions extends WorkOptions {
 }
 
 /**
+ * What one look read of bd for its Asked tickets, shared by answerQuestions and takeAnswers: the
+ * questions for you bd's open list has open, read once at the look's start (undefined where the
+ * look didn't read it, or bd couldn't), and each Asked ticket's issue as bd show gave it this look.
+ * A question answered in the look leaves both: its ticket is shown again.
+ */
+export interface AskedLook {
+  readonly open: Set<string> | undefined
+  readonly shown: Map<TicketId, Issue>
+}
+
+/** A look's reads (AskedLook) from bd's open list, `open`, as the look read it at its start. */
+export const askedLook = (open: ReadonlyArray<Issue> | undefined): AskedLook => ({
+  open:
+    open === undefined
+      ? undefined
+      : new Set(
+          open
+            .filter((issue) => issue.status !== "closed" && issue.labels.includes(HumanLabel))
+            .map((issue) => issue.id),
+        ),
+  shown: new Map(),
+})
+
+/** Whether the look's open list has `question` still open for you: its ticket can't come back. */
+export const stillOpen = (look: AskedLook | undefined, question: string): boolean =>
+  look?.open?.has(question) === true
+
+/** `ticket`'s issue as bd show gives it, shown once a look. */
+export const shownIn = (
+  look: AskedLook | undefined,
+  ticket: TicketId,
+): Effect.Effect<Issue, BeadsError, Beads> =>
+  Effect.gen(function* () {
+    const known = look?.shown.get(ticket)
+    if (known !== undefined) return known
+    const issue = yield* (yield* Beads).show(ticket)
+    look?.shown.set(ticket, issue)
+    return issue
+  })
+
+/** `question`, which `ticket` waited on, answered in the look: both are read afresh. */
+export const answeredIn = (
+  look: AskedLook | undefined,
+  ticket: TicketId,
+  question: string,
+): void => {
+  look?.open?.delete(question)
+  look?.shown.delete(ticket)
+}
+
+/**
  * The question `issue` waited on, `question`, by its title as bd show gives it; the ID alone when
  * its link is gone.
  */
@@ -55,22 +110,23 @@ const titleOf = (issue: Issue, question: string): string =>
 
 /**
  * Resumes each Asked ticket whose question is answered (§ 5.1's Asked → Working): its session
- * told so and its fiber carried on in a slot; one with no slot for it stays Asked. The tickets it
- * resumed.
+ * told so and its fiber carried on in a slot; one with no slot for it stays Asked. With the look's
+ * reads (`look`), one whose question its open list has open isn't shown, and one answerQuestions
+ * showed isn't shown again. The tickets it resumed.
  */
 export const takeAnswers = (
   options: AnswerOptions,
+  look?: AskedLook,
 ): Effect.Effect<ReadonlyArray<string>, never, WorkEnv> =>
   Effect.gen(function* () {
-    const beads = yield* Beads
     const ledger = yield* Ledger
     const store = yield* Store
     const context = yield* Effect.context<WorkEnv>()
     const back: Array<string> = []
     for (const entry of (yield* ledger.current).tickets.values()) {
       const { phase, ticket: id, title } = entry
-      if (phase._tag !== "Asked") continue
-      const issue = yield* Effect.result(beads.show(id))
+      if (phase._tag !== "Asked" || stillOpen(look, phase.question)) continue
+      const issue = yield* Effect.result(shownIn(look, id))
       if (Result.isFailure(issue) || openQuestion(issue.success) !== undefined) continue
       const { question } = phase
       const asked = titleOf(issue.success, question)

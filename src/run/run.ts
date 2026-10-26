@@ -98,9 +98,10 @@ import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
-import { takeAnswers } from "./asked.ts"
+import { askedLook, takeAnswers } from "./asked.ts"
 import {
   AutoAnswer,
+  answeredQuestions,
   answerQuestions,
   autoAnswerName,
   makeAutoAnswering,
@@ -854,15 +855,27 @@ const runFrom = (
       // winds down, which takes up only what is running: the next run resumes them.
       yield* Ref.set(unslotted, new Set())
       const gateNow = yield* gate
+      // bd's open list, read here once where a ticket is Asked, for the answers and the fill both:
+      // a ticket whose question it has open isn't shown (asked.ts's AskedLook).
+      let open: ReadonlyArray<Issue> | undefined
       if (takesBack(gateNow)) {
         const left = yield* carryWaiting(carryOptions, yield* Ref.get(carrying)).pipe(
           Effect.provideContext(context),
         )
         yield* Ref.set(carrying, waitingOf(left))
+        const asked = [...(yield* ledger.current).tickets.values()].some(
+          (entry) => entry.phase._tag === "Asked",
+        )
+        const listed = asked ? yield* Effect.result(beads.list()) : undefined
+        open = listed !== undefined && Result.isSuccess(listed) ? listed.success : undefined
+        const look = askedLook(open)
         // --auto-answer's questions first, so that takeAnswers resumes their tickets at once; one
         // still waiting for its time keeps the run from ending on it.
-        yield* Ref.set(autoAnswering, yield* answerQuestions)
-        yield* takeAnswers(carryOptions)
+        const before = (yield* answeredQuestions).length
+        yield* Ref.set(autoAnswering, yield* answerQuestions(look))
+        // A question answered closed since the list was read: the fill reads it afresh.
+        if ((yield* answeredQuestions).length !== before) open = undefined
+        yield* takeAnswers(carryOptions, look)
       } else {
         yield* Ref.set(autoAnswering, false)
         // Winding down, it answers none: the questions --auto-answer took at once, which notified
@@ -870,7 +883,9 @@ const runFrom = (
         if (gateNow.windingDown) yield* notifyLeftOpen
       }
       if (takesNew(yield* gate)) {
-        const filled = yield* Effect.result(scheduler.fillTrying)
+        const filled = yield* Effect.result(
+          open === undefined ? scheduler.fillTrying : scheduler.fillWith(open),
+        )
         if (Result.isFailure(filled)) {
           yield* stopped(
             stopFor("BEADS_FAILED", `could not read the queue: ${beadsWhy(filled.failure)}`),

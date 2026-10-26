@@ -32,6 +32,7 @@
 // its last fiber has ended and freed its slot. A ticket whose ID can't name a worktree or a branch
 // is set aside as it is queued (BAD_TICKET_ID), without a worker or a slot.
 import {
+  Context,
   Duration,
   Effect,
   FiberSet,
@@ -302,6 +303,11 @@ export interface Scheduler {
    * A read that fails is tried again, up to `readTries` reads in all; then it fails with bd's error.
    */
   readonly fillTrying: Effect.Effect<Filled, BeadsError>
+  /**
+   * fillTrying with bd's open list read already, `open`, at the look's start (run.ts), which the
+   * fill takes rather than read it again.
+   */
+  fillWith(open: ReadonlyArray<Issue>): Effect.Effect<Filled, BeadsError>
   /** Waits until a ticket's fiber has ended and freed its slot. */
   readonly freed: Effect.Effect<void>
   /**
@@ -403,6 +409,11 @@ const setupFailed = (state: State, id: TicketId): boolean => {
   const phase = state.tickets.get(id)?.phase
   return phase?._tag === "Waiting" && phase.for._tag === "Setup"
 }
+
+/** bd's open list as the look read it at its start, for the fill it gives it to (fillWith). */
+const LookOpen = Context.Reference<ReadonlyArray<Issue> | undefined>("tutti/run/LookOpen", {
+  defaultValue: () => undefined,
+})
 
 /** Whether the ledger lets the run take `id` from bd ready: not taken up yet, or still waiting. */
 const candidate = (state: State, id: TicketId): boolean =>
@@ -953,7 +964,7 @@ export const make = (
         }
         const queue = candidates.filter((issue) => !setAsideNow.includes(issue.id))
 
-        const open = yield* beads.list()
+        const open = (yield* LookOpen) ?? (yield* beads.list())
         const unclosed = unclosedIn(open, options.scope, filter)
         yield* remember((m) => ({ ...m, unclosed }))
 
@@ -1253,6 +1264,7 @@ export const make = (
 
     return {
       fillTrying,
+      fillWith: (open) => Effect.provideService(fillTrying, LookOpen, open),
       freed: Queue.take(freed),
       carry: (ticket, start, issue) =>
         oneFill.withPermit(

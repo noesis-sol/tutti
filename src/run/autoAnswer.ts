@@ -10,7 +10,10 @@
 // recommended option, saying tutti chose it, which closes the question, and the label
 // auto-answered marks it for `bd list --label auto-answered`. Any other question is left to the
 // maintainer, its ASKED line (or a carried ticket's line) saying why (`leftWhy`). An answer from the
-// maintainer first closes the question, and tutti doesn't answer it again.
+// maintainer first closes the question, and tutti doesn't answer it again. A question open before
+// the run is remembered as such for the run (`before`), from the first look that shows it or from
+// carry-over's autoAnswerOf, and not shown again: its creation time and the run's start never
+// change. One left to you for another reason is shown at each look, as its metadata may change.
 //
 // orchestra has no such option: a departure on purpose (spec § 8.2).
 import { Context, Duration, Effect, Ref, Result } from "effect"
@@ -26,6 +29,7 @@ import {
 } from "../services/Beads.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { awakeSince } from "../services/Wake.ts"
+import { type AskedLook, answeredIn, shownIn, stillOpen } from "./asked.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, type Log, line, Tag, ticketLine } from "./log.ts"
@@ -68,6 +72,8 @@ export interface AutoAnswering {
    * (notifyLeftOpen).
    */
   readonly atOnce: Ref.Ref<ReadonlyMap<string, TakenAtOnce>>
+  /** The questions left to you for being open before the run (`openBefore`): never shown again. */
+  readonly before: Ref.Ref<ReadonlySet<string>>
 }
 
 /** A question --auto-answer took at once (AutoAnswering's `atOnce`). */
@@ -94,6 +100,7 @@ export const makeAutoAnswering = (
       failed: yield* Ref.make<ReadonlyMap<string, number>>(new Map()),
       takesBack: yield* Ref.make<Effect.Effect<boolean>>(Effect.succeed(true)),
       atOnce: yield* Ref.make<ReadonlyMap<string, TakenAtOnce>>(new Map()),
+      before: yield* Ref.make<ReadonlySet<string>>(new Set()),
     }
   })
 
@@ -106,16 +113,32 @@ export const responseText = (option: string): string =>
   `${option} (the recommended option, chosen by tutti --auto-answer, not by the maintainer)`
 
 /**
+ * Whether `question` was open before a run that began at `since`: left open on purpose, perhaps. A
+ * creation time bd doesn't give is taken for one.
+ */
+const openBefore = (question: Issue, since: number): boolean =>
+  !(Date.parse(question.createdAt) >= since)
+
+/**
  * Why --auto-answer leaves `question` to the maintainer in a run that began at `since`, or
- * undefined when it answers it: open before the run (left open on purpose, perhaps; a creation
- * time bd doesn't give is taken for one), maintainer_only, or without well-formed options.
+ * undefined when it answers it: open before the run (`openBefore`), maintainer_only, or without
+ * well-formed options.
  */
 export const leftWhy = (question: Issue, since: number): string | undefined => {
-  if (!(Date.parse(question.createdAt) >= since)) return "it was open before the run"
+  if (openBefore(question, since)) return "it was open before the run"
   if (maintainerOnly(question.metadata)) return "it asks you to do something only you can"
   if (questionOptions(question.metadata) === undefined) return "it gives no options"
   return undefined
 }
+
+/** Remembers `question` as open before the run (`before`), when it was: it is never shown again. */
+const rememberBefore = (auto: AutoAnswering, question: Issue): Effect.Effect<boolean> =>
+  openBefore(question, auto.since)
+    ? Effect.as(
+        Ref.update(auto.before, (all) => new Set(all).add(question.id)),
+        true,
+      )
+    : Effect.succeed(false)
 
 /** What a question's line adds for --auto-answer leaving it to the maintainer, `why`. */
 export const leavesIt = (why: string): Line => line`; --auto-answer leaves it to you: ${why}`
@@ -130,9 +153,10 @@ export interface AutoAnswerOf {
 
 /**
  * What --auto-answer does with `question`: why it leaves it, or nothing when it answers it or is
- * off, and whether it answers it at once (bare, not after a time, and the run taking work back). bd shows the question first, as
- * a dependency's metadata may be partial; a question it can't show is said nothing of, and
- * notifies.
+ * off, and whether it answers it at once (bare, not after a time, and the run taking work back).
+ * bd shows the question first, as a dependency's metadata may be partial; a question it can't show
+ * is said nothing of, and notifies. One open before the run is remembered so (`before`): the looks
+ * don't show it again.
  */
 export const autoAnswerOf = (question: TicketId): Effect.Effect<AutoAnswerOf, never, Beads> =>
   Effect.gen(function* () {
@@ -141,6 +165,7 @@ export const autoAnswerOf = (question: TicketId): Effect.Effect<AutoAnswerOf, ne
     if (auto === null) return none
     const shown = yield* Effect.result((yield* Beads).show(question))
     if (Result.isFailure(shown)) return none
+    yield* rememberBefore(auto, shown.success)
     const why = leftWhy(shown.success, auto.since)
     // While the run holds or winds down, it doesn't answer it now, so it notifies.
     const now = Duration.isZero(auto.after) && (yield* Effect.flatten(Ref.get(auto.takesBack)))
@@ -300,41 +325,51 @@ const answer = (
 
 /**
  * Answers by --auto-answer each question it takes (`leftWhy`) that blocks one of the run's Asked
- * tickets and has waited --auto-answer's time: what the ready poll's fill does before takeAnswers.
- * Whether a question it takes still waits, for its time or for bd to answer it again, which keeps
- * the run from ending on it.
+ * tickets and has waited --auto-answer's time: what the ready poll's fill does before takeAnswers,
+ * sharing the look's reads (`look`) with it. An Asked ticket whose question the look's open list
+ * has open isn't shown: that question is the one looked at. One open before the run, remembered
+ * (`before`), isn't shown at all. Whether a question it takes still waits, for its time or for bd
+ * to answer it again, which keeps the run from ending on it.
  */
-export const answerQuestions: Effect.Effect<
-  boolean,
-  never,
-  Beads | Ledger | Log | EventStream | Notifier
-> = Effect.gen(function* () {
-  const auto = yield* AutoAnswer
-  if (auto === null) return false
-  const beads = yield* Beads
-  const after = Duration.toMillis(auto.after)
-  let waiting = false
-  for (const entry of (yield* (yield* Ledger).current).tickets.values()) {
-    if (entry.phase._tag !== "Asked") continue
-    const issue = yield* Effect.result(beads.show(entry.ticket))
-    if (Result.isFailure(issue)) continue
-    for (const id of openQuestions(issue.success)) {
-      // Shown on its own for its whole metadata; one closed meanwhile was answered by you.
-      const shown = yield* Effect.result(beads.show(id))
-      if (Result.isFailure(shown) || shown.success.status === "closed") continue
-      const question = shown.success
-      const options = questionOptions(question.metadata)
-      if (leftWhy(question, auto.since) !== undefined || options === undefined) continue
-      const recommended = options[0]
-      if (recommended === undefined) continue
-      // Left to you once bd has failed to answer it `respondTries` times.
-      if (((yield* Ref.get(auto.failed)).get(id) ?? 0) >= respondTries) continue
-      if (after > 0 && (yield* awakeSince(Date.parse(question.createdAt))) < after) {
-        waiting = true
-        continue
+export const answerQuestions = (
+  look?: AskedLook,
+): Effect.Effect<boolean, never, Beads | Ledger | Log | EventStream | Notifier> =>
+  Effect.gen(function* () {
+    const auto = yield* AutoAnswer
+    if (auto === null) return false
+    const beads = yield* Beads
+    const after = Duration.toMillis(auto.after)
+    let waiting = false
+    for (const entry of (yield* (yield* Ledger).current).tickets.values()) {
+      if (entry.phase._tag !== "Asked") continue
+      const asked = entry.phase.question
+      let ids: ReadonlyArray<string> = [asked]
+      if (!stillOpen(look, asked)) {
+        const issue = yield* Effect.result(shownIn(look, entry.ticket))
+        if (Result.isFailure(issue)) continue
+        ids = openQuestions(issue.success)
       }
-      if ((yield* answer(auto, entry.ticket, question, recommended)) === "again") waiting = true
+      for (const id of ids) {
+        if ((yield* Ref.get(auto.before)).has(id)) continue
+        // Shown on its own for its whole metadata; one closed meanwhile was answered by you.
+        const shown = yield* Effect.result(beads.show(id as TicketId))
+        if (Result.isFailure(shown) || shown.success.status === "closed") continue
+        const question = shown.success
+        if (yield* rememberBefore(auto, question)) continue
+        const options = questionOptions(question.metadata)
+        if (leftWhy(question, auto.since) !== undefined || options === undefined) continue
+        const recommended = options[0]
+        if (recommended === undefined) continue
+        // Left to you once bd has failed to answer it `respondTries` times.
+        if (((yield* Ref.get(auto.failed)).get(id) ?? 0) >= respondTries) continue
+        if (after > 0 && (yield* awakeSince(Date.parse(question.createdAt))) < after) {
+          waiting = true
+          continue
+        }
+        const answered = yield* answer(auto, entry.ticket, question, recommended)
+        if (answered === "again") waiting = true
+        if (answered === "answered") answeredIn(look, entry.ticket, id)
+      }
     }
-  }
-  return waiting
-})
+    return waiting
+  })
