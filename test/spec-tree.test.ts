@@ -72,7 +72,7 @@ describe("checkTree", () => {
       waitsFor: [{ _tag: "Id", id: "shop-1.1" }],
       files: ["src/list.ts"],
     })
-    expect(tree.issues[2]?.waitsFor).toEqual([
+    expect(tree.issues[2]?.waitsFor as unknown).toEqual([
       { _tag: "Key", key: "list" },
       { _tag: "Id", id: "other-9" },
     ])
@@ -207,10 +207,10 @@ describe("checkTree", () => {
         note: "§ Tax added",
       },
     ])
-    expect(tree.links).toEqual([
+    expect(tree.links as unknown).toEqual([
       { waits: { _tag: "Id", id: "shop-1.1" }, on: { _tag: "Key", key: "new" } },
     ])
-    expect(tree.unlinks).toEqual([{ waits: "shop-1.1", on: "other-9" }])
+    expect(tree.unlinks as unknown).toEqual([{ waits: "shop-1.1", on: "other-9" }])
     expect(
       reasons(
         {
@@ -355,12 +355,12 @@ describe("fileTree", () => {
       acceptance: "The tests pass.",
       metadata: { spec: "docs/shop.md", files: ["src/app.ts"] },
     })
-    expect(list?.dependencies.filter((d) => d.type === "blocks").map((d) => d.id)).toEqual([
-      "shop-1.1",
-    ])
-    expect(sort?.dependencies.filter((d) => d.type === "blocks").map((d) => d.id)).toEqual([
-      filed.ids.get("list"),
-    ])
+    expect(
+      list?.dependencies.filter((d) => d.type === "blocks").map((d) => d.id as string),
+    ).toEqual(["shop-1.1"])
+    expect(
+      sort?.dependencies.filter((d) => d.type === "blocks").map((d) => d.id as string),
+    ).toEqual([filed.ids.get("list") as string])
     expect(issues.find((i) => i.id === root)?.notes).toBe(
       "Assumptions\n\n- Prices in euros (Sort).",
     )

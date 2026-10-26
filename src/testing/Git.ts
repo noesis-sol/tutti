@@ -897,6 +897,76 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               else checkout.head = { detached: hash }
             }),
           ),
+        addPaths: (repo, paths) =>
+          operation(gitCall(gitOps.addPaths, paths), repo, (refuse) =>
+            Effect.map(inRepo(refuse, repo), (checkout) => {
+              for (const path of paths) setFile(checkout.index, path, checkout.work.get(path))
+            }),
+          ),
+        // The working tree's .gitignore, a pattern a line: a path, or a folder ending in `/`.
+        ignored: (dir, path) =>
+          operation(gitCall(gitOps.ignored, path), dir, (refuse) =>
+            Effect.map(inRepo(refuse, dir), (checkout) =>
+              (checkout.work.get(".gitignore") ?? "")
+                .split("\n")
+                .map((line) => line.trim().replace(/^\//, ""))
+                .some(
+                  (pattern) =>
+                    pattern !== "" &&
+                    !pattern.startsWith("#") &&
+                    (pattern.endsWith("/") ? path.startsWith(pattern) : path === pattern),
+                ),
+            ),
+          ),
+        lastCommit: (dir, path) =>
+          operation(gitCall(gitOps.lastCommit, path), dir, (refuse) =>
+            Effect.map(inRepo(refuse, dir), (checkout): Option.Option<Commit> => {
+              const changed = [...ancestors(headOf(checkout))]
+                .map(commitOf)
+                .sort((a, b) => b.seq - a.seq)
+                .find((commit) => {
+                  const parent = commit.parents[0]
+                  return (
+                    commit.tree.get(path) !==
+                    (parent === undefined ? undefined : treeOf(parent).get(path))
+                  )
+                })
+              return changed === undefined
+                ? Option.none()
+                : Option.some({
+                    hash: changed.hash,
+                    subject: subjectOf(changed.message),
+                    message: changed.message,
+                  })
+            }),
+          ),
+        // Not git's hunks: the lines each side has, the old ones with -, the new ones with +.
+        diffOf: (dir, from, to, path) =>
+          operation(gitCall(gitOps.diffOf, from, to, path), dir, (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, dir)
+              const [a, b] = [resolve(checkout, from), resolve(checkout, to)]
+              if (a === undefined || b === undefined) {
+                return yield* refuse(128, `fatal: bad revision '${a === undefined ? from : to}'`)
+              }
+              const [before, after] = [treeOf(a).get(path), treeOf(b).get(path)]
+              if (before === after) return ""
+              const lines = (text: string | undefined, mark: string) =>
+                text === undefined
+                  ? []
+                  : text
+                      .replace(/\n$/, "")
+                      .split("\n")
+                      .map((l) => `${mark}${l}`)
+              return [
+                `--- a/${path}`,
+                `+++ b/${path}`,
+                ...lines(before, "-"),
+                ...lines(after, "+"),
+                "",
+              ].join("\n")
+            }),
+          ),
         status: (dir, paths = []) =>
           operation(gitCall(gitOps.status, paths), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => status(checkout, paths)),

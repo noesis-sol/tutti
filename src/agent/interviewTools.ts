@@ -33,7 +33,13 @@ import {
 } from "../project/planFile.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
-import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "./callbacks.ts"
+import {
+  type SessionFibers,
+  type ToolAnswer,
+  toolAnswer,
+  toolHandler,
+  toolRefusal,
+} from "./callbacks.ts"
 
 /** The interview's MCP server's name: its tools are `mcp__tutti__<name>` to Claude Code. */
 export const serverName = "tutti"
@@ -176,6 +182,76 @@ export const filedText = (plan: FeaturePlan, filed: FiledPlan): string =>
   ].join("\n")
 
 /**
+ * tickets_list and ticket_show, reading the project's tickets through `beads`, their handlers run
+ * with `run` (toolHandler): the interview's and the spec breakdown's.
+ */
+export const readTools = (
+  beads: Beads["Service"],
+  run: (effect: Effect.Effect<ToolAnswer, unknown>, extra: unknown) => Promise<ToolAnswer>,
+) => {
+  const ticketsList = tool(
+    "tickets_list",
+    "Lists the project's Beads tickets, one a line: ID, status, priority, type, title and the epic it is under. Without arguments, every ticket not closed.",
+    {
+      status: z
+        .string()
+        .optional()
+        .describe("Only tickets with this status: open, in_progress, blocked, deferred, closed"),
+      parent: z.string().optional().describe("Only the subtickets of this epic"),
+      all: z.boolean().optional().describe("Closed tickets too"),
+    },
+    (args, extra) =>
+      run(
+        // The model names the epic by its ID, as bd gave it: bd looks it up.
+        beads
+          .list({
+            ...(args.status === undefined ? {} : { status: args.status }),
+            ...(args.parent === undefined ? {} : { parent: args.parent as TicketId }),
+            ...(args.all === true ? { all: true } : {}),
+          })
+          .pipe(
+            Effect.map((issues) =>
+              toolAnswer(
+                issues.length === 0
+                  ? "No tickets."
+                  : [
+                      ...issues.slice(0, maxListedTickets).map(ticketLine),
+                      ...(issues.length > maxListedTickets
+                        ? [`(… and ${issues.length - maxListedTickets} more)`]
+                        : []),
+                    ].join("\n"),
+              ),
+            ),
+            Effect.catch((error) =>
+              Effect.succeed(toolRefusal(`bd couldn't list the tickets: ${beadsWhy(error)}`)),
+            ),
+          ),
+        extra,
+      ),
+    { annotations: { readOnlyHint: true } },
+  )
+
+  const ticketShow = tool(
+    "ticket_show",
+    "Shows one Beads ticket: its fields, description, design, acceptance criteria and notes.",
+    { id: z.string().describe("The ticket's ID") },
+    (args, extra) =>
+      run(
+        // The model names the ticket by its ID, as bd gave it: bd looks it up.
+        beads.show(args.id as TicketId).pipe(
+          Effect.map((issue) => toolAnswer(ticketText(issue))),
+          Effect.catch((error) =>
+            Effect.succeed(toolRefusal(`bd couldn't show ${args.id}: ${beadsWhy(error)}`)),
+          ),
+        ),
+        extra,
+      ),
+    { annotations: { readOnlyHint: true } },
+  )
+  return [ticketsList, ticketShow] as const
+}
+
+/**
  * The interview's tools for the main checkout `repo`, and the server over them. Their handlers run
  * in the interview's `fibers` (toolHandler), with the Beads and Git they were made with.
  */
@@ -189,65 +265,7 @@ export const makeInterviewTools = (
     const filing = yield* SubscriptionRef.make<Filing>(Filing.None())
     const run = yield* toolHandler<Beads | Git>(fibers)
 
-    const ticketsList = tool(
-      "tickets_list",
-      "Lists the project's Beads tickets, one a line: ID, status, priority, type, title and the epic it is under. Without arguments, every ticket not closed.",
-      {
-        status: z
-          .string()
-          .optional()
-          .describe("Only tickets with this status: open, in_progress, blocked, deferred, closed"),
-        parent: z.string().optional().describe("Only the subtickets of this epic"),
-        all: z.boolean().optional().describe("Closed tickets too"),
-      },
-      (args, extra) =>
-        run(
-          // The model names the epic by its ID, as bd gave it: bd looks it up.
-          beads
-            .list({
-              ...(args.status === undefined ? {} : { status: args.status }),
-              ...(args.parent === undefined ? {} : { parent: args.parent as TicketId }),
-              ...(args.all === true ? { all: true } : {}),
-            })
-            .pipe(
-              Effect.map((issues) =>
-                toolAnswer(
-                  issues.length === 0
-                    ? "No tickets."
-                    : [
-                        ...issues.slice(0, maxListedTickets).map(ticketLine),
-                        ...(issues.length > maxListedTickets
-                          ? [`(… and ${issues.length - maxListedTickets} more)`]
-                          : []),
-                      ].join("\n"),
-                ),
-              ),
-              Effect.catch((error) =>
-                Effect.succeed(toolRefusal(`bd couldn't list the tickets: ${beadsWhy(error)}`)),
-              ),
-            ),
-          extra,
-        ),
-      { annotations: { readOnlyHint: true } },
-    )
-
-    const ticketShow = tool(
-      "ticket_show",
-      "Shows one Beads ticket: its fields, description, design, acceptance criteria and notes.",
-      { id: z.string().describe("The ticket's ID") },
-      (args, extra) =>
-        run(
-          // The model names the ticket by its ID, as bd gave it: bd looks it up.
-          beads.show(args.id as TicketId).pipe(
-            Effect.map((issue) => toolAnswer(ticketText(issue))),
-            Effect.catch((error) =>
-              Effect.succeed(toolRefusal(`bd couldn't show ${args.id}: ${beadsWhy(error)}`)),
-            ),
-          ),
-          extra,
-        ),
-      { annotations: { readOnlyHint: true } },
-    )
+    const [ticketsList, ticketShow] = readTools(beads, run)
 
     const fileFeature = tool(
       "file_feature",

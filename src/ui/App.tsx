@@ -122,6 +122,8 @@ export const interviewScreen =
       const interview: InterviewValue = {
         description: inputs.description,
         filing: yield* bridge(inputs.filing),
+        ...(inputs.filed === undefined ? {} : { filed: yield* bridge(inputs.filed) }),
+        ...(inputs.leaveQuestion === undefined ? {} : { leaveQuestion: inputs.leaveQuestion }),
       }
       yield* mount(
         shell,

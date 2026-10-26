@@ -13,7 +13,7 @@
 // --ticket <epic> would; n, or Esc, leaves it filed and says how to run it. Otherwise the interview
 // ends without a run, and interviewEnding says what was filed, if anything, and the exit code.
 import { Clock, Data, Effect, Queue, Ref, type Scope, Stream, SubscriptionRef } from "effect"
-import { AgentHost } from "../agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { Attention, type AttentionRequest } from "../agent/Attention.ts"
 import { filedPlan, interviewWorker, startInterview } from "../agent/interview.ts"
 import type { Filing } from "../agent/interviewTools.ts"
@@ -45,6 +45,10 @@ export interface InterviewInputs extends ScreenInputs {
   readonly description: string
   /** What file_feature has filed: leaving asks first only while nothing is. */
   readonly filing: SubscriptionRef.SubscriptionRef<Filing>
+  /** Whether something is filed, where `filing` doesn't say: a spec's refinement. */
+  readonly filed?: SubscriptionRef.SubscriptionRef<boolean>
+  /** What leaving asks while nothing is filed, in place of the interview's question. */
+  readonly leaveQuestion?: string
 }
 
 /** The Interview view: shows `inputs` until the scope closes. */
@@ -121,33 +125,46 @@ export const interviewView = (card: Card): RunView => ({
   requests: card.requests,
 })
 
+/** How the Interview view was left: not at all, by Esc or ← Back, or by Ctrl+C's quit box. */
+export type Left = "no" | "left" | "quit"
+
+/** A session the Interview view shows: the feature interview's, or a spec's refinement. */
+export interface InView<A> {
+  /** The description typed at the start question, or what the session is for, in its header. */
+  readonly description: string
+  /** What file_feature has filed (an interview's), or nothing (a refinement's). */
+  readonly filing: SubscriptionRef.SubscriptionRef<Filing>
+  /** Whether the session has filed something, where `filing` doesn't say. */
+  readonly filed?: SubscriptionRef.SubscriptionRef<boolean>
+  /** What leaving asks while nothing is filed, in place of the interview's question. */
+  readonly leaveQuestion?: string
+  readonly send: (text: string, uuid?: MessageUuid) => Effect.Effect<unknown, unknown>
+  /** Closes the session. */
+  readonly leave: Effect.Effect<void>
+  /** The session's end. */
+  readonly ended: Effect.Effect<A>
+}
+
 /**
- * The interview of the feature `description` describes, shown with `io.screen`; once the epic is
- * filed, `io.confirm` asks whether to run it. How it ended; fails as the confirmation does when it
- * fails other than by being cancelled.
+ * Shows `session`, the interview worker's, in the Interview view with `screen` until it ends: its
+ * card, its open requests and its transcript, the view's commands done as they come. Its end, and
+ * how the view was left.
  */
-export const interview = <E>(
-  description: string,
-  io: {
-    readonly screen: InterviewScreen
-    readonly confirm: (plan: Plan, question: string) => Effect.Effect<boolean, FormCancelled | E>
-  },
+export const inInterviewView = <A>(
+  session: InView<A>,
+  screen: InterviewScreen,
 ): Effect.Effect<
-  InterviewOutcome,
-  Exclude<E, FormCancelled>,
-  AgentHost | AppConfig | Beads | Git | Attention | Transcripts
+  { readonly ended: A; readonly left: Left },
+  never,
+  AgentHost | Attention | Transcripts
 > =>
   Effect.gen(function* () {
-    const started = yield* Effect.result(startInterview(description))
-    if (started._tag === "Failure") {
-      return InterviewOutcome.NotStarted({ why: started.failure.reason })
-    }
-    const session = started.success
     const host = yield* AgentHost
     const attention = yield* Attention
     const transcripts = yield* Transcripts
+    const { description } = session
     // Whether you left the view, and how.
-    const left = yield* Ref.make<"no" | "left" | "quit">("no")
+    const left = yield* Ref.make<Left>("no")
 
     const ended = yield* Effect.scoped(
       Effect.gen(function* () {
@@ -207,7 +224,7 @@ export const interview = <E>(
         }
         const commands = yield* makeCommands
         yield* Queue.take(commands).pipe(Effect.flatMap(handle), Effect.forever, Effect.forkScoped)
-        yield* io.screen({
+        yield* screen({
           view,
           screen: yield* SubscriptionRef.make<Screen>(Screen.Interview()),
           commands,
@@ -216,10 +233,47 @@ export const interview = <E>(
           filings: yield* SubscriptionRef.make<ReadonlyArray<TicketFiling>>([]),
           description,
           filing: session.filing,
+          ...(session.filed === undefined ? {} : { filed: session.filed }),
+          ...(session.leaveQuestion === undefined ? {} : { leaveQuestion: session.leaveQuestion }),
         })
         return yield* session.ended
       }),
     ).pipe(Effect.onInterrupt(() => session.leave))
+    return { ended, left: yield* Ref.get(left) }
+  })
+
+/**
+ * The interview of the feature `description` describes, shown with `io.screen`; once the epic is
+ * filed, `io.confirm` asks whether to run it. How it ended; fails as the confirmation does when it
+ * fails other than by being cancelled.
+ */
+export const interview = <E>(
+  description: string,
+  io: {
+    readonly screen: InterviewScreen
+    readonly confirm: (plan: Plan, question: string) => Effect.Effect<boolean, FormCancelled | E>
+  },
+): Effect.Effect<
+  InterviewOutcome,
+  Exclude<E, FormCancelled>,
+  AgentHost | AppConfig | Beads | Git | Attention | Transcripts
+> =>
+  Effect.gen(function* () {
+    const started = yield* Effect.result(startInterview(description))
+    if (started._tag === "Failure") {
+      return InterviewOutcome.NotStarted({ why: started.failure.reason })
+    }
+    const session = started.success
+    const { ended, left: how } = yield* inInterviewView(
+      {
+        description,
+        filing: session.filing,
+        send: session.send,
+        leave: session.leave,
+        ended: session.ended,
+      },
+      io.screen,
+    )
 
     if (ended._tag === "Filed") {
       const confirmed = yield* Effect.result(io.confirm(ended.plan, ended.question))
@@ -230,7 +284,6 @@ export const interview = <E>(
       }
       return confirmed.success ? InterviewOutcome.Run(filed) : InterviewOutcome.Declined(filed)
     }
-    const how = yield* Ref.get(left)
     return how === "no"
       ? InterviewOutcome.Ended({ why: ended.why, filing: ended.filing })
       : InterviewOutcome.Left({ filing: ended.filing, quit: how === "quit" })

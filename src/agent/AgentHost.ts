@@ -43,6 +43,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import type { efforts } from "../project/settings.ts"
 import { detail, Log } from "../run/log.ts"
 import { Spending } from "../run/spending.ts"
 import type { TicketId } from "../services/Beads.ts"
@@ -97,6 +98,17 @@ export interface InterviewSetup {
   readonly prompt: string
   /** tutti's in-process MCP server, with tickets_list, ticket_show and file_feature. */
   readonly server: McpSdkServerConfigWithInstance
+  /**
+   * A spec's breakdown (§ 4.14) on the same footing: its built-in tools in place of the
+   * interview's, its own tools (qualified) allowed without asking in place of the interview's,
+   * `dontAsk` with nobody there (headless), and its effort.
+   */
+  readonly breakdown?: {
+    readonly builtins: ReadonlyArray<string>
+    readonly allowed: ReadonlyArray<string>
+    readonly headless: boolean
+    readonly effort: (typeof efforts)[number] | null
+  }
 }
 
 /**

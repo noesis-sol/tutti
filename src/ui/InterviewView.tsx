@@ -54,6 +54,10 @@ import { TranscriptPane, TranscriptSection } from "./worker/Story.tsx"
 export interface InterviewValue {
   readonly description: string
   readonly filing: External<Filing>
+  /** Whether something is filed, where `filing` doesn't say: a spec's refinement (§ 4.14). */
+  readonly filed?: External<boolean>
+  /** What leaving asks while nothing is filed, in place of the interview's (leaveQuestion). */
+  readonly leaveQuestion?: string
 }
 
 export const InterviewContext = createContext<InterviewValue | null>(null)
@@ -151,15 +155,17 @@ const leaveCommands = (yes: () => void, no: () => void): ReadonlyArray<Command> 
 export const LeaveQuestion = ({
   yes,
   no,
+  question = leaveQuestion,
 }: {
   readonly yes: () => void
   readonly no: () => void
+  readonly question?: string
 }) => {
   const theme = useTheme()
   return (
     <Modal
       frame={theme.look("notice")}
-      paragraphs={[seg(leaveQuestion, theme.look("notice", "bold")), seg(""), seg(leaveAbout)]}
+      paragraphs={[seg(question, theme.look("notice", "bold")), seg(""), seg(leaveAbout)]}
       choices={leaveCommands(yes, no)}
     />
   )
@@ -227,7 +233,7 @@ export const InterviewView = () => {
 
   // Leaving asks first while nothing has been filed.
   const leave = () => {
-    if (filedSomething(interview.filing.get())) {
+    if (interview.filed?.get() ?? filedSomething(interview.filing.get())) {
       command(UiCommand.CloseWorker())
       return
     }
@@ -339,7 +345,13 @@ export const InterviewView = () => {
         </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
         {box?._tag === "Leave" ? (
-          <LeaveQuestion yes={() => answerLeave(true)} no={() => answerLeave(false)} />
+          <LeaveQuestion
+            yes={() => answerLeave(true)}
+            no={() => answerLeave(false)}
+            {...(interview.leaveQuestion === undefined
+              ? {}
+              : { question: interview.leaveQuestion })}
+          />
         ) : null}
       </box>
     </LooksContext.Provider>

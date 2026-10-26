@@ -369,6 +369,40 @@ export const gitOps = {
       ...paths,
     ],
   },
+  addPaths: {
+    op: "add",
+    kind: "write",
+    args: (paths: ReadonlyArray<string>): ReadonlyArray<string> => ["add", "--", ...paths],
+  },
+  // --quiet: exit 0 is ignored, 1 is not, saying nothing.
+  ignored: {
+    op: "check-ignore",
+    kind: "read",
+    args: (path: string): ReadonlyArray<string> => ["check-ignore", "--quiet", "--", path],
+  },
+  lastCommit: {
+    op: "log",
+    kind: "read",
+    args: (path: string): ReadonlyArray<string> => [
+      "log",
+      "-1",
+      "-z",
+      "--no-show-signature",
+      logFormat,
+      "--",
+      path,
+    ],
+  },
+  diffOf: {
+    op: "diff",
+    kind: "read",
+    args: (from: string, to: string, path: string): ReadonlyArray<string> => [
+      "diff",
+      "--no-color",
+      "--no-ext-diff",
+      ...revisions([from, to], [path]),
+    ],
+  },
   status: {
     op: "status",
     kind: "read",
@@ -662,6 +696,14 @@ export class Git extends Context.Service<
       message: string,
       paths: ReadonlyArray<string>,
     ): Effect.Effect<void, GitError>
+    /** git add: stages what `paths` hold in repo's working tree, untracked files included. */
+    addPaths(repo: string, paths: ReadonlyArray<string>): Effect.Effect<void, GitError>
+    /** git check-ignore: whether git ignores `path`, relative to dir. */
+    ignored(dir: string, path: string): Effect.Effect<boolean, GitError>
+    /** git log -1 -- <path>: the last commit that changed `path` on HEAD; none for none. */
+    lastCommit(dir: string, path: string): Effect.Effect<Option.Option<Commit>, GitError>
+    /** git diff from to -- <path>: how `path` changed between the two commits; "" for not at all. */
+    diffOf(dir: string, from: string, to: string, path: string): Effect.Effect<string, GitError>
     /** git status --porcelain: each changed or untracked file, under `paths` (pathspecs) when given. */
     status(
       dir: string,
@@ -909,6 +951,22 @@ export class Git extends Context.Service<
             Effect.map(read(gitCall(gitOps.log, base, head), repo), parseLog),
           commitPaths: (repo, message, paths) =>
             Effect.asVoid(write(gitCall(gitOps.commitPaths, message, paths), repo)),
+          addPaths: (repo, paths) => Effect.asVoid(write(gitCall(gitOps.addPaths, paths), repo)),
+          ignored: (dir, path) => {
+            const call = gitCall(gitOps.ignored, path)
+            return Effect.flatMap(gitRead(call, dir), ({ shown, output }) =>
+              output.exitCode === 0
+                ? Effect.succeed(true)
+                : output.exitCode === 1
+                  ? Effect.succeed(false)
+                  : Effect.fail(failed(call, shown, output)),
+            )
+          },
+          lastCommit: (dir, path) =>
+            Effect.map(read(gitCall(gitOps.lastCommit, path), dir), (out) =>
+              Option.fromNullishOr(parseLog(out)[0]),
+            ),
+          diffOf: (dir, from, to, path) => read(gitCall(gitOps.diffOf, from, to, path), dir),
           status: (dir, paths = []) =>
             Effect.map(read(gitCall(gitOps.status, paths), dir), parseStatus),
           changedFiles: (dir, base, head = "HEAD") =>

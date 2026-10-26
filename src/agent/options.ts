@@ -276,22 +276,28 @@ export const interviewBuiltins: ReadonlyArray<string> = [
 ]
 
 /**
- * The interview's PreToolUse hook that allows its own tools without asking: they read Beads, or file
- * what the user agreed to. A hook rather than allowedTools, whose bare names make the SDK warn on
- * stderr, under the renderer, that canUseTool is shadowed for them.
+ * A PreToolUse hook that allows tutti's own tools `names` (qualified) without asking: they read
+ * Beads, or file what the user agreed to or the spec says. A hook rather than allowedTools, whose
+ * bare names make the SDK warn on stderr, under the renderer, that canUseTool is shadowed for them.
  */
-export const allowOwnTools: HookCallbackMatcher = {
-  matcher: qualifiedToolNames.join("|"),
+export const allowTools = (
+  names: ReadonlyArray<string>,
+  reason = "one of tutti's own interview tools",
+): HookCallbackMatcher => ({
+  matcher: names.join("|"),
   hooks: [
     async () => ({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "allow",
-        permissionDecisionReason: "one of tutti's own interview tools",
+        permissionDecisionReason: reason,
       },
     }),
   ],
-}
+})
+
+/** The interview's PreToolUse hook that allows its three tools without asking. */
+export const allowOwnTools: HookCallbackMatcher = allowTools(qualifiedToolNames)
 
 /** What an interview's options are made from. */
 export interface InterviewOptionsInput {
@@ -312,6 +318,7 @@ export interface InterviewOptionsInput {
  */
 export const interviewOptions = (input: InterviewOptionsInput): SessionSpec => {
   const { callbacks } = input
+  const breakdown = input.setup.breakdown
   // The workers' denied tools are theirs: the interview's are its whole set, and it always has
   // AskUserQuestion.
   const { disallowedTools: _, ...shared } = sharedOptions({
@@ -322,7 +329,10 @@ export const interviewOptions = (input: InterviewOptionsInput): SessionSpec => {
   return {
     ...shared,
     cwd: input.config.repo,
-    tools: [...interviewBuiltins],
+    tools: [...(breakdown?.builtins ?? interviewBuiltins)],
+    // A headless breakdown has nobody to ask: what isn't allowed already is denied.
+    ...(breakdown?.headless === true ? { permissionMode: "dontAsk" as const } : {}),
+    ...(breakdown === undefined || breakdown.effort === null ? {} : { effort: breakdown.effort }),
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
@@ -337,7 +347,10 @@ export const interviewOptions = (input: InterviewOptionsInput): SessionSpec => {
     onElicitation: callbacks.onElicitation,
     hooks: {
       ...callbacks.hooks,
-      PreToolUse: [...(callbacks.hooks.PreToolUse ?? []), allowOwnTools],
+      PreToolUse: [
+        ...(callbacks.hooks.PreToolUse ?? []),
+        breakdown === undefined ? allowOwnTools : allowTools(breakdown.allowed),
+      ],
     },
     forwardSubagentText: true,
     includePartialMessages: true,
