@@ -15,14 +15,16 @@
 //   (unchanged), nothing (built), an update (changed since its `spec_sha256`), or the breakdown
 //   carried on (no `spec_sha256`, set last of all, so the breakdown that filed it didn't finish);
 // - updateFile: what an update's breakdown reads, the spec's diff and the tree, a line an issue;
-// - checkFiled: the tree as bd has it once the breakdown is over, and what is amiss in it.
+// - checkFiled: the tree as bd has it once the breakdown is over, and what is amiss in it, its
+//   shape among the rest (src/plan/shape.ts).
 //
 // The breakdown itself is src/agent/breakdown.ts.
 import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { Data, Effect, FileSystem, Option, Result } from "effect"
-import { compareIds } from "../plan/plan.ts"
+import { compareIds, existingLinks } from "../plan/plan.ts"
+import { narrowWarning, shapeOf } from "../plan/shape.ts"
 import { Beads, type BeadsError, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, type GitError, type Sha } from "../services/Git.ts"
 import { runFolder } from "../services/Worktrees.ts"
@@ -469,10 +471,15 @@ export const treeCount = (epics: number, tickets: number): string =>
  * The tree of the spec at `path` under `root`, as bd has it: refused when the root epic isn't an
  * epic, or carries another spec's metadata; otherwise counted, with warnings for the issues under
  * it without the spec's metadata, whose workers aren't told of the spec, those of the spec outside
- * it, which the run leaves out, and open tickets without files metadata, whose files tutti then
- * guesses, or without acceptance criteria.
+ * it, which the run leaves out, open tickets without files metadata, whose files tutti then
+ * guesses, or without acceptance criteria, and a tree whose blocks links keep a run of `concurrent`
+ * tickets at a time narrow (narrowWarning).
  */
-export const checkFiled = (root: TicketId, path: string): Effect.Effect<Filed, BeadsError, Beads> =>
+export const checkFiled = (
+  root: TicketId,
+  path: string,
+  concurrent: number,
+): Effect.Effect<Filed, BeadsError, Beads> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const top = yield* beads.show(root)
@@ -543,6 +550,8 @@ export const checkFiled = (root: TicketId, path: string): Effect.Effect<Filed, B
         `${plural(noAcceptance.length, "open ticket")} under ${id} ${noAcceptance.length === 1 ? "has" : "have"} no acceptance criteria: ${named(noAcceptance)}`,
       )
     }
+    const narrow = narrowWarning(shapeOf(root, under, existingLinks(under)), concurrent)
+    if (narrow !== null) warnings.push(narrow)
     const epicCount = 1 + under.filter((issue) => issue.type === "epic").length
     return {
       epics: epicCount,

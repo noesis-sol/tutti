@@ -37,7 +37,7 @@ import {
 import { type BreakdownState, filedAny } from "../agent/breakdownTools.ts"
 import { Filing } from "../agent/interviewTools.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
-import type { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../cli/AppConfig.ts"
 import { dollars } from "../organs/OrganCost.ts"
 import { duration, type OrganLine, type Printer } from "../print/organLine.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -627,7 +627,9 @@ const afterBreakdown = (
     yield* log.write(
       specLine`filed ${plural(end.filed.ids.size, "issue")} from the breakdown's answer under ${end.root} (${at.took})`,
     )
-    const checked = yield* Effect.result(checkFiled(end.root, spec.path))
+    const checked = yield* Effect.result(
+      checkFiled(end.root, spec.path, (yield* AppConfig).settings.concurrent),
+    )
     if (Result.isFailure(checked)) {
       const why = beadsWhy(checked.failure)
       yield* io.error(`tutti couldn't read the tree the spec's breakdown filed: ${why}`)
