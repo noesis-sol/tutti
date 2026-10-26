@@ -236,7 +236,7 @@ below are the coverage report's uncovered lines at 368899e.
 ## Spec runs
 
 - **Reached by**: `tutti --spec <file>` (or an `https://` URL), `--refine`, `--spec-timeout`,
-  `--spec-effort`.
+  `--spec-effort`; Spec at the start question.
 - **Tests**: `spec-tree.test.ts` (the answer checked and filed), `spec-run.test.ts` (the run's
   start with the scripted host: a new spec, unchanged, built, changed, carried on, two root epics,
   no tree), `spec-early.test.ts` (the run started on the environment ticket), `spec-breakdown.test.ts`
@@ -246,9 +246,15 @@ below are the coverage report's uncovered lines at 368899e.
   (the setup of a repository init hasn't set up, the run scoped, an early start's breakdown that
   fails stopping the run), `spec-url.test.ts` (a spec at a URL: fetched through the HttpClient's
   test layer, a GitHub page as its raw file, a private one through gh, refused, committed with its
-  source).
+  source), `spec-path.test.ts` (the start question's field read: what was typed, Tab's completions,
+  the browser's rows and moves, the file's checks; property tests), `start-question-spec.test.tsx`
+  (the Spec option in the renderer: the field, completion and the browser in a fixture folder, each
+  refusal, a URL fetched, the refine step, Shift+Tab, cancelling), `start-question-spec-lines.test.ts`
+  (as lines), `run-start-spec.test.tsx` (the line printed, the chosen spec read, exit 2's words, the
+  breakdown's organ lines in the renderer).
 - **Untested**: `src/main.ts`'s own lines between those pieces (tutti-kkb.58), tried by hand in an
-  empty repository.
+  empty repository, and those taking a spec chosen at the start question (`takeSpec`,
+  `breakdownOnScreen`).
 
 ## Plain output, the log, the report, notifications
 

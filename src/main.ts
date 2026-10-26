@@ -732,7 +732,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           quit: Queue.offer(quits, breakdownFailed),
         })
       let specStarting = wireSpec()
-      // `screen`, an Out on the renderer's screen, draws the organ lines there as well, unstyled.
+      // `screen`, an Out on the renderer's screen, draws the organ lines there as well, unstyled,
+      // while `out` holds them.
       const startSpec = (io: {
         readonly out: Out
         readonly error: (text: string) => Effect.Effect<void>
@@ -743,7 +744,12 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           if (spec === null) return undefined
           yield* ready.end
           const theme = yield* printedThemeOf(io.out)
-          const printer = makePrinter(io.out, theme)
+          // Drawn on the screen, its organ lines are held for the main screen with their final
+          // lines alone, as off a terminal.
+          const printer = makePrinter(
+            io.screen === undefined ? io.out : { ...io.out, tty: false },
+            theme,
+          )
           const begun = yield* specStarting.start(spec, config, {
             printer:
               io.screen === undefined
@@ -969,7 +975,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                 })
                 const ended = yield* Effect.raceFirst(
                   startSpec({
-                    out: { ...screen.out, tty: false },
+                    out: screen.out,
                     error: screen.error,
                     refine: Option.none(),
                     screen: { out: drawn.out, appearance: shell.appearance.get() },

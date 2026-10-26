@@ -75,12 +75,43 @@ work on:
 - **Current tickets**, the default, runs the backlog as this page describes. It reads
   `Current tickets: N ready`, or with nothing to run `Current tickets: none, all done` or
   `Current tickets: none ready (N open)`.
+- **Spec: build what a spec file describes** asks for the **Spec file**: a path typed or pasted, a
+  relative one from the repository, `~` or `~/` for your home folder; a path in quotes, or a file
+  dropped on the terminal with its spaces escaped by backslashes, works too; or an `https://` URL
+  ([from a web URL](#a-whole-app-from-a-spec)). `Tab` completes folders and `.md`, `.markdown` and
+  `.txt` files in the folder typed so far (hidden ones once a `.` is typed), filling in the part the
+  completions share and listing them under the field; `↓` or `Ctrl+N` goes to the next completion,
+  `↑` or `Ctrl+P` to the one before. Nothing completes a URL. `Ctrl+O` opens a file browser over
+  the question instead, drawn in tutti, so it works the same over SSH, in tmux and on Linux: at the
+  folder typed so far, or else the repository, its folder in its top border, `..` first, then
+  folders, then files, ten rows at a time, dotfiles hidden and other files greyed
+  (`.md, .markdown and .txt files only`). `↑` and `↓` (`k`, `j`) move, `←` (`h`, `Backspace`) goes up
+  a folder, `Enter` or `→` opens a folder or chooses a file, putting its path in the field, and `Esc`
+  closes the browser without leaving the question; a click on a row does what `Enter` on it does,
+  and the wheel scrolls. It won't go into a folder it can't read, and says
+  `cannot open <folder>: <cause>` (on macOS, `~/Documents` or `~/Desktop` until the terminal has
+  access to them). `Enter` goes on only once the path names a file of text with something in it,
+  else says why under the field: `no such file: <path>`, `<path> is a folder`, `<path> isn't a file`
+  (a device or a pipe), `<path> is empty`, `<path> doesn't look like text`,
+  `cannot read <path>: <cause>`. A URL is fetched on `Enter`, `Fetching <host>…` with a spinner in
+  the field's place; a fetch that fails says why under the field, the URL kept for fixing, and `Esc`
+  during it stops it. Then **Refine it with Claude first?**: **Run it as it is**, selected, runs the
+  spec as `tutti --spec <file>` does, its breakdown's spinner drawn in tutti's screen (`Ctrl+C`
+  stops it, exit 130), and **Refine it with Claude first** as `tutti --spec <file> --refine` does.
+  `Shift+Tab` goes back a step, keeping what was typed. Once tutti's screen has gone, tutti prints
+  `Spec: <absolute path or URL>, run as it is` (or `, refined with Claude first`), and the run went
+  on as a [spec run](#a-whole-app-from-a-spec): the lock, the log and the start record naming the
+  spec. A spec git ignores, or one inside `.git`, ends the run there with exit code 2:
+  `tutti cannot run that spec:`, then the problem, which says `(chosen at the start)` where
+  `--spec`'s say `(--spec)`.
 - **New feature** asks you to describe a feature, then talks it through with you
   ([below](#talked-through)).
 
-`Esc` or `Ctrl+C` there exits with code 130, nothing changed. `--tickets` skips the question and runs
-the current tickets, as scripts and agents should; `--ticket`, `--feature` and `--plain` skip it too,
-and a run without a terminal never asks.
+`Esc` or `Ctrl+C` at any step exits with code 130, nothing changed. Asked as lines (`TERM=dumb`, or
+fewer than 256 colours), the question reads the spec's path or URL as a line, with the same checks,
+no completion or browser, and runs it as it is: refining it needs tutti's full screen; `Ctrl+D`
+cancels. `--tickets` skips the question and runs the current tickets, as scripts and agents should;
+`--ticket`, `--feature`, `--spec` and `--plain` skip it too, and a run without a terminal never asks.
 
 ### Nothing to run
 

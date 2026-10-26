@@ -88,9 +88,11 @@ git switch -c batch/$(date +%F)
 tutti
 ```
 
-In a terminal, `tutti` first asks what to work on: **Current tickets**, or **New feature**, which
-talks a feature through with you in an interview, files it as an epic and its tickets, and runs them.
-`--tickets` skips the question, as scripts and agents should.
+In a terminal, `tutti` first asks what to work on: **Current tickets**; **Spec**, a spec file you
+type, complete with `Tab` or pick in a file browser (`Ctrl+O`), or its `https://` URL, broken down into
+tickets as it is or refined with Claude first, then run; or **New feature**, which talks a feature
+through with you in an interview, files it as an epic and its tickets, and runs them. `--tickets`
+skips the question, as scripts and agents should.
 
 How a run goes:
 
