@@ -413,7 +413,11 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
 
       const update = (id: string, update: Update) =>
         change(id, (issue) => {
-          const metadata: Record<string, unknown> = { ...issue.metadata, ...update.setMetadata }
+          const metadata: Record<string, unknown> = {
+            ...issue.metadata,
+            ...update.metadata,
+            ...update.setMetadata,
+          }
           for (const key of update.unsetMetadata ?? []) delete metadata[key]
           return {
             ...issue,
@@ -423,6 +427,9 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
               update.appendNotes === undefined
                 ? issue.notes
                 : appended(issue.notes, update.appendNotes),
+            ...(update.description === undefined ? {} : { description: update.description }),
+            ...(update.acceptance === undefined ? {} : { acceptance: update.acceptance }),
+            ...(update.priority === undefined ? {} : { priority: update.priority }),
             metadata,
           }
         })
@@ -620,6 +627,17 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
           ),
         addDependency: (id, dependsOn, type = "blocks") =>
           answer("write", "dep add", id, addLink(id, { id: dependsOn, type }), nothing),
+        removeDependency: (id, dependsOn) =>
+          answer(
+            "write",
+            "dep remove",
+            id,
+            change(id, (issue) => ({
+              ...issue,
+              links: issue.links.filter((link) => link.id !== dependsOn),
+            })),
+            nothing,
+          ),
         dependencies: (id, options) =>
           answer("read", "dep list", id, dependencies(id, options), decodeDependencies),
         create: (issue) => answer("write", "create", issue.parent, create(issue), decodeIssue),

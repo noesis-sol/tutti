@@ -522,6 +522,13 @@ export interface Update {
   readonly claim?: boolean
   readonly status?: Status
   readonly appendNotes?: string
+  /** The description, replaced. */
+  readonly description?: string
+  /** The acceptance criteria, replaced. */
+  readonly acceptance?: string
+  readonly priority?: number
+  /** Each key set to its value, any JSON, keeping the others (bd update --metadata merges). */
+  readonly metadata?: Readonly<Record<string, unknown>>
   /** Each key set to its value, keeping the others. */
   readonly setMetadata?: Readonly<Record<string, string>>
   readonly unsetMetadata?: ReadonlyArray<string>
@@ -585,6 +592,8 @@ export class Beads extends Context.Service<
       type?: DependencyType,
       options?: Checked,
     ): Effect.Effect<void, BeadsError>
+    /** bd dep remove: `id` no longer depends on `dependsOn`. */
+    removeDependency(id: TicketId, dependsOn: TicketId): Effect.Effect<void, BeadsError>
     /** bd dep list: what the issue depends on ("down", the default), or what depends on it ("up"). */
     dependencies(
       id: TicketId,
@@ -734,6 +743,13 @@ export class Beads extends Context.Service<
               ...(change.claim ? ["--claim"] : []),
               ...flag("status", change.status),
               ...flag("append-notes", change.appendNotes),
+              ...flag("description", change.description),
+              ...flag("acceptance", change.acceptance),
+              ...flag("priority", change.priority?.toString()),
+              ...flag(
+                "metadata",
+                change.metadata === undefined ? undefined : JSON.stringify(change.metadata),
+              ),
               ...Object.entries(change.setMetadata ?? {}).map(
                 ([key, value]) => `--set-metadata=${key}=${value}`,
               ),
@@ -847,6 +863,12 @@ export class Beads extends Context.Service<
                 options.checked ? [] : [id, dependsOn],
                 Effect.asVoid(write(["dep", "add", id, dependsOn, "--json", `--type=${type}`])),
               ),
+          ),
+          removeDependency: Effect.fn("Beads.removeDependency")((id, dependsOn) =>
+            confirmed(
+              [id, dependsOn],
+              Effect.asVoid(write(["dep", "remove", id, dependsOn, "--json"])),
+            ),
           ),
           dependencies: Effect.fn("Beads.dependencies")((id, dependencies = {}) =>
             confirmed(
