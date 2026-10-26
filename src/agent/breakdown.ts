@@ -13,11 +13,19 @@
 // over: tutti closes the session. A headless session whose turn ends without that is told once to
 // hand the tree over, then given up on; one past its time limit is closed. With --refine the turn
 // ending is the user's turn, and leaving the view ends it.
+//
+// A turn that ends on the account's usage limit waits for the reset, as a worker's does (§ 4.12):
+// its time limit paused, it is told to carry on at the reset plus liftAfter (or, its reset passed,
+// retryEvery later), and the log says both. One whose reset is unknown, or later than
+// --usage-limit-wait, is given up on, as a run with nothing else running ends USAGE_LIMIT.
 import { randomUUID } from "node:crypto"
 import {
+  Clock,
   Data,
-  type Duration,
+  Duration,
   Effect,
+  FiberSet,
+  Latch,
   Option,
   Ref,
   type Scope,
@@ -27,8 +35,12 @@ import {
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import template from "../project/templates/spec-prompt.md" with { type: "text" }
+import { resetLabel } from "../run/localTime.ts"
+import { Log, Tag, tagged } from "../run/log.ts"
+import { countdown } from "../run/runView.ts"
 import { issueLine, type Spec, short, specUpdateFile } from "../run/spec.ts"
 import type { CheckedTree, FiledTree } from "../run/specTree.ts"
+import { liftAfter, retryEvery } from "../run/usageLimit.ts"
 import type { Beads, Issue, TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { type AgentGone, AgentHost, AgentStartFailed, type MessageUuid } from "./AgentHost.ts"
@@ -163,8 +175,15 @@ export type BreakdownEnd = Data.TaggedEnum<{
   }
   /** It said there is nothing to file, and why. */
   NoTree: { readonly why: string; readonly state: BreakdownState }
-  /** It ended without the tree: why, and what it had filed. */
-  Failed: { readonly why: string; readonly state: BreakdownState }
+  /**
+   * It ended without the tree: why, and what it had filed; `usageLimit` when it was given up on at
+   * the account's usage limit, which resets too late or at an unknown time.
+   */
+  Failed: {
+    readonly why: string
+    readonly state: BreakdownState
+    readonly usageLimit?: boolean
+  }
   /** The user left the view (--refine). */
   Left: { readonly state: BreakdownState }
 }>
@@ -174,6 +193,36 @@ export const BreakdownEnd = Data.taggedEnum<BreakdownEnd>()
 /** What a headless session whose turn ended without the tree is told, once. */
 export const handOverNudge =
   "Your turn ended, but the tree isn't filed: nobody is here to answer. Hand the tree to file_breakdown now (or, if there is nothing to build, call it with only a problem), then end your turn."
+
+/** What a breakdown that waited for the account's usage limit is told once it has reset. */
+export const breakdownResetText =
+  "tutti: the account's usage limit has reset. Carry on with the spec's breakdown where you left off."
+
+/**
+ * When a breakdown at the usage limit at `now`, its reset `resetsAt`, is told to carry on: the
+ * reset plus liftAfter, or retryEvery from now for a reset that has passed. Why it is given up on
+ * instead when its reset is unknown, or later than `wait` (--usage-limit-wait).
+ */
+export const limitWait = (
+  resetsAt: number | null,
+  now: number,
+  wait: Duration.Duration,
+): { readonly at: number } | { readonly giveUp: string } => {
+  if (resetsAt === null) {
+    return { giveUp: "it stopped at the account's usage limit, and when it resets is unknown" }
+  }
+  if (resetsAt > now && resetsAt - now > Duration.toMillis(wait)) {
+    return {
+      giveUp: `it stopped at the account's usage limit, which resets at ${resetLabel(resetsAt, now)}, in ${countdown(resetsAt, now)}, later than --usage-limit-wait (${formatDuration(wait)})`,
+    }
+  }
+  return {
+    at:
+      resetsAt > now
+        ? resetsAt + Duration.toMillis(liftAfter)
+        : now + Duration.toMillis(retryEvery),
+  }
+}
 
 /** A breakdown under way. */
 export interface Breakdown {
@@ -196,10 +245,15 @@ export interface Breakdown {
  */
 export const startBreakdown = (
   start: BreakdownStart,
-): Effect.Effect<Breakdown, AgentStartFailed, AgentHost | AppConfig | Beads | Git | Scope.Scope> =>
+): Effect.Effect<
+  Breakdown,
+  AgentStartFailed,
+  AgentHost | AppConfig | Beads | Git | Log | Scope.Scope
+> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const host = yield* AgentHost
+    const log = yield* Log
     const worker = start.refine ? interviewWorker : breakdownWorker
     const update = start.mode._tag === "Update"
     const tools = yield* makeBreakdownTools({
@@ -233,6 +287,49 @@ export const startBreakdown = (
 
     const left = yield* Ref.make(false)
     const nudged = yield* Ref.make(false)
+    // The usage limit: free of it, waiting for its reset, or told to carry on and not yet going.
+    const limit = yield* Ref.make<"free" | "waiting" | "told">("free")
+    const waits = yield* FiberSet.make()
+    // The time limit: when it runs out, moved on by each wait for the reset, during which the
+    // latch is closed.
+    const deadline = yield* Ref.make(
+      (yield* Clock.currentTimeMillis) + Duration.toMillis(start.timeLimit),
+    )
+    const running = yield* Latch.make(true)
+    /** Ends once the time limit has run out, the waits for the usage limit left out. */
+    const outOfTime = Effect.gen(function* () {
+      while (true) {
+        yield* running.await
+        const remaining = (yield* Ref.get(deadline)) - (yield* Clock.currentTimeMillis)
+        if (remaining <= 0) return
+        yield* Effect.sleep(Duration.millis(remaining))
+      }
+    })
+    /** Waits until `at` with the time limit paused, then tells the session to carry on. */
+    const waitOut = (at: number, resetsAt: number) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis
+        yield* running.close
+        const paused = start.refine ? "" : ", its time limit paused"
+        yield* log.write(
+          resetsAt > now
+            ? tagged(
+                Tag.spec,
+              )`the breakdown stopped at the account's usage limit; it waits for the reset at ${resetLabel(resetsAt, now)}, in ${countdown(resetsAt, now)}${paused}`
+            : tagged(
+                Tag.spec,
+              )`the breakdown stopped at the account's usage limit, which was to reset at ${resetLabel(resetsAt, now)}; tutti tries again at ${resetLabel(at, now)}, in ${countdown(at, now)}${paused}`,
+        )
+        yield* Effect.sleep(Duration.millis(Math.max(0, at - now)))
+        const resumed = yield* Clock.currentTimeMillis
+        yield* Ref.update(deadline, (d) => d + (resumed - now))
+        yield* Ref.set(limit, "told")
+        yield* running.open
+        const sent = yield* Effect.result(send(breakdownResetText))
+        if (sent._tag === "Success") {
+          yield* log.write(tagged(Tag.spec)`the usage limit has reset; the breakdown carries on`)
+        }
+      })
     /** Its end once its session's state says no more: left from the view, or gone with `why`. */
     const endedWithout = (why: string) =>
       Effect.gen(function* () {
@@ -263,11 +360,21 @@ export const startBreakdown = (
         }
         const turnOver = state._tag === "Idle" || state._tag === "Failed"
         if (state._tag === "UsageLimited") {
-          yield* host.end(worker)
-          return Option.some(
-            BreakdownEnd.Failed({ why: "it stopped at the account's usage limit", state: filed }),
-          )
+          // Told to carry on, it stays UsageLimited until its turn starts.
+          if ((yield* Ref.get(limit)) !== "free") return Option.none()
+          const now = yield* Clock.currentTimeMillis
+          const wait = limitWait(state.resetsAt, now, config.usageLimitWait)
+          if ("giveUp" in wait) {
+            yield* host.end(worker)
+            return Option.some(
+              BreakdownEnd.Failed({ why: wait.giveUp, state: filed, usageLimit: true }),
+            )
+          }
+          yield* Ref.set(limit, "waiting")
+          yield* FiberSet.run(waits, waitOut(wait.at, state.resetsAt ?? now))
+          return Option.none()
         }
+        if ((yield* Ref.get(limit)) === "told") yield* Ref.set(limit, "free")
         if (!turnOver) return Option.none()
         switch (filed.answer._tag) {
           case "Filed":
@@ -323,22 +430,27 @@ export const startBreakdown = (
       ),
       Effect.catchTag("AgentGone", (gone) => endedWithout(gone.why)),
     )
-    const ended = start.refine
-      ? watched
-      : watched.pipe(
-          Effect.timeoutOrElse({
-            duration: start.timeLimit,
-            orElse: () =>
-              Effect.gen(function* () {
-                yield* host.end(worker)
-                const state = yield* SubscriptionRef.get(tools.state)
-                return BreakdownEnd.Failed({
-                  why: `it ran past its time limit of ${formatDuration(start.timeLimit)}`,
-                  state,
-                })
-              }),
-          }),
-        )
+    const timedOut = Effect.gen(function* () {
+      yield* host.end(worker)
+      const state = yield* SubscriptionRef.get(tools.state)
+      return BreakdownEnd.Failed({
+        why: `it ran past its time limit of ${formatDuration(start.timeLimit)}`,
+        state,
+      })
+    })
+    // The watch is interrupted as the time limit runs out, before the session is closed.
+    const ended = (
+      start.refine
+        ? watched
+        : Effect.raceFirst(
+            Effect.map(watched, (end) => Option.some<BreakdownEnd>(end)),
+            Effect.as(outOfTime, Option.none<BreakdownEnd>()),
+          ).pipe(
+            Effect.flatMap(
+              Option.match({ onNone: () => timedOut, onSome: (end) => Effect.succeed(end) }),
+            ),
+          )
+    ).pipe(Effect.ensuring(FiberSet.clear(waits)))
 
     return {
       worker,

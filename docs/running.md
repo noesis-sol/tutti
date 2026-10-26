@@ -502,7 +502,10 @@ reason, and nothing of it is filed. It may take an hour (`spec.timeout` in the
 [settings](setup.md#the-settings), or `--spec-timeout 90m`), at effort `high` (`spec.effort`, or
 `--spec-effort`). On a terminal a spinner counts what it files; plain output and the log get `SPEC:`
 lines, among them what the breakdown's session cost as it ends (`SPEC: breakdown $4.1234 in 212
-turns, 14m02s, session <id>`), which the run's `end` record counts too.
+turns, 14m02s, session <id>`), which the run's `end` record counts too. At the account's usage
+limit it waits for the reset, as workers do, its time limit paused, then carries on where it left
+off; a reset later than `--usage-limit-wait`, or one the account doesn't give, ends the run with
+exit 8, to run again once it resets.
 
 **The run starts early.** The environment ticket doesn't wait for the rest of the tree: once the
 root epic and it are filed, the run starts on it (`◆ Starting on <id>, the environment ticket, while

@@ -7,9 +7,10 @@
 //
 // Each step that stops the run says why on stderr and in the log, a SPEC line, and gives the exit
 // code: 2 for a breakdown that failed, ran out of time, filed no tree or a tree the run can't take,
-// or two root epics; 4 when git or bd failed; 0 when the spec is built already, or a refinement was
-// left with nothing filed; 130 when Ctrl+C stopped it. What was filed stays filed: the same command
-// carries on from it.
+// or two root epics; 8 for one at the account's usage limit that resets too late or at an unknown
+// time (src/agent/breakdown.ts waits for one that doesn't); 4 when git or bd failed; 0 when the spec
+// is built already, or a refinement was left with nothing filed; 130 when Ctrl+C stopped it. What
+// was filed stays filed: the same command carries on from it.
 import {
   Clock,
   Data,
@@ -618,7 +619,7 @@ const afterBreakdown = (
           carryOnLine(spec, request.refine),
         ])
         yield* log.write(specLine`the breakdown failed: ${why} (${at.took})`)
-        return stopped(exitCodes.setup)
+        return stopped(end.usageLimit === true ? exitCodes.usageLimit : exitCodes.setup)
       }
       case "Filed":
         break
