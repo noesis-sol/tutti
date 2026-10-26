@@ -166,7 +166,7 @@ import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold } from "./usageLimit.ts"
 import { make as watchUsageWindows } from "./usageWindows.ts"
-import { make as makeWakes } from "./wakes.ts"
+import { make as makeWakes, mergeWakes } from "./wakes.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -812,11 +812,16 @@ const runFrom = (
         wakeUp: wakeUp("command"),
       })
     }
-    // The ready poll, the merge queue's changes and drain requests each wake the run.
+    // The ready poll, the merge queue's changes a look can act on (wakes.ts's mergeWakes) and drain
+    // requests each wake the run. The merges stopping is taken up at every change.
     yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp("poll"))))
+    const queueSeen = yield* Ref.make<QueueState | null>(null)
     yield* watch(
       Stream.runForEach(queue.changes, (state) =>
-        Effect.andThen(mergeStop(state), wakeUp("merge")),
+        Effect.gen(function* () {
+          yield* mergeStop(state)
+          if (mergeWakes(yield* Ref.getAndSet(queueSeen, state), state)) yield* wakeUp("merge")
+        }),
       ),
     )
     const drains = options.drains

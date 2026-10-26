@@ -63,10 +63,12 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
     // decision (runEnd.ts). A look woken only for what bd and git can't have changed, an attention
     // change, skips to the reading (wakes.ts).
     const nothingLeft = Effect.gen(function* () {
-      // A merge that ends during this look frees what it held back after the look has read it: the
-      // run is done only when nothing was merging as the look began, and its wake has it look again.
-      const mergedBefore = isSettled(yield* queue.state)
+      // The reasons first, with their wake (wakes.ts): a merge over before them is seen settled
+      // here. A merge that ends during this look frees what it held back after the look has read
+      // it: the run is done only when nothing was merging as the look began, and its wake, pending
+      // still, has it look again.
       const why = yield* wakes.take
+      const mergedBefore = isSettled(yield* queue.state)
       yield* Effect.logDebug(`look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`)
       if (reads(why)) yield* parts.fill
       const look: Look = {

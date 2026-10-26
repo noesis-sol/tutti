@@ -178,11 +178,12 @@ describe("the run takes the answers", () => {
     })
     expectExitCode(ran, 3)
     expectPhases(ran, { "t-1": "Stopped", "t-2": "Done" })
+    // t-2's merge, its check done at once, may come before or after the look its slot freed wakes.
     expectLog(ran, [
       /ANSWERED: \S+ \(Which way\?\) is answered, so t-1 comes back/,
-      /^ {2}t-2 closed \(.*\); merged into main/,
       /^PAUSED: t-1 still in_progress/,
     ])
+    expect(ran.log.some((text) => /^ {2}t-2 closed \(.*\); merged into main/.test(text))).toBe(true)
   })
 
   test("not while the run winds down: the answered ticket stays Asked for the next run", async () => {

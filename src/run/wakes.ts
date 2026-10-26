@@ -2,8 +2,11 @@
 // wake the loop waits for, and the look reads and clears them. Only a look with a reason that can
 // change bd or git reads them (`reads`): one woken by an attention change alone, a request opened
 // or answered, builds its Look from the run's state for the end's decision (runEnd.ts), as nothing
-// it would read again can have changed.
+// it would read again can have changed. A merge-queue change wakes the run only when a look can act
+// on it (mergeWakes): not a ticket put in line, nor its turn taken.
 import { Effect, Queue, Ref } from "effect"
+import type { TicketId } from "../services/Beads.ts"
+import type { QueueState } from "./mergequeue.ts"
 
 /**
  * Why the run woke: the ready poll, a slot freed, a merge-queue change, a hold put on or lifted
@@ -33,12 +36,51 @@ const unread: ReadonlySet<Wake> = new Set(["attention"])
 export const reads = (why: ReadonlySet<Wake>): boolean =>
   why.size === 0 || [...why].some((each) => !unread.has(each))
 
+const same = (one: ReadonlyArray<TicketId>, other: ReadonlyArray<TicketId>): boolean =>
+  one.length === other.length && one.every((id, i) => id === other[i])
+
+/**
+ * Whether the merge queue's change from `before` to `after` wakes the run as "merge": any change
+ * but one that only puts tickets in line behind the others (an offer), or only moves a waiting
+ * ticket into an empty merging (its turn). Neither frees anything a look would fill, nor settles the
+ * queue for the run's end; the worker's freed slot wakes the run of its own, and a merge over, a
+ * stop or a hand-back wakes it as before. `before` null, the first state seen,
+ * wakes it.
+ */
+export const mergeWakes = (before: QueueState | null, after: QueueState): boolean => {
+  if (before === null || before.stop !== after.stop || !same(before.resolving, after.resolving)) {
+    return true
+  }
+  const { waiting } = before
+  // An offer: the same merge, the line as it was with tickets behind it.
+  if (before.merging === after.merging) {
+    return !(
+      after.waiting.length > waiting.length && same(waiting, after.waiting.slice(0, waiting.length))
+    )
+  }
+  // A turn: a waiting ticket now merging, where none was, the others as they were.
+  const turned = after.merging
+  return !(
+    before.merging === null &&
+    turned !== null &&
+    waiting.includes(turned) &&
+    same(
+      waiting.filter((id) => id !== turned),
+      after.waiting,
+    )
+  )
+}
+
 export interface Wakes {
   /** Wakes the run to look again, for `why`. */
   readonly wakeUp: (why: Wake) => Effect.Effect<void>
   /** Waits for the next wake, or for `freed`, which wakes the run as "freed". */
   readonly next: (freed: Effect.Effect<unknown>) => Effect.Effect<void>
-  /** The reasons recorded since it was last taken, cleared. */
+  /**
+   * The reasons recorded since it was last taken, cleared, with the wake still pending for them:
+   * the look that takes them sees what they woke it for, so another would look for nothing. A wake
+   * whose reason comes after it is still pending, so none is lost.
+   */
   readonly take: Effect.Effect<ReadonlySet<Wake>>
 }
 
@@ -50,6 +92,7 @@ export const make: Effect.Effect<Wakes> = Effect.gen(function* () {
   return {
     wakeUp: (why) => Effect.andThen(note(why), Effect.asVoid(Queue.offer(wake, undefined))),
     next: (freed) => Effect.raceFirst(Queue.take(wake), Effect.andThen(freed, note("freed"))),
-    take: Ref.getAndSet(reasons, new Set()),
+    // The wake first: a reason recorded after it has its wake offered after it too.
+    take: Effect.andThen(Queue.poll(wake), Ref.getAndSet(reasons, new Set())),
   }
 })

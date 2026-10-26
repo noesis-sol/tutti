@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Console, Duration, Effect, Fiber, Queue } from "effect"
+import { Console, Deferred, Duration, Effect, Fiber, Queue } from "effect"
 import { carriedTickets } from "../src/run/carry.ts"
 import type { DrainRequest } from "../src/run/drain.ts"
 import { line } from "../src/run/log.ts"
@@ -16,7 +16,7 @@ import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import { stillUnmerged } from "../src/run/unmerged.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
-import { CheckFailed } from "../src/services/Checks.ts"
+import { type CheckError, CheckFailed, type CheckResult } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, stateVersion, type TicketRecord } from "../src/services/Store.ts"
 import {
@@ -192,6 +192,27 @@ const fails = () =>
 const noHandBacks = (settings: Settings): Partial<Settings> => ({
   merge: { ...settings.merge, check_hand_backs: 0 },
 })
+
+/**
+ * The fast check, giving `result` once the run has logged `text`, and the watch for it, to run
+ * beside the run. A real check takes long enough for the look its ticket's freed slot wakes to say
+ * what waits on its merge; a scripted one, done at once, may merge the ticket first, as a ticket put
+ * in line wakes no look of its own (wakes.ts's mergeWakes).
+ */
+const checkedOnceLogged = (
+  text: string,
+  result: Effect.Effect<CheckResult, CheckError> = Effect.succeed(passed("fast")),
+) => {
+  const logged = Deferred.makeUnsafe<void>()
+  const watch = Effect.gen(function* () {
+    for (let i = 0; i < 2000; i++) {
+      if ((yield* texts).includes(text)) return yield* Deferred.succeed(logged, undefined)
+      yield* Effect.promise(() => Bun.sleep(5))
+    }
+    throw new Error(`never logged ${text}`)
+  })
+  return { check: Effect.andThen(Deferred.await(logged), result), watch }
+}
 
 // The run.
 
@@ -641,17 +662,21 @@ describe("parents and epics", () => {
 describe("blockers and follow-ups", () => {
   test("a blocked ticket and a follow-up wait for the ticket before them to merge, not to close", async () => {
     // a closes its ticket, then works on for 2m: bd ready lists b from then, but a isn't merged.
+    const waits = checkedOnceLogged(
+      "  f waits: filed by a's worker; a closed but not merged (waiting to merge)",
+    )
     const ran = await runs({
       backlog: backlog()
         .ticket("a", { priority: 0 })
         .ticket("b", { priority: 1, blockedBy: ["a"] })
         .ticket("f", { priority: 2, dependencies: [{ id: "a", type: "discovered-from" }] }),
+      checks: { fast: [waits.check] },
       scripts: (world, places) => ({
         a: [works(world, places, "a" as TicketId, { last: [sleep("2 minutes")] })],
         b: [works(world, places, "b" as TicketId, { takes: "1 minute" })],
         f: [works(world, places, "f" as TicketId, { takes: "2 minutes" })],
       }),
-      during: () => passes("5 minutes"),
+      during: () => Effect.all([waits.watch, passes("5 minutes")], { concurrency: 2 }),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", f: "Done" })
@@ -677,9 +702,13 @@ describe("blockers and follow-ups", () => {
 
   test("a follow-up its worker files is picked up by the ready poll, and waits for it to merge", async () => {
     // a files test-2, discovered from it, and works on for 2m.
+    const waits = checkedOnceLogged(
+      "  test-2 waits: filed by a's worker; a closed but not merged (waiting to merge)",
+    )
     const ran = await runs({
       backlog: backlog().ticket("a"),
       filed: ["test-2"],
+      checks: { fast: [waits.check] },
       scripts: (world, places) => ({
         a: [
           works(world, places, "a" as TicketId, {
@@ -696,7 +725,7 @@ describe("blockers and follow-ups", () => {
         ],
         "test-2": [works(world, places, "test-2" as TicketId)],
       }),
-      during: () => passes("3 minutes"),
+      during: () => Effect.all([waits.watch, passes("3 minutes")], { concurrency: 2 }),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", "test-2": "Done" })
@@ -989,18 +1018,22 @@ describe("recheck", () => {
 describe("unmerged at the end", () => {
   test("a ticket closed and not merged is labelled, and the ticket it blocks waits for it", async () => {
     // b's check fails on main at x and nothing lands after it, so it isn't checked again.
+    const waits = checkedOnceLogged(
+      "  c waits: b closed but not merged (waiting to merge)",
+      Effect.fail(fails()),
+    )
     const ran = await runs({
       backlog: backlog()
         .ticket("x", { priority: 0 })
         .ticket("b", { priority: 1 })
         .ticket("c", { priority: 2, blockedBy: ["b"] }),
       settings: noHandBacks,
-      checks: { fast: [passed("fast"), fails()] },
+      checks: { fast: [passed("fast"), waits.check] },
       scripts: (world, places) => ({
         x: [works(world, places, "x" as TicketId, { takes: "1 minute" })],
         b: [works(world, places, "b" as TicketId, { takes: "2 minutes" })],
       }),
-      during: () => passes("3 minutes"),
+      during: () => Effect.all([waits.watch, passes("3 minutes")], { concurrency: 2 }),
     })
     expectClean(ran, 0)
     expectPhases(ran, { x: "Done", b: "Review", c: "HeldBack" })
