@@ -501,7 +501,8 @@ epic waiting for a ticket under it) and files: a refused answer goes back to the
 reason, and nothing of it is filed. It may take an hour (`spec.timeout` in the
 [settings](setup.md#the-settings), or `--spec-timeout 90m`), at effort `high` (`spec.effort`, or
 `--spec-effort`). On a terminal a spinner counts what it files; plain output and the log get `SPEC:`
-lines.
+lines, among them what the breakdown's session cost as it ends (`SPEC: breakdown $4.1234 in 212
+turns, 14m02s, session <id>`), which the run's `end` record counts too.
 
 **The run starts early.** The environment ticket doesn't wait for the rest of the tree: once the
 root epic and it are filed, the run starts on it (`◆ Starting on <id>, the environment ticket, while

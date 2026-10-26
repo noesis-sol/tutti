@@ -15,6 +15,7 @@ import { makePrinter, type Out } from "../src/print/organLine.ts"
 import type { Spec } from "../src/run/spec.ts"
 import type { SpecOutcome } from "../src/run/specRun.ts"
 import { specRun } from "../src/run/specRun.ts"
+import { endRecord } from "../src/run/spending.ts"
 import {
   init,
   Recording,
@@ -27,9 +28,10 @@ import {
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
-import { layer as eventsLayer } from "../src/testing/EventStream.ts"
+import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { layer as spendingLayer } from "../src/testing/Spending.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 
@@ -155,6 +157,9 @@ export const scenario = (options: {
         early,
         issues: yield* backlog.issues,
         log: yield* texts,
+        records: yield* (yield* Captured).records,
+        // The run's end record, were it to end here: what the breakdown spent is in its totals.
+        end: yield* endRecord(0),
         sent: yield* (yield* Recording).sentTo(breakdownWorker),
         head: yield* git.head(),
         files: yield* git.tree("HEAD"),
@@ -176,7 +181,8 @@ export const scenario = (options: {
 
 /**
  * The layers a spec run's start runs on in the main checkout `repo`: the scripted host playing
- * `scripts`, an in-memory Beads over `seeds` and git over `files`, the real file system.
+ * `scripts`, its results summed by Spending, an in-memory Beads over `seeds` and git over `files`,
+ * the real file system.
  */
 export const specLayers = (options: {
   readonly repo: string
@@ -186,7 +192,12 @@ export const specLayers = (options: {
 }) =>
   scriptedHost(options.scripts).pipe(
     Layer.provideMerge(
-      Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+      Layer.mergeAll(
+        attentionLayer(waitForTest),
+        transcriptsLayer(),
+        ClaudeCode.layer,
+        spendingLayer(),
+      ),
     ),
     Layer.provideMerge(
       Layer.mergeAll(

@@ -27,6 +27,7 @@ import {
 import type { AgentHost } from "../agent/AgentHost.ts"
 import type { Attention } from "../agent/Attention.ts"
 import {
+  type Breakdown,
   type BreakdownEnd,
   BreakdownMode,
   type BreakdownStart,
@@ -36,6 +37,7 @@ import { type BreakdownState, filedAny } from "../agent/breakdownTools.ts"
 import { Filing } from "../agent/interviewTools.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import type { AppConfig } from "../cli/AppConfig.ts"
+import { dollars } from "../organs/OrganCost.ts"
 import { duration, type OrganLine, type Printer } from "../print/organLine.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { type Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
@@ -61,10 +63,20 @@ import {
   twoRootsProblem,
   updateText,
 } from "./spec.ts"
+import { nothingSpent, Spending, type Spent } from "./spending.ts"
 
 /** A SPEC line of the log: `SPEC: committed <path> (sha256 …)`. */
 export const specLine = (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>): Line =>
   `${Tag.spec}: ${line(strings, ...args)}` as Line
+
+/**
+ * The SPEC line of what the breakdown's session `session` spent, as its results give it (§ 10):
+ * `breakdown $4.1234 in 212 turns, 14m2s, session <id>`, or that it gave no result.
+ */
+export const spentLine = (spent: Spent, took: string, session: string): Line =>
+  spent.results === 0
+    ? specLine`claude session ${session} gave no result (${took})`
+    : specLine`breakdown ${dollars(spent.costUsd)} in ${plural(spent.turns, "turn")}, ${took}, session ${session}`
 
 /** What a spec run asks for. */
 export interface SpecRequest {
@@ -319,6 +331,7 @@ const breakDown = (
 ) =>
   Effect.gen(function* () {
     const log = yield* Log
+    const spending = yield* Effect.serviceOption(Spending)
     const { spec } = request
     const update = at.mode._tag === "Update"
     const known = at.mode._tag === "New" ? null : at.mode.root.id
@@ -338,6 +351,20 @@ const breakDown = (
     )
     // What the breakdown had filed when it was stopped, said on the way out.
     let filedNow: BreakdownState | null = null
+    // The breakdown once its session started, whose spending is logged as it ends.
+    let opened: Breakdown | null = null
+    /**
+     * What its session spent in `took`, logged: its worker's sums, as it is the run's one session
+     * of that worker (--spec and --feature don't go together). Nothing before it started.
+     */
+    const logSpent = (took: string) =>
+      Effect.gen(function* () {
+        if (opened === null) return
+        const spent = Option.isSome(spending)
+          ? yield* spending.value.ofTicket(opened.worker)
+          : nothingSpent
+        yield* log.write(spentLine(spent, took, opened.sessionId))
+      })
     // The early start: once the root epic and the environment ticket are filed, the run starts on
     // that ticket, the breakdown going on in `request.earlyIn`; `filing` is its banner meanwhile.
     const earlyIn =
@@ -379,6 +406,7 @@ const breakDown = (
             return { _tag: "NotStarted", why: started.failure.reason } as const
           }
           const breakdown = started.success
+          opened = breakdown
           // What it has filed, as it files: the epics in the log, the spinner's count.
           const said = new Set<string>()
           const watch = (spinner: OrganLine | null) =>
@@ -480,6 +508,7 @@ const breakDown = (
         Effect.onInterrupt(() =>
           Effect.gen(function* () {
             for (const text of stoppedLines()) yield* io.error(text)
+            yield* logSpent(duration((yield* Clock.currentTimeMillis) - began))
             yield* log.write(specLine`stopped while ${spec.path} was broken down`)
           }),
         ),
@@ -491,6 +520,7 @@ const breakDown = (
         yield* log.write(specLine`claude session gave no result (it couldn't start: ${why})`)
         return stopped(exitCodes.tool)
       }
+      yield* logSpent(took)
       return yield* afterBreakdown(request, io, {
         ...at,
         end: ended.end,
@@ -587,7 +617,7 @@ const afterBreakdown = (
           ...(yield* listing),
           carryOnLine(spec, request.refine),
         ])
-        yield* log.write(specLine`claude session gave no result (${why}, ${at.took})`)
+        yield* log.write(specLine`the breakdown failed: ${why} (${at.took})`)
         return stopped(exitCodes.setup)
       }
       case "Filed":
