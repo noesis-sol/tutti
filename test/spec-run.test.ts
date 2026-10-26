@@ -280,9 +280,10 @@ describe("a new spec", () => {
     )
     expect(ran.log).toContain("SPEC: broken down into test-1 (1 epic, 3 tickets)")
     expect(ran.log).toContain("SPEC: assumed: Items sort by name (Ticket sort).")
-    // test-1.2 lists a file that isn't there, in a folder that isn't: tutti dropped it.
+    // test-1.2 lists a new file, in a new folder: a spec's tree may.
+    expect(byId.get("test-1.2")?.files).toEqual(["src/list.ts"])
     expect(ran.errors).toEqual([
-      "warning: 2 open tickets under test-1 have no files metadata, so tutti guesses their files: test-1.2, test-1.3",
+      "warning: 1 open ticket under test-1 has no files metadata, so tutti guesses its files: test-1.3",
     ])
     expect(ran.sent.at(-1)?._tag).toBe("Ended")
   })

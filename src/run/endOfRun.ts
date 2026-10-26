@@ -60,6 +60,8 @@ export const summaryLines = (s: {
   readonly version: string
   readonly base: string
   readonly scope: string | null
+  /** A spec run's spec, named in place of its root epic; none for another run. */
+  readonly spec?: string | null
   readonly took: number
   readonly totals: Totals
   readonly figures: ReadonlyArray<FiguresLine>
@@ -67,7 +69,8 @@ export const summaryLines = (s: {
   readonly autoAnswered?: ReadonlyArray<AutoAnsweredItem>
 }): ReadonlyArray<Line> => {
   const auto = autoAnsweredTexts(s.autoAnswered ?? [])
-  const scoped = s.scope === null ? "" : line` · ticket ${s.scope}`
+  const scoped =
+    s.spec != null ? line` · spec ${s.spec}` : s.scope === null ? "" : line` · ticket ${s.scope}`
   const { totals } = s
   return [
     line`tutti ${s.version} on ${s.base}${scoped} · ${runTime(s.took)}`,
@@ -295,6 +298,7 @@ export const make = (options: {
           version: options.version,
           branch: base,
           scope: config.ticket,
+          ...(config.specPath === null ? {} : { spec: config.specPath }),
           took: (yield* Clock.currentTimeMillis) - begun,
           totals: view.totals,
           figures: yield* figures,

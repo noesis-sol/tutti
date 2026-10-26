@@ -663,7 +663,7 @@ export const withScout = (summary: InitSummary, scout: ReadonlyArray<Step>): Ini
  * stdout are a terminal that draws one, in lines with TERM=dumb, else asking nothing; then its
  * summary on the main screen.
  */
-const runInit = (cwd: string, flags: InitFlags) =>
+const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
   Effect.gen(function* () {
     const found = yield* findRepository(cwd)
     if (Result.isFailure(found)) return yield* initStopped([`tutti init: ${found.failure}`])
@@ -750,7 +750,7 @@ const runInit = (cwd: string, flags: InitFlags) =>
       }),
       Tty.layer,
     )
-    const kind = initFormKind(tty)
+    const kind = unattended ? null : initFormKind(tty)
     const config = kind === null ? Option.none() : yield* Effect.option(load(noFlags, repo))
     const chosen = Option.match(config, {
       onNone: () => "auto" as const,
@@ -856,6 +856,11 @@ const runInit = (cwd: string, flags: InitFlags) =>
       return yield* initStopped([`tutti init: ${error.message}`])
     }
     const summary = withScout(ran.success, scouted)
+    if (unattended) {
+      // A spec run's setup: its steps, which the run then commits; it says what comes next itself.
+      yield* Console.log(summary.steps.map((step) => `  ${stepLine(step)}`).join("\n"))
+      return
+    }
     if (theme === null) {
       yield* Console.log(summaryLines(summary).join("\n"))
       return
@@ -864,6 +869,34 @@ const runInit = (cwd: string, flags: InitFlags) =>
     if (kind === "renderer") yield* Console.log(initHeader(theme, repo))
     yield* Console.log(`${initSummary(summary, theme, width)}\n`)
   }).pipe(Effect.provide(Git.layer()), Effect.provide(GitWriter.layer))
+
+/**
+ * What a spec run's setup gives init (§ 4.14): its defaults, declining what it offers (the verifier,
+ * CHANGELOG.md merge=union, installing bd), runners that check nothing yet, which the breakdown's
+ * environment ticket wires up, and no MCP servers; the run's -c where it gives one.
+ */
+export const specSetupFlags = (concurrent: number | null): InitFlags => ({
+  force: false,
+  checkFast: "",
+  checkFull: "",
+  verifier: false,
+  changelogUnion: false,
+  installBeads: false,
+  mcp: [],
+  ...(concurrent === null ? {} : { concurrent }),
+})
+
+/**
+ * A spec run's setup of a repository init hasn't set up, from `cwd`: init without a terminal, with
+ * specSetupFlags, its steps printed. Whether it set the repository up; it says why not on stderr.
+ */
+export const setUpForSpec = (cwd: string, concurrent: number | null) =>
+  Effect.gen(function* () {
+    const before = process.exitCode
+    yield* runInit(cwd, specSetupFlags(concurrent), true)
+    const failed = process.exitCode !== before && process.exitCode !== 0
+    return !failed
+  })
 
 /** `tutti init`, in the folder tutti was started in. */
 export const initCommand = Command.make("init", initFlags, (given) =>

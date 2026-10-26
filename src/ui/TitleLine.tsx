@@ -203,7 +203,12 @@ function* titleForms(
       seg(`  · shared with ${title.shared} run${title.shared === 1 ? "" : "s"}`, styles.deferred),
     )
   }
-  const scoped = title.scope === null ? "" : ` · ticket ${title.scope}`
+  const scoped =
+    title.spec != null
+      ? ` · spec ${title.spec}`
+      : title.scope === null
+        ? ""
+        : ` · ticket ${title.scope}`
   const where = `${title.branch === "" ? "" : `${title.branch} · `}${runTime(now - title.began)}${scoped}`
   const usage = banners.filter((banner) => banner._tag !== "Hold")
   const holds = banners.filter((banner) => banner._tag === "Hold")

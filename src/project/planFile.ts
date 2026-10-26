@@ -160,12 +160,14 @@ export const planCycle = (
 
 /**
  * Each ticket's files that are the repository's (`tracked`, as git ls-files lists them), or new
- * files in a directory holding some (or at the top), cleaned and without repeats; a note for each
- * one dropped.
+ * files in a directory holding some (or at the top), or with `newFolders` in a folder of its own
+ * (a spec's tree, which may start from an empty repository), cleaned and without repeats; a note
+ * for each one dropped.
  */
 export const checkFiles = (
   tickets: ReadonlyArray<{ readonly key: string; readonly files: ReadonlyArray<string> }>,
   tracked: ReadonlyArray<string>,
+  options: { readonly newFolders?: boolean } = {},
 ): {
   readonly files: ReadonlyArray<ReadonlyArray<string>>
   readonly notes: ReadonlyArray<string>
@@ -197,7 +199,7 @@ export const checkFiles = (
               ? undefined
               : dirs.has(clean)
                 ? "a directory, not a file"
-                : !dirs.has(posix.dirname(clean))
+                : options.newFolders !== true && !dirs.has(posix.dirname(clean))
                   ? `not in the repository, and its directory ${posix.dirname(clean)}/ doesn't exist`
                   : undefined
       if (why !== undefined)

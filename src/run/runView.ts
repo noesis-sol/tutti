@@ -91,6 +91,8 @@ export interface Status {
   readonly branch: string
   /** The ticket a scoped run (`--ticket`) works on; null for none. */
   readonly scope: TicketId | null
+  /** A spec run's spec, its path, which names its scope; none for another run. */
+  readonly spec?: string | null
   /** When the run began, in epoch milliseconds, for its run time. */
   readonly began: number
   /** How many workers may run at once. */
@@ -396,6 +398,8 @@ export interface TitleView {
   readonly version: string
   readonly branch: string
   readonly scope: string | null
+  /** A spec run's spec, which the title line names in place of its root epic; none otherwise. */
+  readonly spec?: string | null
   /** When the run began, in epoch milliseconds. */
   readonly began: number
   readonly stopping: boolean
@@ -944,6 +948,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     version: sanitizeLine(status.version),
     branch,
     scope: status.scope === null ? null : sanitizeLine(status.scope),
+    ...(status.spec == null ? {} : { spec: sanitizeLine(status.spec) }),
     began: status.began,
     stopping: status.stopping,
     quitting: status.quitting === null ? null : sanitizeLine(status.quitting),

@@ -59,6 +59,8 @@ export interface Summary {
   readonly branch: string
   /** The ticket a scoped run (`--ticket`) worked on; null for none. */
   readonly scope: string | null
+  /** A spec run's spec, named in place of its root epic; none for another run. */
+  readonly spec?: string | null
   /** How long the run took, in milliseconds. */
   readonly took: number
   readonly totals: Totals
@@ -104,7 +106,12 @@ const parts = (theme: Theme, width: number) => {
   const title = (s: Summary): Segments => {
     const head = [seg(" Tutti ", styles.title), seg(" ")]
     const version = fit(s.version, Math.max(w - 8, 1))
-    const scoped = s.scope === null ? "" : ` · ticket ${sanitizeLine(s.scope)}`
+    const scoped =
+      s.spec != null
+        ? ` · spec ${sanitizeLine(s.spec)}`
+        : s.scope === null
+          ? ""
+          : ` · ticket ${sanitizeLine(s.scope)}`
     const used = 8 + Bun.stringWidth(version) + 3
     const where = fit(`${sanitizeLine(s.branch)}${scoped} · ${runTime(s.took)}`, w - used)
     return used >= w

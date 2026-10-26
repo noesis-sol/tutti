@@ -19,12 +19,14 @@
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`; the npm bundle from src/npm.ts, which detects musl first.
 import { availableParallelism } from "node:os"
+import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import {
   Clock,
   Console,
   Duration,
   Effect,
+  FileSystem,
   Layer,
   ManagedRuntime,
   Option,
@@ -46,13 +48,21 @@ import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
 import { UsageProbe } from "./agent/UsageProbe.ts"
 import { AppConfig } from "./cli/AppConfig.ts"
-import { checkoutOf, mainCheckout, planServices, thisBuildKind, tuttiWith } from "./cli/commands.ts"
-import type { RunFlags } from "./cli/flags.ts"
+import {
+  checkoutOf,
+  mainCheckout,
+  planServices,
+  setUpForSpec,
+  thisBuildKind,
+  tuttiWith,
+} from "./cli/commands.ts"
+import { type RunFlags, runFlags } from "./cli/flags.ts"
 import { tuttiVersion } from "./cli/version.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
+import { settingsFile } from "./project/settings.ts"
 import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import {
@@ -98,13 +108,20 @@ import { finish, run } from "./run/run.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
 import { specRun } from "./run/specRun.ts"
 import { endRecord, Spending } from "./run/spending.ts"
-import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
+import {
+  check,
+  findRepository,
+  live,
+  type Started,
+  StartupFailed,
+  startBlock,
+} from "./run/startup.ts"
 import { layer as trashLayer } from "./run/trash.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
 import { Beads, beadsWhy, type TicketId } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
-import { Git, GitWriter } from "./services/Git.ts"
+import { Git, GitWriter, type StatusEntry } from "./services/Git.ts"
 import { layer as notifierLayer } from "./services/Notifier.ts"
 import { whichOnPath } from "./services/onPath.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
@@ -385,6 +402,44 @@ const overnight = (
     }
   })
 
+/**
+ * A spec run's setup (§ 4.14): where --spec (or TUTTI_SPEC) is given in a repository init hasn't
+ * set up, and no worker prompt of its own, init without a terminal, after `before` (the line saying
+ * what tutti is doing ended); the files it wrote, for the run to commit with the spec. None where
+ * there is nothing to set up, the startup checks saying what else is amiss; null when init failed,
+ * having said why.
+ */
+const setUpForSpecRun = (cwd: string, flags: RunFlags, before: Effect.Effect<void>) =>
+  Effect.gen(function* () {
+    const variable = (name: string) => {
+      const value = process.env[name]
+      return value === undefined || value === "" ? Option.none<string>() : Option.some(value)
+    }
+    const given = (key: "spec" | "prompt" | "concurrent") =>
+      Option.orElse(flags[key], () => variable(runFlags[key].variable))
+    if (Option.isNone(given("spec")) || Option.isSome(given("prompt"))) return []
+    const found = yield* findRepository(cwd)
+    if (Result.isFailure(found)) return []
+    const { repo } = found.success
+    const fs = yield* FileSystem.FileSystem
+    if (yield* fs.exists(join(repo, settingsFile)).pipe(Effect.orElseSucceed(() => true))) return []
+    const git = yield* Git
+    const status = git.status(repo).pipe(Effect.orElseSucceed((): ReadonlyArray<StatusEntry> => []))
+    const already = new Set((yield* status).map((entry) => entry.path))
+    yield* before
+    yield* Console.log(
+      "tutti init hasn't set this repository up: setting it up as init does without a terminal",
+    )
+    const concurrent = Option.getOrNull(
+      Option.flatMap(given("concurrent"), (text) =>
+        Result.getSuccess(runFlags.concurrent.read(text)),
+      ),
+    )
+    const ok = yield* setUpForSpec(cwd, concurrent)
+    if (!ok) return null
+    return (yield* status).map((entry) => entry.path).filter((path) => !already.has(path))
+  })
+
 /** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
   Effect.gen(function* () {
@@ -420,8 +475,12 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           now: Date.now,
         })
       : Effect.succeed(Option.none<string>())
+    // A spec run in a repository init hasn't set up sets it up first, as init does without a
+    // terminal (§ 4.14): what that wrote is committed with the spec.
+    const setup = yield* setUpForSpecRun(cwd, flags, ready.end).pipe(Effect.provide(gitLayer))
+    if (setup === null) return exitCodes.setup
     const checked = yield* Effect.result(
-      check(live(cwd, flags, ready.unpacking)).pipe(Effect.provide(gitLayer)),
+      check(live(cwd, flags, ready.unpacking, setup)).pipe(Effect.provide(gitLayer)),
     )
     if (Result.isFailure(checked)) {
       const failed = checked.failure
@@ -691,6 +750,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             {
               spec,
               repo: config.repo,
+              setup,
               refine: config.refine,
               timeLimit: config.settings.spec.timeout,
               effort: config.settings.spec.effort,
@@ -709,7 +769,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const canAsk = tty.stdinIsTty && tty.stdoutIsTty
       const error = (text: string) => Console.error(text)
       const scoped = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-        scope === null ? effect : scopedTo(scope)(effect)
+        scope === null ? effect : scopedTo(scope, spec?.path ?? null)(effect)
 
       // While the run goes, SIGINT, SIGTERM and SIGHUP quit it (§ 4.8).
       const quits = yield* Queue.unbounded<QuitRequest>()

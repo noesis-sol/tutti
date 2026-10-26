@@ -72,6 +72,8 @@ export interface SpecRequest {
   /** How long a headless breakdown may take (spec.timeout, --spec-timeout). */
   readonly timeLimit: Duration.Duration
   readonly effort: BreakdownStart["effort"]
+  /** The files a spec run's setup wrote, committed with the spec; none where init had set it up. */
+  readonly setup?: ReadonlyArray<string>
 }
 
 /** Where the spec run talks. */
@@ -149,7 +151,8 @@ export const specRun = (
       )
 
     // The spec committed, so that workers can read it.
-    const committed = yield* Effect.result(commitSpec(spec, repo))
+    const setup = request.setup ?? []
+    const committed = yield* Effect.result(commitSpec(spec, repo, setup))
     if (Result.isFailure(committed)) {
       const failure = committed.failure
       const why =
@@ -163,7 +166,15 @@ export const specRun = (
       )
     }
     const { commit } = committed.success
-    if (committed.success.committed) {
+    if (committed.success.committed && setup.length > 0) {
+      const files = plural(new Set([...setup, spec.path]).size, "file")
+      yield* io.printer.print(
+        `committed the setup with the spec ${spec.path} as ${short(commit)} (${files})`,
+      )
+      yield* log.write(
+        specLine`committed the setup with ${spec.path} as ${short(commit)} (${files}; sha256 ${short(spec.sha256)})`,
+      )
+    } else if (committed.success.committed) {
       yield* io.printer.print(`committed the spec ${spec.path} (sha256 ${short(spec.sha256)})`)
       yield* log.write(specLine`committed ${spec.path} (sha256 ${short(spec.sha256)})`)
     } else {

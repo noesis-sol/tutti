@@ -337,6 +337,7 @@ const runFrom = (
       version: options.version,
       branch: base,
       scope: config.ticket,
+      ...(config.specPath === null ? {} : { spec: config.specPath }),
       began: begun,
       concurrency: config.settings.concurrent,
       autoAnswer:

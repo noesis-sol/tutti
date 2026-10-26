@@ -421,11 +421,12 @@ export const checkTree = (
     return Result.fail([`the tree's parents and blocks links make a cycle: ${cycle.join(" → ")}`])
   }
   const tickets = drafts.filter((issue) => issue.type !== "epic")
-  const checked = checkFiles(tickets, context.tracked)
+  const checked = checkFiles(tickets, context.tracked, { newFolders: true })
   const filesOf = new Map(tickets.map((t, i) => [t.key, checked.files[i] ?? []]))
   const updated = checkFiles(
     updates.map((u) => ({ key: u.id, files: u.files ?? [] })),
     context.tracked,
+    { newFolders: true },
   )
   return Result.succeed({
     issues: inFilingOrder(drafts).map((issue) => ({

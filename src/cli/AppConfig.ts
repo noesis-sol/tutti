@@ -101,6 +101,11 @@ export interface AppConfigValue {
   readonly specFrom: string
   /** Break the spec down with you (--refine). */
   readonly refine: boolean
+  /**
+   * The spec's path in the repository once a spec run is scoped to its root epic
+   * (src/run/specRun.ts), which the title line and the summary name; null otherwise.
+   */
+  readonly specPath: string | null
   /** The most tickets this run starts (--limit), or null for no limit. */
   readonly limit: number | null
   readonly notify: boolean
@@ -413,6 +418,7 @@ export const resolveAll = (
     spec,
     specFrom: flagGiven("spec") ? "--spec" : runFlags.spec.variable,
     refine,
+    specPath: null,
     limit,
     notify: pick("notify", user.notify),
     plain: pick("plain", false),

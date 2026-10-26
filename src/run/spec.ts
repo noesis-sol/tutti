@@ -179,22 +179,30 @@ export interface Committed {
   readonly committed: boolean
 }
 
-/** The commit message for `spec`: added or updated, its SHA-256, and a copy's source. */
-export const commitMessage = (spec: Spec, updated: boolean): string =>
+/**
+ * Commits `spec` in the main checkout `repo`, alone, on the branch checked out, or with `setup`, the
+ * files a spec run's setup wrote: a copy written first, over the copy an earlier run made. A spec
+ * committed already as it is stays as it is, where there is no setup to commit.
+ */
+
+/**
+ * The commit message for `spec`: added, updated, or with the setup of a repository init hadn't set
+ * up; its SHA-256, and a copy's source.
+ */
+export const commitMessage = (spec: Spec, how: "add" | "update" | "setup"): string =>
   [
-    `tutti: ${updated ? "update" : "add"} spec ${basename(spec.path)}`,
+    how === "setup"
+      ? `tutti: set up for spec ${basename(spec.path)}`
+      : `tutti: ${how} spec ${basename(spec.path)}`,
     "",
     `sha256 ${spec.sha256}`,
     ...(spec.copy ? ["", `${sourceTrailer}: ${tildePath(spec.source)}`] : []),
   ].join("\n")
 
-/**
- * Commits `spec` in the main checkout `repo`, alone, on the branch checked out: a copy written
- * first, over the copy an earlier run made. A spec committed already as it is stays as it is.
- */
 export const commitSpec = (
   spec: Spec,
   repo: string,
+  setup: ReadonlyArray<string> = [],
 ): Effect.Effect<Committed, GitError | PlatformErrorOf, FileSystem.FileSystem | Git> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -206,11 +214,16 @@ export const commitSpec = (
     const born = yield* Effect.result(git.revParse(repo, "HEAD"))
     const last = Result.isSuccess(born) ? yield* git.lastCommit(repo, spec.path) : Option.none()
     const changes = yield* git.status(repo, [spec.path])
-    if (changes.length === 0 && Option.isSome(last)) {
+    if (changes.length === 0 && Option.isSome(last) && setup.length === 0) {
       return { commit: last.value.hash, committed: false }
     }
-    yield* git.addPaths(repo, [spec.path])
-    yield* git.commitPaths(repo, commitMessage(spec, Option.isSome(last)), [spec.path])
+    const paths = [...new Set([...setup, spec.path])]
+    yield* git.addPaths(repo, paths)
+    yield* git.commitPaths(
+      repo,
+      commitMessage(spec, setup.length > 0 ? "setup" : Option.isSome(last) ? "update" : "add"),
+      paths,
+    )
     return { commit: yield* git.revParse(repo, "HEAD"), committed: true }
   })
 

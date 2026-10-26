@@ -298,11 +298,14 @@ export const planAndFile = <E = never>(
     return FeatureOutcome.Filed({ epic, tickets })
   })
 
-/** `effect` with AppConfig scoped to `epic`, as --ticket <epic> scopes a run. */
+/**
+ * `effect` with AppConfig scoped to `epic`, as --ticket <epic> scopes a run; a spec run's with its
+ * spec's path, `specPath`.
+ */
 export const scopedTo =
-  (epic: TicketId) =>
+  (epic: TicketId, specPath: string | null = null) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | AppConfig> =>
     Effect.gen(function* () {
       const config = yield* AppConfig
-      return yield* Effect.provideService(effect, AppConfig, { ...config, ticket: epic })
+      return yield* Effect.provideService(effect, AppConfig, { ...config, ticket: epic, specPath })
     })

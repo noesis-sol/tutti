@@ -39,11 +39,11 @@ import { Git, gitTooOld } from "../services/Git.ts"
 import { checkoutChanges } from "../services/gitStatus.ts"
 import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
-import { readSpec, type Spec } from "./spec.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
 import { type Line, start, Tag } from "./log.ts"
 import { aboveCapNote, machineWorkersLabel } from "./machine.ts"
+import { readSpec, type Spec } from "./spec.ts"
 
 /** The exit code of a run that can't start: a setup problem. */
 export const exitSetup = 2
@@ -105,6 +105,8 @@ export interface Checking<R> {
   readonly claude: (given: string | null) => Effect.Effect<Claude, never, R>
   /** The login probe, under the run's configuration. */
   readonly account: Layer.Layer<Account, never, AppConfig | R>
+  /** Files a spec run's setup wrote, which its run commits with the spec: no clean-tree problem. */
+  readonly uncommitted?: ReadonlyArray<string>
 }
 
 /** The report of a run that can't start, for stderr: the not-set-up message first. */
@@ -427,7 +429,10 @@ export const check = <R>(checking: Checking<R>) =>
       config.spec === null
         ? Result.succeed(null)
         : yield* readSpec(config.spec, config.specFrom, checking.cwd, repo)
-    const specPath = Result.isSuccess(spec) && spec.success !== null ? [spec.success.path] : []
+    const specPath = [
+      ...(Result.isSuccess(spec) && spec.success !== null ? [spec.success.path] : []),
+      ...(checking.uncommitted ?? []),
+    ]
 
     const [branch, tree, beads, account, mcp, prompt, leftWorkers] = yield* Effect.all(
       [
@@ -520,9 +525,11 @@ export const live = (
   cwd: string,
   flags: RunFlags,
   unpacking?: (extracting: Effect.Effect<string>) => Effect.Effect<string>,
+  uncommitted: ReadonlyArray<string> = [],
 ) =>
   ({
     cwd,
+    uncommitted,
     env: process.env,
     config: (repo) => load(flags, repo, cwd),
     beads: (repo) => Beads.layer({ cwd: repo }),

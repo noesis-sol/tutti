@@ -260,6 +260,7 @@ export const makeBreakdownTools = (options: {
             const files = checkFiles(
               [{ key: "the environment ticket", files: env.files }],
               yield* tracked,
+              { newFolders: true },
             )
             const filed = yield* beads
               .create({
