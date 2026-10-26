@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- OpenTUI 0.6.8, from 0.6.6 (§ 3.1; `package.json`, `bun.lock`; tutti-ji0n): OpenTUI drew a direction mark (U+200E, U+200F, U+061C), a word joiner or another default-ignorable character in a cell of its own, though the terminal draws it in none, so the next partial update of a row holding one was drawn a column off, and tutti's own wrapping, which gives them no cell (`Bun.stringWidth`), measured such a line a column narrower than OpenTUI drew it. Now OpenTUI gives them no cell either: of 85 such code points, the two widths differ on 14 rather than 42, the soft hyphen, U+1160 and U+FE0F, which OpenTUI still draws in a cell, and the Hangul fillers U+3164 and U+FFA0 and U+FFF0 to U+FFF8, which it now draws in none, so a line holding one is narrower than tutti measured, never wider. A left drag also goes to what the press was on, and a sideways wheel step no longer shifts truncated text. Mode 2027 is still left set by OpenTUI's `destroy()` (OpenTUI #1727), so tutti still sets it back (§ 7.4).
+
 ## [0.3.2] - 2026-10-26
 
 - A ticket an overnight run set aside and closed or deleted by hand, never undeferred, no longer leaves its record in `state.json` for good (§ 5 item 10; `src/run/carry.ts`'s `forgetAside`; tutti-dmxe): its kept session waited for `bd ready` to list the ticket again, which it never would. Now a run's start forgets the record, saying so (`<id>, set aside by an overnight run, is forgotten: it is closed, so it won't be undeferred; worktree <path> left as it is`), without taking the ticket up; one `bd` can't show is kept. `test/overnight-aside-forget.test.ts` covers it.

@@ -1,8 +1,8 @@
 // Mode 2027, grapheme clustering, as the terminal had it before the renderer (§ 7.4). OpenTUI
-// 0.6.6 sets it at start (CSI ? 2027 h), whether or not the terminal answered its DECRQM query,
-// and its destroy() resets every other mode it sets but not this one (spike 05, § 4). So tutti asks
-// the terminal before the renderer starts and, once it has closed, sets the mode back: on when the
-// terminal said it was on, else off.
+// 0.6.8 sets it at start (CSI ? 2027 h), whether or not the terminal answered its DECRQM query,
+// and its destroy() resets every other mode it sets but not this one (spike 05, § 4; OpenTUI
+// #1727). So tutti asks the terminal before the renderer starts and, once it has closed, sets the
+// mode back: on when the terminal said it was on, else off.
 import { Duration, Effect, Option } from "effect"
 
 /** Mode 2027 as the terminal reported it: on, off, or unknown (not recognised, or no answer). */

@@ -7,7 +7,7 @@ A TypeScript port of orchestra. It keeps orchestra's concepts and drops its depe
 | Status | Draft 2, 2026-10-16 |
 | Port of | orchestra v0.7.7 (Go), github.com/noesis-sol/orchestra |
 | Behavioural reference | orchestra v0.7.7's `README.md` and `docs/*.md`: wherever this spec says *as orchestra*, those documents are the authority |
-| Checked against | `@anthropic-ai/claude-agent-sdk` 0.3.301 (its type definitions `sdk.d.ts` and README); `effect` 4.0.5 and `@effect/platform-bun` 4.0.5 (their sources); `@opentui/core` and `@opentui/react` 0.6.6 (docs and open issues); Bun's docs |
+| Checked against | `@anthropic-ai/claude-agent-sdk` 0.3.301 (its type definitions `sdk.d.ts` and README); `effect` 4.0.5 and `@effect/platform-bun` 4.0.5 (their sources); `@opentui/core` and `@opentui/react` 0.6.8 (docs and open issues); Bun's docs |
 | Product name | **tutti** (Italian, "all together"). npm has an unrelated, inactive `tutti` package (0.0.10, a browser-testing tool), so the npm name is scoped (§12) and the command is `tutti` |
 
 ### Changes in draft 2
@@ -136,7 +136,7 @@ These are unchanged from orchestra unless marked otherwise.
 | Effect | `effect` | 4.0.x | Core: `Effect`, `Layer`, `Context.Service`, `Schema` (with `Schema.TaggedError`), `Stream`, `Queue`, `Ref`, `SubscriptionRef`, `Semaphore`, `FiberSet`, `ManagedRuntime`, `FileSystem`, `Path`, `JsonSchema`. Entry points: `effect/process` (`ChildProcess`, `ChildProcessSpawner`) for every external command; `effect/ai` for the organs; `effect/cli` for parsing flags; `effect/testing` (`TestClock`) for tests. Effect 4 has no `@effect/platform` package and no `Supervisor` module |
 | Platform | `@effect/platform-bun` | 4.0.x | `BunRuntime.runMain`, `BunServices`, `BunChildProcessSpawner`, `BunFileSystem`, `BunPath` |
 | Agent | `@anthropic-ai/claude-agent-sdk` | 0.3.x | Streaming input mode; pinned exactly, since its protocol tracks Claude Code's |
-| UI | `@opentui/core`, `@opentui/react` | 0.6.6 | Pinned exactly and upgraded on purpose: still 0.x, and 0.6.0 broke custom renderables |
+| UI | `@opentui/core`, `@opentui/react` | 0.6.8 | Pinned exactly and upgraded on purpose: still 0.x, and 0.6.0 broke custom renderables |
 | UI framework | React | ≥ 19.2 | Required by `@opentui/react`. Always its production build outside the tests (below) |
 | Markdown after the dashboard | a terminal Markdown renderer | chosen in M3 | The run report is printed after OpenTUI has gone (§7.1) |
 | Tests | `bun test --retry`, `TestClock`, `@opentui/react/test-utils`, `fast-check` | | §13 |
@@ -1186,7 +1186,7 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 
 **Clean-up on any exit.** `uncaughtException`, `unhandledRejection` and the Effect runtime's fatal path all call `renderer.destroy()` before printing anything. OpenTUI's own handlers report errors but "do not destroy the renderer".
 
-**Mode 2027.** OpenTUI 0.6.6 sets grapheme clustering (`CSI ? 2027 h`) at start, whether or not the terminal answered its DECRQM query, and `destroy()` leaves it set while it resets every other mode. tutti asks the terminal for mode 2027 (DECRQM, then DA1, waiting up to 250 ms) before the renderer starts, and once the renderer has closed sets it back: `CSI ? 2027 h` when the terminal said it was on, else `CSI ? 2027 l`.
+**Mode 2027.** OpenTUI 0.6.8 sets grapheme clustering (`CSI ? 2027 h`) at start, whether or not the terminal answered its DECRQM query, and `destroy()` leaves it set while it resets every other mode (#1727). tutti asks the terminal for mode 2027 (DECRQM, then DA1, waiting up to 250 ms) before the renderer starts, and once the renderer has closed sets it back: `CSI ? 2027 h` when the terminal said it was on, else `CSI ? 2027 l`.
 
 **Signals, in any mode:**
 
