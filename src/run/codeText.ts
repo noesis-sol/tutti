@@ -3,7 +3,8 @@
 // small table of its comments and quotes, read by their look, a character at a time; a file whose
 // extension has no family keeps all its text. A misreading (a regular expression taken for a
 // division, an apostrophe in JSX text taken for a quote) only leaves out words up to the line's end
-// at most, where the run's rebase and merge check still catch a conflict a hold didn't.
+// at most, or a shell's << taken for a heredoc's up to a line that closes it as one, where the
+// run's rebase and merge check still catch a conflict a hold didn't.
 import { extensionOf } from "./repoFiles.ts"
 import { setOf } from "./text.ts"
 
@@ -14,7 +15,8 @@ export const codeExtensions = setOf(`go swift py js mjs cjs ts mts cts tsx jsx r
 /**
  * A string literal: from `open` to `close`, a backslash escaping the character after it where
  * `escape`, ended by a line's end too where `line`, and holding code between each of `holes`' pairs
- * (`${` and `}`), whose close is one character.
+ * (`${` and `}`), whose close is one character; a hole's open doubled is text where `doubled`
+ * (Python's `{{`).
  */
 interface Quote {
   readonly open: string
@@ -22,6 +24,7 @@ interface Quote {
   readonly escape: boolean
   readonly line: boolean
   readonly holes: ReadonlyArray<readonly [string, string]>
+  readonly doubled: boolean
 }
 
 /** A family of syntax: its comments, its quotes and the literals read by a pattern. */
@@ -37,15 +40,25 @@ interface Syntax {
   readonly quotes: ReadonlyArray<Quote>
   /** A character literal where one is ('a', '\n'), not a Rust lifetime ('a) or a Swift word. */
   readonly chars: boolean
+  /** Whether ' also ends names (x'), so that a ' right after a word starts no character. */
+  readonly primes: boolean
   /** Whether a / where an expression starts begins a regular expression, as in JavaScript. */
   readonly regex: boolean
+  /** Whether <<WORD starts a heredoc, its lines to one that is WORD a string, as in the shell. */
+  readonly heredoc: boolean
   /** The characters any of the above starts with: the others are code, passed over at once. */
   readonly starts: ReadonlySet<string>
 }
 
 const quote = (
   open: string,
-  options: { close?: string; escape?: boolean; line?: boolean; holes?: string } = {},
+  options: {
+    close?: string
+    escape?: boolean
+    line?: boolean
+    holes?: string
+    doubled?: boolean
+  } = {},
 ): Quote => ({
   open,
   close: options.close ?? open,
@@ -55,6 +68,7 @@ const quote = (
     .split(" ")
     .filter((h) => h !== "")
     .map((h) => [h, h.endsWith("(") ? ")" : "}"] as const),
+  doubled: options.doubled ?? false,
 })
 
 const syntax = (fields: Partial<Omit<Syntax, "starts">>): Syntax => {
@@ -65,17 +79,42 @@ const syntax = (fields: Partial<Omit<Syntax, "starts">>): Syntax => {
     nested: false,
     quotes: [],
     chars: false,
+    primes: false,
     regex: false,
+    heredoc: false,
     ...fields,
   }
   const openers = [...s.line, s.block?.[0] ?? "", ...s.quotes.map((q) => q.open)]
   if (s.chars) openers.push("'")
   if (s.regex) openers.push("/")
+  if (s.heredoc) openers.push("<")
   return { ...s, starts: new Set(openers.filter((o) => o !== "").map((o) => o.charAt(0))) }
 }
 
 const cComments = { line: ["//"], block: ["/*", "*/"] as const }
 const doubleQuoted = quote('"')
+
+/** Each way of writing word in either case: f, F for f. */
+const casings = (word: string): Array<string> =>
+  [...word].reduce<Array<string>>(
+    (all, c) => all.flatMap((w) => [w + c.toLowerCase(), w + c.toUpperCase()]),
+    [""],
+  )
+
+// Python's strings, an f-string's (f, rf or fr before it) with code in its {…} and {{ a brace.
+const pythonQuotes = ['"""', "'''", '"', "'"]
+  .flatMap((q) => [
+    quote(q),
+    ...["f", "rf", "fr"]
+      .flatMap(casings)
+      .map((f) => quote(f + q, { close: q, line: q.length === 1, holes: "{", doubled: true })),
+  ])
+  .sort((a, b) => b.open.length - a.open.length)
+
+// A heredoc's body, a string: its words text where its delimiter is quoted ('EOF', "EOF" or
+// \EOF), and with the code of $(…) and ${…} kept where it isn't.
+const heredocText = quote("", { escape: false, line: false })
+const heredocExpanded = quote("", { line: false, holes: "$( ${" })
 
 // The families, by the extensions that use them. vue and svelte have none: their markup's text is
 // prose, with apostrophes that aren't quotes.
@@ -139,7 +178,7 @@ const families: ReadonlyArray<readonly [string, Syntax]> = [
     "php",
     syntax({ line: ["//", "#"], block: cComments.block, quotes: [doubleQuoted, quote("'")] }),
   ],
-  ["py", syntax({ line: ["#"], quotes: ['"""', "'''", '"', "'"].map((q) => quote(q)) })],
+  ["py", syntax({ line: ["#"], quotes: pythonQuotes })],
   [
     "rb",
     syntax({
@@ -163,12 +202,33 @@ const families: ReadonlyArray<readonly [string, Syntax]> = [
         quote('"', { line: false, holes: "$( ${" }),
         quote("'", { escape: false, line: false }),
       ],
+      heredoc: true,
     }),
   ],
-  // Erlang's '…' is an atom, code; Haskell's and OCaml's ' also ends names (x').
+  // Erlang's '…' is an atom, code; Haskell's and OCaml's ' also ends names (x') and starts type
+  // variables ('a), which aren't characters ('a').
   ["erl", syntax({ line: ["%"], quotes: [doubleQuoted] })],
-  ["hs", syntax({ line: ["--"], block: ["{-", "-}"], nested: true, quotes: [doubleQuoted] })],
-  ["ml", syntax({ block: ["(*", "*)"], nested: true, quotes: [quote('"', { line: false })] })],
+  [
+    "hs",
+    syntax({
+      line: ["--"],
+      block: ["{-", "-}"],
+      nested: true,
+      quotes: [doubleQuoted],
+      chars: true,
+      primes: true,
+    }),
+  ],
+  [
+    "ml",
+    syntax({
+      block: ["(*", "*)"],
+      nested: true,
+      quotes: [quote('"', { line: false })],
+      chars: true,
+      primes: true,
+    }),
+  ],
 ]
 
 const familyOf = new Map<string, Syntax>(
@@ -216,6 +276,23 @@ const regexEnd = (text: string, i: number): number => {
   return -1
 }
 
+// A heredoc's start: <<, or <<- for one whose lines may start with tabs, then its delimiter, quoted
+// or bare (not <<< or 1 << 2).
+const heredocStart = /<<(-?)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|(\\?)([A-Za-z_]\w*))/y
+
+/** The end of a heredoc's body from `from`: the end of its line that is `word`; -1 for none. */
+const heredocEnd = (text: string, from: number, word: string, tabs: boolean): number => {
+  let p = from
+  while (p < text.length) {
+    const n = text.indexOf("\n", p)
+    const end = n === -1 ? text.length : n
+    const line = text.slice(p, end).replace(/\r$/, "")
+    if ((tabs ? line.replace(/^\t+/, "") : line) === word) return end
+    p = end + 1
+  }
+  return -1
+}
+
 /** The end of a block comment opened at i, past its close, or the text's end. */
 const blockEnd = (
   text: string,
@@ -244,7 +321,8 @@ interface InCode {
   readonly close: string
   depth: number
 }
-type Frame = InCode | { readonly quote: Quote }
+/** A string, ended by its close, or at `end` for a heredoc's. */
+type Frame = InCode | { readonly quote: Quote; readonly end?: number }
 
 /**
  * The code of text, in syntax, its comments and string literals each left out for a space and the
@@ -259,14 +337,34 @@ export const codeOf = (text: string, s: Syntax): string => {
   const keep = (end: number) => {
     if (end > start) parts.push(text.slice(start, end))
   }
+  // The heredocs a line started, in order, whose bodies start at the line's end, `bodies`.
+  let heredocs: Array<{ readonly quote: Quote; readonly end: number }> = []
+  let bodies = -1
   while (i < text.length) {
+    if (bodies !== -1 && i >= bodies) {
+      // Not where the line ends in a string (cat <<EOF "…): too odd to read.
+      if (i === bodies && (stack[stack.length - 1] as Frame).quote === undefined) {
+        keep(i)
+        stack.push(...[...heredocs].reverse())
+      }
+      heredocs = []
+      bodies = -1
+    }
     const top = stack[stack.length - 1] as Frame
     const c = text.charAt(i)
     if (top.quote !== undefined) {
-      // A hole first, as Swift's \( starts with what escapes elsewhere.
       const q = top.quote
+      if (top.end !== undefined && i >= top.end) {
+        stack.pop()
+        i = top.end
+        start = i
+        continue
+      }
+      // A hole first, as Swift's \( starts with what escapes elsewhere.
       const hole = q.holes.find(([open]) => text.startsWith(open, i))
-      if (hole !== undefined) {
+      if (hole !== undefined && q.doubled && text.startsWith(hole[0], i + hole[0].length)) {
+        i += 2 * hole[0].length
+      } else if (hole !== undefined) {
         i += hole[0].length
         stack.push({ quote: undefined, open: hole[0].slice(-1), close: hole[1], depth: 0 })
         start = i
@@ -274,7 +372,7 @@ export const codeOf = (text: string, s: Syntax): string => {
       else if (q.line && c === "\n") {
         stack.pop()
         start = i
-      } else if (text.startsWith(q.close, i)) {
+      } else if (top.end === undefined && text.startsWith(q.close, i)) {
         stack.pop()
         i += q.close.length
         start = i
@@ -322,7 +420,7 @@ export const codeOf = (text: string, s: Syntax): string => {
       start = i
       continue
     }
-    if (s.chars && c === "'") {
+    if (s.chars && c === "'" && !(s.primes && i > 0 && isWordChar(text.charAt(i - 1)))) {
       charLiteral.lastIndex = i
       if (charLiteral.test(text)) {
         keep(i)
@@ -330,6 +428,23 @@ export const codeOf = (text: string, s: Syntax): string => {
         start = i
         continue
       }
+    }
+    if (s.heredoc && c === "<") {
+      heredocStart.lastIndex = i
+      const m = heredocStart.exec(text)
+      const word = m?.[2] ?? m?.[3] ?? m?.[5]
+      const line = bodies !== -1 ? bodies : text.indexOf("\n", i)
+      if (m !== null && word !== undefined && line !== -1) {
+        const from = (heredocs[heredocs.length - 1]?.end ?? line) + 1
+        const end = heredocEnd(text, from, word, m[1] === "-")
+        if (end !== -1) {
+          const quoted = m[2] !== undefined || m[3] !== undefined || m[4] === "\\"
+          heredocs.push({ quote: quoted ? heredocText : heredocExpanded, end })
+          bodies = line
+        }
+        i = heredocStart.lastIndex
+      } else while (text.charAt(i) === "<") i++
+      continue
     }
     if (s.regex && c === "/" && regexAt(text, i)) {
       const end = regexEnd(text, i)
