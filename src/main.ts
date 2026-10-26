@@ -54,7 +54,7 @@ import {
   thisBuildKind,
   tuttiWith,
 } from "./cli/commands.ts"
-import { type RunFlags, runFlags } from "./cli/flags.ts"
+import type { RunFlags } from "./cli/flags.ts"
 import { tuttiVersion } from "./cli/version.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
@@ -111,8 +111,7 @@ import {
 } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
-import { followRest, type SpecOutcome, specRun } from "./run/specRun.ts"
-import { specSetup } from "./run/specSetup.ts"
+import { setUpFromFlags, specStart } from "./run/specStart.ts"
 import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { layer as trashLayer } from "./run/trash.ts"
@@ -401,38 +400,6 @@ const overnight = (
     }
   })
 
-/**
- * A spec run's setup (src/run/specSetup.ts), from the flags and their variables: the files it wrote,
- * or an earlier one left, for the run to commit with the spec; null when it failed, having said why.
- * `before` ends the line saying what tutti is doing.
- */
-const setUpForSpecRun = (cwd: string, flags: RunFlags, before: Effect.Effect<void>) => {
-  const variable = (name: string) => {
-    const value = process.env[name]
-    return value === undefined || value === "" ? Option.none<string>() : Option.some(value)
-  }
-  const given = (key: "spec" | "prompt" | "concurrent") =>
-    Option.orElse(flags[key], () => variable(runFlags[key].variable))
-  const concurrent = Option.getOrNull(
-    Option.flatMap(given("concurrent"), (text) =>
-      Result.getSuccess(runFlags.concurrent.read(text)),
-    ),
-  )
-  return specSetup({
-    cwd,
-    spec: Option.match(given("spec"), {
-      onNone: () => null,
-      onSome: (text) => ({
-        given: text.trim(),
-        from: Option.isSome(flags.spec) ? "--spec" : runFlags.spec.variable,
-      }),
-    }),
-    ownPrompt: Option.isSome(given("prompt")),
-    setUp: setUpForSpec(cwd, concurrent),
-    say: (text) => Effect.andThen(before, Console.log(text)),
-  })
-}
-
 /** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
   Effect.gen(function* () {
@@ -470,7 +437,13 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       : Effect.succeed(Option.none<string>())
     // A spec run in a repository init hasn't set up sets it up first, as init does without a
     // terminal (§ 4.14): what that wrote is committed with the spec.
-    const setup = yield* setUpForSpecRun(cwd, flags, ready.end).pipe(Effect.provide(gitLayer))
+    const setup = yield* setUpFromFlags({
+      cwd,
+      flags,
+      env: (name) => process.env[name],
+      setUp: (concurrent) => setUpForSpec(cwd, concurrent),
+      say: (text) => Effect.andThen(ready.end, Console.log(text)),
+    }).pipe(Effect.provide(gitLayer))
     if (setup === null) return exitCodes.setup
     const checked = yield* Effect.result(
       check(live(cwd, flags, ready.unpacking, setup)).pipe(Effect.provide(gitLayer)),
@@ -727,15 +700,20 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           scope = featured.epic
           return undefined
         })
-      // --spec (src/run/specRun.ts): the spec committed and broken down where it needs to be, then
-      // the run scoped to its root epic, which the lock then names. What it says goes to `out` and
-      // `error`; a refinement is shown with `refine`. The exit code when it stopped the run.
-      // A breakdown going on as the run starts on its environment ticket, and its exit code where
+      // The run's quits: SIGINT, SIGTERM and SIGHUP while it goes (§ 4.8), and a spec's breakdown
+      // failing after the early start.
+      const quits = yield* Queue.unbounded<QuitRequest>()
+      // --spec (src/run/specStart.ts): the spec committed with the setup's files and broken down
+      // where it needs to be, then the run scoped to its root epic, which the lock then names. What
+      // it says goes to `out` and `error`; a refinement is shown with `refine`. The exit code when
       // it stopped the run.
-      const early: {
-        breakdown: Extract<SpecOutcome, { readonly _tag: "Early" }> | null
-        code: number | null
-      } = { breakdown: null, code: null }
+      const specStarting = specStart({
+        setup,
+        holder,
+        rewrite: lock.rewrite,
+        runScope,
+        quit: Queue.offer(quits, breakdownFailed),
+      })
       const startSpec = (io: {
         readonly out: Out
         readonly error: (text: string) => Effect.Effect<void>
@@ -745,38 +723,16 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           if (spec === null) return undefined
           yield* ready.end
           const theme = yield* printedThemeOf(io.out)
-          const outcome = yield* specRun(
-            {
-              spec,
-              repo: config.repo,
-              setup,
-              refine: config.refine,
-              timeLimit: config.settings.spec.timeout,
-              effort: config.settings.spec.effort,
-              earlyIn: runScope,
-            },
-            { printer: makePrinter(io.out, theme), error: io.error, refine: io.refine },
-          )
-          if (outcome._tag === "Stopped") {
-            yield* Effect.flatMap(endRecord(outcome.exitCode), events.emit)
-            return outcome.exitCode
+          const begun = yield* specStarting.start(spec, config, {
+            printer: makePrinter(io.out, theme),
+            error: io.error,
+            refine: io.refine,
+          })
+          if (begun._tag === "Stopped") {
+            yield* Effect.flatMap(endRecord(begun.exitCode), events.emit)
+            return begun.exitCode
           }
-          if (outcome._tag === "Early") {
-            early.breakdown = outcome
-            // The rest of the breakdown, as the run goes on its environment ticket: one that fails,
-            // or is stopped, stops the run, whose exit code is then the breakdown's.
-            yield* followRest(outcome.rest, (code) =>
-              Effect.andThen(
-                Effect.sync(() => {
-                  early.code = code
-                }),
-                Queue.offer(quits, breakdownFailed),
-              ),
-            ).pipe(Effect.forkIn(runScope))
-          }
-          scope = outcome.root
-          // The lock is held all the same if its holder can't be rewritten.
-          yield* Effect.ignore(lock.rewrite({ ...holder, scope: outcome.root }))
+          scope = begun.root
           return undefined
         })
       const canAsk = tty.stdinIsTty && tty.stdoutIsTty
@@ -785,7 +741,6 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         scope === null ? effect : scopedTo(scope, spec?.path ?? null)(effect)
 
       // While the run goes, SIGINT, SIGTERM and SIGHUP quit it (§ 4.8).
-      const quits = yield* Queue.unbounded<QuitRequest>()
       const listening = <A, E, R>(running: Effect.Effect<A, E, R>) =>
         Effect.scoped(
           Effect.andThen(
@@ -887,19 +842,19 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               drains,
               quits,
               ...awakeOption,
-              ...(early.breakdown === null ? {} : { filing: early.breakdown.filing }),
+              ...specStarting.runOptions(),
               exitNow: exitNow(),
               endLater: true,
             }),
           ),
         )
         // A breakdown the run's end cut short stops with it.
-        if (early.breakdown !== null) yield* early.breakdown.stop
+        yield* specStarting.stop
         // The report's theme, made only when the report prints: off the main screen's theme, it
         // asks the terminal for its background.
         const theme = mainTheme === undefined ? printedThemeOf(stdout) : Effect.succeed(mainTheme)
         const code = yield* finish(ran, Effect.flatMap(theme, reportOut), false)
-        return early.code ?? code
+        return specStarting.exitCode(code)
       }
       if (!putInRenderer) {
         const stoppedAt = yield* putOnMainScreen
@@ -1023,7 +978,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                 drains,
                 quits,
                 ...awakeOption,
-                ...(early.breakdown === null ? {} : { filing: early.breakdown.filing }),
+                ...specStarting.runOptions(),
                 exitNow: exitNow(destroy),
                 dashboard: dashboard(shell, themeOf, desktop),
                 endLater: true,
@@ -1031,7 +986,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             ),
           )
           // A breakdown the run's end cut short stops with it.
-          if (early.breakdown !== null) yield* early.breakdown.stop
+          yield* specStarting.stop
           return { _tag: "Ran", outcome: ran, appearance: shell.appearance.get() } as const
         }),
       ).pipe(Effect.result)
@@ -1058,7 +1013,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           return yield* endWith(ended.nothing, output)
         case "Ran": {
           const code = yield* finish(ended.outcome, reportOut(themeOf(ended.appearance)), true)
-          return early.code ?? code
+          return specStarting.exitCode(code)
         }
       }
     }).pipe(Effect.provideContext(services.success), Effect.provide(ttyLayer))
