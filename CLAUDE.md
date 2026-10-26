@@ -78,7 +78,8 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
 - `scripts/check-own.sh` is `check_own` in `.orchestra/settings.json`, the check orchestra's workers
   run on their own change: tsc, biome and shellcheck on the files changed since main, and the tests
   that changed, import a changed module or name a changed file outside their imports
-  (`scripts/check-own.ts`); a change to the project's setup runs `scripts/check.sh` whole.
+  (`scripts/check-own.ts`; an `import type` or `export type … from` doesn't count, as Bun erases it
+  and tsc checks the types); a change to the project's setup runs `scripts/check.sh` whole.
   `TUTTI_SLOW=1` adds the slow tests, and does all the plain one does: when you want the slow
   suites, run `TUTTI_SLOW=1 scripts/check-own.sh` alone, not after the plain one.
 - Run tests through `scripts/test.sh`, not a bare `bun test`: `bunfig.toml` defines `NODE_ENV` as

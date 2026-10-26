@@ -3,10 +3,13 @@
 // A test file is touched when it changed, or when it reads a changed file: imports it, or a module
 // that imports it, at any depth, or names it by path outside its imports (a script it runs, a fixture
 // it reads): tests and their helpers only, as the product's own modules name paths of the projects
-// it runs in. Imports
-// are read from the text, not resolved by Bun, so type-only imports count too, and a deleted module
-// still counts for the files that import it. A change to the test runner (scripts/test.ts) or its
-// preload (test/warm-up.ts) touches every test.
+// it runs in. Imports are read from the text, not resolved by Bun, so a deleted module still counts
+// for the files that import it. A type-only statement (import type … from, export type … from)
+// doesn't count: Bun erases it, so the test runs the same whatever the module holds, and a type
+// error a change causes in a test is tsc's to find, which check-own.sh runs on the whole project
+// when TypeScript changed. import { type X } … still counts, as verbatimModuleSyntax keeps it as a
+// side-effect import. A change to the test runner (scripts/test.ts) or its preload
+// (test/warm-up.ts) touches every test.
 //
 // Run as `bun scripts/check-own.ts <changed file>...`: it prints the test files, one a line, or ALL
 // for the whole suite, reading the repository's src/, test/ and scripts/ from the current folder.
@@ -24,9 +27,20 @@ const isModule = (file: string): boolean => /\.(ts|tsx|js|mjs)$/.test(file)
 /** An import, re-export or require in a module's text, its specifier the first group. */
 const importPattern = /\b(?:from|import|require)\s*\(?\s*["']([^"'\n]+)["']/g
 
-/** The specifiers a module's text imports, re-exports or requires, relative or not. */
+/**
+ * A type-only import or re-export: import type X, import type { X }, import type * as X, export
+ * type { X } and export type * (as X), each from a specifier. import type from "x" imports a default
+ * named type, a value.
+ */
+const typeOnlyPattern =
+  /\b(?:import|export)\s+type\s+(?:\{[^}]*\}|\*(?:\s+as\s+[\w$]+)?|(?!from\s*["'])[\w$]+)\s*from\s*["'][^"'\n]+["']/g
+
+/**
+ * The specifiers a module's text imports, re-exports or requires, relative or not, leaving out
+ * type-only statements, which Bun erases.
+ */
 export const specifiers = (source: string): ReadonlyArray<string> =>
-  [...source.matchAll(importPattern)].map((match) => match[1] ?? "")
+  [...source.replace(typeOnlyPattern, "").matchAll(importPattern)].map((match) => match[1] ?? "")
 
 /**
  * A module's text with its imports, re-exports and requires taken out, for pathMentions to look in:

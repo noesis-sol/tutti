@@ -24,7 +24,7 @@ describe("specifiers", () => {
   test("reads imports, re-exports, dynamic imports and requires", () => {
     const source = [
       'import { a } from "../src/a.ts"',
-      'import type { B } from "./b"',
+      'import { type B } from "./b"',
       'export * from "../src/c.ts"',
       'import "./side-effect.ts"',
       'const d = await import("./d.ts")',
