@@ -3,16 +3,19 @@
 // placed in the files they mention, read from the checkout, for a fill's comparisons.
 import { join } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
+import { codeExtensions, codeIn } from "./codeText.ts"
 import type { Footprint } from "./footprint.ts"
 import { globHolds, globsMeet } from "./glob.ts"
-import { isDocument, repoPath } from "./repoFiles.ts"
+import { extensionOf, isDocument, repoPath } from "./repoFiles.ts"
 
 // A word of source code, for the functions a file mentions.
 const identifier = /[A-Za-z_]\w*/g
 
 /**
  * Whether a repository file mentions a function, by its name and its type when it gives one
- * (Loop.merge: Loop and merge), as identifiers. A file whose contents aren't known mentions none.
+ * (Loop.merge: Loop and merge), as identifiers of its code (codeIn): not in its comments or string
+ * literals. A file whose contents aren't known mentions none, nor does one that isn't code
+ * (codeExtensions): a document or a data file holds no function.
  */
 export type Mentions = (file: string, fn: string) => boolean
 
@@ -24,7 +27,9 @@ export const mentionsIn = (contents: ReadonlyMap<string, string>): Mentions => {
     if (known === undefined) {
       const content = contents.get(file)
       if (content === undefined) return false
-      known = new Set(content.match(identifier) ?? [])
+      known = codeExtensions.has(extensionOf(file))
+        ? new Set(codeIn(file, content).match(identifier) ?? [])
+        : new Set()
       words.set(file, known)
     }
     const dot = fn.indexOf(".")

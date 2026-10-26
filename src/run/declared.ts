@@ -7,13 +7,10 @@
 // there is none (a field of an object literal, a call written as a method would be) only holds
 // tickets apart as every name did before.
 import { Effect, FileSystem } from "effect"
+import { codeExtensions } from "./codeText.ts"
 import { readSource, realRoot } from "./overlap.ts"
 import { extensionOf, repoPath } from "./repoFiles.ts"
 import { setOf } from "./text.ts"
-
-/** The extensions of the source files declarations are read from: code, not prose or data. */
-export const codeExtensions = setOf(`go swift py js mjs cjs ts mts cts tsx jsx rs rb java kt kts c
-  h cc cpp hpp m mm sh bash zsh gradle cs php ex exs erl hs ml scala dart vue svelte`)
 
 // Words as alternatives of a regular expression.
 const either = (words: string): string => [...setOf(words)].join("|")
