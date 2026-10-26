@@ -496,6 +496,11 @@ export interface RunHolds {
   readonly usage: UsageView
   /** The battery's notice while it runs low (battery.ts): it holds nothing, but shows beside them. */
   readonly battery: string | null
+  /**
+   * What a spec's breakdown has filed while it files the rest of the run's scope (§ 4.14): it
+   * holds nothing, but shows as a banner beside them; none once it is over.
+   */
+  readonly filing?: string | null
 }
 
 export const noHolds: RunHolds = {
@@ -542,6 +547,10 @@ export const withMachineHold = (holds: RunHolds, full: boolean): RunHolds =>
 export const withBattery = (holds: RunHolds, notice: string | null): RunHolds =>
   holds.battery === notice ? holds : { ...holds, battery: notice }
 
+/** `holds` showing what a spec's breakdown has filed so far, `filing`, or none. */
+export const withFiling = (holds: RunHolds, filing: string | null): RunHolds =>
+  (holds.filing ?? null) === filing ? holds : { ...holds, filing }
+
 /** `holds` showing the usage limit's `view`. */
 export const showUsage = (holds: RunHolds, view: UsageView): RunHolds => ({ ...holds, usage: view })
 
@@ -562,6 +571,7 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
     ...(blockedTickets(holds).size > 0 ? [{ word: Tag.blocked, resetsAt: null }] : []),
     ...(holds.usage.hold === null ? [] : [holds.usage.hold]),
     ...(holds.machine ? [{ word: machineWord, resetsAt: null }] : []),
+    ...(holds.filing == null ? [] : [{ word: holds.filing, resetsAt: null }]),
   ],
   usage: holds.usage.usage,
   notice: holds.usage.notice,

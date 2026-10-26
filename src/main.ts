@@ -103,10 +103,18 @@ import {
   stoppedAtQuestions,
 } from "./run/overnightQuestions.ts"
 import { freeDisk, listNamed } from "./run/processes.ts"
-import { catchSignals, listen, logSuspends, type QuitRequest, quitBy, runMain } from "./run/quit.ts"
+import {
+  breakdownFailed,
+  catchSignals,
+  listen,
+  logSuspends,
+  type QuitRequest,
+  quitBy,
+  runMain,
+} from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
-import { specRun } from "./run/specRun.ts"
+import { type SpecOutcome, specRun } from "./run/specRun.ts"
 import { endRecord, Spending } from "./run/spending.ts"
 import {
   check,
@@ -737,6 +745,12 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       // --spec (src/run/specRun.ts): the spec committed and broken down where it needs to be, then
       // the run scoped to its root epic, which the lock then names. What it says goes to `out` and
       // `error`; a refinement is shown with `refine`. The exit code when it stopped the run.
+      // A breakdown going on as the run starts on its environment ticket, and its exit code where
+      // it stopped the run.
+      const early: {
+        breakdown: Extract<SpecOutcome, { readonly _tag: "Early" }> | null
+        code: number | null
+      } = { breakdown: null, code: null }
       const startSpec = (io: {
         readonly out: Out
         readonly error: (text: string) => Effect.Effect<void>
@@ -754,12 +768,31 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               refine: config.refine,
               timeLimit: config.settings.spec.timeout,
               effort: config.settings.spec.effort,
+              earlyIn: runScope,
             },
             { printer: makePrinter(io.out, theme), error: io.error, refine: io.refine },
           )
           if (outcome._tag === "Stopped") {
             yield* Effect.flatMap(endRecord(outcome.exitCode), events.emit)
             return outcome.exitCode
+          }
+          if (outcome._tag === "Early") {
+            early.breakdown = outcome
+            // The rest of the breakdown, as the run goes on its environment ticket: one that fails,
+            // or is stopped, stops the run, whose exit code is then the breakdown's.
+            yield* outcome.rest.pipe(
+              Effect.flatMap((rest) =>
+                rest._tag === "Stopped"
+                  ? Effect.andThen(
+                      Effect.sync(() => {
+                        early.code = rest.exitCode
+                      }),
+                      Queue.offer(quits, breakdownFailed),
+                    )
+                  : Effect.void,
+              ),
+              Effect.forkIn(runScope),
+            )
           }
           scope = outcome.root
           // The lock is held all the same if its holder can't be rewritten.
@@ -874,29 +907,27 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               drains,
               quits,
               ...awakeOption,
+              ...(early.breakdown === null ? {} : { filing: early.breakdown.filing }),
               exitNow: exitNow(),
               endLater: true,
             }),
           ),
         )
+        // A breakdown the run's end cut short stops with it.
+        if (early.breakdown !== null) yield* early.breakdown.stop
         // The report's theme, made only when the report prints: off the main screen's theme, it
         // asks the terminal for its background.
         const theme = mainTheme === undefined ? printedThemeOf(stdout) : Effect.succeed(mainTheme)
-        return yield* finish(ran, Effect.flatMap(theme, reportOut), false)
+        const code = yield* finish(ran, Effect.flatMap(theme, reportOut), false)
+        return early.code ?? code
       }
       if (!putInRenderer) {
         const stoppedAt = yield* putOnMainScreen
         if (stoppedAt !== null) return stoppedAt
       }
-      // A headless breakdown on the main screen, its spinner there, before the dashboard opens.
-      const refining = spec !== null && config.refine
-      if (spec !== null && !refining) {
-        const specStopped = yield* startSpec({ out: stdout, error, refine: Option.none() })
-        if (specStopped !== undefined) return specStopped
-      }
-      // The questions put in the renderer come first, and a refinement: the run begins below,
+      // The questions put in the renderer come first, and a spec's breakdown: the run begins below,
       // once they are.
-      if (asks === "no" && !putInRenderer && !refining) {
+      if (asks === "no" && !putInRenderer && spec === null) {
         yield* begin(Work.Tickets())
         if (config.feature === null && (yield* nothingReported)) return exitCodes.ok
       }
@@ -918,6 +949,22 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           })
           // Added before the renderer opens, so it runs once the renderer has closed.
           yield* Effect.addFinalizer(() => screen.release)
+          const refining = spec !== null && config.refine
+          if (spec !== null && !refining) {
+            // A headless breakdown on the main screen, its spinner there, before the dashboard
+            // opens; what it says once that is open is held for after it.
+            const specStopped = yield* startSpec({
+              out: screen.out,
+              error: screen.error,
+              refine: Option.none(),
+            })
+            if (specStopped !== undefined) {
+              return { _tag: "Stopped", exitCode: specStopped } as const
+            }
+            yield* begin(Work.Tickets())
+            const nothing = yield* nothingYet
+            if (nothing !== null) return nothing
+          }
           if (config.feature !== null) {
             // The organ lines on the main screen, the confirmation in the renderer.
             const stopped = yield* planFeature<RendererFailed>({
@@ -996,12 +1043,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                 drains,
                 quits,
                 ...awakeOption,
+                ...(early.breakdown === null ? {} : { filing: early.breakdown.filing }),
                 exitNow: exitNow(destroy),
                 dashboard: dashboard(shell, themeOf, desktop),
                 endLater: true,
               }),
             ),
           )
+          // A breakdown the run's end cut short stops with it.
+          if (early.breakdown !== null) yield* early.breakdown.stop
           return { _tag: "Ran", outcome: ran, appearance: shell.appearance.get() } as const
         }),
       ).pipe(Effect.result)
@@ -1026,8 +1076,10 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         }
         case "Nothing":
           return yield* endWith(ended.nothing, output)
-        case "Ran":
-          return yield* finish(ended.outcome, reportOut(themeOf(ended.appearance)), true)
+        case "Ran": {
+          const code = yield* finish(ended.outcome, reportOut(themeOf(ended.appearance)), true)
+          return early.code ?? code
+        }
       }
     }).pipe(Effect.provideContext(services.success), Effect.provide(ttyLayer))
     const found = yield* newer

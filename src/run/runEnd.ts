@@ -34,6 +34,11 @@ export interface Look {
    * its answer, which the ready poll gives once the time is up, rather than end on it.
    */
   readonly answering: boolean
+  /**
+   * Whether a spec's breakdown is still filing the tickets of the run's scope (§ 4.14), the run
+   * having started on its environment ticket: the run waits for them rather than end.
+   */
+  readonly filing?: boolean
   /** Whether the merge queue is settled now: nothing merging, queued or resolving. */
   readonly settled: boolean
   /** The triage calls under way. */
@@ -95,6 +100,7 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<T
     !overlapped &&
     !look.resuming &&
     !look.answering &&
+    look.filing !== true &&
     busy.length === 0 &&
     !toStart &&
     look.mergedBefore &&

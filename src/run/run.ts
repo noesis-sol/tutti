@@ -136,6 +136,7 @@ import {
   takesBack,
   takesNew,
   withBattery,
+  withFiling,
 } from "./holds.ts"
 import { make as makeHoldsGate } from "./holdsGate.ts"
 import { Ledger } from "./ledger.ts"
@@ -216,6 +217,12 @@ export interface RunOptions {
    * title line's badge. None for a run that doesn't keep the machine awake.
    */
   readonly keepingAwake?: Stream.Stream<boolean>
+  /**
+   * A spec's breakdown still filing the tickets of the run's scope, the run having started on its
+   * environment ticket (§ 4.14, src/run/specRun.ts): what it has filed so far, which the title line
+   * shows as a hold's banner, and the run waits for the rest rather than end, until it is null.
+   */
+  readonly filing?: SubscriptionRef.SubscriptionRef<string | null>
   /**
    * Leaves the report and the end record to `finish`, run once the dashboard's renderer is gone,
    * so that they follow the summary on the main screen (§ 5 item 14 "Then", § 7.1).
@@ -639,6 +646,19 @@ const runFrom = (
       )
     }
 
+    // A spec's breakdown filing the rest of the scope (specRun.ts): its banner, and a look at what
+    // it filed, as it files.
+    if (options.filing !== undefined) {
+      yield* watch(
+        Stream.runForEach(SubscriptionRef.changes(options.filing), (filing) =>
+          Effect.andThen(
+            changeHolds((now) => withFiling(now, filing)),
+            wakeUp("poll"),
+          ),
+        ),
+      )
+    }
+
     // Requests to quit (quitting.ts): the first quits, the second says what is under way and how to
     // abandon it, and the third ends tutti at once, saving the workers not merged or dropped.
     const quits = yield* makeQuits({
@@ -918,6 +938,9 @@ const runFrom = (
       environment,
       resuming: Effect.map(Ref.get(unslotted), (all) => all.size > 0),
       answering: Ref.get(autoAnswering),
+      ...(options.filing === undefined
+        ? {}
+        : { filing: Effect.map(SubscriptionRef.get(options.filing), (now) => now !== null) }),
       showEndOfRun: (tickets) => showEndOfRun(status, tickets),
       dashboard: screen !== null,
     })

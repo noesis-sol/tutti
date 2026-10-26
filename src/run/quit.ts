@@ -52,6 +52,15 @@ export const quitBy = (signal: QuitSignal): QuitRequest =>
     ? { how: "with Ctrl+C", again: "press Ctrl+C again" }
     : { how: `by ${signal}`, again: `send ${signal} again` }
 
+/**
+ * The request a spec's breakdown makes when it fails, or is stopped, as the run goes on its
+ * environment ticket (§ 4.14): the run stops as Ctrl+C stops it.
+ */
+export const breakdownFailed: QuitRequest = {
+  how: "because the spec's breakdown failed",
+  again: "press Ctrl+C",
+}
+
 /** The request of `q` in the quit box, or a second Ctrl+C in the dashboard (D15). */
 export const fromDashboard: QuitRequest = {
   how: "from the dashboard",

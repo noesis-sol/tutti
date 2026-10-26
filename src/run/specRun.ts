@@ -13,11 +13,14 @@
 import {
   Clock,
   Data,
+  Deferred,
   Duration,
   Effect,
+  Fiber,
   type FileSystem,
   Option,
   Result,
+  type Scope,
   Stream,
   SubscriptionRef,
 } from "effect"
@@ -33,7 +36,7 @@ import { type BreakdownState, filedAny } from "../agent/breakdownTools.ts"
 import { Filing } from "../agent/interviewTools.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import type { AppConfig } from "../cli/AppConfig.ts"
-import { duration, type Printer } from "../print/organLine.ts"
+import { duration, type OrganLine, type Printer } from "../print/organLine.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { type Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import type { Git, GitError } from "../services/Git.ts"
@@ -74,6 +77,11 @@ export interface SpecRequest {
   readonly effort: BreakdownStart["effort"]
   /** The files a spec run's setup wrote, committed with the spec; none where init had set it up. */
   readonly setup?: ReadonlyArray<string>
+  /**
+   * The scope a headless breakdown of a new spec goes on in once it has filed the environment
+   * ticket, the run starting on that ticket (Early): the run's. None: the run waits for the end.
+   */
+  readonly earlyIn?: Scope.Scope
 }
 
 /** Where the spec run talks. */
@@ -89,6 +97,20 @@ export interface SpecIO {
 /** How the spec run's start ended: the root epic to run, or stopped with an exit code. */
 export type SpecOutcome = Data.TaggedEnum<{
   Run: { readonly root: TicketId }
+  /**
+   * The breakdown filed the root epic and the environment ticket first: the run starts on that
+   * ticket while it files the rest, in the scope `earlyIn` gave (orchestra-qd9e.1). `filing` says
+   * what it has filed meanwhile, null once it is over; `rest` is how it ended, Run with the same
+   * root epic, or Stopped, which stops the run.
+   */
+  Early: {
+    readonly root: TicketId
+    readonly environment: TicketId
+    readonly filing: SubscriptionRef.SubscriptionRef<string | null>
+    readonly rest: Effect.Effect<SpecOutcome>
+    /** Stops the breakdown, as the run's end does where it hasn't finished. */
+    readonly stop: Effect.Effect<void>
+  }
   Stopped: { readonly exitCode: number }
 }>
 
@@ -294,6 +316,18 @@ const breakDown = (
     )
     // What the breakdown had filed when it was stopped, said on the way out.
     let filedNow: BreakdownState | null = null
+    // The early start: once the root epic and the environment ticket are filed, the run starts on
+    // that ticket, the breakdown going on in `request.earlyIn`; `filing` is its banner meanwhile.
+    const earlyIn =
+      request.earlyIn !== undefined && !request.refine && at.mode._tag === "New"
+        ? request.earlyIn
+        : null
+    const environment = yield* Deferred.make<{
+      readonly root: TicketId
+      readonly ticket: TicketId
+    }>()
+    const filing = yield* SubscriptionRef.make<string | null>(null)
+    let early = false
     const stoppedLines = () => {
       const root = filedNow?.root ?? known
       return [
@@ -306,119 +340,160 @@ const breakDown = (
       ]
     }
 
-    const ended = yield* Effect.scoped(
-      Effect.gen(function* () {
-        const started = yield* Effect.result(
-          startBreakdown({
-            spec,
-            commit: at.commit,
-            mode: at.mode,
-            refine: request.refine,
-            timeLimit: request.timeLimit,
-            effort: request.effort,
-          }),
-        )
-        if (Result.isFailure(started)) {
-          return { _tag: "NotStarted", why: started.failure.reason } as const
-        }
-        const breakdown = started.success
-        // What it has filed, as it files: the epics in the log, the spinner's count.
-        const said = new Set<string>()
-        const watch = (
-          spinner: { readonly detail: (text: string) => Effect.Effect<void> } | null,
-        ) =>
-          SubscriptionRef.changes(breakdown.state).pipe(
-            Stream.runForEach((now) =>
+    const whole = Effect.gen(function* () {
+      const ended = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const started = yield* Effect.result(
+            startBreakdown({
+              spec,
+              commit: at.commit,
+              mode: at.mode,
+              refine: request.refine,
+              timeLimit: request.timeLimit,
+              effort: request.effort,
+            }),
+          )
+          if (Result.isFailure(started)) {
+            return { _tag: "NotStarted", why: started.failure.reason } as const
+          }
+          const breakdown = started.success
+          // What it has filed, as it files: the epics in the log, the spinner's count.
+          const said = new Set<string>()
+          const watch = (spinner: OrganLine | null) =>
+            SubscriptionRef.changes(breakdown.state).pipe(
+              Stream.runForEach((now) =>
+                Effect.gen(function* () {
+                  filedNow = now
+                  if (now.root !== null && !said.has(now.root)) {
+                    said.add(now.root)
+                    if (known === null) yield* log.write(specLine`filed the root epic ${now.root}`)
+                  }
+                  const counted = `${plural(now.epics, "epic")}, ${plural(now.tickets, "ticket")}`
+                  if (earlyIn !== null && !early && now.root !== null && now.environment !== null) {
+                    early = true
+                    if (spinner !== null) yield* spinner.drop
+                    yield* log.write(
+                      specLine`the run starts on ${now.environment}, the environment ticket, while the breakdown files the rest of ${now.root}`,
+                    )
+                    yield* io.printer.say(
+                      `Starting on ${sanitizeLine(now.environment)}, the environment ticket, while the breakdown files the rest`,
+                    )
+                    // The banner first, so that the run never looks with the breakdown not filing.
+                    yield* SubscriptionRef.set(filing, `breaking the spec down: ${counted} filed`)
+                    yield* Deferred.succeed(environment, {
+                      root: now.root,
+                      ticket: now.environment,
+                    })
+                  }
+                  if (early) {
+                    yield* SubscriptionRef.set(filing, `breaking the spec down: ${counted} filed`)
+                  } else if (spinner !== null) {
+                    yield* spinner.detail(
+                      `${plural(now.epics, "epic")} · ${plural(now.tickets, "ticket")}`,
+                    )
+                  }
+                }),
+              ),
+              Effect.forkScoped,
+            )
+          if (request.refine && Option.isSome(io.refine)) {
+            yield* watch(null)
+            const filed = yield* SubscriptionRef.make(false)
+            yield* SubscriptionRef.changes(breakdown.state).pipe(
+              Stream.runForEach((now) => SubscriptionRef.set(filed, filedAny(now))),
+              Effect.forkScoped,
+            )
+            const shown = yield* inInterviewView(
+              {
+                description: `Break the spec ${spec.path} down into Beads tickets`,
+                filing: yield* SubscriptionRef.make<Filing>(Filing.None()),
+                filed,
+                leaveQuestion: "End the breakdown?",
+                send: breakdown.send,
+                leave: breakdown.leave,
+                ended: breakdown.ended,
+              },
+              io.refine.value,
+            )
+            return { _tag: "Ended", end: shown.ended, quit: shown.left === "quit" } as const
+          }
+          const spinner = yield* io.printer.organ(
+            update
+              ? "Updating the spec's tickets with Claude… (Ctrl+C stops)"
+              : "Breaking the spec down with Claude… (Ctrl+C stops)",
+          )
+          yield* watch(spinner)
+          // Every minute, how far it has got, in the log (which plain output prints).
+          yield* Effect.forkScoped(
+            Effect.forever(
               Effect.gen(function* () {
-                filedNow = now
-                if (now.root !== null && !said.has(now.root)) {
-                  said.add(now.root)
-                  if (known === null) yield* log.write(specLine`filed the root epic ${now.root}`)
-                }
-                if (spinner !== null) {
-                  yield* spinner.detail(
-                    `${plural(now.epics, "epic")} · ${plural(now.tickets, "ticket")}`,
-                  )
-                }
+                yield* Effect.sleep(Duration.minutes(1))
+                const now = yield* Clock.currentTimeMillis
+                const state = filedNow
+                yield* log.write(
+                  specLine`breaking the spec down: ${plural(state?.epics ?? 0, "epic")} and ${plural(state?.tickets ?? 0, "ticket")} filed so far (${duration(now - began)})`,
+                )
               }),
             ),
-            Effect.forkScoped,
           )
-        if (request.refine && Option.isSome(io.refine)) {
-          yield* watch(null)
-          const filed = yield* SubscriptionRef.make(false)
-          yield* SubscriptionRef.changes(breakdown.state).pipe(
-            Stream.runForEach((now) => SubscriptionRef.set(filed, filedAny(now))),
-            Effect.forkScoped,
+          const end = yield* breakdown.ended.pipe(
+            Effect.onInterrupt(() =>
+              Effect.andThen(early ? Effect.void : spinner.drop, breakdown.leave),
+            ),
           )
-          const shown = yield* inInterviewView(
-            {
-              description: `Break the spec ${spec.path} down into Beads tickets`,
-              filing: yield* SubscriptionRef.make<Filing>(Filing.None()),
-              filed,
-              leaveQuestion: "End the breakdown?",
-              send: breakdown.send,
-              leave: breakdown.leave,
-              ended: breakdown.ended,
-            },
-            io.refine.value,
-          )
-          return { _tag: "Ended", end: shown.ended, quit: shown.left === "quit" } as const
-        }
-        const spinner = yield* io.printer.organ(
-          update
-            ? "Updating the spec's tickets with Claude… (Ctrl+C stops)"
-            : "Breaking the spec down with Claude… (Ctrl+C stops)",
-        )
-        yield* watch(spinner)
-        // Every minute, how far it has got, in the log (which plain output prints).
-        yield* Effect.forkScoped(
-          Effect.forever(
-            Effect.gen(function* () {
-              yield* Effect.sleep(Duration.minutes(1))
-              const now = yield* Clock.currentTimeMillis
-              const state = filedNow
-              yield* log.write(
-                specLine`breaking the spec down: ${plural(state?.epics ?? 0, "epic")} and ${plural(state?.tickets ?? 0, "ticket")} filed so far (${duration(now - began)})`,
-              )
-            }),
-          ),
-        )
-        const end = yield* breakdown.ended.pipe(
-          Effect.onInterrupt(() => Effect.andThen(spinner.drop, breakdown.leave)),
-        )
-        if (end._tag === "Filed") {
-          yield* spinner.done(
-            update
-              ? `Spec's tickets updated: ${treeCount(end.state.epics, end.state.tickets)} filed`
-              : `Spec broken down: ${treeCount(end.state.epics, end.state.tickets)}`,
-          )
-        } else {
-          yield* spinner.warn(update ? "Spec's tickets not updated" : "Spec not broken down")
-        }
-        return { _tag: "Ended", end, quit: false } as const
-      }),
-    ).pipe(
-      Effect.onInterrupt(() =>
-        Effect.gen(function* () {
-          for (const text of stoppedLines()) yield* io.error(text)
-          yield* log.write(specLine`stopped while ${spec.path} was broken down`)
+          if (early) {
+            // The spinner went as the run started: its outcome is said below.
+          } else if (end._tag === "Filed") {
+            yield* spinner.done(
+              update
+                ? `Spec's tickets updated: ${treeCount(end.state.epics, end.state.tickets)} filed`
+                : `Spec broken down: ${treeCount(end.state.epics, end.state.tickets)}`,
+            )
+          } else {
+            yield* spinner.warn(update ? "Spec's tickets not updated" : "Spec not broken down")
+          }
+          return { _tag: "Ended", end, quit: false } as const
         }),
-      ),
+      ).pipe(
+        Effect.onInterrupt(() =>
+          Effect.gen(function* () {
+            for (const text of stoppedLines()) yield* io.error(text)
+            yield* log.write(specLine`stopped while ${spec.path} was broken down`)
+          }),
+        ),
+      )
+      const took = duration((yield* Clock.currentTimeMillis) - began)
+      if (ended._tag === "NotStarted") {
+        const why = sanitizeLine(ended.why)
+        yield* io.error(`tutti couldn't break the spec down: its session couldn't start: ${why}`)
+        yield* log.write(specLine`claude session gave no result (it couldn't start: ${why})`)
+        return stopped(exitCodes.tool)
+      }
+      return yield* afterBreakdown(request, io, {
+        ...at,
+        end: ended.end,
+        quit: ended.quit,
+        took,
+        stoppedLines: stoppedLines(),
+      })
+    })
+    if (earlyIn === null) return yield* whole
+    // The breakdown in the run's scope, the run starting once it has filed the environment ticket.
+    const fiber = yield* Effect.forkIn(
+      whole.pipe(Effect.ensuring(SubscriptionRef.set(filing, null))),
+      earlyIn,
     )
-    const took = duration((yield* Clock.currentTimeMillis) - began)
-    if (ended._tag === "NotStarted") {
-      const why = sanitizeLine(ended.why)
-      yield* io.error(`tutti couldn't break the spec down: its session couldn't start: ${why}`)
-      yield* log.write(specLine`claude session gave no result (it couldn't start: ${why})`)
-      return stopped(exitCodes.tool)
-    }
-    return yield* afterBreakdown(request, io, {
-      ...at,
-      end: ended.end,
-      quit: ended.quit,
-      took,
-      stoppedLines: stoppedLines(),
+    const first = yield* Effect.raceFirst(
+      Effect.map(Fiber.join(fiber), (outcome) => ({ _tag: "Done", outcome }) as const),
+      Effect.map(Deferred.await(environment), (filed) => ({ _tag: "Early", filed }) as const),
+    ).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber)))
+    if (first._tag === "Done") return first.outcome
+    return SpecOutcome.Early({
+      root: first.filed.root,
+      environment: first.filed.ticket,
+      filing,
+      rest: Fiber.join(fiber),
+      stop: Fiber.interrupt(fiber),
     })
   })
 

@@ -45,6 +45,8 @@ export interface LoopParts {
   readonly resuming: Effect.Effect<boolean>
   /** Whether a question --auto-answer takes waits for its time (runEnd.ts's Look). */
   readonly answering: Effect.Effect<boolean>
+  /** Whether a spec's breakdown is still filing the scope's tickets (runEnd.ts's Look). */
+  readonly filing?: Effect.Effect<boolean>
   /** Shows the end-of-run box, naming the workers waiting on you; null for none. */
   readonly showEndOfRun: (tickets: ReadonlyArray<TicketId> | null) => Effect.Effect<void>
   /** Whether the run has a dashboard, which shows the end-of-run box. */
@@ -80,6 +82,7 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         canTake: takesNew(yield* parts.gate),
         resuming: yield* parts.resuming,
         answering: yield* parts.answering,
+        filing: parts.filing === undefined ? false : yield* parts.filing,
         settled: isSettled(yield* queue.state),
         triagePending: yield* parts.triage.pending,
         dashboard: parts.dashboard,
