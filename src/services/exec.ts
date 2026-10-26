@@ -100,20 +100,30 @@ const stopGroup = (group: number, grace: Duration.Duration): Effect.Effect<void>
       } catch {
         // Gone already.
       }
-      return Effect.repeat(Effect.sync(left), {
-        while: (still) => still,
-        schedule: Schedule.spaced(groupPoll),
-      }).pipe(
-        Effect.interruptible,
-        Effect.timeoutOption(grace),
-        Effect.andThen(
-          Effect.sync(() => {
-            if (left()) killTree(group, before)
-          }),
-        ),
+      return Effect.andThen(
+        nativeWait(() => !left(), Duration.toMillis(grace)),
+        Effect.sync(() => {
+          if (left()) killTree(group, before)
+        }),
       )
     }),
   )
+
+/**
+ * Ends once `done` holds or `ms` have passed, by native time, as the spawner's own waits do: a
+ * scenario's TestClock stands still, and the kill must not wait on it.
+ */
+const nativeWait = (done: () => boolean, ms: number): Effect.Effect<void> =>
+  Effect.callback<void>((resume) => {
+    const deadline = Date.now() + ms
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const poll = () => {
+      if (Date.now() >= deadline || done()) resume(Effect.void)
+      else timer = setTimeout(poll, Duration.toMillis(groupPoll))
+    }
+    poll()
+    return Effect.sync(() => clearTimeout(timer))
+  })
 
 /** How much of each of stdout and stderr is kept in memory, unless the command says otherwise. */
 export const defaultMaxOutputBytes = 16 * 1024 * 1024
