@@ -233,6 +233,14 @@ export const startBreakdown = (
 
     const left = yield* Ref.make(false)
     const nudged = yield* Ref.make(false)
+    /** Its end once its session's state says no more: left from the view, or gone with `why`. */
+    const endedWithout = (why: string) =>
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.get(tools.state)
+        return (yield* Ref.get(left))
+          ? BreakdownEnd.Left({ state })
+          : BreakdownEnd.Failed({ why, state })
+      })
     /** The end the session's `state` makes with what the tools filed, if it is one. */
     const endOf = (state: WorkerState): Effect.Effect<Option.Option<BreakdownEnd>> =>
       Effect.gen(function* () {
@@ -311,19 +319,9 @@ export const startBreakdown = (
       Stream.map((end) => end.value),
       Stream.runHead,
       Effect.flatMap(
-        Option.match({
-          onNone: () =>
-            Effect.map(SubscriptionRef.get(tools.state), (state) =>
-              BreakdownEnd.Failed({ why: "its session went", state }),
-            ),
-          onSome: Effect.succeed,
-        }),
+        Option.match({ onNone: () => endedWithout("its session went"), onSome: Effect.succeed }),
       ),
-      Effect.catchTag("AgentGone", (gone) =>
-        Effect.map(SubscriptionRef.get(tools.state), (state) =>
-          BreakdownEnd.Failed({ why: gone.why, state }),
-        ),
-      ),
+      Effect.catchTag("AgentGone", (gone) => endedWithout(gone.why)),
     )
     const ended = start.refine
       ? watched

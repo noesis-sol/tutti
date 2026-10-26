@@ -303,7 +303,7 @@ const breakDown = (
     const stopped = (exitCode: number) => SpecOutcome.Stopped({ exitCode })
     if (request.refine && Option.isNone(io.refine)) {
       yield* io.error(
-        "tutti couldn't break the spec down: refining the spec needs you at a terminal, and tutti's input or output isn't one: tutti --spec <file> breaks it down unattended",
+        "tutti couldn't break the spec down: refining the spec needs you at tutti's screen, in a terminal and without --plain: tutti --spec <file> breaks it down unattended",
       )
       yield* log.write(specLine`not refined: no terminal`)
       return stopped(exitCodes.setup)

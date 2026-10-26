@@ -162,30 +162,43 @@ export const scenario = (options: {
     }).pipe(
       Effect.scoped,
       Effect.provide(
-        scriptedHost(
-          options.script === undefined ? {} : { [breakdownWorker]: options.script(recording) },
-        ).pipe(
-          Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
-          ),
-          Layer.provideMerge(
-            Layer.mergeAll(
-              BunServices.layer,
-              logLayer(),
-              eventsLayer(),
-              configLayer(appConfig({}, repo)),
-              beadsLayer(options.seeds ?? []),
-              memoryGit({
-                dir: repo,
-                files: { "README.md": "# shop\n", [spec.path]: options.committed ?? spec.text },
-              }),
-            ),
-          ),
-        ),
+        specLayers({
+          repo,
+          scripts:
+            options.script === undefined ? {} : { [breakdownWorker]: options.script(recording) },
+          seeds: options.seeds ?? [],
+          files: { "README.md": "# shop\n", [spec.path]: options.committed ?? spec.text },
+        }),
       ),
     ),
   ).then((value) => ({ ...value, repo, out: out.join(""), errors }))
 }
+
+/**
+ * The layers a spec run's start runs on in the main checkout `repo`: the scripted host playing
+ * `scripts`, an in-memory Beads over `seeds` and git over `files`, the real file system.
+ */
+export const specLayers = (options: {
+  readonly repo: string
+  readonly scripts: Readonly<Record<string, Script>>
+  readonly seeds?: ReadonlyArray<Seed>
+  readonly files: Readonly<Record<string, string>>
+}) =>
+  scriptedHost(options.scripts).pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+    ),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        BunServices.layer,
+        logLayer(),
+        eventsLayer(),
+        configLayer(appConfig({}, options.repo)),
+        beadsLayer(options.seeds ?? []),
+        memoryGit({ dir: options.repo, files: options.files }),
+      ),
+    ),
+  )
 
 /** The root epic and environment ticket file_root files. */
 export const rootInput = {
