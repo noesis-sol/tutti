@@ -39,6 +39,7 @@ import { Git, gitTooOld } from "../services/Git.ts"
 import { checkoutChanges } from "../services/gitStatus.ts"
 import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { readSpec, type Spec } from "./spec.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
 import { type Line, start, Tag } from "./log.ts"
@@ -84,6 +85,8 @@ export interface Started {
    * Anthropic one with the ANTHROPIC_API_KEY it bills, redacted.
    */
   readonly organs: OrganProvider
+  /** The spec a spec run builds (--spec), read and checked; none for none. */
+  readonly spec?: Spec | null
   /** What the run says once as it starts, but doesn't stop it. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -249,7 +252,7 @@ const checkBranch = (repo: string) =>
 const shownFiles = 5
 
 /** The problem with uncommitted changes in the main checkout (`checkoutChanges`). */
-const checkCleanTree = (repo: string) =>
+const checkCleanTree = (repo: string, except: ReadonlyArray<string> = []) =>
   Effect.gen(function* () {
     const git = yield* Git
     const status = yield* Effect.result(git.status(repo))
@@ -259,7 +262,8 @@ const checkCleanTree = (repo: string) =>
         `Could not read the main checkout's changes: ${error._tag === "GitFailed" ? error.stderr.trim() : `git took longer than ${formatDuration(error.timeLimit)}`}.`,
       ]
     }
-    const changed = checkoutChanges(status.success)
+    // A spec run's spec may be left uncommitted: the run commits it.
+    const changed = checkoutChanges(status.success).filter((path) => !except.includes(path))
     if (changed.length === 0) return []
     const named = changed.slice(0, shownFiles).map(sanitizeLine).join(", ")
     const more = changed.length > shownFiles ? ` and ${changed.length - shownFiles} more` : ""
@@ -418,11 +422,17 @@ export const check = <R>(checking: Checking<R>) =>
     // in orchestra; without one, such a project has no worker prompt to check.
     const ownPrompt = config.prompt !== resolvePath(repo, workerPromptFile)
     const notSetUp = !ownPrompt && !(yield* setUp(repo))
+    // A spec run's spec (§ 4.14): read before the tree is checked, which it may be uncommitted in.
+    const spec =
+      config.spec === null
+        ? Result.succeed(null)
+        : yield* readSpec(config.spec, config.specFrom, checking.cwd, repo)
+    const specPath = Result.isSuccess(spec) && spec.success !== null ? [spec.success.path] : []
 
     const [branch, tree, beads, account, mcp, prompt, leftWorkers] = yield* Effect.all(
       [
         checkBranch(repo),
-        checkCleanTree(repo),
+        checkCleanTree(repo, specPath),
         checkBeads(repo, checking.beads(repo), notSetUp, config.ticket),
         collect(
           "the login probe",
@@ -452,6 +462,7 @@ export const check = <R>(checking: Checking<R>) =>
         : [`${linked} is a linked worktree. Run this from the main checkout.`]),
       ...(Result.isFailure(branch) ? [branch.failure] : []),
       ...tree,
+      ...(Result.isFailure(spec) ? [spec.failure] : []),
       ...beads,
       ...claude.problems,
       ...account.problems,
@@ -470,6 +481,7 @@ export const check = <R>(checking: Checking<R>) =>
       problems.length > 0 ||
       Result.isFailure(branch) ||
       Result.isFailure(organs) ||
+      Result.isFailure(spec) ||
       Option.isNone(configured.value) ||
       Option.isNone(account.value) ||
       Option.isNone(mcp.value) ||
@@ -491,6 +503,7 @@ export const check = <R>(checking: Checking<R>) =>
       mcp: mcp.value.value,
       account: account.value.value,
       organs: organs.success,
+      spec: spec.success,
       warnings: [
         ...warnings,
         ...templates,
@@ -529,6 +542,7 @@ export const memoryEstimate = (concurrency: number): string =>
  */
 export const startBlock = (started: Started, version: string): ReadonlyArray<Line> => {
   const { config } = started
+  const spec = started.spec ?? null
   const concurrency = config.settings.concurrent
   const ticketLimit = config.settings.workers.ticket_limit
   const servers = [
@@ -539,10 +553,13 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
     version,
     repo: config.repo,
     base: started.base,
-    // A --feature run is scoped to the epic it filed, as orchestra's ScopeLabel says.
-    ...(config.ticket === null
-      ? {}
-      : { scope: `${config.feature === null ? "ticket" : "feature"} ${config.ticket}` }),
+    // A --feature run is scoped to the epic it filed, as orchestra's ScopeLabel says; a spec run is
+    // named by its spec, its root epic in a note.
+    ...(spec !== null
+      ? { scope: `spec ${spec.path}` }
+      : config.ticket === null
+        ? {}
+        : { scope: `${config.feature === null ? "ticket" : "feature"} ${config.ticket}` }),
     ...(config.overnight ? { overnight: true } : {}),
     settings: [
       ["limit", config.limit === null ? "none" : String(config.limit)],
@@ -558,6 +575,9 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
       ? {}
       : { ends: autoAnswerName(config.autoAnswer, formatDuration(config.autoAnswer)) }),
     notes: [
+      ...(spec === null || config.ticket === null
+        ? []
+        : [`spec: epic ${config.ticket}, broken down from: ${spec.path}`]),
       billingLine(started.account.billing, started.organs._tag === "Anthropic"),
       permissionModeLine(started.account.permissionMode),
       ...(started.mcp.note === null ? [] : [started.mcp.note]),

@@ -70,7 +70,7 @@ import { type FeatureIO, inRenderer, planAndFile, scopedTo } from "./run/feature
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { type GettingReady, gettingReady, readySteps } from "./run/gettingReady.ts"
 import { exitCodes } from "./run/holds.ts"
-import { interview, interviewEnding } from "./run/interview.ts"
+import { type InterviewScreen, interview, interviewEnding } from "./run/interview.ts"
 import { type KeepAwakePlan, keepAwake, keepAwakePlan, lidNote } from "./run/keepAwake.ts"
 import { Load, liveLoad } from "./run/load.ts"
 import { runStarted } from "./run/localTime.ts"
@@ -96,6 +96,7 @@ import { freeDisk, listNamed } from "./run/processes.ts"
 import { catchSignals, listen, logSuspends, type QuitRequest, quitBy, runMain } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
+import { specRun } from "./run/specRun.ts"
 import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { layer as trashLayer } from "./run/trash.ts"
@@ -473,6 +474,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       branch: base,
       ...(config.ticket === null ? {} : { scope: config.ticket }),
       ...(config.feature === null ? {} : { feature: config.feature }),
+      ...(started.spec == null ? {} : { spec: started.spec.path }),
     }
     const locked = yield* Effect.result(
       Effect.flatMap(RunLock, (lock) =>
@@ -539,8 +541,9 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           ? { _tag: "Plain" }
           : { _tag: "Box", width: (yield* tty.size).columns, styles: themeStyles(mainTheme) }
 
-      // The run's scope: --ticket's, or the epic --feature filed.
+      // The run's scope: --ticket's, the epic --feature filed, or a spec's root epic.
       let scope = config.ticket
+      const spec = started.spec ?? null
       yield* ready.step(readySteps.backlog)
       // bd failing to list the tickets left unmerged is something to run: the run lists them again,
       // and stops on it. Only the nothing check needs them: read once, as the start question opens
@@ -623,8 +626,9 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             version,
             repo: config.repo,
             branch: base,
-            ...(config.ticket === null ? {} : { scope: config.ticket }),
+            ...(scope === null ? {} : { scope }),
             ...(feature === null ? {} : { feature }),
+            ...(spec === null ? {} : { spec: spec.path }),
             concurrency: config.settings.concurrent,
             billing: config.billing,
             permission_mode: started.account.permissionMode.inEffect,
@@ -669,6 +673,37 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             return featured.exitCode
           }
           scope = featured.epic
+          return undefined
+        })
+      // --spec (src/run/specRun.ts): the spec committed and broken down where it needs to be, then
+      // the run scoped to its root epic, which the lock then names. What it says goes to `out` and
+      // `error`; a refinement is shown with `refine`. The exit code when it stopped the run.
+      const startSpec = (io: {
+        readonly out: Out
+        readonly error: (text: string) => Effect.Effect<void>
+        readonly refine: Option.Option<InterviewScreen>
+      }) =>
+        Effect.gen(function* () {
+          if (spec === null) return undefined
+          yield* ready.end
+          const theme = yield* printedThemeOf(io.out)
+          const outcome = yield* specRun(
+            {
+              spec,
+              repo: config.repo,
+              refine: config.refine,
+              timeLimit: config.settings.spec.timeout,
+              effort: config.settings.spec.effort,
+            },
+            { printer: makePrinter(io.out, theme), error: io.error, refine: io.refine },
+          )
+          if (outcome._tag === "Stopped") {
+            yield* Effect.flatMap(endRecord(outcome.exitCode), events.emit)
+            return outcome.exitCode
+          }
+          scope = outcome.root
+          // The lock is held all the same if its holder can't be rewritten.
+          yield* Effect.ignore(lock.rewrite({ ...holder, scope: outcome.root }))
           return undefined
         })
       const canAsk = tty.stdinIsTty && tty.stdoutIsTty
@@ -733,6 +768,9 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       if (mode._tag === "Plain") {
         const stoppedAt = yield* putOnMainScreen
         if (stoppedAt !== null) return stoppedAt
+        // A refinement needs the renderer, which plain output doesn't open.
+        const specStopped = yield* startSpec({ out: stdout, error, refine: Option.none() })
+        if (specStopped !== undefined) return specStopped
         const work = yield* askThenBegin(
           asks === "lines" && mainTheme !== undefined
             ? Effect.andThen(
@@ -790,8 +828,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         const stoppedAt = yield* putOnMainScreen
         if (stoppedAt !== null) return stoppedAt
       }
-      // The questions put in the renderer come first: the run begins below, once they are.
-      if (asks === "no" && !putInRenderer) {
+      // A headless breakdown on the main screen, its spinner there, before the dashboard opens.
+      const refining = spec !== null && config.refine
+      if (spec !== null && !refining) {
+        const specStopped = yield* startSpec({ out: stdout, error, refine: Option.none() })
+        if (specStopped !== undefined) return specStopped
+      }
+      // The questions put in the renderer come first, and a refinement: the run begins below,
+      // once they are.
+      if (asks === "no" && !putInRenderer && !refining) {
         yield* begin(Work.Tickets())
         if (config.feature === null && (yield* nothingReported)) return exitCodes.ok
       }
@@ -827,6 +872,20 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           const shell = yield* screen.shell
           const clipboard = yield* liveClipboard(shell.renderer, tty.overSsh)
           const desktop = { clipboard, urlOpener: yield* liveUrlOpener(clipboard, tty.overSsh) }
+          if (refining) {
+            // The refinement in the Interview view, in this renderer; then the run.
+            const specStopped = yield* startSpec({
+              out: screen.out,
+              error: screen.error,
+              refine: Option.some(interviewScreen(shell, themeOf, desktop)),
+            })
+            if (specStopped !== undefined) {
+              return { _tag: "Stopped", exitCode: specStopped } as const
+            }
+            yield* begin(Work.Tickets())
+            const nothing = yield* nothingYet
+            if (nothing !== null) return nothing
+          }
           if (putInRenderer) {
             // What it says is held for the main screen until the renderer is gone, in its theme now.
             const theme = themeOf(shell.appearance.get())

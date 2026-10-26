@@ -245,6 +245,13 @@ export const Settings = Schema.Struct({
     triage: Schema.Boolean.pipe(withDefault(true)),
     review: Schema.Boolean.pipe(withDefault(true)),
   }).pipe(withDefault({})),
+  /** A spec run's breakdown (§ 4.14). */
+  spec: Schema.Struct({
+    /** How long a headless breakdown may take. */
+    timeout: PositiveDuration.pipe(withDefault("60m")),
+    /** The effort it runs at; null: Claude Code's own default. */
+    effort: Effort.pipe(withDefault("high")),
+  }).pipe(withDefault({})),
   queue: Schema.Struct({
     /** The issue types never taken from `bd ready`; [] takes every type. */
     exclude_types: Schema.Array(IssueType).pipe(withDefault(["epic"])),

@@ -98,6 +98,8 @@ const mapped: Readonly<Record<string, ReadonlyArray<string>>> = {
   resolve_timeout: ["merge", "resolve_timeout"],
   check_hand_backs: ["merge", "check_hand_backs"],
   merge_train: ["merge", "train"],
+  spec_timeout: ["spec", "timeout"],
+  spec_effort: ["spec", "effort"],
   requires: ["requires"],
 }
 
@@ -116,8 +118,6 @@ const unplaced: Readonly<Record<string, string>> = {
   keep_awake: "tutti takes it for each run, as --keep-awake, not from its settings",
   overnight_free_disk_gb:
     "tutti takes it for each run, as --overnight-free-disk (20 GB by default), not from its settings",
-  spec_timeout: "tutti has no spec runs yet, whose breakdown it limits",
-  spec_effort: "tutti has no spec runs yet, whose breakdown's effort it sets",
   questions: "tutti has no answer talk yet for it to say how to open",
 }
 

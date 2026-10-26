@@ -365,6 +365,57 @@
       "additionalProperties": false,
       "default": {}
     },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "type": "string",
+          "pattern": "^(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+$",
+          "description": "a time such as \"30m\", \"2h\" or \"1h30m\"",
+          "default": "60m"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "low"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "medium"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "high"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "xhigh"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "max"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "high"
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
     "queue": {
       "type": "object",
       "properties": {

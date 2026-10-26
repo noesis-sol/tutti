@@ -26,6 +26,7 @@ import type {
   McpSdkServerConfigWithInstance,
   SDKMessage,
   SDKUserMessage,
+  SdkMcpToolDefinition,
 } from "@anthropic-ai/claude-agent-sdk"
 import {
   Clock,
@@ -108,6 +109,9 @@ export interface InterviewSetup {
     readonly allowed: ReadonlyArray<string>
     readonly headless: boolean
     readonly effort: (typeof efforts)[number] | null
+    /** The tools on `server`, for what reads the session's kind: the scripted host's tests. */
+    // biome-ignore lint/suspicious/noExplicitAny: createSdkMcpServer's own type, for tools of any shape
+    readonly tools: ReadonlyArray<SdkMcpToolDefinition<any>>
   }
 }
 

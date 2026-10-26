@@ -5,11 +5,12 @@
 // child (a `claude`, a git command, a check) inherits a descriptor and keeps the lock after tutti.
 //
 // Each file then names its holder in JSON: tutti.lock the run (pid, start time, version, branch,
-// scope or feature, `"init": true` for init), orchestra.lock what orchestra writes there (pid,
+// scope, feature or spec, `"init": true` for init), orchestra.lock what orchestra writes there (pid,
 // started, version as `tutti <version>`, branch), so an orchestra started meanwhile refuses naming
 // tutti's PID. A file is opened without O_TRUNC and rewritten only once locked: truncating first
 // would wipe the holder's JSON from a file someone else holds. Once held, tutti.lock can be
-// rewritten, for a feature chosen at the start question after the lock was taken.
+// rewritten, for a feature chosen at the start question after the lock was taken, or a spec run's
+// root epic once its breakdown has filed it.
 //
 // The git folder is writable from every worktree, so a worker could put a symbolic link at a lock
 // file's name, or a hard link to a file of its user's: tutti would then write its JSON over that
@@ -55,6 +56,8 @@ export const Holder = Schema.Struct({
   branch: Schema.String,
   scope: Schema.optionalKey(Schema.String),
   feature: Schema.optionalKey(Schema.String),
+  /** A spec run's spec, its path in the repository. */
+  spec: Schema.optionalKey(Schema.String),
   init: Schema.optionalKey(Schema.Literal(true)),
 })
 
@@ -71,6 +74,7 @@ const seenFields = {
   branch: Schema.String,
   scope: Schema.String,
   feature: Schema.String,
+  spec: Schema.String,
   init: Schema.Literal(true),
 }
 

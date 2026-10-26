@@ -95,7 +95,12 @@ export const startFailure = (
 /** A run's checks of its sessions' starts; each logs what it skips once in the run. */
 export interface SessionChecks {
   /** Checks a session's first system/init, `init`, given `servers`: the setup problem it shows. */
-  readonly first: (init: unknown, servers: ChosenServers) => Effect.Effect<string | undefined>
+  readonly first: (
+    init: unknown,
+    servers: ChosenServers,
+    /** The mode this session asked for, where it isn't the workers': a headless breakdown's. */
+    own?: string,
+  ) => Effect.Effect<string | undefined>
   /**
    * Checks a session before it is sent anything, from its initialize answer, `initialized`, and
    * its mcpServerStatus() answer, `status`, when it gave one: the setup problem they show. What
@@ -130,12 +135,17 @@ export const makeChecks = (input: {
         if (first) yield* log.write(line`${uncheckedLine(field, what)}`)
       })
 
-    const first = (init: unknown, servers: ChosenServers) =>
+    const first = (init: unknown, servers: ChosenServers, own?: string) =>
       Effect.gen(function* () {
         const mode = decodePermissionMode(init)
-        if (Result.isFailure(mode)) {
+        // A session of its own mode, a headless breakdown's, says nothing of the workers'.
+        if (own === undefined && Result.isFailure(mode)) {
           yield* unchecked("permissionMode", `the permission mode in effect is ${requested}`)
-        } else if (mode.success.permissionMode !== requested) {
+        } else if (
+          own === undefined &&
+          Result.isSuccess(mode) &&
+          mode.success.permissionMode !== requested
+        ) {
           const inEffect = mode.success.permissionMode
           if (!(yield* Ref.getAndSet(modeSaid, true))) {
             yield* log.write(line`${permissionModeLine({ requested, inEffect })}`)

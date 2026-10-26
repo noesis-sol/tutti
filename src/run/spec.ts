@@ -20,6 +20,7 @@ import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { Data, Effect, FileSystem, Option, Result } from "effect"
+import { compareIds } from "../plan/plan.ts"
 import { Beads, type BeadsError, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, type GitError, type Sha } from "../services/Git.ts"
 import { runFolder } from "../services/Worktrees.ts"
@@ -242,12 +243,14 @@ const metadataText = (issue: Issue, key: string): string | null => {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null
 }
 
-/** The root epics among the spec's issues: epics whose parent isn't one of them. */
+/** The root epics among the spec's issues, by ID: epics whose parent isn't one of them. */
 export const rootsOf = (issues: ReadonlyArray<Issue>): ReadonlyArray<Issue> => {
   const ids = new Set<string>(issues.map((issue) => issue.id))
-  return issues.filter(
-    (issue) => issue.type === "epic" && (issue.parent === undefined || !ids.has(issue.parent)),
-  )
+  return issues
+    .filter(
+      (issue) => issue.type === "epic" && (issue.parent === undefined || !ids.has(issue.parent)),
+    )
+    .sort((a, b) => compareIds(a.id, b.id))
 }
 
 /** What to do with the spec's issues, `issues`, for the spec of SHA-256 `sha256`. */
@@ -410,7 +413,8 @@ export const checkFiled = (root: TicketId, path: string): Effect.Effect<Filed, B
     const spec = yield* specIssues(path)
     const warnings: Array<string> = []
     const named = (issues: ReadonlyArray<Issue>) =>
-      issues
+      [...issues]
+        .sort((a, b) => compareIds(a.id, b.id))
         .slice(0, 5)
         .map((issue) => sanitizeLine(issue.id))
         .join(", ") + (issues.length > 5 ? ` and ${issues.length - 5} more` : "")

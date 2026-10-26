@@ -108,6 +108,7 @@ export const Tag = {
   filed: "FILED",
   organ: "ORGAN",
   feature: "FEATURE",
+  spec: "SPEC",
   triageFailed: "TRIAGE_FAILED",
   predictFailed: "PREDICT_FAILED",
   usage: "USAGE",

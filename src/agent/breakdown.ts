@@ -221,6 +221,7 @@ export const startBreakdown = (
           allowed: qualifiedBreakdownTools,
           headless: !start.refine,
           effort: start.effort,
+          tools: tools.tools,
         },
       }),
     })

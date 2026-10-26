@@ -40,6 +40,9 @@
         "feature": {
           "type": "string"
         },
+        "spec": {
+          "type": "string"
+        },
         "concurrency": {
           "type": "integer",
           "minimum": 0,

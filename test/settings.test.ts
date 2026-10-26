@@ -106,6 +106,7 @@ describe("settings", () => {
       },
       templates: { worker_prompt: 5, verifier: 2, check_suite_skill: 1 },
       organs: { effort: null, model: null, triage: true, review: true },
+      spec: { timeout: minutes(60), effort: "high" },
       queue: { exclude_types: ["epic"], footprint: true, shared_files: [] },
       merge: {
         resolve_conflicts: true,
@@ -138,6 +139,7 @@ describe("settings", () => {
     },
     templates: { worker_prompt: 0, verifier: 0, check_suite_skill: 0 },
     organs: { effort: null, model: null, triage: true, review: true },
+    spec: { timeout: minutes(60), effort: "high" },
     queue: { exclude_types: ["epic"], footprint: true, shared_files: [] },
     merge: {
       resolve_conflicts: true,

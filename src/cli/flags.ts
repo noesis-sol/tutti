@@ -195,6 +195,24 @@ export const runFlags = {
     metavar: "request",
     description: "plan this feature request as an epic and its tickets, then run them",
   }),
+  spec: runFlag("spec", text("a file"), {
+    metavar: "file",
+    description:
+      "build what this spec, a Markdown or plain-text file, describes: commit it, break it down into tickets under a root epic, and run them; run again, carry on or update them",
+  }),
+  refine: runFlag("refine", onOff, {
+    onOff: true,
+    description: "with --spec, break the spec down with you, asking what it leaves open",
+  }),
+  specTimeout: runFlag("spec-timeout", positiveTime, {
+    metavar: "time",
+    description:
+      "how long a spec's breakdown may take, e.g. 90m (default: .tutti/settings.json, else 60m)",
+  }),
+  specEffort: runFlag("spec-effort", oneOf(efforts), {
+    metavar: "level",
+    description: `the effort a spec's breakdown runs at: ${efforts.join(", ")} (default: .tutti/settings.json, else high)`,
+  }),
   yes: runFlag("yes", onOff, {
     onOff: true,
     description: "with --feature, file the plan without asking",

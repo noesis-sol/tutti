@@ -223,6 +223,8 @@ interface Live {
   readonly initialized: Deferred.Deferred<boolean>
   /** When it was last asked how full its context window is, in epoch milliseconds. */
   readonly measured: { at: number | undefined }
+  /** The permission mode it asked for where it isn't the workers': a headless breakdown's. */
+  readonly ownMode?: string
 }
 
 /**
@@ -455,7 +457,7 @@ export const layer = (
       /** Its first system/init checked, a Starting session is Open, or ends over a setup problem. */
       const born = (session: Live, init: SDKMessage) =>
         Effect.gen(function* () {
-          const problem = yield* checks.first(init, session.servers)
+          const problem = yield* checks.first(init, session.servers, session.ownMode)
           if (problem !== undefined) return yield* setupProblem(session, problem)
           yield* Effect.sync(() => {
             if (starting(session)) sessions.set(session.ticket, Lifecycle.Open({ session }))
@@ -749,6 +751,10 @@ export const layer = (
                 startupFailure,
                 initialized,
                 measured: { at: undefined },
+                ...(spec.permissionMode === undefined ||
+                spec.permissionMode === config.settings.workers.permission_mode
+                  ? {}
+                  : { ownMode: spec.permissionMode }),
               }
               yield* Effect.sync(() => {
                 const current = sessions.get(ticket)

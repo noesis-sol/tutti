@@ -18,7 +18,14 @@ import { layer as memoryLock } from "../src/testing/RunLock.ts"
 import { TicketCount, Work } from "../src/ui/questions.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 
-const undecided: Deciding = { tickets: false, ticket: null, feature: null, plain: false, limit: 40 }
+const undecided: Deciding = {
+  tickets: false,
+  ticket: null,
+  feature: null,
+  spec: null,
+  plain: false,
+  limit: 40,
+}
 const both = { stdinIsTty: true, stdoutIsTty: true }
 const dashboard: OutputMode = { _tag: "Dashboard" }
 

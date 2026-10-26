@@ -59,8 +59,6 @@ describe("orchestra's settings tutti has no place for", () => {
       30,
       "tutti takes it for each run, as --overnight-free-disk (20 GB by default), not from its settings",
     ],
-    ["spec_timeout", "90m", "tutti has no spec runs yet, whose breakdown it limits"],
-    ["spec_effort", "max", "tutti has no spec runs yet, whose breakdown's effort it sets"],
     ["questions", "key", "tutti has no answer talk yet for it to say how to open"],
   ] as const) {
     test(`${key} is left out with why`, () => {

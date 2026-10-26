@@ -150,6 +150,8 @@ export const Start = Schema.Struct({
   scope: optional(Schema.String),
   /** The feature request. */
   feature: optional(Schema.String),
+  /** A spec run's spec, its path in the repository; `scope` is its root epic. */
+  spec: optional(Schema.String),
   concurrency: Count,
   billing: Schema.Literals(billings),
   /** The permission mode in effect, as the login probe reports it (§ 4.13). */

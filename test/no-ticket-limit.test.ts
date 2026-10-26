@@ -75,7 +75,7 @@ describe("the run's configuration", () => {
   })
 
   test("no limit decides nothing for the start question; a limit of 0 does", () => {
-    const flags = { tickets: false, ticket: null, feature: null, plain: false } as const
+    const flags = { tickets: false, ticket: null, feature: null, spec: null, plain: false } as const
     expect(decided({ ...flags, limit: null })).toBe(false)
     expect(decided({ ...flags, limit: 0 })).toBe(true)
   })

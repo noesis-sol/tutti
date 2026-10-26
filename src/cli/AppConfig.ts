@@ -92,6 +92,15 @@ export interface AppConfigValue {
   readonly feature: string | null
   /** File a --feature plan without asking (--yes). */
   readonly yes: boolean
+  /**
+   * The spec to build (--spec, TUTTI_SPEC), as given: a path from the folder tutti was started in,
+   * which the startup checks read (src/run/spec.ts's readSpec); null for none.
+   */
+  readonly spec: string | null
+  /** What gave the spec: `--spec` or `TUTTI_SPEC`. */
+  readonly specFrom: string
+  /** Break the spec down with you (--refine). */
+  readonly refine: boolean
   /** The most tickets this run starts (--limit), or null for no limit. */
   readonly limit: number | null
   readonly notify: boolean
@@ -277,7 +286,39 @@ export const resolveAll = (
   if (feature === null && flagGiven("yes") && yes) {
     problems.push("--yes only applies with --feature.")
   }
+  const spec = pick("spec", null)
+  const refine = pick("refine", false)
+  if (spec !== null) {
+    const from = flagGiven("spec") ? "--spec" : runFlags.spec.variable
+    if (feature !== null) {
+      problems.push(
+        `${from} can't be combined with --feature: one builds a spec, the other a feature request.`,
+      )
+    }
+    if (ticket !== null) {
+      problems.push(
+        `${from} can't be combined with --ticket (or TUTTI_TICKET): a spec run is scoped to the root epic of its tree.`,
+      )
+    }
+    if (flagGiven("tickets") && tickets) {
+      problems.push(
+        `${from} can't be combined with --tickets: one builds a spec, the other runs the current tickets.`,
+      )
+    }
+    if (overnight) {
+      problems.push(
+        `${from} can't be combined with --overnight: an overnight run works on the current tickets, or --ticket's.`,
+      )
+    }
+  } else if (refine) {
+    problems.push("--refine only applies with --spec.")
+  }
   const limit = pick("limit", null)
+  if (spec !== null && limit === 0) {
+    problems.push(
+      "--spec would break the spec down and run none of it: --limit (or TUTTI_LIMIT) is 0. Raise --limit.",
+    )
+  }
   if (feature !== null && limit === 0) {
     // The run would end at once, the plan filed and none of it started.
     problems.push(
@@ -360,11 +401,18 @@ export const resolveAll = (
         ...settings.merge,
         resolve_conflicts: pick("resolveConflicts", settings.merge.resolve_conflicts),
       },
+      spec: {
+        timeout: pick("specTimeout", settings.spec.timeout),
+        effort: pick("specEffort", settings.spec.effort),
+      },
     },
     tickets,
     ticket,
     feature,
     yes,
+    spec,
+    specFrom: flagGiven("spec") ? "--spec" : runFlags.spec.variable,
+    refine,
     limit,
     notify: pick("notify", user.notify),
     plain: pick("plain", false),

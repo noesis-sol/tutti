@@ -1,7 +1,7 @@
 // The start question's side of the run (§ 5 item 3, § 7.1): whether a run asks it, what it says
 // of the current tickets, and how a run asks it. A run asks once the startup checks have passed
 // and it holds the run lock, when stdin and stdout are TTYs and no flag decides: --tickets,
-// --ticket (or TUTTI_TICKET), --feature and --plain each do, and so does a --limit the run has
+// --ticket (or TUTTI_TICKET), --feature, --spec and --plain each do, and so does a --limit the run has
 // already reached, as orchestra's. It asks in the command's one renderer, before the dashboard,
 // or as lines (plain/forms.ts) when the terminal can't show one: TERM=dumb, or fewer than 256
 // colours. A cancelled question ends the run before it started, exit 130.
@@ -21,13 +21,17 @@ import * as scope from "./scope.ts"
 export type Asking = "renderer" | "lines" | "no"
 
 /** The flags that decide what the run works on, so that it doesn't ask. */
-export type Deciding = Pick<AppConfigValue, "tickets" | "ticket" | "feature" | "plain" | "limit">
+export type Deciding = Pick<
+  AppConfigValue,
+  "tickets" | "ticket" | "feature" | "spec" | "plain" | "limit"
+>
 
 /** Whether a flag decides what the run works on: the start question isn't asked then. */
 export const decided = (config: Deciding): boolean =>
   config.tickets ||
   config.ticket !== null ||
   config.feature !== null ||
+  config.spec !== null ||
   config.plain ||
   (config.limit !== null && config.limit <= 0)
 
