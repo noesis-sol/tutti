@@ -733,32 +733,34 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           quit: Queue.offer(quits, breakdownFailed),
         })
       let specStarting = wireSpec()
-      // `screen`, an Out on the renderer's screen, draws the organ lines there as well, unstyled,
-      // while `out` holds them.
+      // With the renderer open, `shell`, its appearance is the theme's: asking the terminal for its
+      // background would take stdin from the renderer, which then gets no key. `drawn`, an Out on
+      // its screen, draws the organ lines there as well, unstyled, while `out` holds them.
       const startSpec = (io: {
         readonly out: Out
         readonly error: (text: string) => Effect.Effect<void>
         readonly refine: Option.Option<InterviewScreen>
-        readonly screen?: { readonly out: Out; readonly appearance: Appearance }
+        readonly shell?: Shell
+        readonly drawn?: Out
       }) =>
         Effect.gen(function* () {
           if (spec === null) return undefined
           yield* ready.end
-          const theme = yield* printedThemeOf(io.out)
+          const theme =
+            io.shell === undefined
+              ? yield* printedThemeOf(io.out)
+              : themeOf(io.shell.appearance.get())
           // Drawn on the screen, its organ lines are held for the main screen with their final
           // lines alone, as off a terminal.
           const printer = makePrinter(
-            io.screen === undefined ? io.out : { ...io.out, tty: false },
+            io.drawn === undefined ? io.out : { ...io.out, tty: false },
             theme,
           )
           const begun = yield* specStarting.start(spec, config, {
             printer:
-              io.screen === undefined
+              io.drawn === undefined
                 ? printer
-                : bothPrinters(
-                    printer,
-                    makePrinter(io.screen.out, themeOf(io.screen.appearance, false)),
-                  ),
+                : bothPrinters(printer, makePrinter(io.drawn, themeOf(theme.appearance, false))),
             error: io.error,
             refine: io.refine,
           })
@@ -979,7 +981,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                     out: screen.out,
                     error: screen.error,
                     refine: Option.none(),
-                    screen: { out: drawn.out, appearance: shell.appearance.get() },
+                    shell,
+                    drawn: drawn.out,
                   }),
                   Effect.as(Deferred.await(stop), "stopped" as const),
                 )
@@ -1024,6 +1027,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               out: screen.out,
               error: screen.error,
               refine: Option.some(interviewScreen(shell, themeOf, desktop)),
+              shell,
             })
             if (specStopped !== undefined) {
               return { _tag: "Stopped", exitCode: specStopped } as const
@@ -1063,6 +1067,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                     out: screen.out,
                     error: screen.error,
                     refine: Option.some(interviewScreen(shell, themeOf, desktop)),
+                    shell,
                   })
                 : yield* breakdownOnScreen(shell)
               if (specStopped !== undefined) {
