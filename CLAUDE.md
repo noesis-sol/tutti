@@ -91,6 +91,10 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   than the files named. Each file runs in a fresh global, so a test can't rely on another file's
   leftovers. `TUTTI_TEST_PARALLEL=1` runs them in one process. A test's time limit is 15 s where
   its file sets none, as the files running side by side load the machine.
+- A run killed outright can leave `bun test --parallel`'s workers spinning, each in a process group
+  of its own: `scripts/test.sh` kills, as it starts, the test workers of runs whose process has gone
+  (their `TMPDIR` names the run's folder), and prints `scripts/test.sh: killed N test workers left
+  by an earlier run (pid P)`.
 - The contract tests against the real Agent SDK, `test/contract/sdk.test.ts`, run only with
   `TUTTI_LIVE=1` (`TUTTI_LIVE=1 scripts/test.sh test/contract/sdk.test.ts`), with the SDK's embedded
   Claude Code and this machine's Claude login. They spend a few cents of real model turns. Run them

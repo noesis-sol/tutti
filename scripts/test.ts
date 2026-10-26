@@ -17,6 +17,8 @@
 // machine leaves its temp files in, but in /tmp, as the SDK extracts Claude Code there
 // (src/agent/claudeExtract.ts); TUTTI_TEST_TMPDIR names another. A run killed before it could
 // remove its folder (SIGKILL) leaves it, named with the run's process ID: the next run removes it.
+// Such a run can leave bun test's workers running too, each in a process group of its own: the next
+// run kills those whose TMPDIR is the folder of a run that has gone (killLeftWorkers).
 //
 // A worker's run is given its share of the machine's cores, TUTTI_CORES (or ORCHESTRA_CORES, under
 // orchestra), as other workers' checks run beside it (tutti-kkb.24). bun test runs the files in
@@ -47,7 +49,7 @@ import {
   symlinkSync,
 } from "node:fs"
 import { availableParallelism, tmpdir } from "node:os"
-import { delimiter, join, resolve } from "node:path"
+import { basename, delimiter, join, resolve } from "node:path"
 import { paneVariable, sessionVariable } from "../src/agent/env.ts"
 import { processAlive } from "../src/services/processTree.ts"
 
@@ -526,9 +528,107 @@ export const removeStaleRuns = (
   return removed
 }
 
+/** One of this user's processes, as killLeftWorkers reads it: its command line and its TMPDIR. */
+export interface UserProcess {
+  readonly pid: number
+  readonly command: string
+  readonly tmpdir: string | undefined
+}
+
+/**
+ * This user's processes in ps -E's output (macOS), a line each: the PID, the command line, then
+ * the process's environment, which ps shows for this user's own processes only. The TMPDIR read is
+ * the line's last.
+ */
+export const parsePsEnvironment = (text: string): ReadonlyArray<UserProcess> =>
+  text.split("\n").flatMap((line) => {
+    const match = /^\s*(\d+)\s+(.*)$/.exec(line)
+    if (match?.[1] === undefined || match[2] === undefined) return []
+    const tmpdirs = [...match[2].matchAll(/(?:^|\s)TMPDIR=(\S+)/g)]
+    return [{ pid: Number(match[1]), command: match[2], tmpdir: tmpdirs.at(-1)?.[1] }]
+  })
+
+/** Whether the command line is a bun test --parallel worker's. */
+export const testWorkerCommand = (command: string): boolean =>
+  /(?:^|\/)bun test --test-worker(?:\s|$)/.test(command)
+
+/**
+ * The test workers of runs that have ended, by the run's process ID: those whose TMPDIR is a run's
+ * temp folder (runTempPid) named with the ID of a process that has gone, other than this run's.
+ */
+export const leftWorkers = (
+  processes: ReadonlyArray<UserProcess>,
+  alive: (pid: number) => boolean,
+): ReadonlyMap<number, ReadonlyArray<number>> => {
+  const left = new Map<number, Array<number>>()
+  for (const { pid, command, tmpdir } of processes) {
+    if (tmpdir === undefined || !testWorkerCommand(command)) continue
+    const run = runTempPid(basename(tmpdir.replace(/\/+$/, "")))
+    if (run === undefined || run === process.pid || alive(run)) continue
+    left.set(run, [...(left.get(run) ?? []), pid])
+  }
+  return left
+}
+
+/** This user's processes, with their TMPDIR: from ps -E on macOS, from /proc on Linux. */
+export const userProcesses = (platform: NodeJS.Platform = process.platform) => {
+  if (platform === "darwin") {
+    const uid = String(process.getuid?.() ?? "")
+    const ps = Bun.spawnSync(["ps", "-E", "-ww", "-U", uid, "-o", "pid=,command="])
+    return ps.exitCode === 0 ? parsePsEnvironment(ps.stdout.toString()) : []
+  }
+  let names: ReadonlyArray<string>
+  try {
+    names = readdirSync("/proc")
+  } catch {
+    return []
+  }
+  return names.flatMap((name): ReadonlyArray<UserProcess> => {
+    if (!/^\d+$/.test(name)) return []
+    try {
+      // Another user's environ can't be read, so their processes are skipped.
+      if (lstatSync(`/proc/${name}`).uid !== process.getuid?.()) return []
+      const command = readFileSync(`/proc/${name}/cmdline`, "utf8").split("\0").join(" ").trim()
+      const environment = readFileSync(`/proc/${name}/environ`, "utf8").split("\0")
+      const tmpdir = environment.findLast((entry) => entry.startsWith("TMPDIR="))
+      return [{ pid: Number(name), command, tmpdir: tmpdir?.slice("TMPDIR=".length) }]
+    } catch {
+      return []
+    }
+  })
+}
+
+const sigkill = (pid: number): boolean => {
+  try {
+    process.kill(pid, "SIGKILL")
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Kills, with SIGKILL, the bun test workers runs that have ended left running (leftWorkers), and
+ * returns a line for each such run. A run killed outright (SIGKILL, from Claude Code's Bash time
+ * limit or a kill -9) can leave its workers behind, each in a process group of its own, and a
+ * worker spinning in synchronous code ignores SIGTERM: two spun for days (tutti-gr4z.1).
+ */
+export const killLeftWorkers = (
+  processes: ReadonlyArray<UserProcess> = userProcesses(),
+  alive: (pid: number) => boolean = processAlive,
+  kill: (pid: number) => boolean = sigkill,
+): ReadonlyArray<string> =>
+  [...leftWorkers(processes, alive)].flatMap(([run, workers]) => {
+    const killed = workers.filter(kill).length
+    if (killed === 0) return []
+    const noun = killed === 1 ? "test worker" : "test workers"
+    return [`scripts/test.sh: killed ${killed} ${noun} left by an earlier run (pid ${run})`]
+  })
+
 if (import.meta.main) {
   const base = runTempBase(process.env, process.platform)
   removeStaleRuns(base)
+  for (const line of killLeftWorkers()) console.error(line)
   const temp = mkdtempSync(join(base, `${runTempPrefix}${process.pid}-`))
   const remove = () => rmSync(temp, { recursive: true, force: true })
   for (const [signal, code] of [

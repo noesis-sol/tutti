@@ -6,6 +6,12 @@
 // starts no more), the groups of its members' descendants are read from ps, and each is killed
 // with the group.
 //
+// A check's tree (§ 3.3 "Time limits") is killed the same way: bun test --parallel runs each test
+// worker in a group of its own, and a SIGKILL of the check's group alone, before bun test has
+// handled its SIGTERM, leaves them running. A worker whose coordinator has gone has PID 1
+// (launchd) for its parent, out of the tree, so exec lists the tree before its SIGTERM and killTree
+// kills that listing's groups too.
+//
 // The kill is synchronous, as the SDK's child.kill("SIGKILL") it stands behind is, so ps is run
 // with node:child_process's spawnSync rather than effect/process.
 import { spawnSync } from "node:child_process"
@@ -82,23 +88,56 @@ const signalGroup = (group: number, signal: NodeJS.Signals): boolean => {
 }
 
 /** The process table, from ps; empty when ps can't be run. */
-const processTable = (): Array<ProcessRow> => {
+export const processTable = (): Array<ProcessRow> => {
   const ps = spawnSync("ps", psArgs, { encoding: "utf8", timeout: 5000, windowsHide: true })
   return ps.status === 0 && typeof ps.stdout === "string" ? parseProcesses(ps.stdout) : []
 }
 
+/** The process group of tutti itself, in `processes`, as a list to spare (descendantGroups). */
+export const ownGroup = (processes: ReadonlyArray<ProcessRow>): Array<number> => {
+  const own = processes.find((p) => p.pid === process.pid)?.pgid
+  return own === undefined ? [] : [own]
+}
+
+/**
+ * The groups killTree kills before `group`: the descendants' groups in `processes`
+ * (descendantGroups), then those of `before`, an earlier listing, that a member's death has since
+ * cut from the tree, where a process `before` listed in one is still in it, so that no group whose
+ * ID was reused since is named.
+ */
+export const treeGroups = (
+  processes: ReadonlyArray<ProcessRow>,
+  before: ReadonlyArray<ProcessRow>,
+  group: number,
+  spare: ReadonlyArray<number> = [],
+): Array<number> => {
+  const now = descendantGroups(processes, group, spare)
+  const listed = new Set(before.map((p) => `${p.pid} ${p.pgid}`))
+  const earlier = descendantGroups(before, group, spare).filter(
+    (descendant) =>
+      !now.includes(descendant) &&
+      processes.some((p) => p.pgid === descendant && listed.has(`${p.pid} ${p.pgid}`)),
+  )
+  return [...now, ...earlier]
+}
+
 /**
  * Kills the process group `group` leads with SIGKILL, and first the groups of its members'
- * descendants (descendantGroups), never tutti's own: Claude Code's detached Bash shells with it.
- * Never a missing or bad PID.
+ * descendants (descendantGroups), never tutti's own: Claude Code's detached Bash shells with it,
+ * and a check's test workers. With `before`, the process table listed before the group was first
+ * signalled, the descendants' groups it had go too (treeGroups), the group gone or not. Never a
+ * missing or bad PID.
  */
-export const killTree = (group: number | undefined): void => {
+export const killTree = (
+  group: number | undefined,
+  before: ReadonlyArray<ProcessRow> = [],
+): void => {
   if (group === undefined || !Number.isInteger(group) || group <= 1) return
-  if (!signalGroup(group, "SIGSTOP")) return
+  const stopped = signalGroup(group, "SIGSTOP")
+  if (!stopped && before.length === 0) return
   const processes = processTable()
-  const own = processes.find((p) => p.pid === process.pid)?.pgid
-  for (const descendant of descendantGroups(processes, group, own === undefined ? [] : [own])) {
+  for (const descendant of treeGroups(processes, before, group, ownGroup(processes))) {
     signalGroup(descendant, "SIGKILL")
   }
-  signalGroup(group, "SIGKILL")
+  if (stopped) signalGroup(group, "SIGKILL")
 }

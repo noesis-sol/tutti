@@ -1,11 +1,13 @@
 // Every external command tutti runs (git, bd, checks, setup) goes through this module (§ 3.3 "Time
 // limits", § 3.2). A command starts detached, the leader of a process group of its own, so the
-// terminal's signals reach tutti alone. Its scope kills the whole group (SIGTERM, then SIGKILL after
-// a grace) when it closes or the fiber is interrupted. Its time limit kills the group itself when
-// it expires: a fiber of its own sends the signals, so the limit holds even while the caller is
-// uninterruptible (§ 3.4). The limit counts the time the machine is awake (Wake.ts), so a command
-// isn't killed at the wake for the time the machine slept. A kill -9 of tutti runs neither, so the group also has a reaper
-// (src/services/reaper.ts) that ends it then, with the same grace; the reaper goes with the group.
+// terminal's signals reach tutti alone. Its scope stops the group (stopGroup: SIGTERM, then after a
+// grace SIGKILL to its whole process tree, the groups of its members' descendants too, as bun test
+// --parallel's workers each lead one) when it closes or the fiber is interrupted. Its time limit
+// stops the group itself when it expires: a fiber of its own sends the signals, so the limit holds
+// even while the caller is uninterruptible (§ 3.4). The limit counts the time the machine is awake
+// (Wake.ts), so a command isn't killed at the wake for the time the machine slept. A kill -9 of
+// tutti runs neither, so the group also has a reaper (src/services/reaper.ts) that ends its tree
+// then, with the same grace; the reaper goes with the group.
 // Bun's node:child_process can lose a command's exit and its output (tutti-cje): exec stops waiting
 // for them a grace after the group has gone, and fails with CommandNotRun. A process that left the
 // group can hold its output open: exec reads it for a grace after the leader has exited, then stops.
@@ -29,7 +31,7 @@ import {
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { withoutGitLocal } from "./gitEnv.ts"
-import { processAlive } from "./processTree.ts"
+import { descendantGroups, killTree, ownGroup, processAlive, processTable } from "./processTree.ts"
 import { startReaper, stopReaper } from "./reaper.ts"
 import { sleepAwake } from "./Wake.ts"
 
@@ -78,6 +80,40 @@ const groupGoneFor = (group: number, grace: Duration.Duration): Effect.Effect<vo
       schedule: Schedule.spaced(groupPoll),
     },
   ).pipe(Effect.andThen(Effect.sleep(grace)), Effect.interruptible)
+
+/**
+ * Stops the process group `group` leads: SIGTERM, then SIGKILL to its process tree (killTree) once
+ * `grace` has passed with the group, or a group of its members' descendants, still there. The tree
+ * is listed before the SIGTERM: a test worker whose coordinator has gone has PID 1 for its parent,
+ * out of the tree, and a SIGKILL that reaches bun test before it has handled the SIGTERM leaves its
+ * workers running. It runs to its end once started, so an interruption can't list the tree anew.
+ */
+const stopGroup = (group: number, grace: Duration.Duration): Effect.Effect<void> =>
+  Effect.uninterruptible(
+    Effect.suspend(() => {
+      if (!processAlive(-group)) return Effect.void
+      const before = processTable()
+      const descendants = descendantGroups(before, group, ownGroup(before))
+      const left = () => processAlive(-group) || descendants.some((d) => processAlive(-d))
+      try {
+        process.kill(-group, "SIGTERM")
+      } catch {
+        // Gone already.
+      }
+      return Effect.repeat(Effect.sync(left), {
+        while: (still) => still,
+        schedule: Schedule.spaced(groupPoll),
+      }).pipe(
+        Effect.interruptible,
+        Effect.timeoutOption(grace),
+        Effect.andThen(
+          Effect.sync(() => {
+            if (left()) killTree(group, before)
+          }),
+        ),
+      )
+    }),
+  )
 
 /** How much of each of stdout and stderr is kept in memory, unless the command says otherwise. */
 export const defaultMaxOutputBytes = 16 * 1024 * 1024
@@ -273,8 +309,8 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
             cwd: command.cwd,
             env: withoutGitLocal(command.baseEnv ?? process.env, command.env),
             detached: true,
+            // No forceKillAfter: the SIGKILL is stopGroup's, to the tree, not the spawner's.
             killSignal: "SIGTERM",
-            forceKillAfter: grace,
             stdin:
               command.stdin === undefined
                 ? "ignore"
@@ -287,17 +323,12 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       group = handle.pid
       groups.add(group)
       const leader = group
-      reaper = yield* Effect.sync(() =>
-        startReaper(leader, Duration.toSeconds(Duration.fromInputUnsafe(grace))),
-      )
+      const killGrace = Duration.fromInputUnsafe(grace)
+      reaper = yield* Effect.sync(() => startReaper(leader, Duration.toSeconds(killGrace), true))
       const exitLost = groupGoneFor(leader, lostGrace)
-      // The spawner's kill ends by waiting on the exit too.
-      const kill = Effect.raceFirst(
-        Effect.interruptible(
-          Effect.ignore(handle.kill({ killSignal: "SIGTERM", forceKillAfter: grace })),
-        ),
-        exitLost,
-      )
+      const kill = stopGroup(leader, killGrace)
+      // Added after the spawn, so it runs before the spawner's finalizer, whose SIGTERM it gives.
+      yield* Effect.addFinalizer(() => kill)
 
       // A leader still running at the limit has timed out, whatever code it exits with once killed.
       // One whose group has gone has ended, its exit lost.

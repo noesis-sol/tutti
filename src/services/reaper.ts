@@ -15,16 +15,18 @@ export const reapGrace = 10
 // `read` returns once tutti's end of the pipe closes; the group is then given its SIGTERM, and its
 // SIGKILL if it is still there after the grace. With "tree", that SIGKILL is processTree.ts's
 // killTree: the group stopped, then the groups of its members' descendants killed (descendantTree,
-// descendantGroups's), and the group last.
+// descendantGroups's), and the group last. The tree is listed before the SIGTERM too, as exec's
+// stopGroup lists it, and the grace lasts while a group of that listing is there: a test worker
+// whose bun test has gone is out of the tree by then, its parent PID 1.
 const descendantTree =
   'ps -A -o pid=,ppid=,pgid= | awk -v g="$1" -v me="$(ps -o pgid= -p $$)" \'{ pid[NR] = $1; ppid[NR] = $2; pgid[NR] = $3; if ($3 == g) tree[$1] = 1 } END { do { more = 0; for (i = 1; i <= NR; i++) if (!(pid[i] in tree) && (ppid[i] in tree)) { tree[pid[i]] = 1; more = 1 } } while (more); for (i = 1; i <= NR; i++) if ((pid[i] in tree) && pgid[i] > 1 && pgid[i] != g && pgid[i] != me && !(pgid[i] in seen)) { seen[pgid[i]] = 1; print pgid[i] } }\''
-const reaperScript = `read _; kill -TERM -"$1" 2>/dev/null; i=0; while [ "$i" -lt "$2" ] && kill -0 -"$1" 2>/dev/null; do sleep 1; i=$((i + 1)); done; if [ "$3" = tree ] && kill -STOP -"$1" 2>/dev/null; then for d in $(${descendantTree}); do kill -KILL -"$d" 2>/dev/null; done; fi; kill -KILL -"$1" 2>/dev/null`
+const reaperScript = `read _; before=; if [ "$3" = tree ]; then before=$(${descendantTree}); fi; left() { kill -0 -"$1" 2>/dev/null && return 0; for d in $before; do kill -0 -"$d" 2>/dev/null && return 0; done; return 1; }; kill -TERM -"$1" 2>/dev/null; i=0; while [ "$i" -lt "$2" ] && left "$1"; do sleep 1; i=$((i + 1)); done; if [ "$3" = tree ]; then kill -STOP -"$1" 2>/dev/null; for d in $before $(${descendantTree}); do kill -KILL -"$d" 2>/dev/null; done; fi; kill -KILL -"$1" 2>/dev/null`
 
 /**
  * Starts the reaper of the process group whose leader is `group`, with a grace of `grace` whole
  * seconds, and returns it, or undefined when `group` is no PID to reap. With `tree`, its SIGKILL
  * takes the groups of the group's descendants too (killTree): a worker's, whose Claude Code's Bash
- * shells lead groups of their own.
+ * shells lead groups of their own, and a command's, whose bun test workers do.
  */
 export const startReaper = (
   group: number | undefined,

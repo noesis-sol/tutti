@@ -37,7 +37,9 @@ const reapersOf = (group: number): Array<number> =>
   Bun.spawnSync(["ps", "-ax", "-o", "pid=,command="])
     .stdout.toString()
     .split("\n")
-    .filter((line) => line.includes("/bin/sh -c read _;") && line.endsWith(` reaper ${group} 1`))
+    .filter(
+      (line) => line.includes("/bin/sh -c read _;") && line.endsWith(` reaper ${group} 1 tree`),
+    )
     .map((line) => Number.parseInt(line.trim(), 10))
 
 /** Waits for a file a command writes, and returns its words as numbers. */
