@@ -6,6 +6,7 @@
 // checked as properties. The head's layout is worker-view-head.test.tsx's.
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+import { detectLinks } from "@opentui/core"
 import { Effect, Exit, Queue, Scope } from "effect"
 import fc from "fast-check"
 import { Transcripts, transcriptVersion } from "../src/agent/Transcripts.ts"
@@ -550,6 +551,44 @@ describe("the description's and the whole ticket's text", () => {
         const written = words.map((word, i) => (i % 3 === 0 ? `**${word}**` : word)).join(" ")
         const segments = inlineSegments(proseOf(written), theme)
         expect(segments.map((each) => each.text).join("")).toBe(words.join(" "))
+      }),
+    )
+  })
+
+  test("a bare URL is in the link colour, as in the whole ticket; its closing punctuation not", () => {
+    const segments = inlineSegments(
+      "See https://example.com/a), the [docs](https://example.com/d) and `https://example.com/c`.",
+      theme,
+    )
+    expect(segments.map((each) => [each.text, each.look])).toEqual([
+      ["See ", null],
+      ["https://example.com/a", theme.look("link")],
+      ["), the ", null],
+      ["docs", theme.look("link")],
+      [" and ", null],
+      ["https://example.com/c", theme.look("code")],
+      [".", null],
+    ])
+  })
+
+  test("the box draws as links the bare URLs the whole ticket's <markdown> does", () => {
+    // OpenTUI's detectLinks is what links a bare URL in <markdown>; text without inline marks.
+    const piece = fc.constantFrom(
+      ...["a", "B", " ", ".", ",", "!", "?", ";", ":", "'", "]", "}", "(", ")", "/", "\n", "界"],
+      ...["https://", "http://", "HTTPS://", "https://example.com/x"],
+    )
+    fc.assert(
+      fc.property(fc.array(piece, { maxLength: 40 }), (pieces) => {
+        const prose = pieces.join("")
+        const segments = inlineSegments(prose, theme)
+        expect(segments.map((each) => each.text).join("")).toBe(prose)
+        const linked = detectLinks([{ __isChunk: true, text: prose }], {
+          content: prose,
+          highlights: [],
+        })
+        expect(segments.filter((each) => each.look !== null).map((each) => each.text)).toEqual(
+          linked.filter((chunk) => chunk.link !== undefined).map((chunk) => chunk.text),
+        )
       }),
     )
   })

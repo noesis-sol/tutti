@@ -4,16 +4,16 @@
 // its right, coloured (bug red, feature green, …; P0 red, P1 orange), a narrow pane dropping the
 // priority, then the type. In it, the ticket's title in bold, wrapped at words on up to 2 lines; a
 // blank line; and its description, its first lines wrapped at words in the normal text colour,
-// inline Markdown shown (bold, code, a link's label) but no headings or lists, up to 5 lines, cut
-// with `…`; `▾ whole ticket  t` in its bottom border at the right when there is more than shows. A
-// short pane gives some of the lines up, then the box (WorkerView.tsx's viewLayout); there is none
-// at the minimum size, where line 1 ends with the type and priority and the title stands alone
-// under it. `t` or a click on the control grows the same box into the whole ticket: under the title
-// and its blank line, which stay, the description, design, acceptance criteria as a checklist,
-// notes, links and labels, drawn with <markdown>, up to 60% of the pane, scrolling with PgUp/PgDn
-// and the wheel, `↓ N more lines ── ▴ less  t · Esc` in its bottom border while there is more. `t`,
-// a click on `▴ less` or Esc shrinks it back. Opening it reads the ticket again with bd show
-// (ReadTicket), so that notes added during the run show.
+// inline Markdown shown (bold, code, a link's label, a bare URL) but no headings or lists, up to 5
+// lines, cut with `…`; `▾ whole ticket  t` in its bottom border at the right when there is more
+// than shows. A short pane gives some of the lines up, then the box (WorkerView.tsx's viewLayout);
+// there is none at the minimum size, where line 1 ends with the type and priority and the title
+// stands alone under it. `t` or a click on the control grows the same box into the whole ticket:
+// under the title and its blank line, which stay, the description, design, acceptance criteria as
+// a checklist, notes, links and labels, drawn with <markdown>, up to 60% of the pane, scrolling
+// with PgUp/PgDn and the wheel, `↓ N more lines ── ▴ less  t · Esc` in its bottom border while
+// there is more. `t`, a click on `▴ less` or Esc shrinks it back. Opening it reads the ticket again
+// with bd show (ReadTicket), so that notes added during the run show.
 //
 // All of it is text a ticket author or a worker wrote, sanitised where it enters RunView (§ 7.10,
 // runView.ts's ticketText); the links' IDs and the labels are escaped for the Markdown.
@@ -163,21 +163,43 @@ export const proseOf = (text: string): string => {
   return kept.join(" ").replace(/\s+/g, " ").trim()
 }
 
-// Inline Markdown the head shows: code, bold, a link's label; what doesn't match stays as written.
-const inline = /`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\[([^\]]+)\]\([^)]*\)/g
+// Inline Markdown the head shows: code, bold, a link's label, a bare URL; what doesn't match stays
+// as written. A bare URL is matched as OpenTUI's detectLinks matches one in the whole ticket's
+// <markdown>, so the two draw the same URLs as links.
+const inline =
+  /`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|\[([^\]]+)\]\([^)]*\)|(https?:\/\/[^\s<>"`]+)/gi
 
-/** `prose`'s segments: its code in the code colour, its bold bold, a link's label in the link's. */
+/** `url` without the end detectLinks leaves out: punctuation, and a `)` no `(` in it opened. */
+const bareUrl = (url: string): string => {
+  const open = [...url].filter((c) => c === "(").length
+  let close = [...url].filter((c) => c === ")").length
+  let end = url.length
+  while (end > 0) {
+    const last = url[end - 1] ?? ""
+    if (last === ")" && close > open) close--
+    else if (!".,!?;:]}'".includes(last)) break
+    end--
+  }
+  return url.slice(0, end)
+}
+
+/**
+ * `prose`'s segments: its code in the code colour, its bold bold, a link's label and a bare URL in
+ * the link's.
+ */
 export const inlineSegments = (prose: string, theme: Theme): Segments => {
   const out: Array<ReturnType<typeof seg>> = []
   let at = 0
   for (const match of prose.matchAll(inline)) {
     if (match.index > at) out.push(seg(prose.slice(at, match.index)))
-    const [, code, strong, under, label] = match
+    const [, code, strong, under, label, bare] = match
+    const url = bare === undefined ? undefined : bareUrl(bare)
     if (code !== undefined) out.push(seg(code, theme.look("code")))
     else if (strong !== undefined || under !== undefined)
       out.push(seg(strong ?? under ?? "", theme.look(null, "bold")))
-    else out.push(seg(label ?? "", theme.look("link")))
-    at = match.index + match[0].length
+    else out.push(seg(label ?? url ?? "", theme.look("link")))
+    // A bare URL's left-out end is the next segment's start.
+    at = match.index + (url ?? match[0]).length
   }
   if (at < prose.length) out.push(seg(prose.slice(at)))
   return out

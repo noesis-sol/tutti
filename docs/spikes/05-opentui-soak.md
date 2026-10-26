@@ -7,7 +7,8 @@ Ticket tutti-nrg.1.5, M0 spike (6) (spec § 14), for § 7.5 Bounded rendering, �
   checks are `bun spikes/opentui-soak/checks.ts` and `bun spikes/opentui-soak/test-utils-check.tsx`;
   `bun spikes/opentui-soak/summarize.ts <files>` makes the tables below.
 - **Versions:** `@opentui/core` and `@opentui/react` 0.6.6, React 19.2.9 (`react-reconciler`
-  0.33.0), Bun 1.4.3, macOS 26.6.2 on an Apple M1 Pro (10 cores, 16 GB), 2026-10-16/17.
+  0.33.0), Bun 1.4.3, macOS 26.6.2 on an Apple M1 Pro (10 cores, 16 GB), 2026-10-16/17. § 8 is
+  the soak again on 0.7.0, 2026-10-26.
 - **Terminal:** a pseudo-terminal from `Bun.Terminal`, 160×50, `TERM=xterm-256color`,
   `COLORTERM=truecolor`. The harness plays the terminal: it answers OSC 10/11 colour queries and
   reads everything the app writes.
@@ -22,6 +23,7 @@ Ticket tutti-nrg.1.5, M0 spike (6) (spec § 14), for § 7.5 Bounded rendering, �
 | The same with React's production build (`NODE_ENV=production`), 600 items | 121 → 589 MB: level from minute 9 (495 MB), then **+4 MB/min**, slowing |
 | … 200 items | 98 → 267 MB: level from minute 4 (233 MB), **+0.6 MB/min** over the last 10 minutes |
 | OpenTUI's native memory under the bounds | **Levels off**: 469 MB with 600 items, 172 MB with 200; unbounded it grows 46 MB/min. About **0.75 MB per mounted item** once drawn. Unmounting gives it back to the system |
+| … on OpenTUI 0.7.0 (§ 8), production build | **A fifth less**: 364 MB with 600 items, 135 MB with 200; unbounded it still grows, 35 MB/min |
 | What else grows | **React's development build**: about 10 MB/min, whatever the transcript does. It adds a `performance.measure()` entry per component render (React 19.2's Performance Tracks) and Bun keeps them all. With `NODE_ENV=production`, or with the timeline cleared, it stays flat |
 | Verdict on § 7.5's bounds | **They hold the transcript's memory, but only with React's production build is the whole app near flat.** At 200 items (the view at the bottom) the footprint settles at ~260 MB and grows 0.6 MB/min; at 600 (scrolled back) it settles near 500 MB and still creeps 3–4 MB/min after 30 minutes, which is acceptable for a view one only visits. In the development build, which `bun src/main.ts` gets, nothing is flat |
 | `exitOnCtrlC: false`, `exitSignals: []` | **Work.** Ctrl+C arrives as a key; SIGINT, SIGTERM and SIGHUP reach the app's handlers, and the renderer stays |
@@ -314,6 +316,33 @@ start) with `testRender(…, { width: 100, height: 40 })` twice, from the same s
   nothing more, and the `testRender` checks of § 13 work at fixed sizes with `captureSpans()` for
   colours; UI tests should dispose inside `act()` (tutti-nrg.30).
 
+## 8. Again on OpenTUI 0.7.0
+
+tutti-obdk, 2026-10-26: the three soaks again on `@opentui/core` and `@opentui/react` 0.7.0, all
+with React's production build, 30 minutes each, side by side on the same machine and Bun as above,
+with other work on it; each kept its 10 Hz (about 17,750 ticks). OpenTUI #1493 had been closed
+upstream as not reproducible with its own script (1,000 keyed rows churned), and 0.7.0 changes how
+a ScrollBox culls and refreshes its rows. Every 5 minutes, in MB, native as above (`VM_ALLOCATE`):
+
+| min | 600: footprint | native | 200: footprint | native | unbounded: footprint | native | mounted |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 115 | 22 | 94 | 12 | 118 | 22 | 606 |
+| 5 | 302 | 183 | 206 | 110 | 303 | 194 | 961 |
+| 10 | 403 | 299 | 212 | 119 | 487 | 368 | 1,323 |
+| 15 | 434 | 323 | 220 | 126 | 678 | 542 | 1,685 |
+| 20 | 451 | 344 | 219 | 130 | 855 | 717 | 2,048 |
+| 25 | 472 | 359 | 229 | 132 | 1,024 | 889 | 2,406 |
+| 30 | 480 | 364 | 232 | 135 | 1,229 | 1,061 | 2,764 |
+
+- **A mounted item costs about a fifth less.** At minute 30, native memory is 364 MB with 600
+  items (470 on 0.6.6, § 3) and 135 MB with 200 (172).
+- **Unbounded, it still grows with the items mounted**, linearly: 35 MB/min from minute 10 to 30
+  (46 on 0.6.6), 0.48 MB a mounted item (0.62). #1493's closing doesn't reach tutti's case, which
+  is items staying mounted, so § 7.5's bounds stay, at 200 and 600.
+- **The bounded runs creep less**: from minute 20 to 30, native memory grew 2.0 MB/min with 600
+  items (3.1 on 0.6.6) and 0.5 MB/min with 200 (0.7).
+- `checks.ts` on 0.7.0 gives what § 4 found: 15 of 16, mode 2027 still left set (OpenTUI #1727).
+
 ## Appendix: every sample
 
 #### soak-600 (React development build, as for every run without `NODE_ENV`)
@@ -506,3 +535,118 @@ Ended after 30 minutes. Sizes in MB; "VM_ALLOCATE" is OpenTUI's native memory, "
 
 Ended after 30 minutes. Sizes in MB; "VM_ALLOCATE" is OpenTUI's native memory, "Tag 240" Bun's allocator, "malloc" the malloc zones (dirty and compressed).
 
+#### soak-0.7.0-600 (OpenTUI 0.7.0, `NODE_ENV=production`, § 8)
+
+| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 115 | 115 | 22 | 75 | 2 | 19 | 601 | 605 | 61 | 124 |
+| 1 | 152 | 156 | 52 | 82 | 3 | 19 | 601 | 671 | 612 | 1235 |
+| 2 | 182 | 182 | 85 | 79 | 3 | 29 | 601 | 744 | 1190 | 2392 |
+| 3 | 214 | 214 | 118 | 78 | 3 | 25 | 601 | 816 | 1784 | 3578 |
+| 4 | 246 | 246 | 150 | 77 | 3 | 21 | 601 | 888 | 2378 | 4768 |
+| 5 | 302 | 302 | 183 | 101 | 3 | 21 | 601 | 960 | 2974 | 5960 |
+| 6 | 324 | 324 | 216 | 90 | 3 | 19 | 601 | 1033 | 3559 | 7130 |
+| 7 | 350 | 350 | 248 | 84 | 3 | 19 | 601 | 1106 | 4153 | 8319 |
+| 8 | 385 | 384 | 280 | 86 | 3 | 22 | 601 | 1178 | 4748 | 9509 |
+| 9 | 404 | 404 | 293 | 93 | 3 | 21 | 601 | 1250 | 5351 | 10715 |
+| 10 | 403 | 403 | 299 | 86 | 3 | 24 | 601 | 1323 | 5931 | 11876 |
+| 11 | 409 | 409 | 304 | 87 | 3 | 20 | 601 | 1395 | 6526 | 13064 |
+| 12 | 416 | 414 | 308 | 89 | 3 | 30 | 601 | 1467 | 7120 | 14254 |
+| 13 | 422 | 422 | 313 | 90 | 3 | 20 | 601 | 1541 | 7729 | 15472 |
+| 14 | 437 | 437 | 317 | 102 | 3 | 26 | 601 | 1613 | 8320 | 16659 |
+| 15 | 434 | 434 | 323 | 93 | 3 | 24 | 601 | 1685 | 8894 | 17812 |
+| 16 | 437 | 437 | 328 | 90 | 3 | 21 | 601 | 1757 | 9486 | 18996 |
+| 17 | 442 | 442 | 333 | 90 | 3 | 20 | 601 | 1830 | 10081 | 20186 |
+| 18 | 445 | 445 | 337 | 90 | 3 | 30 | 601 | 1903 | 10674 | 21372 |
+| 19 | 447 | 447 | 340 | 89 | 3 | 28 | 601 | 1975 | 11267 | 22558 |
+| 20 | 451 | 451 | 344 | 89 | 3 | 30 | 601 | 2048 | 11861 | 23746 |
+| 21 | 456 | 456 | 348 | 90 | 3 | 20 | 601 | 2120 | 12457 | 24938 |
+| 22 | 462 | 462 | 352 | 92 | 3 | 31 | 601 | 2193 | 13051 | 26124 |
+| 23 | 468 | 467 | 355 | 94 | 3 | 24 | 601 | 2265 | 13657 | 27336 |
+| 24 | 471 | 471 | 357 | 95 | 3 | 24 | 601 | 2336 | 14239 | 28513 |
+| 25 | 472 | 472 | 359 | 94 | 3 | 26 | 601 | 2409 | 14820 | 29687 |
+| 26 | 468 | 468 | 360 | 90 | 3 | 25 | 601 | 2482 | 15412 | 30871 |
+| 27 | 474 | 474 | 361 | 94 | 3 | 27 | 601 | 2554 | 16007 | 32061 |
+| 28 | 480 | 480 | 362 | 99 | 3 | 24 | 601 | 2626 | 16630 | 33311 |
+| 29 | 485 | 485 | 363 | 103 | 3 | 21 | 601 | 2698 | 17222 | 34526 |
+| 30 | 480 | 479 | 364 | 97 | 3 | 23 | 601 | 2771 | 17781 | 35651 |
+
+Ended after 30 minutes. Sizes in MB, as above.
+
+
+#### soak-0.7.0-200 (OpenTUI 0.7.0, `NODE_ENV=production`, § 8)
+
+| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 94 | 94 | 12 | 65 | 2 | 14 | 201 | 605 | 62 | 126 |
+| 1 | 157 | 156 | 42 | 98 | 2 | 20 | 201 | 671 | 618 | 1250 |
+| 2 | 178 | 178 | 74 | 86 | 2 | 17 | 201 | 744 | 1190 | 2394 |
+| 3 | 201 | 201 | 101 | 83 | 2 | 23 | 201 | 816 | 1783 | 3580 |
+| 4 | 203 | 203 | 106 | 80 | 2 | 17 | 201 | 888 | 2379 | 4772 |
+| 5 | 206 | 206 | 110 | 79 | 2 | 15 | 201 | 961 | 2977 | 5969 |
+| 6 | 208 | 208 | 113 | 77 | 2 | 16 | 201 | 1033 | 3563 | 7141 |
+| 7 | 207 | 207 | 114 | 76 | 2 | 17 | 201 | 1106 | 4157 | 8328 |
+| 8 | 210 | 210 | 116 | 76 | 2 | 17 | 201 | 1179 | 4752 | 9519 |
+| 9 | 216 | 216 | 118 | 81 | 2 | 18 | 201 | 1251 | 5353 | 10722 |
+| 10 | 212 | 212 | 119 | 75 | 2 | 18 | 201 | 1323 | 5935 | 11886 |
+| 11 | 214 | 214 | 120 | 76 | 2 | 20 | 201 | 1395 | 6530 | 13075 |
+| 12 | 215 | 215 | 121 | 77 | 2 | 21 | 201 | 1469 | 7124 | 14264 |
+| 13 | 218 | 217 | 123 | 78 | 2 | 18 | 201 | 1541 | 7732 | 15480 |
+| 14 | 218 | 218 | 123 | 77 | 2 | 17 | 201 | 1613 | 8328 | 16685 |
+| 15 | 220 | 220 | 126 | 77 | 2 | 17 | 201 | 1685 | 8897 | 17835 |
+| 16 | 218 | 218 | 126 | 74 | 2 | 15 | 201 | 1758 | 9490 | 19020 |
+| 17 | 220 | 220 | 127 | 75 | 2 | 17 | 201 | 1830 | 10085 | 20211 |
+| 18 | 220 | 220 | 128 | 74 | 2 | 16 | 201 | 1903 | 10678 | 21396 |
+| 19 | 220 | 220 | 129 | 74 | 2 | 23 | 201 | 1976 | 11271 | 22583 |
+| 20 | 219 | 219 | 130 | 72 | 2 | 16 | 201 | 2048 | 11865 | 23771 |
+| 21 | 224 | 224 | 130 | 76 | 2 | 23 | 201 | 2121 | 12461 | 24963 |
+| 22 | 223 | 223 | 130 | 75 | 2 | 15 | 201 | 2193 | 13054 | 26149 |
+| 23 | 228 | 228 | 130 | 80 | 2 | 14 | 201 | 2266 | 13662 | 27368 |
+| 24 | 234 | 234 | 131 | 85 | 2 | 17 | 201 | 2338 | 14247 | 28549 |
+| 25 | 229 | 229 | 132 | 80 | 2 | 16 | 201 | 2410 | 14825 | 29714 |
+| 26 | 228 | 228 | 133 | 78 | 2 | 17 | 201 | 2482 | 15417 | 30898 |
+| 27 | 230 | 230 | 133 | 79 | 2 | 21 | 201 | 2555 | 16012 | 32088 |
+| 28 | 233 | 234 | 134 | 81 | 2 | 19 | 201 | 2627 | 16636 | 33340 |
+| 29 | 242 | 242 | 135 | 89 | 2 | 17 | 201 | 2699 | 17231 | 34548 |
+| 30 | 232 | 232 | 135 | 80 | 2 | 15 | 201 | 2772 | 17789 | 35665 |
+
+Ended after 30 minutes. Sizes in MB, as above.
+
+
+#### soak-0.7.0-unbounded (OpenTUI 0.7.0, `NODE_ENV=production`, § 8)
+
+| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 118 | 118 | 22 | 78 | 2 | 19 | 606 | 605 | 60 | 123 |
+| 1 | 167 | 167 | 53 | 96 | 3 | 27 | 672 | 671 | 607 | 1230 |
+| 2 | 191 | 191 | 88 | 84 | 3 | 27 | 744 | 743 | 1187 | 2392 |
+| 3 | 223 | 223 | 123 | 81 | 3 | 24 | 817 | 816 | 1781 | 3578 |
+| 4 | 257 | 257 | 158 | 80 | 3 | 27 | 889 | 888 | 2375 | 4768 |
+| 5 | 303 | 303 | 194 | 90 | 3 | 26 | 961 | 960 | 2971 | 5959 |
+| 6 | 338 | 338 | 229 | 91 | 4 | 28 | 1033 | 1032 | 3557 | 7135 |
+| 7 | 373 | 373 | 263 | 91 | 4 | 26 | 1107 | 1106 | 4151 | 8323 |
+| 8 | 425 | 425 | 298 | 107 | 4 | 29 | 1179 | 1178 | 4746 | 9513 |
+| 9 | 454 | 454 | 333 | 102 | 4 | 28 | 1251 | 1250 | 5346 | 10717 |
+| 10 | 487 | 487 | 368 | 99 | 4 | 31 | 1323 | 1322 | 5928 | 11881 |
+| 11 | 523 | 523 | 403 | 100 | 4 | 31 | 1396 | 1395 | 6523 | 13072 |
+| 12 | 566 | 565 | 438 | 108 | 5 | 33 | 1468 | 1467 | 7118 | 14264 |
+| 13 | 609 | 609 | 473 | 115 | 5 | 42 | 1542 | 1541 | 7726 | 15481 |
+| 14 | 647 | 647 | 507 | 119 | 5 | 37 | 1613 | 1612 | 8313 | 16665 |
+| 15 | 678 | 678 | 542 | 115 | 5 | 41 | 1685 | 1684 | 8883 | 17808 |
+| 16 | 719 | 719 | 576 | 122 | 5 | 54 | 1757 | 1756 | 9476 | 18996 |
+| 17 | 748 | 748 | 611 | 116 | 5 | 34 | 1830 | 1829 | 10071 | 20186 |
+| 18 | 782 | 782 | 646 | 115 | 5 | 45 | 1902 | 1901 | 10663 | 21371 |
+| 19 | 818 | 818 | 681 | 115 | 6 | 38 | 1974 | 1973 | 11257 | 22559 |
+| 20 | 855 | 855 | 717 | 117 | 6 | 43 | 2048 | 2047 | 11851 | 23749 |
+| 21 | 894 | 894 | 752 | 120 | 6 | 38 | 2120 | 2119 | 12445 | 24939 |
+| 22 | 929 | 928 | 787 | 120 | 6 | 42 | 2192 | 2191 | 13039 | 26129 |
+| 23 | 983 | 983 | 821 | 140 | 6 | 46 | 2264 | 2263 | 13632 | 27310 |
+| 24 | 1024 | 1041 | 855 | 164 | 6 | 43 | 2334 | 2333 | 14208 | 28466 |
+| 25 | 1024 | 1055 | 889 | 144 | 7 | 44 | 2406 | 2405 | 14780 | 29610 |
+| 26 | 1126 | 1089 | 924 | 142 | 7 | 53 | 2478 | 2477 | 15374 | 30801 |
+| 27 | 1126 | 1130 | 958 | 153 | 7 | 60 | 2550 | 2549 | 15968 | 31989 |
+| 28 | 1126 | 1168 | 993 | 152 | 7 | 53 | 2623 | 2622 | 16584 | 33219 |
+| 29 | 1229 | 1196 | 1026 | 146 | 7 | 57 | 2692 | 2691 | 17156 | 34342 |
+| 30 | 1229 | 1227 | 1061 | 142 | 7 | 47 | 2764 | 2763 | 17713 | 35456 |
+
+Ended after 30 minutes. Sizes in MB, as above.
