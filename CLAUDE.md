@@ -82,6 +82,13 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   and tsc checks the types); a change to the project's setup runs `scripts/check.sh` whole.
   `TUTTI_SLOW=1` adds the slow tests, and does all the plain one does: when you want the slow
   suites, run `TUTTI_SLOW=1 scripts/check-own.sh` alone, not after the plain one.
+- A pass of `scripts/check-own.sh` stands for the next run in the same worktree: it keeps, under the
+  worktree's git dir, the tree it ran on (uncommitted and untracked files included), its mode and
+  the tests that passed, and the next run leaves out those of them that nothing changed since that
+  tree touches, saying `check-own: 212 test files passed at <tree> and nothing since touches them;
+  running 14.` A setup change since the pass runs the whole selection; a `TUTTI_SLOW=1` pass stands
+  for a plain run, not a plain pass for a `TUTTI_SLOW=1` run; a failure forgets every pass kept.
+  tsc, biome and shellcheck run as ever.
 - Run tests through `scripts/test.sh`, not a bare `bun test`: `bunfig.toml` defines `NODE_ENV` as
   `"production"` for React's production build (spec § 3.1), and `scripts/test.sh` defines `"test"`
   over it, which `@opentui/react/test-utils` needs.

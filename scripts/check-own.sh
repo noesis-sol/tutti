@@ -7,21 +7,44 @@
 #   biome:      bunx biome check on the changed files
 #   test:       scripts/test.sh on the test files the change touches (scripts/check-own.ts): those
 #               that changed, and those that import a changed module at any depth or name a changed
-#               file; the slow suites too when TUTTI_SLOW=1
+#               file; the slow suites too when TUTTI_SLOW=1. Those that passed in an earlier run in
+#               this worktree, and that nothing changed since touches, are left out: see below
 #   lint:       shellcheck on the changed shell scripts (and bin/tutti, which has no .sh)
 # A change to the project's setup (package.json, bun.lock, tsconfig.json, bunfig.toml, biome.json,
 # scripts/check.sh) runs scripts/check.sh whole instead, and so does a branch without main to start
 # from. TUTTI_OWN_BASE names another commit to start from. orchestra's merge check,
 # scripts/check-fast.sh, still runs the whole check on each ticket before it merges it.
+# A pass is kept under the worktree's own git dir (git rev-parse --git-dir), never tracked: the tree
+# it ran on (HEAD's with what isn't committed yet, untracked files included), its mode and the test
+# files that passed. The next run picks tests from what changed since that tree too, and leaves out
+# the earlier pass's tests that this smaller change doesn't touch (scripts/check-own.ts' standOn),
+# saying how many. A TUTTI_SLOW=1 pass stands for a plain run as well; a plain pass doesn't for a
+# TUTTI_SLOW=1 run. A failure keeps nothing and forgets the passes kept: the next run starts from
+# main. tsc, biome and shellcheck run whatever passed before.
 # The last line is the verdict, its exit status unchanged, as scripts/check.sh's.
 set -e
 cd "$(dirname "$0")/.."
 
 name=scripts/check-own.sh
-if [ "${TUTTI_SLOW-}" = 1 ]; then name="TUTTI_SLOW=1 $name"; fi
+mode=plain
+if [ "${TUTTI_SLOW-}" = 1 ]; then name="TUTTI_SLOW=1 $name" mode=slow; fi
+gitdir=$(git rev-parse --absolute-git-dir 2>/dev/null || true)
+# Keeps the pass check-own.ts wrote down for this run, a slow one for plain runs too, or forgets
+# every pass on a failure.
+keep() {
+  [ -n "$gitdir" ] || return 0
+  next=$gitdir/tutti-check-own-next.json
+  if [ "$1" -ne 0 ]; then
+    rm -f "$next" "$gitdir/tutti-check-own-plain.json" "$gitdir/tutti-check-own-slow.json"
+  elif [ -f "$next" ]; then
+    if [ "$mode" = slow ]; then cp "$next" "$gitdir/tutti-check-own-plain.json"; fi
+    mv "$next" "$gitdir/tutti-check-own-$mode.json"
+  fi
+}
 step=
 finish() {
   status=$?
+  keep "$status" || true
   if [ "$status" -eq 0 ]; then
     echo "$name: PASS"
   else
@@ -42,6 +65,7 @@ changed=$(
     git ls-files --others --exclude-standard
   } | sort -u
 )
+# The project's setup, as check-own.ts' setupFiles.
 for file in package.json bun.lock tsconfig.json bunfig.toml biome.json scripts/check.sh; do
   if printf '%s\n' "$changed" | grep -qxF "$file"; then
     echo "check-own: $file changed: running scripts/check.sh whole"
@@ -95,15 +119,16 @@ fi
 step="test"
 echo "SUITE: test"
 # shellcheck disable=SC2086 # the changed files are repository paths, one a line
-tests=$(bun scripts/check-own.ts $changed)
+picked=$(bun scripts/check-own.ts $changed)
+# Its lines that say what it left out, then the test files or ALL.
+printf '%s\n' "$picked" | grep -E '^(check-own|test):' || true
+tests=$(printf '%s\n' "$picked" | grep -vE '^(check-own|test):' || true)
 if [ "$tests" = ALL ]; then
   (scripts/test.sh)
 elif [ -n "$tests" ]; then
   set --
   for test in $tests; do set -- "$@" "./$test"; done
   (scripts/test.sh "$@")
-else
-  echo "test: no test file covers the change"
 fi
 step="shellcheck"
 echo "SUITE: shellcheck"

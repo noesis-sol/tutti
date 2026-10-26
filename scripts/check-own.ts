@@ -11,13 +11,34 @@
 // side-effect import. A change to the test runner (scripts/test.ts) or its preload
 // (test/warm-up.ts) touches every test.
 //
-// Run as `bun scripts/check-own.ts <changed file>...`: it prints the test files, one a line, or ALL
-// for the whole suite, reading the repository's src/, test/ and scripts/ from the current folder.
-import { existsSync, readFileSync, statSync } from "node:fs"
+// A pass stands for the next run in the same worktree (standOn): check-own.sh keeps, under the
+// worktree's own git dir, the tree its tests passed on (HEAD's with what isn't committed yet,
+// untracked files included), its mode (plain, or slow for TUTTI_SLOW=1) and the test files that
+// passed there. The next run leaves out those that what changed since that tree doesn't touch. A
+// slow pass stands for a plain run too, as it ran more; a plain one doesn't for a slow run.
+//
+// Run as `bun scripts/check-own.ts <changed file>...`: it prints the test files to run, one a line,
+// or ALL for the whole suite, reading the repository's src/, test/ and scripts/ from the current
+// folder, after lines saying what it left out, which start with "check-own:" or "test:". It writes the record should the run pass to
+// <git dir>/tutti-check-own-next.json, which check-own.sh keeps on a pass.
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, normalize } from "node:path"
 
 /** Changes that touch every test. */
 export const wholeSuite: ReadonlyArray<string> = ["scripts/test.ts", "test/warm-up.ts"]
+
+/**
+ * The project's setup, a change to which since main makes check-own.sh run scripts/check.sh whole
+ * (its list, kept the same), and a change to which since a pass makes no earlier test stand.
+ */
+export const setupFiles: ReadonlyArray<string> = [
+  "package.json",
+  "bun.lock",
+  "tsconfig.json",
+  "bunfig.toml",
+  "biome.json",
+  "scripts/check.sh",
+]
 
 export const isTestFile = (file: string): boolean =>
   file.startsWith("test/") && /\.test\.tsx?$/.test(file)
@@ -131,6 +152,88 @@ export const testsFor = (
   return [...touched].filter((file) => isTestFile(file) && exists(file)).sort()
 }
 
+/** A pass of check-own's tests: the tree it ran on, its mode, and the test files that passed. */
+export interface PassRecord {
+  readonly tree: string
+  readonly mode: "plain" | "slow"
+  readonly tests: ReadonlyArray<string>
+}
+
+/** A pass record read from its file's text, or undefined where the text isn't one. */
+export const readRecord = (text: string): PassRecord | undefined => {
+  try {
+    const { tree, mode, tests } = JSON.parse(text) ?? {}
+    if (typeof tree !== "string" || !/^[0-9a-f]{40,64}$/.test(tree)) return undefined
+    if (mode !== "plain" && mode !== "slow") return undefined
+    if (!Array.isArray(tests) || !tests.every((test) => typeof test === "string")) return undefined
+    return { tree, mode, tests }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The tests a run picks standing on an earlier pass: `selection` is testsFor of the change since
+ * main, `since` testsFor of the change since the pass's tree, `passed` the pass's tests and `all`
+ * every test file. It leaves out those that passed and that the change since doesn't touch.
+ * `passed` in the result is what holds at this tree should the run pass: the tests it runs, and the
+ * earlier pass's that the change since doesn't touch.
+ */
+export const standOn = (
+  selection: ReadonlyArray<string> | "all",
+  since: ReadonlyArray<string> | "all",
+  passed: ReadonlyArray<string>,
+  all: ReadonlyArray<string>,
+): {
+  readonly run: ReadonlyArray<string> | "all"
+  readonly leftOut: number
+  readonly passed: ReadonlyArray<string>
+} => {
+  const chosen = selection === "all" ? all : selection
+  const touched = new Set(since === "all" ? all : since)
+  const present = new Set(all)
+  const stands = new Set(passed.filter((test) => present.has(test) && !touched.has(test)))
+  const run = chosen.filter((test) => !stands.has(test))
+  const leftOut = chosen.length - run.length
+  return {
+    run: leftOut === 0 ? selection : run,
+    leftOut,
+    passed: [...new Set([...run, ...stands])].sort(),
+  }
+}
+
+/** The file a mode's pass record is kept in, under the worktree's git dir; "next" is a run's own. */
+export const recordFile = (gitDir: string, mode: PassRecord["mode"] | "next"): string =>
+  join(gitDir, `tutti-check-own-${mode}.json`)
+
+/** git's output, trimmed, or undefined where it failed. */
+const git = (args: ReadonlyArray<string>, env?: Record<string, string>): string | undefined => {
+  const result = Bun.spawnSync(["git", ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+    ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
+  })
+  return result.exitCode === 0 ? result.stdout.toString().trim() : undefined
+}
+
+/**
+ * The tree of the worktree as it is: HEAD's, with the changes not committed yet and the untracked
+ * files git doesn't ignore, written through an index of its own, so the worktree's isn't touched.
+ * A copy of that index starts it, so git hashes only the files changed since it was written.
+ */
+const workingTree = (gitDir: string): string | undefined => {
+  const index = join(gitDir, `tutti-check-own-index-${process.pid}`)
+  const env = { GIT_INDEX_FILE: index }
+  try {
+    const own = git(["rev-parse", "--path-format=absolute", "--git-path", "index"])
+    if (own !== undefined && existsSync(own)) writeFileSync(index, readFileSync(own))
+    else if (git(["read-tree", "HEAD"], env) === undefined) return undefined
+    return git(["add", "--all"], env) === undefined ? undefined : git(["write-tree"], env)
+  } finally {
+    rmSync(index, { force: true })
+  }
+}
+
 if (import.meta.main) {
   const listed = Bun.spawnSync([
     "git",
@@ -146,6 +249,44 @@ if (import.meta.main) {
     if (isModule(file) && existsSync(file)) sources.set(file, readFileSync(file, "utf8"))
   }
   const isFile = (file: string) => existsSync(file) && statSync(file).isFile()
-  const tests = testsFor(Bun.argv.slice(2), sources, isFile)
-  console.log(tests === "all" ? "ALL" : tests.join("\n"))
+  const selection = testsFor(Bun.argv.slice(2), sources, isFile)
+  const all = [...sources.keys()].filter((file) => isTestFile(file) && isFile(file)).sort()
+  const mode = process.env.TUTTI_SLOW === "1" ? "slow" : "plain"
+  const gitDir = git(["rev-parse", "--absolute-git-dir"])
+  const tree = gitDir === undefined ? undefined : workingTree(gitDir)
+  const kept = gitDir === undefined ? undefined : recordFile(gitDir, mode)
+  const record =
+    kept === undefined || !existsSync(kept) ? undefined : readRecord(readFileSync(kept, "utf8"))
+  // A tree git no longer has (pruned) reads as no pass.
+  const since =
+    record === undefined || tree === undefined
+      ? undefined
+      : git(["diff", "--name-only", "--no-renames", record.tree, tree, "--"])
+  let picked: ReturnType<typeof standOn> = {
+    run: selection,
+    leftOut: 0,
+    passed: selection === "all" ? all : selection,
+  }
+  if (record !== undefined && since !== undefined) {
+    const changed = since.split("\n").filter((file) => file !== "")
+    const touched = changed.some((file) => setupFiles.includes(file))
+      ? "all"
+      : testsFor(changed, sources, isFile)
+    picked = standOn(selection, touched, record.tests, all)
+    if (picked.leftOut > 0) {
+      const running = picked.run === "all" ? all.length : picked.run.length
+      console.log(
+        `check-own: ${picked.leftOut} test file${picked.leftOut === 1 ? "" : "s"} passed at ` +
+          `${record.tree.slice(0, 7)} and nothing since touches them; running ${running || "none"}.`,
+      )
+    }
+  }
+  if (gitDir !== undefined && tree !== undefined) {
+    const next: PassRecord = { tree, mode, tests: picked.passed }
+    writeFileSync(recordFile(gitDir, "next"), `${JSON.stringify(next)}\n`)
+  }
+  if (selection !== "all" && selection.length === 0) {
+    console.log("test: no test file covers the change")
+  }
+  console.log(picked.run === "all" ? "ALL" : picked.run.join("\n"))
 }
