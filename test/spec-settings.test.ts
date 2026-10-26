@@ -9,6 +9,7 @@ import {
   defaultUserConfig,
   resolve,
 } from "../src/cli/AppConfig.ts"
+import { specSetupFlags } from "../src/cli/commands.ts"
 import { noFlags, type RunFlagName } from "../src/cli/flags.ts"
 import { importSettings } from "../src/init/import.ts"
 
@@ -109,5 +110,20 @@ describe("orchestra's spec settings, imported", () => {
       { key: "spec_effort", to: "spec.effort" },
     ])
     expect(imported.leftOut).toEqual([])
+  })
+})
+
+describe("a spec run's setup", () => {
+  test("is init without a terminal: its defaults, declining what it offers, checks to come", () => {
+    expect(specSetupFlags(null)).toEqual({
+      force: false,
+      checkFast: "",
+      checkFull: "",
+      verifier: false,
+      changelogUnion: false,
+      installBeads: false,
+      mcp: [],
+    })
+    expect(specSetupFlags(3).concurrent).toBe(3)
   })
 })
