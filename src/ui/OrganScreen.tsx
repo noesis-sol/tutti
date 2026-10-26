@@ -4,48 +4,18 @@
 // renderer opens, are drawn here instead, the spinner turning, until the breakdown ends or the run
 // starts on its environment ticket. Ctrl+C stops the breakdown, as it does on the main screen.
 //
-// The printer writes to screenOut's Out as to a terminal, a line rewritten with a carriage return
-// and an erase; the screen shows the last of its lines that fit.
+// The printer writes to an Out on the screen (src/print/screenOut.ts) as to a terminal, a line
+// rewritten with a carriage return and an erase; the screen shows the last of its lines that fit.
 import { createRoot, useTerminalDimensions } from "@opentui/react"
 import { Effect, type Scope } from "effect"
 import { useSyncExternalStore } from "react"
-import { eraseLine, type Out } from "../print/organLine.ts"
 import { formHintSegments, Themed } from "./Form.tsx"
 import { useFormCommands } from "./keyCommands.ts"
 import { InputGuards } from "./keys.ts"
 import { cut, Lines, seg, wrap } from "./line.tsx"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
-import { type External, external } from "./useRunView.ts"
-
-/** An Out drawn on the renderer's screen: what was written, as the text it leaves. */
-export interface ScreenOut {
-  readonly out: Out
-  readonly text: External<string>
-}
-
-/**
- * An Out that keeps what is written to it as a terminal would show it, `columns` wide: a line
- * erased (`\r\x1b[2K`) and rewritten is the line rewritten.
- */
-export const screenOut = (columns: () => number): ScreenOut => {
-  const text = external("")
-  return {
-    out: {
-      write: (written) => {
-        let now = text.get()
-        for (const [i, part] of written.split(eraseLine).entries()) {
-          if (i > 0) now = now.slice(0, now.lastIndexOf("\n") + 1)
-          now += part
-        }
-        text.set(now)
-      },
-      columns,
-      tty: true,
-    },
-    text,
-  }
-}
+import type { External } from "./useRunView.ts"
 
 /** The organ lines `text` leaves, the last that fit in `height` lines `width` wide. */
 export const organLines = (text: string, width: number, height: number) => {
