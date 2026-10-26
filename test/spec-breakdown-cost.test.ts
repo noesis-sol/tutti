@@ -90,7 +90,7 @@ describe("the breakdown's spending", () => {
 
   test("a turn, singular, and an ID that would break the line", () => {
     const spent = { ...nothingSpent, costUsd: 0.01234, turns: 1, results: 1 }
-    expect(spentLine(spent, "4s", "sess-1")).toBe(
+    expect(String(spentLine(spent, "4s", "sess-1"))).toBe(
       "SPEC: breakdown $0.0123 in 1 turn, 4s, session sess-1",
     )
     expect(spentLine(nothingSpent, "1m02s", "a\nb")).not.toContain("\n")
