@@ -69,8 +69,8 @@ export const upNextLines = (
       [seg(fit(each.label, idWidth), each.held === null ? null : styles.heldBack)],
       idWidth,
     )
-    if (each.held === null) return [[...id, seg("  "), seg(readyWord, styles.dim)]]
-    const why = wrap([seg(each.held, styles.dim)], whyWidth)
+    if (each.held === null) return [[...id, seg("  "), seg(readyWord, styles.quiet)]]
+    const why = wrap([seg(each.held, styles.quiet)], whyWidth)
     return why.map((part, i) => [
       ...(i === 0 ? id : [seg(" ".repeat(idWidth))]),
       seg("  "),
@@ -78,13 +78,13 @@ export const upNextLines = (
     ])
   })
   const body: Array<Segments> = []
-  if (queue.length === 0) body.push([seg("nothing queued", styles.dim)])
+  if (queue.length === 0) body.push([seg("nothing queued", styles.quiet)])
   for (const [i, entry] of entries.entries()) {
     const left = queue.length - i
     // The last row says how many don't fit, where the rest don't.
     const fits = body.length + entry.length <= room - (left > 1 ? 1 : 0)
     if (!fits) {
-      body.push([seg(`+${left} more`, styles.dim)])
+      body.push([seg(`+${left} more`, styles.quiet)])
       break
     }
     body.push(...entry)
