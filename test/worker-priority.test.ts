@@ -30,32 +30,52 @@ const stdoutOf = (child: ChildProcessWithoutNullStreams) =>
     child.once("close", () => resolve(out.trim()))
   })
 
-/** The nice value a session spawned with `nice` runs at, and what it starts. */
+/**
+ * The nice value a session spawned with `nice` runs at, what it starts, and what tutti said on its
+ * stderr about its priority.
+ */
 const spawnedAt = async (nice: number | undefined) => {
-  const { options } = withSessionProcess({}, nice)
-  // The shell waits a moment, so that what it starts is started after its priority is set.
+  const said: Array<string> = []
+  const { options } = withSessionProcess({ stderr: (data) => said.push(data) }, nice)
+  // The shell waits a moment, so that what it starts is started after its priority is set, and
+  // after lower() has read it again (lowerRecheck).
   const child = options.spawnClaudeCodeProcess?.(
     shellSpawn("sleep 0.2; ps -o nice= -p $$; sh -c 'ps -o nice= -p $$'"),
   ) as ChildProcessWithoutNullStreams
   const [own, started] = (await stdoutOf(child)).split(/\s+/u).map(Number)
-  return { own, started }
+  return { own, started, said }
 }
 
 /** tutti's own nice value: a session never runs above it. */
 const ours = getPriority()
 
 describe("withSessionProcess's priority", () => {
-  test("with a nice value, Claude Code and what it starts run at it", async () => {
+  test("with a nice value, Claude Code and what it starts run at it, or tutti says why not", async () => {
     const at = Math.max(ours, workerNice)
-    expect(await spawnedAt(workerNice)).toEqual({ own: at, started: at })
+    const { own, started, said } = await spawnedAt(workerNice)
+    // tutti's own nice value and what it said are in the failure; where something kept the priority
+    // from being lowered, as on GitHub's macOS runners (tutti-djtt), tutti said why.
+    if (said.length > 0) console.warn(`tutti at nice ${ours}: ${said.join("")}`)
+    const promised = said.length === 0 ? { own: at, started: at } : { own, started: own }
+    expect({ ours, own, started, said }).toEqual({ ours, ...promised, said })
   })
 
-  test("without one, they run at tutti's own", async () => {
-    expect(await spawnedAt(undefined)).toEqual({ own: ours, started: ours })
+  test("without one, they run at tutti's own, and nothing is said", async () => {
+    expect({ ours, ...(await spawnedAt(undefined)) }).toEqual({
+      ours,
+      own: ours,
+      started: ours,
+      said: [],
+    })
   })
 
   test("never raises a priority: a nice value above tutti's own leaves it", async () => {
-    expect(await spawnedAt(ours - 1)).toEqual({ own: ours, started: ours })
+    expect({ ours, ...(await spawnedAt(ours - 1)) }).toEqual({
+      ours,
+      own: ours,
+      started: ours,
+      said: [],
+    })
   })
 })
 
