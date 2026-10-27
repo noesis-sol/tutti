@@ -19,8 +19,12 @@
 # files that passed. The next run picks tests from what changed since that tree too, and leaves out
 # the earlier pass's tests that this smaller change doesn't touch (scripts/check-own.ts' standOn),
 # saying how many. A TUTTI_SLOW=1 pass stands for a plain run as well; a plain pass doesn't for a
-# TUTTI_SLOW=1 run. A failure keeps nothing and forgets the passes kept: the next run starts from
-# main. tsc, biome and shellcheck run whatever passed before.
+# TUTTI_SLOW=1 run. A run whose tests failed keeps, at its tree, the test files whose tests all
+# passed in it, which scripts/test.ts writes down (TUTTI_CHECK_OWN_PASSED), and the earlier pass's
+# that it left out (check-own.ts' afterFailure): the next run runs the files that failed again. Any
+# other failure (tsc, biome, shellcheck, or the tests without that list) keeps nothing and forgets
+# the passes kept: the next run starts from main. tsc, biome and shellcheck run whatever passed
+# before.
 # The last line is the verdict, its exit status unchanged, as scripts/check.sh's.
 set -e
 cd "$(dirname "$0")/.."
@@ -29,17 +33,21 @@ name=scripts/check-own.sh
 mode=plain
 if [ "${TUTTI_SLOW-}" = 1 ]; then name="TUTTI_SLOW=1 $name" mode=slow; fi
 gitdir=$(git rev-parse --absolute-git-dir 2>/dev/null || true)
-# Keeps the pass check-own.ts wrote down for this run, a slow one for plain runs too, or forgets
-# every pass on a failure.
+passed=${gitdir:+$gitdir/tutti-check-own-passed}
+# Keeps the pass check-own.ts wrote down for this run, a slow one for plain runs too, or what passed
+# in a run whose tests failed, or forgets every pass on any other failure.
 keep() {
   [ -n "$gitdir" ] || return 0
   next=$gitdir/tutti-check-own-next.json
   if [ "$1" -ne 0 ]; then
-    rm -f "$next" "$gitdir/tutti-check-own-plain.json" "$gitdir/tutti-check-own-slow.json"
+    if [ "$step" != test ] || [ ! -f "$passed" ] || ! bun scripts/check-own.ts --failed "$passed"; then
+      rm -f "$gitdir/tutti-check-own-plain.json" "$gitdir/tutti-check-own-slow.json"
+    fi
   elif [ -f "$next" ]; then
     if [ "$mode" = slow ]; then cp "$next" "$gitdir/tutti-check-own-plain.json"; fi
     mv "$next" "$gitdir/tutti-check-own-$mode.json"
   fi
+  rm -f "$next" "$gitdir/tutti-check-own-unrun.json" "$passed"
 }
 step=
 finish() {
@@ -118,17 +126,18 @@ else
 fi
 step="test"
 echo "SUITE: test"
+if [ -n "$passed" ]; then rm -f "$passed"; fi
 # shellcheck disable=SC2086 # the changed files are repository paths, one a line
 picked=$(bun scripts/check-own.ts $changed)
 # Its lines that say what it left out, then the test files or ALL.
 printf '%s\n' "$picked" | grep -E '^(check-own|test):' || true
 tests=$(printf '%s\n' "$picked" | grep -vE '^(check-own|test):' || true)
 if [ "$tests" = ALL ]; then
-  (scripts/test.sh)
+  (TUTTI_CHECK_OWN_PASSED=$passed scripts/test.sh)
 elif [ -n "$tests" ]; then
   set --
   for test in $tests; do set -- "$@" "./$test"; done
-  (scripts/test.sh "$@")
+  (TUTTI_CHECK_OWN_PASSED=$passed scripts/test.sh "$@")
 fi
 step="shellcheck"
 echo "SUITE: shellcheck"

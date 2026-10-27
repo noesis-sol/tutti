@@ -87,8 +87,11 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   the tests that passed, and the next run leaves out those of them that nothing changed since that
   tree touches, saying `check-own: 212 test files passed at <tree> and nothing since touches them;
   running 14.` A setup change since the pass runs the whole selection; a `TUTTI_SLOW=1` pass stands
-  for a plain run, not a plain pass for a `TUTTI_SLOW=1` run; a failure forgets every pass kept.
-  tsc, biome and shellcheck run as ever.
+  for a plain run, not a plain pass for a `TUTTI_SLOW=1` run. A run whose tests failed keeps the
+  test files whose tests all passed in it (`scripts/test.ts` writes them down from its JUnit report)
+  and the earlier pass's it left out, so the next run reruns the failed files and what changed
+  since; any other failure (tsc, biome, shellcheck) forgets every pass kept. tsc, biome and
+  shellcheck run as ever.
 - Run tests through `scripts/test.sh`, not a bare `bun test`: `bunfig.toml` defines `NODE_ENV` as
   `"production"` for React's production build (spec § 3.1), and `scripts/test.sh` defines `"test"`
   over it, which `@opentui/react/test-utils` needs.

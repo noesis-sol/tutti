@@ -5,6 +5,8 @@
 // follows § 13's fallback: run the suites once without --retry, rerun each failed test once by
 // name (-t), and print FLAKY: <file> <test> for each that passes on its rerun. A flaky test does
 // not fail the run; a test that fails twice does. Arguments are passed on to bun test.
+// TUTTI_CHECK_OWN_PASSED names a file it writes, one a line, the test files whose tests all passed
+// (passedFiles), which scripts/check-own.sh keeps from a failed run; the suites don't see it.
 //
 // bunfig.toml defines process.env.NODE_ENV as "production" for React's production build, and bun
 // test reads it too. The suites define "test" over it, as bun test sets it, so they keep React's
@@ -48,6 +50,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs"
 import { availableParallelism, tmpdir } from "node:os"
 import { basename, delimiter, join, resolve } from "node:path"
@@ -195,6 +198,19 @@ export const inPool = <A>(
 }
 
 export const flakyLine = (test: TestCase): string => `FLAKY: ${test.file} ${test.name}`
+
+/**
+ * The test files of the first run's report `cases` whose tests all passed, sorted: those with no
+ * test in `failing`, the tests that failed and didn't pass on a rerun. A file that didn't load, or
+ * failed outside its tests, isn't in the report, so isn't one.
+ */
+export const passedFiles = (
+  cases: ReadonlyArray<TestCase>,
+  failing: ReadonlyArray<TestCase>,
+): ReadonlyArray<string> => {
+  const failed = new Set(failing.map((test) => test.file))
+  return [...new Set(cases.map((test) => test.file))].filter((file) => !failed.has(file)).sort()
+}
 
 const fileArgument = (file: string): string =>
   file.startsWith("/") || file.startsWith("./") ? file : `./${file}`
@@ -536,14 +552,22 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     ...suites,
     ...coreThreadVariables(process.env, undefined, workers),
   })
-  if (code === 0) return 0
-  const failed = readReport(first).filter((test) => test.failed)
+  const cases = readReport(first)
+  // The verdict, the files whose tests all passed written first where check-own.sh asked for them,
+  // which it keeps when the run fails (tutti-0vbd.2).
+  const verdict = (code: number, failing: ReadonlyArray<TestCase>): number => {
+    const out = process.env.TUTTI_CHECK_OWN_PASSED
+    if (out) writeFileSync(out, passedFiles(cases, failing).join("\n"))
+    return code
+  }
+  if (code === 0) return verdict(0, [])
+  const failed = cases.filter((test) => test.failed)
   // A failure outside any test (a file that doesn't load, an error between tests) isn't in the
   // report and has no name to rerun: when bun counted one, the run fails as bun test did, but for
   // errors left over from tests that timed out, which their reruns stand for.
   const counts = summaryCounts(output)
-  if (failed.length === 0 || counts.fail !== failed.length) return code
-  if (!timeoutLeftovers(output, counts.error, failed, process.cwd())) return code
+  if (failed.length === 0 || counts.fail !== failed.length) return verdict(code, failed)
+  if (!timeoutLeftovers(output, counts.error, failed, process.cwd())) return verdict(code, failed)
   // A file's failed tests are rerun together, in one process, and the files side by side, as many at
   // a time as the first run's workers (tutti-0vbd.4): one after another, 19 failures took 779 s.
   // Each prints its output once it ends, in the order the failures came.
@@ -563,7 +587,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     }),
     rerunWorkers,
   )
-  let stillFailing = 0
+  const stillFailing: Array<TestCase> = []
   for (const [index, group] of groups.entries()) {
     for (const test of group.tests) console.log(`\nRerunning ${test.file} ${test.name}`)
     const rerun = await reruns[index]
@@ -573,10 +597,10 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     const passed = passedOnRerun(group, rerun.code, rerun.output, rerun.reran, process.cwd())
     for (const test of group.tests) {
       if (passed.includes(test)) console.log(flakyLine(test))
-      else stillFailing++
+      else stillFailing.push(test)
     }
   }
-  return stillFailing === 0 ? 0 : 1
+  return verdict(stillFailing.length === 0 ? 0 : 1, stillFailing)
 }
 
 /** The folder each run's temp folder is made in. */

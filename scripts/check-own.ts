@@ -15,12 +15,17 @@
 // worktree's own git dir, the tree its tests passed on (HEAD's with what isn't committed yet,
 // untracked files included), its mode (plain, or slow for TUTTI_SLOW=1) and the test files that
 // passed there. The next run leaves out those that what changed since that tree doesn't touch. A
-// slow pass stands for a plain run too, as it ran more; a plain one doesn't for a slow run.
+// slow pass stands for a plain run too, as it ran more; a plain one doesn't for a slow run. A run
+// whose tests failed keeps, at its tree, the test files whose tests all passed in it and the earlier
+// pass's that it left out (afterFailure): the next one runs the files that failed again.
 //
 // Run as `bun scripts/check-own.ts <changed file>...`: it prints the test files to run, one a line,
 // or ALL for the whole suite, reading the repository's src/, test/ and scripts/ from the current
-// folder, after lines saying what it left out, which start with "check-own:" or "test:". It writes the record should the run pass to
-// <git dir>/tutti-check-own-next.json, which check-own.sh keeps on a pass.
+// folder, after lines saying what it left out, which start with "check-own:" or "test:". It writes
+// the record should the run pass to <git dir>/tutti-check-own-next.json, which check-own.sh keeps
+// on a pass, and the earlier pass's tests it leaves out to tutti-check-own-unrun.json. After a
+// failed test step, check-own.sh runs `bun scripts/check-own.ts --failed <file>`, the file the
+// files that passed, which scripts/test.ts wrote (TUTTI_CHECK_OWN_PASSED), to keep them.
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, normalize } from "node:path"
 
@@ -202,9 +207,38 @@ export const standOn = (
   }
 }
 
-/** The file a mode's pass record is kept in, under the worktree's git dir; "next" is a run's own. */
-export const recordFile = (gitDir: string, mode: PassRecord["mode"] | "next"): string =>
+/**
+ * What a failed run keeps (tutti-0vbd.2): `next` is the record it wrote should it pass, `unrun` the
+ * one should it fail, the earlier pass's tests it left out, at the same tree, and `passed` the test
+ * files whose tests all passed in it (scripts/test.ts' passedFiles). `kept` holds, at the run's
+ * tree, the tests it left out and those it ran that passed; `failed` the tests it ran that didn't.
+ */
+export const afterFailure = (
+  next: PassRecord,
+  unrun: PassRecord,
+  passed: ReadonlyArray<string>,
+): { readonly kept: PassRecord; readonly failed: ReadonlyArray<string> } => {
+  const left = new Set(unrun.tests)
+  const ok = new Set(passed)
+  return {
+    kept: { ...next, tests: next.tests.filter((test) => left.has(test) || ok.has(test)) },
+    failed: next.tests.filter((test) => !left.has(test) && !ok.has(test)),
+  }
+}
+
+/**
+ * The file a mode's pass record is kept in, under the worktree's git dir; "next" and "unrun" are a
+ * run's own, what holds at its tree should it pass and should its tests fail.
+ */
+export const recordFile = (gitDir: string, mode: PassRecord["mode"] | "next" | "unrun"): string =>
   join(gitDir, `tutti-check-own-${mode}.json`)
+
+/** The pass record kept in a file, or undefined where there is none. */
+const readKept = (file: string): PassRecord | undefined =>
+  existsSync(file) ? readRecord(readFileSync(file, "utf8")) : undefined
+
+const writeRecord = (file: string, record: PassRecord): void =>
+  writeFileSync(file, `${JSON.stringify(record)}\n`)
 
 /** git's output, trimmed, or undefined where it failed. */
 const git = (args: ReadonlyArray<string>, env?: Record<string, string>): string | undefined => {
@@ -234,7 +268,38 @@ const workingTree = (gitDir: string): string | undefined => {
   }
 }
 
-if (import.meta.main) {
+/**
+ * Keeps, after a run whose tests failed, what passed in it (afterFailure) as its mode's pass, a slow
+ * one for plain runs too, and takes the tests that failed out of the slow pass a plain run leaves:
+ * a failed test's file always runs again. `passedFile` is scripts/test.ts' list of the files that
+ * passed. False where there is nothing to keep from: the run's records or the list missing.
+ */
+const keepFailed = (gitDir: string, passedFile: string): boolean => {
+  const next = readKept(recordFile(gitDir, "next"))
+  const unrun = readKept(recordFile(gitDir, "unrun"))
+  if (next === undefined || unrun?.tree !== next.tree || !existsSync(passedFile)) return false
+  const passed = readFileSync(passedFile, "utf8").split("\n")
+  const { kept, failed } = afterFailure(next, unrun, passed)
+  writeRecord(recordFile(gitDir, next.mode), kept)
+  const count = kept.tests.length
+  console.log(
+    `check-own: kept ${count} test file${count === 1 ? "" : "s"} passed at ` +
+      `${kept.tree.slice(0, 7)} for the next run; ${failed.length} failed.`,
+  )
+  if (next.mode === "slow") writeRecord(recordFile(gitDir, "plain"), kept)
+  else {
+    const slow = readKept(recordFile(gitDir, "slow"))
+    if (slow !== undefined) {
+      writeRecord(recordFile(gitDir, "slow"), {
+        ...slow,
+        tests: slow.tests.filter((test) => !failed.includes(test)),
+      })
+    }
+  }
+  return true
+}
+
+const pick = (): void => {
   const listed = Bun.spawnSync([
     "git",
     "ls-files",
@@ -254,9 +319,7 @@ if (import.meta.main) {
   const mode = process.env.TUTTI_SLOW === "1" ? "slow" : "plain"
   const gitDir = git(["rev-parse", "--absolute-git-dir"])
   const tree = gitDir === undefined ? undefined : workingTree(gitDir)
-  const kept = gitDir === undefined ? undefined : recordFile(gitDir, mode)
-  const record =
-    kept === undefined || !existsSync(kept) ? undefined : readRecord(readFileSync(kept, "utf8"))
+  const record = gitDir === undefined ? undefined : readKept(recordFile(gitDir, mode))
   // A tree git no longer has (pruned) reads as no pass.
   const since =
     record === undefined || tree === undefined
@@ -282,11 +345,21 @@ if (import.meta.main) {
     }
   }
   if (gitDir !== undefined && tree !== undefined) {
-    const next: PassRecord = { tree, mode, tests: picked.passed }
-    writeFileSync(recordFile(gitDir, "next"), `${JSON.stringify(next)}\n`)
+    writeRecord(recordFile(gitDir, "next"), { tree, mode, tests: picked.passed })
+    const ran = new Set(picked.run === "all" ? all : picked.run)
+    const unrun = picked.passed.filter((test) => !ran.has(test))
+    writeRecord(recordFile(gitDir, "unrun"), { tree, mode, tests: unrun })
   }
   if (selection !== "all" && selection.length === 0) {
     console.log("test: no test file covers the change")
   }
   console.log(picked.run === "all" ? "ALL" : picked.run.join("\n"))
+}
+
+if (import.meta.main) {
+  if (Bun.argv[2] === "--failed") {
+    const gitDir = git(["rev-parse", "--absolute-git-dir"])
+    process.exit(gitDir !== undefined && keepFailed(gitDir, Bun.argv[3] ?? "") ? 0 : 1)
+  }
+  pick()
 }
