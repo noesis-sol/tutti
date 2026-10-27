@@ -10,8 +10,11 @@
 // leave it (Dashboard.tsx), room for 3 to 10 tickets, blank rows filling it until the run has that
 // many, after which the oldest give way to a `+N earlier tickets` row. Only a resize changes it.
 // The run's summary prints the same table, every row of it and no blank one (print/summary.ts).
+// On the dashboard an Asked row says its question (RunView's note) and is a click target, and the
+// highlight reaches it (TableReach, tutti-fdv1): it opens the questions box at its question.
 import type { Card, Row } from "../run/runView.ts"
-import { fit, framed, type Segments, seg } from "./line.tsx"
+import type { TicketId } from "../services/Beads.ts"
+import { fit, framed, padded, type Segments, seg, targeting } from "./line.tsx"
 import { lookOf, marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
@@ -55,12 +58,28 @@ export const rowsBesideCurrent = (
   return rows.filter((row) => !current.has(row.ticket))
 }
 
+/** The rows a table `size` tall draws: the newest, where the oldest give way to `+N earlier`. */
+export const shownRows = (rows: ReadonlyArray<Row>, size: TableSize): ReadonlyArray<Row> => {
+  const limit = "lines" in size ? Math.max(size.lines - sectionChrome, 1) : rows.length
+  return rows.length > limit ? rows.slice(rows.length - (limit - 1)) : rows
+}
+
+/**
+ * What the dashboard's keys and clicks reach in the table (§ 7.2): the row the highlight is on,
+ * drawn in the focus's look, and each row's click target, where it has one (an Asked row's).
+ */
+export interface TableReach {
+  readonly highlighted: TicketId | null
+  readonly target: (row: Row) => number | undefined
+}
+
 /** The table's lines with its label, `width` wide, as tall as `size` says. */
 export const ticketsLines = (
   rows: ReadonlyArray<Row>,
   theme: Theme,
   width: number,
   size: TableSize,
+  reach?: TableReach,
 ): ReadonlyArray<Segments> => {
   const { styles } = theme
   // A worker files tickets, so an ID is untrusted, and one longer than a third of the table is cut.
@@ -74,7 +93,8 @@ export const ticketsLines = (
   )
   const aboutWidth = Math.max(width - 4 - (stateWidth + 2) - (idWidth + 2) - 2, 1)
   const limit = "lines" in size ? Math.max(size.lines - sectionChrome, 1) : rows.length
-  const hidden = rows.length > limit ? rows.length - (limit - 1) : 0
+  const shown = shownRows(rows, size)
+  const hidden = rows.length - shown.length
   const cells: Array<ReadonlyArray<Segments>> = []
   if (hidden > 0) {
     cells.push([
@@ -83,17 +103,30 @@ export const ticketsLines = (
       [seg(fit("earlier tickets, see the log", aboutWidth), styles.dim)],
     ])
   }
-  for (const row of rows.slice(hidden)) {
+  for (const row of shown) {
     const style = lookOf(row.tone, theme)
     const about =
       row.verdict !== null
         ? seg(fit(`${marks.verdict} ${row.verdict}`, aboutWidth), styles.organ)
         : seg(fit(row.note, aboutWidth), row.faint ? styles.dim : null)
-    cells.push([
+    const drawn: ReadonlyArray<Segments> = [
       [seg(fit(`${marks[row.mark]} ${row.word}`, stateWidth), style)],
       [seg(fit(row.label, idWidth), style)],
       [about],
-    ])
+    ]
+    // The highlighted row is drawn in the focus's look, which shows without colour (§ 7.11).
+    const focused =
+      reach?.highlighted === row.ticket
+        ? drawn.map((cell) => cell.map((each) => ({ ...each, look: theme.form.focusedButton })))
+        : drawn
+    // A click anywhere on a row with a target presses it, its cells padded to their widths.
+    const target = reach?.target(row)
+    const widths = [stateWidth, idWidth, aboutWidth]
+    cells.push(
+      target === undefined
+        ? focused
+        : focused.map((cell, i) => targeting(padded(cell, widths[i] ?? 0), target)),
+    )
   }
   while (cells.length < limit) cells.push([[], [], []])
   return [

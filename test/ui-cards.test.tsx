@@ -749,8 +749,8 @@ describe("the hint and the key help", () => {
       ╭──────────────────────────────────────────────────────────────────────────────╮
       │ Keys                                                                         │
       │                                                                              │
-      │ Tab, Shift+Tab, arrows  move the highlight between cards                     │
-      │ Enter, a click          open the highlighted card; press the focused button  │
+      │ Tab, Shift+Tab, arrows  move the highlight: cards, Needs you, ? for you rows │
+      │ Enter, a click          open what is highlighted; press the focused button   │
       │ Esc                     close an open box                                    │
       │ d, Shift+D              deny the request; deny with a reason                 │
       │ a                       allow the request, unless it opens on Deny           │

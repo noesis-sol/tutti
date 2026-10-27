@@ -5,9 +5,11 @@
 // ` · N held back`, ` · N setup failed` and ` · held`; zeros are faint.
 // The workers are on the load line above the strip (LoadLine.tsx), and on the one line, `▶ n/N`,
 // which is drawn without it.
+// Where there is no panel beside the tickets table, Needs you is a click target, and the highlight
+// reaches it (NeedsReach, tutti-fdv1): it opens the list of what needs you (NeedsList.tsx).
 import type { Totals as TotalsView } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
-import { cut, framed, type Look, type Segments, seg, widthOf } from "./line.tsx"
+import { cut, framed, type Look, type Segments, seg, targeting, widthOf } from "./line.tsx"
 import { marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
@@ -15,10 +17,35 @@ import type { Theme } from "./theme.ts"
 type Triage = "full" | "short" | "none"
 
 /**
+ * What the dashboard's keys and clicks reach of the totals where there is no panel (§ 7.2): Needs
+ * you, its click target, and whether the highlight is on it, drawn in the focus's look.
+ */
+export interface NeedsReach {
+  readonly target: number
+  readonly highlighted: boolean
+}
+
+/** `segments` as `reach` makes them: its click target, and the focus's look while highlighted. */
+const reached = (segments: Segments, theme: Theme, reach: NeedsReach | undefined): Segments =>
+  reach === undefined
+    ? segments
+    : targeting(
+        reach.highlighted
+          ? segments.map((each) => ({ ...each, look: theme.form.focusedButton }))
+          : segments,
+        reach.target,
+      )
+
+/**
  * The strip's cells: each total's count in its style, then its label faint, a zero faint whole;
  * Set aside's triage note, as much of it as `triage` says, and the queue's notes after their labels.
  */
-const cells = (t: TotalsView, theme: Theme, triage: Triage): ReadonlyArray<Segments> => {
+const cells = (
+  t: TotalsView,
+  theme: Theme,
+  triage: Triage,
+  reach?: NeedsReach,
+): ReadonlyArray<Segments> => {
   const { styles } = theme
   const faint = (text: string) => seg(text, styles.dim)
   const cell = (n: number, mark: string, look: Look, label: string): Segments =>
@@ -31,7 +58,7 @@ const cells = (t: TotalsView, theme: Theme, triage: Triage): ReadonlyArray<Segme
   return [
     cell(t.completed, marks.done, styles.closed, "Completed"),
     [...cell(t.deferred + t.review, marks.setAside, styles.deferred, "Set aside"), ...triaged],
-    cell(t.needsYou, "", styles.stop, "Needs you"),
+    reached(cell(t.needsYou, "", styles.stop, "Needs you"), theme, reach),
     [...queueCount(t, theme), faint(" In queue"), ...queueNotes(t, theme, " · ")],
   ]
 }
@@ -64,6 +91,7 @@ export const totalsLine = (
   theme: Theme,
   width: number,
   workers = true,
+  reach?: NeedsReach,
 ): Segments => {
   const { styles } = theme
   const dot = seg(" · ", styles.dim)
@@ -73,7 +101,7 @@ export const totalsLine = (
       seg(`${marks.setAside} ${t.deferred + t.review}`, styles.deferred),
       ...(t.triaged > 0 ? [seg(` ${marks.verdict} ${t.triaged}`, styles.organ)] : []),
     ],
-    [seg(`${marks.asked} ${t.needsYou}`, styles.stop)],
+    reached([seg(`${marks.asked} ${t.needsYou}`, styles.stop)], theme, reach),
     ...(workers
       ? [[seg(`${marks.working} ${t.workers}`, styles.picked), seg(`/${t.slots}`, styles.dim)]]
       : []),
@@ -94,11 +122,12 @@ export const totalsStrip = (
   t: TotalsView,
   theme: Theme,
   width: number,
+  reach?: NeedsReach,
 ): ReadonlyArray<Segments> | null => {
   const bare = cells(t, theme, "none").slice(0, -1).map(widthOf)
   const forms = function* () {
     for (const triage of ["full", "short", "none"] as const) {
-      const all = cells(t, theme, triage)
+      const all = cells(t, theme, triage, reach)
       const widths = cellWidths(all.map(widthOf), bare, width)
       yield widths === null ? null : framed([all], widths, theme.look("frame"))
     }
@@ -138,7 +167,8 @@ export const totalsLines = (
   theme: Theme,
   width: number,
   oneLine: boolean,
+  reach?: NeedsReach,
 ): ReadonlyArray<Segments> =>
   oneLine
-    ? [totalsLine(t, theme, width)]
-    : (totalsStrip(t, theme, width) ?? [totalsLine(t, theme, width, false)])
+    ? [totalsLine(t, theme, width, true, reach)]
+    : (totalsStrip(t, theme, width, reach) ?? [totalsLine(t, theme, width, false, reach)])

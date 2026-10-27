@@ -60,35 +60,57 @@ export const fileWords = {
   notFiled: (why: string) => `couldn't file it as a ticket: ${sanitizeLine(why)}`,
 }
 
+/** The Answer button of an Asked ticket's finished line (tutti-fdv1). */
+export const answerButton = "[ Answer ]"
+
+/** The finished line's click targets: File as ticket, and Answer. */
+export const finishedTargets = { file: 0, answer: 1 } as const
+
 /**
  * The finished line, `width` wide, over the composer of a worker that has finished: what it means,
- * and the File as ticket button, which files what you typed as a new ticket (tutti-g0wd).
+ * and the File as ticket button, which files what you typed as a new ticket (tutti-g0wd); before
+ * it, for a ticket `asked` a question, the Answer button, which opens the questions box at it.
  */
-export const finishedLine = (theme: Theme, ticket: string, width: number): Segments => {
+export const finishedLine = (
+  theme: Theme,
+  ticket: string,
+  width: number,
+  asked = false,
+): Segments => {
   const words = finishedWords(ticket)
   // Its key, Ctrl+T, is the hint's: beside the button, it would cut the words in 80 columns.
-  const button = seg(fileWords.button, theme.form.button, 0)
-  const room = Math.max(width - widthOf([button]) - 2, 0)
+  const buttons: Segments = [
+    ...(asked ? [seg(answerButton, theme.form.button, finishedTargets.answer), seg("  ")] : []),
+    seg(fileWords.button, theme.form.button, finishedTargets.file),
+  ]
+  const room = Math.max(width - widthOf(buttons) - 2, 0)
   const said: Segments = [
     seg("  "),
     seg(words.finished, theme.styles.key),
     seg(words.line, theme.styles.dim),
   ]
-  return [...padded(cut(said, room), room), seg("  "), button]
+  return [...padded(cut(said, room), room), seg("  "), ...buttons]
 }
 
-/** The finished line, its File as ticket button pressed by a click. */
+/** The finished line, its File as ticket button, and Answer where `answer` is given, pressed by a click. */
 export const FinishedLine = ({
   theme,
   ticket,
   width,
   file,
+  answer,
 }: {
   readonly theme: Theme
   readonly ticket: TicketId
   readonly width: number
   readonly file: () => void
-}) => <Line segments={finishedLine(theme, ticket, width)} press={file} />
+  readonly answer?: (() => void) | undefined
+}) => (
+  <Line
+    segments={finishedLine(theme, ticket, width, answer !== undefined)}
+    press={(target) => (target === finishedTargets.answer ? answer?.() : file())}
+  />
+)
 
 /** What the held line says while `ticket` waits to merge (`merging` false) or merges. */
 export const heldWords = (ticket: string, merging: boolean) => ({

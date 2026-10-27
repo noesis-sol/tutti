@@ -13,6 +13,10 @@
 // talk in place of the screen (App.tsx) and records the answer it gives as any other. Once the run
 // says the talk is over (Talked), TalkReturn opens the box again: at the next question once it was
 // answered, at the same one otherwise; a toast says why a talk that wasn't left gave no answer.
+//
+// Opened from the Needs you list (NeedsList.tsx, tutti-fdv1), the box puts that question alone, and
+// once it is answered, left open or closed with Esc opens the list again: at the next item, or at
+// the same one after Esc.
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
@@ -21,7 +25,7 @@ import { UiCommand } from "../run/commands.ts"
 import type { QuestionNews } from "../run/questionNews.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { type Command, useCommands } from "./keyCommands.ts"
-import { Box, useInput } from "./keys.ts"
+import { Box, type NeedsAt, useInput } from "./keys.ts"
 import { seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { type Closing, OpenQuestionForm } from "./OpenQuestion.tsx"
@@ -42,13 +46,21 @@ export const readingText = "Reading the open questions…"
 /** The toast when no question is open in the run's scope. */
 export const noneOpenText = "No open questions to answer"
 
+/** What a read's uuid starts with where none open needs no toast: the Needs you list's. */
+const quietPrefix = "quiet-"
+
+/** A uuid for a read whose having no question open needs no toast (the Needs you list's). */
+export const quietUuid = (): string => `${quietPrefix}${crypto.randomUUID()}`
+
 /** The toast of a news item, or null for one that has none (the questions read). */
 export const newsToast = (
   news: QuestionNews,
 ): { readonly text: string; readonly failure: boolean } | null => {
   switch (news._tag) {
     case "Read":
-      return news.questions.length === 0 ? { text: noneOpenText, failure: false } : null
+      return news.questions.length === 0 && !news.uuid.startsWith(quietPrefix)
+        ? { text: noneOpenText, failure: false }
+        : null
     case "NotRead":
       return { text: sanitizeLine(`couldn't read the questions: ${news.why}`), failure: true }
     case "Answered":
@@ -111,10 +123,17 @@ const useBoxCommands = (commands: ReadonlyArray<Command>) =>
     "Questions",
   ).hint
 
-/** Esc, which closes the questions box: bound before it opens, so it closes it while it reads. */
+/** Where Esc goes from the questions box `open`: the Needs you list it came from, or none. */
+const closedTo = (open: Box | null): Box | null =>
+  open?._tag === "Questions" && open.back !== undefined ? Box.Needs(open.back) : null
+
+/**
+ * Esc, which closes the questions box, or goes back to the Needs you list it came from: bound
+ * before it opens, so it closes it while it reads.
+ */
 export const QuestionsKeys = () => {
   const { box } = useInput()
-  useCommands("box", [{ keys: ["escape"], run: () => box.set(null) }], "Questions")
+  useCommands("box", [{ keys: ["escape"], run: () => box.set(closedTo(box.get())) }], "Questions")
   return null
 }
 
@@ -133,8 +152,17 @@ export const QuestionToasts = ({ toasts }: { readonly toasts: ToastStore }) => {
   return null
 }
 
-/** The box, its questions put from `first`'s where it is among them (the panel's Enter), else from the first. */
-export const QuestionsBox = ({ first }: { readonly first?: TicketId | undefined }) => {
+/**
+ * The box, its questions put from `first`'s where it is among them (the panel's Enter), else from
+ * the first; with `back`, `first`'s alone, then the Needs you list again.
+ */
+export const QuestionsBox = ({
+  first,
+  back,
+}: {
+  readonly first?: TicketId | undefined
+  readonly back?: NeedsAt | undefined
+}) => {
   const theme = useTheme()
   const command = useCommand()
   const { box } = useInput()
@@ -145,8 +173,10 @@ export const QuestionsBox = ({ first }: { readonly first?: TicketId | undefined 
   const read = useQuestionNews().find(
     (news) => news.uuid === uuid && (news._tag === "Read" || news._tag === "NotRead"),
   )
-  const close = () => box.set(null)
-  const questions = read?._tag === "Read" ? read.questions : undefined
+  const close = () => box.set(back === undefined ? null : Box.Needs(back))
+  const all = read?._tag === "Read" ? read.questions : undefined
+  // From the Needs you list, its question alone.
+  const questions = back === undefined ? all : all?.filter((question) => question.id === first)
   // Opened on a question from the panel beside the tickets table, the box starts at it.
   const startAt = questions?.findIndex((question) => question.id === first) ?? -1
   useEffect(() => {
@@ -154,9 +184,10 @@ export const QuestionsBox = ({ first }: { readonly first?: TicketId | undefined 
   }, [startAt])
   // None to put, or bd couldn't say: QuestionToasts says so, and the box closes.
   const done = read !== undefined && (questions === undefined || at >= questions.length)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: close is the latest render's
   useEffect(() => {
-    if (done) box.set(null)
-  }, [done, box])
+    if (done) close()
+  }, [done])
 
   if (read === undefined) {
     return (
@@ -180,7 +211,7 @@ export const QuestionsBox = ({ first }: { readonly first?: TicketId | undefined 
           uuid: crypto.randomUUID(),
         }),
       )
-      return close()
+      return box.set(null)
     }
     if (given._tag === "Answer") {
       command(
@@ -188,6 +219,16 @@ export const QuestionsBox = ({ first }: { readonly first?: TicketId | undefined 
           question: question.id,
           answer: given.answer,
           uuid: crypto.randomUUID(),
+        }),
+      )
+    }
+    // Back to the list it came from: an answered question leaves it, so the next is at its place.
+    if (back !== undefined) {
+      const answered = given._tag === "Answer"
+      return box.set(
+        Box.Needs({
+          at: answered ? back.at : back.at + 1,
+          answered: answered ? [...back.answered, question.id] : back.answered,
         }),
       )
     }

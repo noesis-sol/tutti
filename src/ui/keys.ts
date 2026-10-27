@@ -62,8 +62,13 @@ export type Box = Data.TaggedEnum<{
   Reason: { readonly requestId: string; readonly ticket: TicketId; readonly label: string }
   /** Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5). */
   Form: { readonly requestId: string; readonly ticket: TicketId }
-  /** Shift+A's on the dashboard: the open questions in the run's scope, put one by one. */
-  Questions: { readonly first?: TicketId }
+  /**
+   * Shift+A's on the dashboard: the open questions in the run's scope, put one by one, from
+   * `first`'s; with `back`, `first` alone, the Needs you list opened again once it is answered.
+   */
+  Questions: { readonly first?: TicketId; readonly back?: NeedsAt }
+  /** Needs you's on a dashboard without the panel: a list of what needs you (NeedsList.tsx). */
+  Needs: NeedsAt
   /** Ctrl+X's in a worker view: whether to interrupt the turn of the ticket's worker (§ 7.5). */
   Interrupt: { readonly ticket: TicketId }
   /** Leaving the Interview view with nothing filed: whether to end the interview (§ 4.10). */
@@ -71,6 +76,15 @@ export type Box = Data.TaggedEnum<{
 }>
 
 export const Box = Data.taggedEnum<Box>()
+
+/**
+ * Where the Needs you list is: the item `at` chosen, and the questions answered from it, left out
+ * until the run's look takes their tickets back.
+ */
+export interface NeedsAt {
+  readonly at: number
+  readonly answered: ReadonlyArray<string>
+}
 
 /** What the input layers share: the box open, and the toasts. */
 export interface InputState {

@@ -2,7 +2,7 @@
 // drawn: its card, kept once the worker has finished, what it consumes, whether the run holds your
 // messages or a conflict waits for it, its transcript and the composer, and the commands the view's
 // keys and buttons send: a message, Ctrl+X's interrupt and its question, Release, Hand it the
-// conflict now, File as ticket, and leaving the view. The pieces in Head, Story and Panel take
+// conflict now, File as ticket, Answer for an Asked ticket, and leaving the view. The pieces in Head, Story and Panel take
 // plain props from it.
 
 import { useEffect, useRef } from "react"
@@ -39,6 +39,8 @@ export interface WorkerCommands {
   readonly release: () => void
   /** Hand it the conflict now (§ 4.3). */
   readonly handBackNow: () => void
+  /** Shift+A, Answer: the questions box at the question its ticket waits on, Asked (tutti-fdv1). */
+  readonly answerQuestion: () => void
   /** Esc, ← Dashboard: back to the dashboard. */
   readonly close: () => void
 }
@@ -58,6 +60,8 @@ export interface WorkerScreen {
   readonly steered: boolean
   /** Whether a merge conflict waits for it, steered (§ 4.3). */
   readonly handBack: boolean
+  /** The question its ticket waits on, Asked; null while it waits on none. */
+  readonly question: TicketId | null
   readonly transcript: TranscriptWindow
   readonly composer: ComposerState
   readonly commands: WorkerCommands
@@ -79,6 +83,11 @@ export const useWorkerScreen = (viewed: TicketId): WorkerScreen => {
   const lastResources = useRef(foundResources)
   if (foundResources !== undefined) lastResources.current = foundResources
   const holding = found !== undefined && holdsMessages(found.phase)
+  // The question an Asked ticket waits on, as the panel and the table read it (§ 7.2).
+  const question = useRunViewPart((view) => {
+    const need = view.needs.find((each) => each._tag === "Question" && each.ticket === viewed)
+    return need?._tag === "Question" ? ((need.question?.id ?? need.id) as TicketId) : null
+  })
   const transcript = useTranscriptWindow(
     ticket,
     found?.state != null && !hasSettled(found.state),
@@ -154,6 +163,11 @@ export const useWorkerScreen = (viewed: TicketId): WorkerScreen => {
   const handBackNow = () => {
     if (ticket !== undefined) command(UiCommand.HandBackNow({ ticket }))
   }
+  const answerQuestion = () => {
+    if (question === null) return
+    composer.blur()
+    input.box.set(Box.Questions({ first: question }))
+  }
   const close = () => command(UiCommand.CloseWorker())
   return {
     card,
@@ -163,8 +177,18 @@ export const useWorkerScreen = (viewed: TicketId): WorkerScreen => {
     merging: found?.phase._tag === "Merging",
     steered: card?.steered === true,
     handBack: ticket !== undefined && handBacks.includes(ticket),
+    question,
     transcript,
     composer,
-    commands: { send, fileAsTicket, interrupt, answerInterrupt, release, handBackNow, close },
+    commands: {
+      send,
+      fileAsTicket,
+      interrupt,
+      answerInterrupt,
+      release,
+      handBackNow,
+      answerQuestion,
+      close,
+    },
   }
 }

@@ -10,7 +10,8 @@
 // notice with Hand it the conflict now. Answer in view, for what a card can't hold, opens the
 // answer form over the view (AnswerForm.tsx). Under them and the rule, the composer (Composer.tsx):
 // the held line while the ticket waits to merge or merges, the steered line with its Release
-// button, your messages still queued or held, the field.
+// button, or once the worker has finished the finished line, with Answer while its ticket waits on
+// a question (`A`, the questions box at it), your messages still queued or held, the field.
 //
 // The items (transcriptItems.ts): assistant text as Markdown (<markdown>, in the theme's heading,
 // code and link roles); each tool call `Tool  summary`, wrapped, its result at the end of it (`✓`,
@@ -235,6 +236,8 @@ export interface WorkerViewAt {
   readonly finished: boolean
   /** Whether the whole ticket is open (TicketHead.tsx): `t` or `Esc` closes it. */
   readonly ticketOpen?: boolean
+  /** Whether its ticket waits on a question, Asked: `A` and Answer open the box at it. */
+  readonly asked?: boolean
 }
 
 /** What the worker view's keys do: the transcript's, and its own. */
@@ -244,6 +247,8 @@ export interface WorkerViewActions extends TranscriptActions {
   readonly fileAsTicket: () => void
   /** `t`: opens or closes the whole ticket. */
   readonly ticket: () => void
+  /** `A`, Answer: the questions box at the question an Asked ticket waits on. */
+  readonly answerQuestion: () => void
 }
 
 const nothing = () => {}
@@ -255,6 +260,7 @@ const inertWorkerView: WorkerViewActions = {
   release: nothing,
   fileAsTicket: nothing,
   ticket: nothing,
+  answerQuestion: nothing,
 }
 
 const writeRow: HelpRow = [
@@ -349,6 +355,13 @@ export const workerViewCommands = (
         "Ctrl+T, File as ticket",
         "once the worker has finished, file what you wrote as a ticket",
       ],
+    },
+    {
+      keys: ["shift+a"],
+      when: () => at.asked === true,
+      run: act.answerQuestion,
+      hint: named(viewing && at.asked === true, "A", "answer"),
+      help: ["A, Answer", "answer the question an Asked ticket waits on"],
     },
     { ...keys.down, hint: named(viewing, "↑↓", "select"), help: moveRow },
     { ...keys.up, help: moveRow },
@@ -458,6 +471,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
     steered,
     finished,
     ticketOpen: ticketPanel.open,
+    asked: screen.question !== null,
   })
   // The hint's lines with requests, for the panel's room, and as they are: each worked out once.
   const hintWith = (requests: boolean) =>
@@ -506,6 +520,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
       release: unlessHelp(commands.release),
       fileAsTicket: unlessHelp(commands.fileAsTicket),
       ticket: unlessHelp(ticketPanel.toggle),
+      answerQuestion: unlessHelp(commands.answerQuestion),
     }),
   )
 
@@ -608,6 +623,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
               ticket={viewed}
               width={inner}
               file={commands.fileAsTicket}
+              answer={screen.question === null ? undefined : commands.answerQuestion}
             />
           ) : (
             <SteeredLine theme={theme} width={inner} release={commands.release} />

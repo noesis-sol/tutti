@@ -2,7 +2,7 @@
 // (split mouse reports, a lone Esc, unterminated pastes), the keys every view has (Ctrl+C, Ctrl+Z)
 // and what they open over the view: the box open (the quit box, the stop question, the Answer and
 // reason boxes of attention cards, the answer form, a worker view's interrupt question, the
-// dashboard's questions box), and the toasts. A drag's selection is drawn in the theme's selection
+// dashboard's questions box and its Needs you list), and the toasts. A drag's selection is drawn in the theme's selection
 // roles and copied on release (clipboard.ts).
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider } from "@opentui/keymap/react"
@@ -15,6 +15,7 @@ import { useCopyOnSelect } from "./clipboard.ts"
 import { globalCommands, useCommands } from "./keyCommands.ts"
 import { Box, guardInput, InputContext, type InputState, useInput } from "./keys.ts"
 import { SelectionLook, selectionLookOf } from "./line.tsx"
+import { NeedsList } from "./NeedsList.tsx"
 import { QuestionsBox, QuestionsKeys, QuestionToasts, TalkReturn } from "./QuestionsBox.tsx"
 import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
@@ -68,7 +69,9 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
     case "Form":
       return <AnswerForm requestId={box.requestId} ticket={box.ticket} />
     case "Questions":
-      return <QuestionsBox first={box.first} />
+      return <QuestionsBox first={box.first} back={box.back} />
+    case "Needs":
+      return <NeedsList at={box.at} answered={box.answered} />
   }
 }
 

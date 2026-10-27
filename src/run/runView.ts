@@ -274,7 +274,7 @@ export interface Row extends Shown {
   /** Its ticket's ID as drawn: a worker files tickets, so it is sanitised (§ 7.10). */
   readonly label: string
   readonly title: string
-  /** What the row says of the ticket: its title, or how it finished. */
+  /** What the row says of the ticket: its title, how it finished, or the question it waits on. */
   readonly note: string
   /** The triage organ's verdict, which replaces the note of a ticket set aside once it is in. */
   readonly verdict: string | null
@@ -851,7 +851,14 @@ const actionOf = (entry: Entry, branch: string, ahead: CheckAhead | undefined): 
   }
 }
 
-const noteOf = (entry: Entry, title: string, branch: string): string => {
+const noteOf = (
+  entry: Entry,
+  title: string,
+  branch: string,
+  questions: ReadonlyMap<string, OpenQuestion>,
+): string => {
+  // An Asked ticket says the question it waits on, once the look has read it (§ 7.2).
+  if (entry.phase._tag === "Asked") return questions.get(entry.phase.question)?.title ?? title
   // A ticket an overnight run set aside says why before its title.
   if (entry.phase._tag === "Deferred" && asideOvernight(entry.phase.why)) {
     return `(${entry.phase.why}) ${title}`
@@ -1014,7 +1021,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           label,
           title,
           ...rowStatus(phase, activity),
-          note: noteOf(entry, title, branch),
+          note: noteOf(entry, title, branch, status.questions),
           verdict: verdict === null ? null : sanitizeLine(verdict),
         },
       })

@@ -149,7 +149,7 @@ rows. A row changes as the ticket moves through its phases:
 | `⟳ resolving` | its rebase stopped on conflicts, handed back to its worker |
 | `⟳ fixing` | its check failed on its branch before it merged, handed back to its worker |
 | `✓ done` | merged (`ffd6ce4 merged into <branch>`), or closed with `no change to merge` |
-| `? for you` | waits on a question ticket for you |
+| `? for you` | waits on a question ticket for you; the row says the question's title once tutti has read it |
 | `◷ waiting` | back in the queue until a blocker merges, or reopened by an environment hold |
 | `↷ deferred` | set aside, deferred; triage's verdict (`◆ …`) replaces its note once it is in |
 | `! review` | left for review: `CHECKS_FAILED`, closed without a commit, … |
@@ -181,6 +181,22 @@ of what needs you. A click on an option answers with it, and one on the title or
 opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
 half a second. An answered question leaves the panel at once, and the answer wakes the run, which
 takes its ticket back. A narrower pane has no panel.
+
+### What needs you, in any pane
+
+An Asked row says the question its ticket waits on, rather than the ticket's title, in any pane. Past
+the last card, `Tab` goes on to the panel, or, where there is none, to the totals' **Needs you**, then
+to each `? for you` row in the table, the one it is on drawn highlighted. `Enter` on a `? for you`
+row, or a click on it, opens `Shift+A`'s box at its question.
+
+Where there is no panel, `Enter` on **Needs you**, or a click on it, opens a list of what needs you,
+a line each, as the panel shows them one at a time: `? <question> <title>` for each question an Asked
+ticket waits on, `■ <ticket> blocked: <why>` for each Blocked ticket, then, faint, the open questions
+in the run's scope that no ticket in the run waits on. `↑`/`↓` choose, `Enter` or a click opens one:
+a question in `Shift+A`'s box at it, a Blocked ticket in a box saying what clears it, where `Enter`
+opens its worker view. Once the question is answered, or the box closed, you are back in the list,
+the next one chosen; `Esc` closes it. With nothing in it, the list closes and a toast says
+`Nothing needs you`.
 
 ### The cards
 
@@ -353,6 +369,9 @@ When the run ends, the dashboard closes and the main screen gets:
   messages still queued and its background tasks, and steers it.
 - **A hand-back waiting.** A steered worker isn't handed a conflict or a failing check. The view
   says `A merge conflict waits for this worker` with **Hand it the conflict now**.
+- **A question waiting.** Once its worker has filed a question and finished, the ticket waits on
+  it (`? for you`): the line over the composer has **Answer**, and `Shift+A` does the same, opening
+  the dashboard's questions box at that question.
 
 `Esc` leaves the composer, then closes the whole ticket, then leaves the view; to switch to another worker, go back to the dashboard and
 open its card (`Tab`, then `Enter`).
@@ -361,16 +380,16 @@ open its card (`Tab`, then `Enter`).
 
 | Key | Dashboard | Worker view |
 |---|---|---|
-| `Tab`, `Shift+Tab`, `←`, `→` | move the highlight between cards; inside an attention card, between its buttons | move between a request's buttons, else between items |
+| `Tab`, `Shift+Tab`, `←`, `→` | move the highlight between cards; inside an attention card, between its buttons; past the last card, to the panel or Needs you, then the `? for you` rows | move between a request's buttons, else between items |
 | `↑`, `↓` | move the highlight between cards | move between items |
 | `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
-| `Enter`, a click | press the focused button, or open the card (in the one-line layout, open its request) | expand or collapse the item; press the focused button |
+| `Enter`, a click | press the focused button, or open the card (in the one-line layout, open its request); on a `? for you` row, its question; on Needs you, the list of what needs you | expand or collapse the item; press the focused button |
 | `d` | deny the request (decline an MCP server's) | the same |
 | `Shift+D` | deny, with a reason you type for the worker | the same |
 | `a` | allow, when the request has a one-key allow | the same |
 | `r` | allow for this run, when the request offers it | the same |
 | `s` | stop after the running tickets, or keep taking tickets (asks `y`/`n`) | |
-| `Shift+A` | answer the open questions, one by one | |
+| `Shift+A` | answer the open questions, one by one | answer the question an Asked ticket waits on |
 | `q` | end the run, while the end-of-run box shows | |
 | `i` | | focus the composer |
 | `t` | | open or close the whole ticket |

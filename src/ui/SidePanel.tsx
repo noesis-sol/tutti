@@ -130,6 +130,9 @@ const clears: Readonly<Record<string, string>> = {
   GIT_FAILED: "git failed as it merged: the log says how.",
 }
 
+/** What clears a ticket Blocked for `why` (`MERGE_CONFLICT`, …). */
+export const clearsOf = (why: string): string => clears[why] ?? "The log says what happened."
+
 /** The keys the panel's foot names, with the needs it can go to. */
 const footOf = (keys: string, count: number): Segments => [
   seg(count > 1 ? `${keys} · ] next` : keys, null),
@@ -214,7 +217,7 @@ export const needsLines = (
     body.push(
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],
       ...wrapped([seg(need.title, styles.key)], 2),
-      ...wrapped([dim(clears[need.why] ?? "The log says what happened.")]),
+      ...wrapped([dim(clearsOf(need.why))]),
       footOf(at.focused ? "Enter opens its worker view" : "Tab to choose", needs.length).map(
         (each) => ({
           ...each,
