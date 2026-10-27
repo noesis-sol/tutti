@@ -269,6 +269,7 @@ describe("the card", () => {
         ╭──────────────────────────────────────────────────────────────────────────────╮
         │ • t-1  done  0s                                                              │
         │   Title of t-1                                                               │
+        │                                                                              │
         ╰──────────────────────────────────────────────────────────────────────────────╯
         ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
         ┃ • t-2  permission — waiting for you (3)  0s                                  ┃
@@ -397,7 +398,7 @@ describe("the card", () => {
     const layout = layoutOf(view.cards, 120, 30)
     if (layout._tag !== "Cards") throw new Error("not cards")
     // The first row holds the attention card, as tall as its request; the second, two cards.
-    expect(layout.rows).toEqual([7, 4])
+    expect(layout.rows).toEqual([7, 5])
   })
 
   test("in the compact layout, ■ allow?, and Enter opens its request in the Answer box", async () => {

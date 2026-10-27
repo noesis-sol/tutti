@@ -5,17 +5,19 @@
 // it), how long it has been in its phase, the memory its worker's processes take once the run has
 // read it (`1.2 GB`, `? GB` when they can't be found, src/run/load.ts), its title, and its action
 // line: the phase's (a merge's step, a recheck), or else the worker's latest action behind `▸`, a
-// denied call `notice` for its 10 seconds.
+// denied call `notice` for its 10 seconds, blank while it has none: a full card is always 3 lines
+// inside its frame, so that it doesn't grow with its first action (tutti-pgl6).
 //
 // A card is framed `live` while its worker works and `needsYou` when it waits for you, `frame`
 // otherwise; the highlighted one keeps its colour, bold in the heavy border style. From 120 columns
-// the cards go two to a row, every one as tall as the tallest. When the pane can't hold a card each,
+// the cards go two to a row, a row as tall as its tallest card. When the pane can't hold a card each,
 // they go one line each in a single compact box, framed `needsYou` when any of them waits for you,
 // their tickets, statuses, times and memory lined up as columns, each as wide as the widest.
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
-// With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`, or, while
-// the end-of-run full check runs, its step, command and time: `setting up the full check: bun install
-// · 12s`, then `full check: scripts/check-full.sh · 1m12s`.
+// With no card, a box as tall as a full card says what the run does on its first line: `picking the
+// next ticket…`, or `stopping…`, or, while the end-of-run full check runs, its step, command and
+// time: `setting up the full check: bun install · 12s`, then `full check: scripts/check-full.sh ·
+// 1m12s`.
 import { memo, useCallback, useMemo } from "react"
 import type { FullCheckRun } from "../run/fullcheck.ts"
 import { pad } from "../run/localTime.ts"
@@ -47,20 +49,23 @@ export const twoUpWidth = 120
 /** The Current label's line. */
 export const labelLines = 1
 
-/** The lines of the box with no worker in it: its frame and its line. */
-export const idleLines = 3
+/** The lines inside a full card's frame, but an attention card's: its head, title and action line. */
+const fullCardInside = 3
+
+/** A full card's lines, but an attention card's: its frame, head, title and action line. */
+const fullCardLines = fullCardInside + 2
+
+/** The lines of the box with no worker in it, as many as a full card's: its frame and 3 lines. */
+export const idleLines = fullCardLines
 
 /**
  * The fewest lines the Current section is drawn in: its label and a box with a line in it, the idle
- * box or the compact box with only its `+N more` line.
+ * box cut to its first line or the compact box with only its `+N more` line.
  */
 export const fewestCurrentLines = labelLines + 3
 
 /** The workers the dashboard keeps Current room for a full card each, as many as the run may have. */
 export const keptCards = 6
-
-/** A full card's lines, but an attention card's: its frame, head, title and action line. */
-const fullCardLines = 5
 
 /** Cards a row in a pane `width` wide: 1, or 2 from 120 columns. */
 const acrossOf = (width: number): number => (width >= twoUpWidth ? 2 : 1)
@@ -196,8 +201,8 @@ export const contentOf = (
 }
 
 /**
- * A card's lines `width` wide, `inside` lines between its frame's top and bottom, the title and
- * action line padded out below; heavy when it is highlighted.
+ * A card's lines `width` wide, `inside` lines between its frame's top and bottom, padded out below
+ * with blank lines, the action line's while it has none; heavy when it is highlighted.
  */
 export const cardLines = (
   card: Card,
@@ -326,18 +331,24 @@ export const idleText = (
   return `${what}: ${fullCheck.command} · ${elapsed(now - fullCheck.began)}`
 }
 
-/** The box with no worker in it, saying `text`: the spinner `live`, its text faint, framed `frame`. */
+/**
+ * The box with no worker in it, saying `text` on its first line: the spinner `live`, its text faint,
+ * framed `frame`. It is `lines` lines tall, its frame included, as tall as a full card unless the
+ * pane has fewer lines for it, and never fewer than its frame and its text.
+ */
 export const idleBox = (
   text: string,
   theme: Theme,
   spin: string,
   width: number,
-): ReadonlyArray<Segments> =>
-  boxed(
-    [[seg(spin, theme.look("live")), seg(" "), seg(text, theme.styles.dim)]],
-    width,
-    theme.look("frame"),
-  )
+  lines: number = idleLines,
+): ReadonlyArray<Segments> => {
+  const content: Array<Segments> = [
+    [seg(spin, theme.look("live")), seg(" "), seg(text, theme.styles.dim)],
+  ]
+  while (content.length < Math.min(lines, idleLines) - 2) content.push([])
+  return boxed(content, width, theme.look("frame"))
+}
 
 /** How the Current section is laid out in `room` lines, `width` wide. */
 export type CardsLayout =
@@ -346,7 +357,7 @@ export type CardsLayout =
       readonly _tag: "Cards"
       /** Cards a row: 1, or 2 from 120 columns. */
       readonly across: number
-      /** The lines inside each card but an attention card: as many as the tallest's. */
+      /** The lines inside each card but an attention card: 3, its action line blank without one. */
       readonly inside: number
       /** Each row's lines, frames included: its tallest card's, an attention card's own. */
       readonly rows: ReadonlyArray<number>
@@ -357,18 +368,15 @@ export type CardsLayout =
 export const grows = (card: Card): boolean => card.requests.length > 0
 
 /**
- * The Current section's layout: full cards when they fit `room` lines, else the compact box. The
- * cards are as tall as the tallest, but an attention card is as tall as its request needs.
+ * The Current section's layout: full cards when they fit `room` lines, else the compact box. A full
+ * card is 3 lines inside its frame whether or not it has an action line, so that it keeps its height
+ * as actions come and go, but an attention card is as tall as its request needs, and a row as tall
+ * as its tallest card.
  */
 export const layoutOf = (cards: ReadonlyArray<Card>, width: number, room: number): CardsLayout => {
   if (cards.length === 0) return { _tag: "Idle" }
   const across = acrossOf(width)
-  const inside = Math.max(
-    2,
-    ...cards
-      .filter((card) => !grows(card))
-      .map((card) => (card.action !== null || card.latest !== null ? 3 : 2)),
-  )
+  const inside = fullCardInside
   const rows: Array<number> = []
   for (let i = 0; i < cards.length; i += across) {
     const row = cards.slice(i, i + across)
@@ -415,14 +423,17 @@ const IdleBox = ({
   fullCheck,
   theme,
   width,
+  lines,
 }: {
   readonly stopping: boolean
   readonly fullCheck: FullCheckRun | null
   readonly theme: Theme
   readonly width: number
+  /** The box's lines, its frame included: as many as a full card's where the room has them. */
+  readonly lines: number
 }) => {
   const text = idleText(stopping, fullCheck, useNow())
-  return <Lines lines={idleBox(text, theme, useSpinner(true), width)} />
+  return <Lines lines={idleBox(text, theme, useSpinner(true), width, lines)} />
 }
 
 /**
@@ -578,7 +589,13 @@ export const Cards = ({
       return (
         <box flexDirection="column" flexShrink={0}>
           {label}
-          <IdleBox stopping={stopping} fullCheck={fullCheck} theme={theme} width={width} />
+          <IdleBox
+            stopping={stopping}
+            fullCheck={fullCheck}
+            theme={theme}
+            width={width}
+            lines={room - labelLines}
+          />
         </box>
       )
     case "Compact":

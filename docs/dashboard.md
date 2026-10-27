@@ -211,10 +211,12 @@ or the last line the worker wrote).
 - **The frame** is coloured while the worker works, red while it waits for you, and heavy on the
   highlighted card.
 
-Cards go two to a row from 120 columns, all as tall as the tallest. When the pane can't hold a card
-each, they take one line each in a single box, their tickets, statuses and times lined up
-as columns, so that the titles start at one column. With nothing running, a box says
-`picking the next ticket…`, or `stopping…`. Once the run has ended by itself having merged a ticket,
+A card is always 5 lines tall, its action line blank until the worker's first action, so that the
+cards don't jump as actions come and go; only an attention card grows (below). Cards go two to a
+row from 120 columns. When the pane can't hold a card each, they take one line each in a single
+box, their tickets, statuses and times lined up as columns, so that the titles start at one
+column. With nothing running, a box as tall as a card says `picking the next ticket…`, or
+`stopping…`. Once the run has ended by itself having merged a ticket,
 it says what its full check runs and for how long: `setting up the full check: bun install · 12s`,
 then `full check: scripts/check-full.sh · 1m12s`. The environment probe has a card of its own, labelled
 `probe`. Elapsed times update every 3 seconds.
