@@ -185,10 +185,11 @@ describe("the scheduler shows the queue", () => {
         return steps
       }),
     )
+    const none = { waits: {}, skips: {} }
     expect(steps).toEqual([
-      { solo: { ticket: "s", running: false }, unclosed: 3 },
-      { solo: { ticket: "s", running: true }, unclosed: 3 },
-      { solo: null, unclosed: 3 },
+      { solo: { ticket: "s", running: false }, unclosed: 3, ...none },
+      { solo: { ticket: "s", running: true }, unclosed: 3, ...none },
+      { solo: null, unclosed: 3, ...none },
     ])
   })
 })

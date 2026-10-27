@@ -39,12 +39,12 @@
 // answer there. The box is placed before the tickets table: the table gives up rows for it, down
 // to its fewest, and is left out below them; the box then keeps to the room left (EndOfRunBox.tsx).
 import { useTerminalDimensions } from "@opentui/react"
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
-import type { Card, Key, RunView } from "../run/runView.ts"
+import type { Card, Key, Need, RunView } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { allot } from "./allot.ts"
-import { type AnswerKey, keyAnswer, useAnswering } from "./attentionKeys.ts"
+import { type AnswerKey, keyAnswer, settle, useAnswering } from "./attentionKeys.ts"
 import {
   Cards,
   type CardsLayout,
@@ -61,6 +61,15 @@ import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.t
 import { Box, useInput } from "./keys.ts"
 import { loadSegments } from "./LoadLine.tsx"
 import { cut, Line, Lines, Section, type Segments, seg } from "./line.tsx"
+import {
+  beside,
+  needsLines,
+  type PanelAt,
+  panelTargets,
+  panelWidth,
+  tableWidth,
+  upNextLines,
+} from "./SidePanel.tsx"
 import { fewestTableLines, rowsBesideCurrent, tableLines, ticketsLines } from "./TicketsTable.tsx"
 import { TitleLine } from "./TitleLine.tsx"
 import { useLinesUnderToasts } from "./Toasts.tsx"
@@ -85,6 +94,12 @@ export const warningLines = (
 ): ReadonlyArray<Segments> =>
   warnings.map((warning) => cut([seg(` ! ${warning}`, theme.styles.deferred)], width))
 
+/** What the panel beside the tickets table shows: the needs not answered here, and where it is at. */
+export interface SideState {
+  readonly needs: ReadonlyArray<Need>
+  readonly at: PanelAt
+}
+
 /** How the dashboard's lines are handed out (dashboardLayout): each section's, adding up to the pane's. */
 export interface DashboardLayout {
   /** Below the minimum size (§ 7.7): only the totals, on one line, and the hint are drawn. */
@@ -101,6 +116,8 @@ export interface DashboardLayout {
   readonly totals: ReadonlyArray<Segments>
   /** The tickets table's lines, its label and frame included; 0 where it is left out. */
   readonly table: number
+  /** The panel beside the table's width (SidePanel.tsx); 0 where it has none. */
+  readonly panel: number
   /**
    * The tickets table's `table` lines: the tickets beside Current's (rowsBesideCurrent), or all of
    * them beside the end-of-run box, which shows none.
@@ -143,6 +160,7 @@ export const dashboardLayout = (
   width: number,
   height: number,
   highlighted: string | null = targetOf(view),
+  side: SideState = { needs: view.needs, at: { index: 0, focused: false, choice: 0 } },
 ): DashboardLayout => {
   // A section's lines: as many as it needs of those left.
   const { take, rest } = allot(height)
@@ -156,7 +174,7 @@ export const dashboardLayout = (
   if (small) {
     const totals = allTotals.slice(0, take(allTotals.length))
     const cards: CardsLayout = { _tag: "Compact" }
-    const none = { title: 0, load: 0, gap: 0, table: 0, current: 0, windDown: 0 }
+    const none = { title: 0, load: 0, gap: 0, table: 0, panel: 0, current: 0, windDown: 0 }
     const blank = { loadLine: [], tickets: [], windDownLine: null }
     return {
       ...none,
@@ -191,8 +209,11 @@ export const dashboardLayout = (
   const table = fits ? take(tall) : 0
   const gap = take(1)
   const room = kept + take(rest())
+  // In a wide pane the panel beside the table (SidePanel.tsx) takes a share of its width.
+  const panel = table === 0 ? 0 : panelWidth(width)
   const drawn = {
     small,
+    panel,
     title,
     load,
     loadLine: loadSegments(view.totals, view.load, theme, width),
@@ -204,8 +225,17 @@ export const dashboardLayout = (
     warnings,
     hint,
   }
-  const ticketsOf = (rows: RunView["rows"]) =>
-    table === 0 ? [] : ticketsLines(rows, theme, width, { lines: table })
+  const ticketsOf = (rows: RunView["rows"]) => {
+    if (table === 0) return []
+    const narrower = tableWidth(width, panel)
+    const lines = ticketsLines(rows, theme, narrower, { lines: table })
+    if (panel === 0) return lines
+    const shown =
+      side.needs.length > 0
+        ? needsLines(side.needs, side.at, theme, panel, table)
+        : upNextLines(view.queue, view.totals, theme, panel, table)
+    return beside(lines, shown, narrower)
+  }
   if (view.endOfRun !== null && whole !== null) {
     // The box keeps to the room left, naming fewer workers, but always saying what q does.
     const ending = whole.length <= room ? whole : endOfRunLines(view.endOfRun, theme, width, room)
@@ -234,6 +264,10 @@ export const dashboardLayout = (
   }
 }
 
+/** A need's key: its ticket, and an Asked one's question, so that a new question is a new need. */
+const needKey = (need: Need): string =>
+  need._tag === "Question" ? `${need.ticket} ${need.id}` : need.ticket
+
 /** The card highlighted while none is chosen: that of the oldest open request (§ 4.5). */
 export const targetOf = (view: RunView): string | null =>
   view.cards.find((card) => card.ticket === view.requests[0]?.ticket)?.ticket ?? null
@@ -244,6 +278,8 @@ export interface DashboardAt {
   readonly buttons: boolean
   /** The highlighted card, as the key is pressed. */
   readonly highlighted: () => Card | undefined
+  /** The panel beside the tickets table: whether the highlight is on it, and its needs. */
+  readonly panel?: { readonly on: () => boolean; readonly needs: number }
 }
 
 /** What the dashboard's keys do. */
@@ -266,6 +302,10 @@ export interface DashboardActions {
   readonly endRun: () => void
   /** `Shift+A`: the questions box, the open questions put one by one. */
   readonly questions: () => void
+  /** `1`–`9` on the panel: answers its question with that option. */
+  readonly panelPick: (n: number) => void
+  /** `]` and `[`: the next or previous need in the panel. */
+  readonly panelNext: (by: 1 | -1) => void
 }
 
 const nothing = () => {}
@@ -283,11 +323,13 @@ const inertDashboard: DashboardActions = {
   stop: nothing,
   endRun: nothing,
   questions: nothing,
+  panelPick: nothing,
+  panelNext: nothing,
 }
 
 const moveRow: HelpRow = ["Tab, Shift+Tab, arrows", "move the highlight between cards"]
 const denyRow: HelpRow = ["d, Shift+D", "deny the request; deny with a reason"]
-const pickRow: HelpRow = ["1–4 in a question", "pick an option"]
+const pickRow: HelpRow = ["1–4, 1–9 on the panel", "pick a question's option"]
 
 /** Whether a ticket waits on your answer to a question: one Asked. */
 export const questionsWaiting = (view: RunView): boolean => view.totals.asked > 0
@@ -381,6 +423,25 @@ export const dashboardCommands = (
       run: on(inCard, (card) => act.pick(card, n)),
       help: pickRow,
     })),
+    // On the panel beside the tickets table, `1`–`9` answer its question with that option.
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+      keys: [String(n)],
+      when: () => at.panel?.on() === true,
+      run: () => act.panelPick(n),
+      help: pickRow,
+    })),
+    {
+      keys: ["]"],
+      when: () => (at.panel?.needs ?? 0) > 1,
+      run: () => act.panelNext(1),
+      help: ["] and [", "the next or previous of what needs you, in the panel"],
+    },
+    {
+      keys: ["["],
+      when: () => (at.panel?.needs ?? 0) > 1,
+      run: () => act.panelNext(-1),
+      help: ["] and [", "the next or previous of what needs you, in the panel"],
+    },
     // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
     {
       keys: ["s"],
@@ -448,6 +509,32 @@ export const Dashboard = () => {
   // keys arriving together each see the one before them.
   const [, setChosen, chosen] = useKeyState<string | null>(() => null)
   const [help, setHelp, helpOpen] = useKeyState(() => false)
+  // The panel beside the tickets table: the need it shows, by its ticket, whether the highlight is
+  // on it and at which choice. A question answered here leaves it at once, before the run's next
+  // look takes its ticket back.
+  const [shownNeed, setShownNeed, shownNeedNow] = useKeyState<string | null>(() => null)
+  const [onPanelShown, setOnPanel, onPanelNow] = useKeyState(() => false)
+  const [choice, setChoice, choiceNow] = useKeyState(() => 0)
+  const [answered, setAnswered] = useState<ReadonlySet<string>>(() => new Set())
+  const needs = useMemo(
+    () => view.needs.filter((need) => !answered.has(needKey(need))),
+    [view.needs, answered],
+  )
+  const needAt = (ticket: string | null) =>
+    Math.max(
+      needs.findIndex((need) => need.ticket === ticket),
+      0,
+    )
+  const panelFocused = onPanelShown && needs.length > 0
+  const side: SideState = {
+    needs,
+    at: { index: needAt(shownNeed), focused: panelFocused, choice },
+  }
+  // A need's answer keys do nothing until it has been drawn for a moment, as a request's buttons.
+  const drawnSince = useRef({ ticket: "", at: 0 })
+  const drawnNeed = needs[side.at.index]?.ticket ?? ""
+  if (drawnSince.current.ticket !== drawnNeed)
+    drawnSince.current = { ticket: drawnNeed, at: Date.now() }
   const cards = view.cards
   // With none chosen, the card of the oldest open request is the target, and highlighted (§ 4.5).
   const target = targetOf(view)
@@ -460,9 +547,14 @@ export const Dashboard = () => {
   )
 
   // The hint names `d` and `a` for the highlighted card's request: the layout is the highlight's.
+  const sideIndex = side.at.index
   const laid = useMemo(
-    () => dashboardLayout(view, theme, width, height, highlighted),
-    [view, theme, width, height, highlighted],
+    () =>
+      dashboardLayout(view, theme, width, height, panelFocused ? null : highlighted, {
+        needs,
+        at: { index: sideIndex, focused: panelFocused, choice },
+      }),
+    [view, theme, width, height, highlighted, needs, sideIndex, panelFocused, choice],
   )
   const { small, ending } = laid
   // Behind the end-of-run box no card's buttons are drawn: Enter opens the Answer box, as on a
@@ -483,7 +575,11 @@ export const Dashboard = () => {
     (...args: A) => {
       if (!helpOpen()) run(...args)
     }
-  const highlightedCard = () => cards.find((card) => card.ticket === current())
+  // The panel shows what needs you, and the highlight is on it.
+  const panelShown = () => laid.panel > 0 && needs.length > 0
+  const onPanel = () => onPanelNow() && panelShown()
+  const highlightedCard = () =>
+    onPanel() ? undefined : cards.find((card) => card.ticket === current())
   // The highlighted card's request is the target: its guard starts again as the highlight moves.
   answering.target(buttons ? highlightedCard()?.requests[0] : undefined)
   // The attention card highlighted, with its buttons drawn: the one Tab, Enter and 1–4 work in.
@@ -491,13 +587,87 @@ export const Dashboard = () => {
     const card = highlightedCard()
     return card !== undefined && grows(card) && buttons ? card : undefined
   }
+  const shownNow = () => {
+    const index = needAt(shownNeedNow())
+    return { need: needs[index], index }
+  }
+  // Answers the panel's question with its option `n`, from 0, and shows the next need.
+  const answerWith = (n: number) => {
+    const { need, index } = shownNow()
+    if (need?._tag !== "Question" || need.question === null) return
+    if (Date.now() - drawnSince.current.at < settle) return
+    const option = need.question.options?.[n]
+    if (option === undefined) return
+    command(
+      UiCommand.AnswerQuestion({
+        question: need.question.id,
+        answer: option.label,
+        uuid: crypto.randomUUID(),
+      }),
+    )
+    setAnswered((all) => new Set(all).add(needKey(need)))
+    const rest = needs.filter((each) => each !== need)
+    setShownNeed(() => rest[Math.min(index, rest.length - 1)]?.ticket ?? null)
+    setChoice(() => 0)
+    if (rest.length === 0) setOnPanel(() => false)
+  }
+  // The questions box at the panel's question: to read it all, or to type your own answer.
+  const readQuestion = () => {
+    const { need } = shownNow()
+    if (need?._tag !== "Question") return
+    box.set(Box.Questions({ first: need.question?.id ?? (need.ticket as TicketId) }))
+  }
+  const panelEnter = () => {
+    const { need } = shownNow()
+    if (need?._tag === "Blocked") return open(need.ticket)
+    if (need?._tag !== "Question" || need.question === null) return
+    if (choiceNow() < (need.question.options?.length ?? 0)) answerWith(choiceNow())
+    else readQuestion()
+  }
+  const panelMove = (by: 1 | -1) => {
+    const { need } = shownNow()
+    if (need?._tag !== "Question" || need.question === null) return
+    const count = (need.question.options?.length ?? 0) + 1
+    setChoice((now) => (now + by + count) % count)
+  }
+  const panelNext = (by: 1 | -1) => {
+    if (needs.length < 2) return
+    const { index } = shownNow()
+    setShownNeed(() => needs[(index + by + needs.length) % needs.length]?.ticket ?? null)
+    setChoice(() => 0)
+  }
+  // A click on the panel: an option answers with it, its title or Other opens the questions box.
+  const pressPanel = (target: number) => {
+    if (!panelShown()) return
+    setOnPanel(() => true)
+    if (target === panelTargets.other || target === panelTargets.read) return readQuestion()
+    setChoice(() => target)
+    answerWith(target)
+  }
   const step = (by: 1 | -1, inside: boolean) => {
+    // On the panel, ↑ and ↓ move between its choices, and Tab leaves it for the cards.
+    if (onPanel()) {
+      if (!inside) return panelMove(by)
+      setOnPanel(() => false)
+      choose((by === 1 ? cards[0] : cards.at(-1))?.ticket ?? null)
+      return
+    }
     const card = inside ? inCard() : undefined
     if (card !== undefined && answering.step(card.requests[0], by)) return
     answering.reset()
+    // Tab past the last card, or Shift+Tab before the first, goes on to the panel.
+    if (inside && panelShown()) {
+      const at = cards.findIndex((each) => each.ticket === current())
+      if (cards.length === 0 || at === (by === 1 ? cards.length - 1 : 0)) {
+        setOnPanel(() => true)
+        setChoice(() => 0)
+        return
+      }
+    }
     choose(moveHighlight(cards, current(), by))
   }
   const enter = () => {
+    if (onPanel()) return panelEnter()
     const card = highlightedCard()
     if (card === undefined) return
     if (grows(card) && !buttons) box.set(Box.Answer({ ticket: card.ticket }))
@@ -507,10 +677,10 @@ export const Dashboard = () => {
     "view",
     dashboardCommands(
       view,
-      { buttons, highlighted: highlightedCard },
+      { buttons, highlighted: highlightedCard, panel: { on: onPanel, needs: needs.length } },
       {
         help: () => showHelp(!helpOpen()),
-        escape: () => showHelp(false),
+        escape: () => (onPanel() && !helpOpen() ? setOnPanel(() => false) : showHelp(false)),
         step: unlessHelp(step),
         enter: unlessHelp(enter),
         answer: unlessHelp((card: Card, key: AnswerKey) => answering.key(card.requests[0], key)),
@@ -521,7 +691,9 @@ export const Dashboard = () => {
         }),
         stop: unlessHelp(() => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
         endRun: unlessHelp(() => command(UiCommand.EndRun())),
-        questions: unlessHelp(() => box.set(Box.Questions())),
+        questions: unlessHelp(() => box.set(Box.Questions({}))),
+        panelPick: unlessHelp((n: number) => answerWith(n - 1)),
+        panelNext: unlessHelp(panelNext),
       },
     ),
   )
@@ -556,7 +728,7 @@ export const Dashboard = () => {
         <Lines lines={laid.totals} />
       </Section>
       <Section lines={laid.table}>
-        <Lines lines={laid.tickets} />
+        <Lines lines={laid.tickets} press={pressPanel} />
       </Section>
       <Section lines={laid.current}>
         {ending !== null ? (
@@ -569,7 +741,7 @@ export const Dashboard = () => {
             width={width}
             room={laid.current}
             stopping={view.title.stopping || view.windDown !== null}
-            highlighted={highlighted}
+            highlighted={panelFocused ? null : highlighted}
             open={open}
             focusOf={answering.focusOf}
             press={answering.press}

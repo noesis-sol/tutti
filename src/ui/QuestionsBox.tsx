@@ -13,6 +13,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { QuestionNews } from "../run/questionNews.ts"
+import type { TicketId } from "../services/Beads.ts"
 import { type Command, useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
 import { seg } from "./line.tsx"
@@ -90,7 +91,8 @@ export const QuestionToasts = ({ toasts }: { readonly toasts: ToastStore }) => {
   return null
 }
 
-export const QuestionsBox = () => {
+/** The box, its questions put from `first`'s where it is among them (the panel's Enter), else from the first. */
+export const QuestionsBox = ({ first }: { readonly first?: TicketId | undefined }) => {
   const theme = useTheme()
   const command = useCommand()
   const { box } = useInput()
@@ -103,6 +105,11 @@ export const QuestionsBox = () => {
   )
   const close = () => box.set(null)
   const questions = read?._tag === "Read" ? read.questions : undefined
+  // Opened on a question from the panel beside the tickets table, the box starts at it.
+  const startAt = questions?.findIndex((question) => question.id === first) ?? -1
+  useEffect(() => {
+    if (startAt > 0) setAt(startAt)
+  }, [startAt])
   // None to put, or bd couldn't say: QuestionToasts says so, and the box closes.
   const done = read !== undefined && (questions === undefined || at >= questions.length)
   useEffect(() => {

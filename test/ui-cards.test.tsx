@@ -743,26 +743,27 @@ describe("the hint and the key help", () => {
       ),
     ).toMatchInlineSnapshot(`
       "
-      ╭─────────────────────────────────────────────────────────────────────────────╮
-      │ Keys                                                                        │
-      │                                                                             │
-      │ Tab, Shift+Tab, arrows  move the highlight between cards                    │
-      │ Enter, a click          open the highlighted card; press the focused button │
-      │ Esc                     close an open box                                   │
-      │ d, Shift+D              deny the request; deny with a reason                │
-      │ a                       allow the request, unless it opens on Deny          │
-      │ r                       allow for this run                                  │
-      │ 1–4 in a question       pick an option                                      │
-      │ s                       stop after current, or keep taking tickets          │
-      │ A                       answer the open questions, one by one               │
-      │ q                       end the run, from the end-of-run box                │
-      │ ?                       these keys                                          │
-      │ Ctrl+C                  quit: stop after current, or quit now               │
-      │ Ctrl+Z                  a toast: tutti can't be suspended                   │
-      │ a drag                  select text and copy it                             │
-      │                                                                             │
-      │ Esc close                                                                   │
-      ╰─────────────────────────────────────────────────────────────────────────────╯
+      ╭──────────────────────────────────────────────────────────────────────────────╮
+      │ Keys                                                                         │
+      │                                                                              │
+      │ Tab, Shift+Tab, arrows  move the highlight between cards                     │
+      │ Enter, a click          open the highlighted card; press the focused button  │
+      │ Esc                     close an open box                                    │
+      │ d, Shift+D              deny the request; deny with a reason                 │
+      │ a                       allow the request, unless it opens on Deny           │
+      │ r                       allow for this run                                   │
+      │ 1–4, 1–9 on the panel   pick a question's option                             │
+      │ ] and [                 the next or previous of what needs you, in the panel │
+      │ s                       stop after current, or keep taking tickets           │
+      │ A                       answer the open questions, one by one                │
+      │ q                       end the run, from the end-of-run box                 │
+      │ ?                       these keys                                           │
+      │ Ctrl+C                  quit: stop after current, or quit now                │
+      │ Ctrl+Z                  a toast: tutti can't be suspended                    │
+      │ a drag                  select text and copy it                              │
+      │                                                                              │
+      │ Esc close                                                                    │
+      ╰──────────────────────────────────────────────────────────────────────────────╯
       "
     `)
   })

@@ -165,9 +165,13 @@ export const make = (options: {
                 ),
               )
             case "AnswerQuestion":
+              // The look the answer wakes takes the ticket that waited on it back at once.
               return yield* Effect.asVoid(
                 watch(
-                  answerQuestion(command, screen.questions).pipe(Effect.provideContext(context)),
+                  answerQuestion(command, screen.questions).pipe(
+                    Effect.provideContext(context),
+                    Effect.andThen(wakeUp),
+                  ),
                 ),
               )
           }

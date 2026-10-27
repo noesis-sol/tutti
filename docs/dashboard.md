@@ -160,6 +160,26 @@ kept room for a whole card for each of up to 6 workers, as many as the run may h
 pane gives the cards room before the table. A pane too short for the table and a line a worker
 leaves it out. The summary after the run lists every ticket.
 
+### The panel beside the table
+
+In a pane at least 130 columns wide, a panel takes about a third of the table's width (44 to 64
+columns), at the table's height. While nothing needs you it shows **Up next**: the tickets waiting
+in the queue, those only a free slot holds back first (`ready`), then each held back or waiting with
+why, as the log says it (`touches scripts/check.sh, like running tutti-gr4z.7`), and `+N more` for
+those that don't fit.
+
+While something needs you it shows that instead, one at a time, `Needs you · 1 of 2` above it: a
+question an Asked ticket waits on, with its title, the ticket waiting on it, as much of its
+description as fits and its options, the recommended one first; or a Blocked ticket, why, and what
+clears it. `Tab` past the last card moves the highlight onto the panel, its frame heavy: there `↑`
+and `↓` move between the options and `Other…`, `Enter` or `1`–`9` answer with an option, as
+`Shift+A`'s box does, and `Enter` on `Other…` opens that box at the question to read it all or type
+your own; on a Blocked ticket `Enter` opens its worker view. `]` and `[` go to the next or previous
+of what needs you. A click on an option answers with it, and one on the title or a cut description
+opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
+half a second. An answered question leaves the panel at once, and the answer wakes the run, which
+takes its ticket back. A narrower pane has no panel.
+
 ### The cards
 
 Under `Current`, a card per ticket with work under way: a mark, the ticket, the

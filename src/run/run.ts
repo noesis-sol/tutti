@@ -98,7 +98,7 @@ import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
-import { askedLook, takeAnswers } from "./asked.ts"
+import { askedLook, askedQuestions, takeAnswers } from "./asked.ts"
 import {
   AutoAnswer,
   answeredQuestions,
@@ -607,8 +607,11 @@ const runFrom = (
       ...(footprints === undefined ? {} : { footprints }),
       ...(predictor === undefined ? {} : { predictor }),
       closedBranches: branches,
-      show: ({ solo, unclosed }) =>
-        Effect.andThen(showOn(status, "solo")(solo), showOn(status, "unclosed")(unclosed)),
+      show: ({ solo, unclosed, waits, skips }) =>
+        Effect.andThen(
+          Effect.andThen(showOn(status, "solo")(solo), showOn(status, "unclosed")(unclosed)),
+          showOn(status, "holdTexts")({ waits, skips }),
+        ),
     })
     yield* Ref.set(slots, scheduler.recheckSlot)
     yield* Ref.set(limitReached, scheduler.limitReached)
@@ -894,6 +897,12 @@ const runFrom = (
         )
         const listed = asked ? yield* Effect.result(beads.list()) : undefined
         open = listed !== undefined && Result.isSuccess(listed) ? listed.success : undefined
+        // The panel beside the tickets table shows the questions Asked tickets wait on, from the
+        // list read for them; with none Asked, none.
+        if (!asked) yield* showOn(status, "questions")(new Map())
+        else if (open !== undefined) {
+          yield* showOn(status, "questions")(askedQuestions(yield* ledger.current, open))
+        }
         const look = askedLook(open)
         // --auto-answer's questions first, so that takeAnswers resumes their tickets at once; one
         // still waiting for its time keeps the run from ending on it.

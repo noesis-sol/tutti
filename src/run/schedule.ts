@@ -276,12 +276,23 @@ export interface Options {
   readonly show?: (queue: QueueShown) => Effect.Effect<void>
 }
 
-/** What the dashboard draws of the queue: the solo ticket, and the tickets it draws from. */
+/**
+ * What the dashboard draws of the queue: the solo ticket, the tickets it draws from, and why each
+ * ticket waiting in it is held back, as the log last said it (its Up next panel, § 7.2).
+ */
 export interface QueueShown {
   readonly solo: Solo | null
   /** The tickets not closed in the run's scope that it takes, as the last fill read them. */
   readonly unclosed: number | null
+  /** Why each ticket held back for a parent or a ticket not merged waits, by ticket (waitsLine's). */
+  readonly waits: Readonly<Record<string, string>>
+  /** Why each ticket held back for an overlap is skipped, by ticket (skippingLine's). */
+  readonly skips: Readonly<Record<string, string>>
 }
+
+/** The reasons `said` holds, without the empty ones of tickets no longer held. */
+const reasons = (said: Said): Readonly<Record<string, string>> =>
+  Object.fromEntries([...said].filter(([, why]) => why !== ""))
 
 /** What one fill did. */
 export interface Filled {
@@ -687,6 +698,8 @@ export const make = (
             const queue: QueueShown = {
               solo: solo === null ? null : { ticket: solo.ticket, running: solo.next !== true },
               unclosed: m.unclosed,
+              waits: reasons(m.waitSaid),
+              skips: reasons(m.skipSaid),
             }
             const key = JSON.stringify(queue)
             return key === m.shownLast ? [undefined, m] : [queue, { ...m, shownLast: key }]

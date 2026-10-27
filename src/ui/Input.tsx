@@ -68,7 +68,7 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
     case "Form":
       return <AnswerForm requestId={box.requestId} ticket={box.ticket} />
     case "Questions":
-      return <QuestionsBox />
+      return <QuestionsBox first={box.first} />
   }
 }
 

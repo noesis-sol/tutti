@@ -27,6 +27,7 @@ import { formatDuration } from "../project/configFile.ts"
 import type { Issue, TicketId } from "../services/Beads.ts"
 import { shortHash } from "../services/Git.ts"
 import type { Motion, Shown, Tone } from "../ui/marks.ts"
+import type { OpenQuestion } from "../ui/questions.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
@@ -133,6 +134,19 @@ export interface Status {
   readonly load: Reading | null
   /** The tickets not closed that the queue draws from (`9 of 16`); null until the run says. */
   readonly unclosed: number | null
+  /**
+   * Why each ticket waiting in the queue is held back, as the log last said it (schedule.ts's
+   * QueueShown): for a parent or a ticket not merged (`waits`), and for an overlap (`skips`).
+   */
+  readonly holdTexts: {
+    readonly waits: Readonly<Record<string, string>>
+    readonly skips: Readonly<Record<string, string>>
+  }
+  /**
+   * The questions Asked tickets wait on, by the question's ID, as the look last read bd's open list
+   * (run.ts): for the panel beside the tickets table (§ 7.2). One not read yet is missing.
+   */
+  readonly questions: ReadonlyMap<string, OpenQuestion>
   /** The triage organ's verdicts on tickets set aside, by ticket: `environment · high · …`. */
   readonly verdicts: ReadonlyMap<string, string>
   /** How the checks of tickets waiting to merge go ahead of their turn, by ticket (mergetrain.ts). */
@@ -165,6 +179,8 @@ export const emptyStatus: Status = {
   autoAnswer: null,
   load: null,
   unclosed: null,
+  holdTexts: { waits: {}, skips: {} },
+  questions: new Map(),
   verdicts: new Map(),
   checksAhead: new Map(),
   probe: null,
@@ -448,12 +464,53 @@ export const shownRequest = (request: AttentionRequest): ShownRequest => ({
   label: sanitizeLine(request.ticket),
 })
 
+/**
+ * A ticket waiting in the queue, for the Up next panel (§ 7.2): Queued, HeldBack or Waiting, in the
+ * order the run took them in, with why it waits; `held` null for one only a free slot holds back.
+ */
+export interface QueueRow {
+  readonly ticket: TicketId
+  /** Its ID as drawn, sanitised (§ 7.10). */
+  readonly label: string
+  readonly title: string
+  /** Why it waits, as the log says it: `touches src/a.ts, like running t-1`; null for none. */
+  readonly held: string | null
+}
+
+/**
+ * What needs you, for the panel beside the tickets table (§ 7.2): an Asked ticket's question, its
+ * issue once the look has read it (null until then), or a Blocked ticket and why.
+ */
+export type Need = Data.TaggedEnum<{
+  Question: {
+    readonly ticket: TicketId
+    readonly label: string
+    readonly title: string
+    /** The question's ID, sanitised. */
+    readonly id: string
+    readonly question: OpenQuestion | null
+  }
+  Blocked: {
+    readonly ticket: TicketId
+    readonly label: string
+    readonly title: string
+    /** `MERGE_CONFLICT`, `DIRTY_TREE`, … */
+    readonly why: string
+  }
+}>
+
+export const Need = Data.taggedEnum<Need>()
+
 export interface RunView {
   readonly title: TitleView
   /** The load line's figures; null until the run has read the machine's load. */
   readonly load: LoadView | null
   readonly totals: Totals
   readonly rows: ReadonlyArray<Row>
+  /** The tickets waiting in the queue, ready ones first, then those held back or waiting. */
+  readonly queue: ReadonlyArray<QueueRow>
+  /** What needs you: the Asked tickets' questions, then the Blocked tickets, in the run's order. */
+  readonly needs: ReadonlyArray<Need>
   /** In their workers' number order. */
   readonly cards: ReadonlyArray<Card>
   /** What each card's worker consumes, for its view's figures (§ 7.5); the probe has none. */
@@ -498,6 +555,8 @@ export const emptyView: RunView = {
     queueHeld: false,
   },
   rows: [],
+  queue: [],
+  needs: [],
   cards: [],
   resources: [],
   requests: [],
@@ -831,6 +890,45 @@ const textsOf = (entry: Entry) => {
   return texts
 }
 
+/**
+ * Why a ticket waiting in the queue in `phase` waits, for the Up next panel: a hold's reason as the
+ * log last said it (`status.holdTexts`), else in words of its own; null for a Queued ticket, which
+ * waits for a free slot alone.
+ */
+const heldText = (ticket: TicketId, phase: TicketPhase, status: Status): string | null => {
+  const { waits, skips } = status.holdTexts
+  switch (phase._tag) {
+    case "HeldBack":
+      switch (phase.why) {
+        case "overlap":
+          return skips[ticket] ?? "overlaps a running ticket"
+        case "merge":
+          return waits[ticket] ?? "waits for a ticket to merge"
+        case "parent":
+          return waits[ticket] ?? "its subtickets are not all closed and merged"
+        case "solo":
+          return status.solo === null
+            ? "waits for a solo ticket"
+            : `waits for solo ${status.solo.ticket}, ${status.solo.running ? "running" : "next"}`
+      }
+      return null
+    case "Waiting":
+      switch (phase.for._tag) {
+        case "Blockers":
+          return `waits for ${phase.for.ids.join(", ")} to merge`
+        case "Setup":
+          return "its setup failed: waits for a ticket to merge, or the probe"
+        case "Probe":
+          return "waits for the environment probe to pass"
+        case "SetupProblem":
+          return "waits for the next run, once the setup is fixed"
+      }
+      return null
+    default:
+      return null
+  }
+}
+
 /** RunView for `inputs`, keeping every part of `previous` that is unchanged, and `previous` itself
  * when nothing is. */
 export const project = (inputs: Inputs, previous: RunView = emptyView): RunView => {
@@ -850,6 +948,10 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const totals = { ...emptyView.totals, slots: status.concurrency, unclosed: status.unclosed }
   const needsYou = new Set(requestsOf.keys())
   const rows: Array<{ readonly at: number; readonly row: Row }> = []
+  const ready: Array<QueueRow> = []
+  const held: Array<QueueRow> = []
+  const asked: Array<Need> = []
+  const blocked: Array<Need> = []
   const cards: Array<Card> = []
   const resources: Array<Resources> = []
   for (const entry of ledger.tickets.values()) {
@@ -871,6 +973,25 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         if (verdict !== null) totals.triaged++
       } else if (total === "inQueue") totals.queued++
       else totals[total]++
+    }
+    if (phase._tag === "Asked") {
+      const question = status.questions.get(phase.question) ?? null
+      const id = sanitizeLine(phase.question)
+      asked.push(Need.Question({ ticket: entry.ticket, label, title, id, question }))
+    } else if (phase._tag === "Blocked") {
+      const why = sanitizeLine(phase.why)
+      blocked.push(Need.Blocked({ ticket: entry.ticket, label, title, why }))
+    }
+    if (phaseFacts[phase._tag].inQueue) {
+      const why = heldText(entry.ticket, phase, status)
+      const each = {
+        ticket: entry.ticket,
+        label,
+        title,
+        held: why === null ? null : sanitizeLine(why),
+      }
+      if (why === null) ready.push(each)
+      else held.push(each)
     }
     if (entry.row !== null) {
       rows.push({
@@ -988,6 +1109,8 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       rows.sort((a, b) => a.at - b.at).map(({ row }) => row),
       (row) => row.ticket,
     ),
+    queue: keepAll(previous.queue, [...ready, ...held], (each) => each.ticket),
+    needs: keepAll(previous.needs, [...asked, ...blocked], (each) => each.ticket),
     cards: keepAll(previous.cards, cards, (card) => card.ticket),
     resources: keepAll(previous.resources, resources, (each) => each.ticket),
     requests: keepAll(previous.requests, requests, (request) => request.id),

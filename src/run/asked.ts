@@ -25,10 +25,12 @@ import { Clock, Effect, Result } from "effect"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
+import type { OpenQuestion } from "../ui/questions.ts"
 import { leaveForReview } from "./aside.ts"
 import { answeredWith } from "./autoAnswer.ts"
-import { Ledger } from "./ledger.ts"
+import { Ledger, type State } from "./ledger.ts"
 import { line, Tag, ticketLine } from "./log.ts"
+import { openQuestionOf } from "./overnightQuestions.ts"
 import { Move } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"
 import { openQuestion } from "./settle.ts"
@@ -73,6 +75,30 @@ export const askedLook = (open: ReadonlyArray<Issue> | undefined): AskedLook => 
         ),
   shown: new Map(),
 })
+
+/**
+ * The questions `state`'s Asked tickets wait on, by ID, each as the panel beside the tickets table
+ * puts it (openQuestionOf), from bd's open list as the look read it (`open`), with the tickets
+ * waiting on it. One the list doesn't have open is left out: its ticket comes back at this look.
+ */
+export const askedQuestions = (
+  state: State,
+  open: ReadonlyArray<Issue>,
+): ReadonlyMap<string, OpenQuestion> => {
+  const waiting = new Map<string, Array<TicketId>>()
+  for (const entry of state.tickets.values()) {
+    if (entry.phase._tag !== "Asked") continue
+    waiting.set(entry.phase.question, [...(waiting.get(entry.phase.question) ?? []), entry.ticket])
+  }
+  const found = new Map<string, OpenQuestion>()
+  for (const issue of open) {
+    const tickets = waiting.get(issue.id)
+    if (tickets !== undefined && issue.status !== "closed") {
+      found.set(issue.id, openQuestionOf(issue, tickets))
+    }
+  }
+  return found
+}
 
 /** Whether the look's open list has `question` still open for you: its ticket can't come back. */
 export const stillOpen = (look: AskedLook | undefined, question: string): boolean =>
