@@ -19,6 +19,7 @@ import {
 } from "react"
 import { type Commands, offer, type UiCommand } from "../run/commands.ts"
 import type { TicketFiling } from "../run/fileTicket.ts"
+import type { QuestionNews } from "../run/questionNews.ts"
 import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
@@ -99,6 +100,8 @@ export interface ShellValue {
   readonly handBacks?: External<ReadonlyArray<string>>
   /** How the tickets filed from finished workers' views went (§ 7.5); none when left out. */
   readonly filings?: External<ReadonlyArray<TicketFiling>>
+  /** What came of reading and answering the questions on the dashboard; none when left out. */
+  readonly questions?: External<ReadonlyArray<QuestionNews>>
 }
 
 export const ShellContext = createContext<ShellValue | null>(null)
@@ -150,6 +153,16 @@ const noFilings: External<ReadonlyArray<TicketFiling>> = {
 /** How the tickets filed from finished workers' views went, re-rendering on each change. */
 export const useFilings = (): ReadonlyArray<TicketFiling> =>
   useExternal(useShell().filings ?? noFilings)
+
+const noNews: ReadonlyArray<QuestionNews> = []
+const noQuestionNews: External<ReadonlyArray<QuestionNews>> = {
+  get: () => noNews,
+  subscribe: () => () => {},
+}
+
+/** What came of reading and answering the questions on the dashboard, re-rendering on each change. */
+export const useQuestionNews = (): ReadonlyArray<QuestionNews> =>
+  useExternal(useShell().questions ?? noQuestionNews)
 
 /** The shell's clock, in epoch milliseconds: Date.now when it has none. */
 export const useClock = (): (() => number) => useShell().now ?? Date.now

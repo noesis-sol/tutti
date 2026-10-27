@@ -20,6 +20,7 @@ import { makeHandBacks, type RebaseStop } from "../src/run/handback.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import { TicketPhase } from "../src/run/phase.ts"
+import type { QuestionNews } from "../src/run/questionNews.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"
@@ -153,6 +154,7 @@ describe("dashboard()", () => {
             transcripts: yield* Transcripts,
             handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
             filings: yield* SubscriptionRef.make<ReadonlyArray<TicketFiling>>([]),
+            questions: yield* SubscriptionRef.make<ReadonlyArray<QuestionNews>>([]),
           } satisfies ScreenInputs
         }).pipe(Effect.provide(transcriptsLayer())),
       )

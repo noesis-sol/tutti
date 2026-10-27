@@ -2,8 +2,9 @@
 // it is taken: one that no longer names anything (the worker finished, the request was answered) is
 // dropped. The end-of-run box's `q` (EndRun) ends the run. Quit without `now` is the quit box's to
 // ask. Steering's commands (SendMessage, Interrupt, Release, HandBackNow) go to steer.ts. Once the
-// run ends, only moving between the views, quitting and filing a finished worker's message as a
-// ticket (FileTicket, fileTicket.ts) act: the others are dropped. ReadTicket reads a worker view's
+// run ends, only moving between the views, quitting, filing a finished worker's message as a
+// ticket (FileTicket, fileTicket.ts) and reading and answering the questions (questionNews.ts) act:
+// the others are dropped. ReadTicket reads a worker view's
 // ticket again with bd show, in a fiber of its own, for the view's whole ticket (§ 7.5).
 //
 // The commands that act on the run act one at a time under `acting`, each counted in `acted`; the
@@ -17,6 +18,7 @@ import { hear } from "./drain.ts"
 import { fileTicket } from "./fileTicket.ts"
 import { Ledger } from "./ledger.ts"
 import type { MergeQueue } from "./mergequeue.ts"
+import { answerQuestion, readQuestions } from "./questionNews.ts"
 import { fromDashboard, type QuitRequest } from "./quit.ts"
 import { Screen, type ScreenInputs } from "./screen.ts"
 import { handBackNow, interrupt, releaseAndHandOver, type SteerEnv } from "./steer.ts"
@@ -61,10 +63,14 @@ const readTicket = (ticket: TicketId): Effect.Effect<void, never, Beads | Ledger
     yield* Effect.logDebug(`could not read ${ticket} again: ${beadsWhy(read.failure)}`)
   })
 
-/** The run's end, and the screen's commands acting on the run until it, in `repo` onto `base`. */
+/**
+ * The run's end, and the screen's commands acting on the run until it, in `repo` onto `base`; the
+ * dashboard's questions are those of the run's `scope` (null: all of it).
+ */
 export const make = (options: {
   readonly repo: string
   readonly base: string
+  readonly scope?: TicketId | null
 }): Effect.Effect<ScreenCommands, never, SteerEnv | Attention | Beads> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<SteerEnv | Attention | Beads>()
@@ -86,6 +92,8 @@ export const make = (options: {
             case "Quit":
             case "FileTicket":
             case "ReadTicket":
+            case "ReadQuestions":
+            case "AnswerQuestion":
               return
             case "Answer":
               return yield* attention
@@ -146,6 +154,21 @@ export const make = (options: {
               // bd's too: the view shows what it has until bd answers, and keeps it if bd can't.
               return yield* Effect.asVoid(
                 watch(readTicket(command.ticket).pipe(Effect.provideContext(context))),
+              )
+            case "ReadQuestions":
+              // bd's too, after the end as well: the box shows the questions once bd has read them.
+              return yield* Effect.asVoid(
+                watch(
+                  readQuestions(command.uuid, options.scope ?? null, screen.questions).pipe(
+                    Effect.provideContext(context),
+                  ),
+                ),
+              )
+            case "AnswerQuestion":
+              return yield* Effect.asVoid(
+                watch(
+                  answerQuestion(command, screen.questions).pipe(Effect.provideContext(context)),
+                ),
               )
           }
           yield* acting.withPermits(1)(

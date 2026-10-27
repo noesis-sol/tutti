@@ -524,6 +524,8 @@ export interface Update {
   readonly appendNotes?: string
   /** The description, replaced. */
   readonly description?: string
+  /** The design, replaced. */
+  readonly design?: string
   /** The acceptance criteria, replaced. */
   readonly acceptance?: string
   readonly priority?: number
@@ -744,6 +746,7 @@ export class Beads extends Context.Service<
               ...flag("status", change.status),
               ...flag("append-notes", change.appendNotes),
               ...flag("description", change.description),
+              ...flag("design", change.design),
               ...flag("acceptance", change.acceptance),
               ...flag("priority", change.priority?.toString()),
               ...flag(

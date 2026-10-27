@@ -20,7 +20,9 @@
 // The keys (§ 7.3), in the view's input layer (keys.ts): `Tab`, `Shift+Tab` and the arrows move the
 // highlight between cards, `Enter` opens the highlighted card, and a click opens the card under it,
 // each as an OpenWorker command naming the card's ticket; `s` opens the stop question. The
-// highlight names a ticket too, so it stays on its card as other cards come and go. With the key help open, `?` and `Esc` close it and the other keys do
+// highlight names a ticket too, so it stays on its card as other cards come and go. `Shift+A` opens
+// the questions box (QuestionsBox.tsx), the open questions in the run's scope put one by one; the
+// hint names it while a ticket waits on one. With the key help open, `?` and `Esc` close it and the other keys do
 // nothing.
 //
 // Attention cards (§ 4.5, AttentionCard.tsx): with no card chosen, the card of the oldest open
@@ -262,6 +264,8 @@ export interface DashboardActions {
   readonly stop: () => void
   /** `q`, with the end-of-run box shown: ends the run. */
   readonly endRun: () => void
+  /** `Shift+A`: the questions box, the open questions put one by one. */
+  readonly questions: () => void
 }
 
 const nothing = () => {}
@@ -278,11 +282,19 @@ const inertDashboard: DashboardActions = {
   pick: nothing,
   stop: nothing,
   endRun: nothing,
+  questions: nothing,
 }
 
 const moveRow: HelpRow = ["Tab, Shift+Tab, arrows", "move the highlight between cards"]
 const denyRow: HelpRow = ["d, Shift+D", "deny the request; deny with a reason"]
 const pickRow: HelpRow = ["1–4 in a question", "pick an option"]
+
+/**
+ * Whether a ticket waits on your answer to a question: one counted as needing you that has no open
+ * request, which only an Asked ticket is.
+ */
+export const questionsWaiting = (view: RunView): boolean =>
+  view.totals.needsYou > new Set(view.requests.map((request) => request.ticket)).size
 
 /**
  * The dashboard's keys (§ 7.3), its hint's and its key help's. The answer keys answer only a
@@ -383,6 +395,14 @@ export const dashboardCommands = (
         view.windDown !== null ? "keep taking tickets" : "stop after current",
       ),
       help: ["s", "stop after current, or keep taking tickets"],
+    },
+    // The questions box: the open questions in the run's scope, whether a ticket waits on one or
+    // not; the hint names it while one does.
+    {
+      keys: ["shift+a"],
+      run: act.questions,
+      hint: named(questionsWaiting(view), "A", "answer questions"),
+      help: ["A", "answer the open questions, one by one"],
     },
     {
       keys: ["q"],
@@ -505,6 +525,7 @@ export const Dashboard = () => {
         }),
         stop: unlessHelp(() => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
         endRun: unlessHelp(() => command(UiCommand.EndRun())),
+        questions: unlessHelp(() => box.set(Box.Questions())),
       },
     ),
   )

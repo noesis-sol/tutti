@@ -54,7 +54,7 @@ import * as TestGit from "../src/testing/Git.ts"
 
 // The templates as their last recorded versions have them. A change to a template is a new version
 // of it: the first test fails until src/init/templates.ts records it.
-const promptTemplateSum = "552747902c8d34b52763c46bb809fdd492a4da85b03733e9d658f58822cbb3c7"
+const promptTemplateSum = "0aa1f71710a36e1f3c001a40dc42a27a922eedda1574d70b818a6beda18bbd9c"
 const verifierTemplateSum = "4ba3193b5fe3b22299902405072ae30672f2ebba9b614c040ad0734bcf2c3151"
 
 const sum = (text: string): string => createHash("sha256").update(text).digest("hex")

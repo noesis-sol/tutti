@@ -62,6 +62,8 @@ export type Box = Data.TaggedEnum<{
   Reason: { readonly requestId: string; readonly ticket: TicketId; readonly label: string }
   /** Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5). */
   Form: { readonly requestId: string; readonly ticket: TicketId }
+  /** Shift+A's on the dashboard: the open questions in the run's scope, put one by one. */
+  Questions: Record<never, never>
   /** Ctrl+X's in a worker view: whether to interrupt the turn of the ticket's worker (§ 7.5). */
   Interrupt: { readonly ticket: TicketId }
   /** Leaving the Interview view with nothing filed: whether to end the interview (§ 4.10). */

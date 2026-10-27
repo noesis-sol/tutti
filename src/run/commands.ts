@@ -38,6 +38,16 @@ export type UiCommand = Data.TaggedEnum<{
    * added during the run show. The ledger keeps what bd gives on the ticket's entry.
    */
   ReadTicket: { readonly ticket: TicketId }
+  /**
+   * Read the open questions in the run's scope for Shift+A's box, under the uuid it drew: the
+   * screen's question news has them by it (questionsDesk.ts).
+   */
+  ReadQuestions: { readonly uuid: string }
+  /**
+   * Record `answer` to the question `question` (answerQuestion.ts), under the uuid the box drew:
+   * the screen's question news says how it went by it.
+   */
+  AnswerQuestion: { readonly question: TicketId; readonly answer: string; readonly uuid: string }
   /** Stop after the current tickets: wind down. */
   Drain: Record<never, never>
   /** Take tickets again. */
@@ -128,6 +138,11 @@ export const resolve = (command: UiCommand, current: Current): Result.Result<Res
     case "ReadTicket":
       // A ticket the run no longer has is left out as the ledger keeps the issue.
       return Result.succeed({ command, ticket: command.ticket })
+    case "AnswerQuestion":
+      // bd says whether the question is still open (answerQuestion.ts).
+      return Result.succeed({ command, ticket: command.question })
+    case "ReadQuestions":
+      return Result.succeed({ command, ticket: null })
     case "CloseWorker":
     case "Drain":
     case "Undrain":

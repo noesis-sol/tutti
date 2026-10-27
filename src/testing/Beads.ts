@@ -428,6 +428,7 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
                 ? issue.notes
                 : appended(issue.notes, update.appendNotes),
             ...(update.description === undefined ? {} : { description: update.description }),
+            ...(update.design === undefined ? {} : { design: update.design }),
             ...(update.acceptance === undefined ? {} : { acceptance: update.acceptance }),
             ...(update.priority === undefined ? {} : { priority: update.priority }),
             metadata,

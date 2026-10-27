@@ -121,6 +121,12 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     what: "a check that runs the slower suites with the faster ones is run alone, not after the faster one",
     marker: "run it alone, not after the faster one",
   },
+  {
+    version: 9,
+    section: "Close",
+    what: "a decision only the maintainer can make about another ticket is a question blocking that ticket, never left in the final message",
+    marker: "Your final message carries nothing for the maintainer",
+  },
 ]
 
 /** The changes to the verifier's template, verifier.md. */

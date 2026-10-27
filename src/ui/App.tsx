@@ -82,6 +82,7 @@ const shellValue = (
       transcripts: yield* transcriptFeed(inputs.transcripts),
       handBacks: yield* bridge(inputs.handBacks),
       filings: yield* bridge(inputs.filings),
+      questions: yield* bridge(inputs.questions),
       ...(desktop.clipboard === undefined ? {} : { clipboard: desktop.clipboard }),
       ...(desktop.urlOpener === undefined ? {} : { urlOpener: desktop.urlOpener }),
     } satisfies ShellValue

@@ -17,6 +17,7 @@ import type { TicketId } from "../services/Beads.ts"
 import { type Commands, makeCommands } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
 import { keepsWorker, Ledger } from "./ledger.ts"
+import type { QuestionNews } from "./questionNews.ts"
 import { make as makeView, type RunView, type Sources, type Status } from "./runView.ts"
 import { same } from "./same.ts"
 
@@ -42,6 +43,8 @@ export interface ScreenInputs {
   readonly handBacks: SubscriptionRef.SubscriptionRef<ReadonlyArray<string>>
   /** How the tickets filed from finished workers' views went, by the view's uuid (§ 7.5). */
   readonly filings: SubscriptionRef.SubscriptionRef<ReadonlyArray<TicketFiling>>
+  /** What came of reading and answering the questions on the dashboard, by the box's uuid. */
+  readonly questions: SubscriptionRef.SubscriptionRef<ReadonlyArray<QuestionNews>>
 }
 
 /** A dashboard: shows `inputs` until the scope closes. */
@@ -143,7 +146,7 @@ export const sources = (
  * Shows `dashboard` for the rest of the scope: RunView projected from the run's sources, `status`
  * now and on each change among them, the screen at the dashboard, an empty command queue, the
  * transcripts, no hand-backs waiting yet (the run follows its merge queue's into them), and no
- * filings.
+ * filings or question news.
  */
 export const show = (
   dashboard: Dashboard,
@@ -157,6 +160,7 @@ export const show = (
       transcripts: yield* Transcripts,
       handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
       filings: yield* SubscriptionRef.make<ReadonlyArray<TicketFiling>>([]),
+      questions: yield* SubscriptionRef.make<ReadonlyArray<QuestionNews>>([]),
     }
     yield* dashboard(inputs)
     return inputs

@@ -361,7 +361,7 @@ const runFrom = (
         : null
     // The run's end, set once nothing is to start or act after it, and the screen's commands that
     // act on the run until then (screenCommands.ts).
-    const commands = yield* makeScreenCommands({ repo: config.repo, base })
+    const commands = yield* makeScreenCommands({ repo: config.repo, base, scope: config.ticket })
 
     // Wakes the run to look again, each wake for its reason (wakes.ts): a merge, a stop, a drain
     // request, the ready poll.

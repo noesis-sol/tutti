@@ -122,6 +122,10 @@ Each rule of the template prevents a way a run goes wrong:
   asks you to do or give something rather than choose (a key, a step by hand, something under your
   own account), or to say yes to something done in your name, is marked `maintainer_only`: tutti
   never answers it for you.
+- **A decision about another ticket is a question too.** A decision only you can make about
+  another ticket, a follow-up the worker files or one it names, is filed the same way, blocking
+  that ticket and asked from the worker's own, and the worker goes on with its ticket. Never only in
+  its final message, which nobody reads: that ticket's worker would decide it instead.
 - **Wait for work not merged yet.** A ticket that needs another ticket's unmerged work links it as a
   blocker, reopens and stops; tutti puts it back in the queue until the other merges.
 - **Working unattended.** A turn that ends without a tool call ends the worker's work, so it doesn't
@@ -255,6 +259,26 @@ it takes it: not a symbolic link, yours, its request still open, the answer one 
 The log and the event stream say the answer came `via tutti answer`. It works while the dashboard is
 open too, so an agent can answer as you watch.
 
+### Answering questions with tutti answer
+
+The question tickets workers filed for you are listed after the requests, every open one, with the
+tickets waiting on each and its options, the recommended one first:
+
+```
+Open questions:
+tut-q4  Which flag name?  (tut-7k2 waits on it)
+    1. --json (recommended) - machine-readable output
+    2. --format - a format name
+    answer with: tutti answer tut-q4 <an option's number or label, or your own answer in quotes>
+```
+
+`tutti answer tut-q4 1`, `tutti answer tut-q4 --format` or `tutti answer tut-q4 "neither: use -o"`
+answers it: the option's label, or your words. tutti adds the decision to the design of each open
+ticket the question blocks, under `Decided (tut-q4)`, then records the answer with
+`bd human respond`, which closes the question. No run needs to be going: a run that is takes the
+ticket waiting on it back at its next look. A question only you answer says so
+(`only the maintainer answers it`). `--json` lists the requests alone.
+
 ## Steering
 
 You can talk to a worker from its view: type in the composer and press `Enter`, and the message goes
@@ -278,8 +302,10 @@ Beads:
 - **Closed**, with a commit naming it and a clean worktree: it waits to merge. Closed with nothing of
   its own to merge: done, `no change to merge`.
 - **Asked**: it filed a question ticket for you that blocks it. Its session is closed; once you
-  answer (`bd human respond <question> --response "…"`), tutti resumes the session and tells it the
-  answer is in.
+  answer ([on the dashboard](dashboard.md#answering-questions), with
+  [`tutti answer`](#answering-questions-with-tutti-answer), or with
+  `bd human respond <question> --response "…"`), tutti resumes the session and tells it the answer
+  is in.
 - **Deferred** by the worker: set aside, and [triaged](organs.md#triage). Left in another status
   (open, blocked, …) with nothing to wait for, tutti defers it for review the same way. A worker that
   did nothing (no commits beyond the base, a clean worktree) leaves nothing to review, so once triage

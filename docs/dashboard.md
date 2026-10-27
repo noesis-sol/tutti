@@ -344,6 +344,7 @@ open its card (`Tab`, then `Enter`).
 | `a` | allow, when the request has a one-key allow | the same |
 | `r` | allow for this run, when the request offers it | the same |
 | `s` | stop after the running tickets, or keep taking tickets (asks `y`/`n`) | |
+| `Shift+A` | answer the open questions, one by one | |
 | `q` | end the run, while the end-of-run box shows | |
 | `i` | | focus the composer |
 | `t` | | open or close the whole ticket |
@@ -375,6 +376,18 @@ dropped, with a toast (`<id>'s request is no longer open`).
   and the next run resumes them (see [Quitting](running.md#quitting-and-the-next-run)).
 - `Ctrl+Z` doesn't suspend tutti, which would freeze every worker's output: a toast says
   `tutti can't be suspended: s stops after the current tickets, Ctrl+C quits`.
+
+### Answering questions
+
+`Shift+A` puts the open question tickets of the run's scope (those blocking a ticket of it, with
+`--ticket`) to you while the run goes on, one by one: the question's title and description, its
+options, the recommended one first and marked `(recommended)`, `Other` to type your own, and
+`Leave open`. An answer goes to the next question at once; tutti adds the decision to the design of
+each open ticket the question blocks, under `Decided (<question>)`, and records the answer with
+`bd human respond`, which closes the question: the ticket waiting on it comes back at the run's next
+look. A toast says how each answer went (`Answered tut-q4 (Which flag name?)`). `Esc` closes the
+box, leaving the rest open. The hint names `A answer questions` while a ticket waits on one. Outside
+the dashboard, [`tutti answer`](workers.md#answering-questions-with-tutti-answer) does the same.
 
 ## The mouse and copying
 

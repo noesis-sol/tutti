@@ -29,6 +29,7 @@ import { makeCommands, type UiCommand } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
 import { exitCodes } from "./holds.ts"
 import { TicketPhase } from "./phase.ts"
+import type { QuestionNews } from "./questionNews.ts"
 import {
   type Card,
   emptyView,
@@ -231,6 +232,7 @@ export const inInterviewView = <A>(
           transcripts,
           handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
           filings: yield* SubscriptionRef.make<ReadonlyArray<TicketFiling>>([]),
+          questions: yield* SubscriptionRef.make<ReadonlyArray<QuestionNews>>([]),
           description,
           filing: session.filing,
           ...(session.filed === undefined ? {} : { filed: session.filed }),

@@ -5,8 +5,9 @@
 // by one: its options from the metadata (Beads.ts's questionOptions), the recommended one first and
 // marked, Other to type your own, and Leave open. In a terminal they are asked in the answer form
 // in the command's renderer (src/ui/OpenQuestion.tsx), or as lines in plain output
-// (src/ui/plain/forms.ts's openQuestion); without one, nothing is asked. An answer is recorded with
-// bd human respond, which closes the question and frees what it blocked; those left open are listed
+// (src/ui/plain/forms.ts's openQuestion); without one, nothing is asked. An answer is recorded as
+// answerQuestion.ts does: the decision in each blocked ticket's design, then bd human respond, which
+// closes the question and frees what it blocked; those left open are listed
 // with the tickets they keep waiting and how to answer them later. A cancel (Esc, Ctrl+C, the end
 // of input) stops the run before it starts, the answers already given kept. orchestra's pre-flight
 // puts them in a Claude Code session; this is tutti's own.
@@ -14,7 +15,6 @@ import { Console, Effect, Option, Result } from "effect"
 import {
   Beads,
   type BeadsError,
-  beadsWhy,
   type Issue,
   maintainerOnly,
   questionOptions,
@@ -22,6 +22,7 @@ import {
 } from "../services/Beads.ts"
 import type { OpenQuestion, QuestionAt, Reply } from "../ui/questions.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+import { recordAnswer, recordWhy } from "./answerQuestion.ts"
 import { exitCodes } from "./holds.ts"
 import { Log, line } from "./log.ts"
 import { checklistLine, type Say } from "./overnight.ts"
@@ -124,7 +125,6 @@ export const putQuestions = (options: {
 }): Effect.Effect<Putting, never, Beads | Log> =>
   Effect.gen(function* () {
     const { questions, say } = options
-    const beads = yield* Beads
     const logs = yield* Log
     const left: Array<OpenQuestion> = []
     let answered = 0
@@ -151,9 +151,9 @@ export const putQuestions = (options: {
         continue
       }
       const answer = reply.success.answer
-      const recorded = yield* Effect.result(beads.respond(question.id, answer))
+      const recorded = yield* Effect.result(recordAnswer(question.id, answer))
       if (Result.isFailure(recorded)) {
-        const text = `overnight pre-flight: couldn't record the answer to ${question.id} (${question.title}): ${beadsWhy(recorded.failure)}`
+        const text = `overnight pre-flight: couldn't record the answer to ${question.id} (${question.title}): ${recordWhy(recorded.failure)}`
         yield* say.warn(text)
         yield* logs.write(line`${text}`)
         left.push(question)

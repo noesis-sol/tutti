@@ -9,6 +9,7 @@ import type { InputRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
+import type { Key } from "../run/runView.ts"
 import { type Answers, ask, Field, formHintSegments, targetLines } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { Line, Lines, type Look, type Segments, seg, wrap } from "./line.tsx"
@@ -39,8 +40,26 @@ export interface OpenQuestionActions {
   readonly cancel: () => void
 }
 
-/** The open question's keys: Other's line takes every other key, as it is typed in. */
-export const openQuestionCommands = (act: OpenQuestionActions): ReadonlyArray<Command> => [
+/** What Esc does where the questions are put: its hint, and what Other with nothing typed says. */
+export interface Closing {
+  readonly does: string
+  readonly noAnswer: string
+}
+
+/** Before an overnight run, Esc stops the run before it starts. */
+export const beforeRun: Closing = {
+  does: "stop before the run",
+  noAnswer: noAnswerTyped("Esc"),
+}
+
+/**
+ * The open question's keys: Other's line takes every other key, as it is typed in. `does` names
+ * Esc's in the hint.
+ */
+export const openQuestionCommands = (
+  act: OpenQuestionActions,
+  does: string = beforeRun.does,
+): ReadonlyArray<Command> => [
   { keys: ["up"], run: () => act.move(-1), hint: { keys: "↑↓", does: "choose" } },
   { keys: ["down"], run: () => act.move(1) },
   { keys: ["return", "kpenter"], run: act.choose, hint: { keys: "Enter", does: "confirm" } },
@@ -49,7 +68,7 @@ export const openQuestionCommands = (act: OpenQuestionActions): ReadonlyArray<Co
   {
     keys: ["escape", "ctrl+c"],
     run: act.cancel,
-    hint: { keys: "Esc", does: "stop before the run" },
+    hint: { keys: "Esc", does },
   },
 ]
 
@@ -85,10 +104,19 @@ export const OpenQuestionForm = ({
   at,
   answer,
   cancel,
+  bind = useFormCommands,
+  closing = beforeRun,
 }: {
   readonly theme: Theme
   readonly question: OpenQuestion
   readonly at: QuestionAt
+  /**
+   * Binds the form's keys and gives the hint's: on the form keymap of ask()'s renderer when left
+   * out; the dashboard's box binds them in its box layer (QuestionsBox.tsx). The same for every
+   * render.
+   */
+  readonly bind?: (commands: ReadonlyArray<Command>) => ReadonlyArray<Key>
+  readonly closing?: Closing
 } & Answers<Reply>) => {
   const choices = choicesOf(question)
   const other = choices.findIndex((choice) => choice._tag === "Other")
@@ -119,7 +147,7 @@ export const OpenQuestionForm = ({
         return answer({ _tag: "LeaveOpen" })
       case "Other": {
         const text = typedNow().trim()
-        if (text === "") setError(noAnswerTyped("Esc"))
+        if (text === "") setError(closing.noAnswer)
         else answer({ _tag: "Answer", answer: text })
       }
     }
@@ -128,13 +156,16 @@ export const OpenQuestionForm = ({
   const { width, height } = useTerminalDimensions()
   const room = Math.max(width - fieldInset, 1)
   const page = Math.max(height - 4, 1)
-  const hint = useFormCommands(
-    openQuestionCommands({
-      move: (by) => highlight(highlightedNow() + by),
-      choose: () => choose(highlightedNow()),
-      scroll: (by) => scrollbox.current?.scrollBy(by * page),
-      cancel,
-    }),
+  const hint = bind(
+    openQuestionCommands(
+      {
+        move: (by) => highlight(highlightedNow() + by),
+        choose: () => choose(highlightedNow()),
+        scroll: (by) => scrollbox.current?.scrollBy(by * page),
+        cancel,
+      },
+      closing.does,
+    ),
   )
 
   const paragraph = (text: string, look: Look) => wrap([seg(text, look)], room)

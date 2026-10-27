@@ -1,9 +1,9 @@
 // The input layers around the screen (§ 7.3): the renderer's keymap, the guards in front of it
 // (split mouse reports, a lone Esc, unterminated pastes), the keys every view has (Ctrl+C, Ctrl+Z)
 // and what they open over the view: the box open (the quit box, the stop question, the Answer and
-// reason boxes of attention cards, the answer form, a worker view's interrupt question), and the
-// toasts. A drag's selection is drawn in the theme's selection roles and copied on release
-// (clipboard.ts).
+// reason boxes of attention cards, the answer form, a worker view's interrupt question, the
+// dashboard's questions box), and the toasts. A drag's selection is drawn in the theme's selection
+// roles and copied on release (clipboard.ts).
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
@@ -15,6 +15,7 @@ import { useCopyOnSelect } from "./clipboard.ts"
 import { globalCommands, useCommands } from "./keyCommands.ts"
 import { Box, guardInput, InputContext, type InputState, useInput } from "./keys.ts"
 import { SelectionLook, selectionLookOf } from "./line.tsx"
+import { QuestionsBox, QuestionsKeys, QuestionToasts } from "./QuestionsBox.tsx"
 import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
 import { makeToasts, suspendToast, type Timer, Toasts } from "./Toasts.tsx"
@@ -66,6 +67,8 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
       return <ReasonBox requestId={box.requestId} ticket={box.ticket} label={box.label} />
     case "Form":
       return <AnswerForm requestId={box.requestId} ticket={box.ticket} />
+    case "Questions":
+      return <QuestionsBox />
   }
 }
 
@@ -107,6 +110,8 @@ export const Input = ({
           <StopKeys />
           <ReasonKeys />
           <AnswerFormKeys />
+          <QuestionsKeys />
+          <QuestionToasts toasts={input.toasts} />
           <AnswerBox />
           <CopyOnSelect input={input} />
           <OpenBox input={input} />

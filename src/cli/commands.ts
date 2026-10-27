@@ -3,16 +3,28 @@
 // ticket's worktree included, since that is where an agent answering a request runs; but `tutti
 // requires`, which reads and writes the checkout it is started in, so that a worker changing the
 // list in its worktree checks its own list and writes its own README.
-import { Console, Effect, Layer, Option, Result, Schema } from "effect"
+import { join } from "node:path"
+import { Console, Effect, FileSystem, Layer, Option, Result, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
 import { Account } from "../agent/Account.ts"
-import { answerWords } from "../agent/attentionFiles.ts"
+import {
+  type AnswerWord,
+  answerWords,
+  readRequestFile,
+  requestIdPattern,
+} from "../agent/attentionFiles.ts"
 import { ClaudeCode } from "../agent/ClaudeCode.ts"
 import { buildTarget, resolveClaude } from "../agent/claudeBinary.ts"
 import { WorkerEnv, workerEnv } from "../agent/env.ts"
 import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
+import {
+  answerQuestion,
+  listQuestions,
+  questionAnswerWords,
+  questionsSection,
+} from "../answer/questions.ts"
 import { scoutCostSteps, scoutSearch } from "../init/checks.ts"
 import {
   cancelledLine,
@@ -48,7 +60,7 @@ import { exitCodes } from "../run/holds.ts"
 import { Log } from "../run/log.ts"
 import { listen } from "../run/quit.ts"
 import { checkGit, findRepository } from "../run/startup.ts"
-import { Beads } from "../services/Beads.ts"
+import { Beads, beadsWhy } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
 import * as Tty from "../services/Tty.ts"
@@ -142,19 +154,35 @@ const checkout = <E extends { readonly message: string } | string, R>(
     failedIn(command)(typeof error === "string" ? error : error.message),
   )
 
-/** `tutti answer`, finding the main checkout with `repo`. */
-export const answerCommand = <E extends { readonly message: string } | string, R>(
+/** Whether `word` is one of a request's answers. */
+const isAnswerWord = (word: string): word is AnswerWord =>
+  (answerWords as ReadonlyArray<string>).includes(word)
+
+/** Whether the project at `top` has Beads, and so may have questions. */
+const hasBeads = (top: string) =>
+  Effect.flatMap(FileSystem.FileSystem, (fs) =>
+    fs.exists(join(top, ".beads")).pipe(Effect.orElseSucceed(() => false)),
+  )
+
+/**
+ * `tutti answer`, finding the main checkout with `repo`: the run's attention requests, and the
+ * questions workers filed, read from Beads with `services` (src/answer/questions.ts).
+ */
+export const answerCommand = <E extends { readonly message: string } | string, R, S>(
   repo: Effect.Effect<string, E, R>,
+  services: (repo: string) => Layer.Layer<Beads | Git | RunLock, never, S>,
 ) =>
   Command.make(
     "answer",
     {
-      request: Argument.String("request-id").pipe(
-        Argument.withDescription("the request to answer, as tutti answer lists it"),
+      request: Argument.String("id").pipe(
+        Argument.withDescription("the request or question to answer, as tutti answer lists it"),
         Argument.optional,
       ),
-      answer: Argument.Literals("answer", answerWords).pipe(
-        Argument.withDescription("allow, allow-run (allow for this run) or deny"),
+      answer: Argument.String("answer").pipe(
+        Argument.withDescription(
+          `a request's allow, allow-run (allow for this run) or deny; a question's ${questionAnswerWords}`,
+        ),
         Argument.optional,
       ),
       json: Flag.Boolean("json").pipe(
@@ -177,18 +205,45 @@ export const answerCommand = <E extends { readonly message: string } | string, R
     (given) =>
       Effect.gen(function* () {
         const top = yield* checkout(repo, "answer")
+        const beads = yield* hasBeads(top)
         if (Option.isNone(given.request)) {
           const requests = yield* list(top)
-          return yield* Console.log(given.json ? showJson(requests) : show(requests))
+          if (given.json) return yield* Console.log(showJson(requests))
+          const questions = beads
+            ? yield* listQuestions.pipe(
+                Effect.provide(services(top)),
+                Effect.catch((error) =>
+                  Effect.as(
+                    Console.error(
+                      `tutti answer: the open questions couldn't be read: ${beadsWhy(error)}`,
+                    ),
+                    [],
+                  ),
+                ),
+              )
+            : []
+          return yield* Console.log(show(requests) + questionsSection(questions))
         }
-        if (Option.isNone(given.answer)) {
-          return yield* failed(
-            `say how to answer request ${given.request.value}: allow, allow-run or deny`,
+        const id = given.request.value
+        // A request open under that ID is answered as one; any other ID may be a question.
+        const request = requestIdPattern.test(id) ? yield* readRequestFile(top, id) : undefined
+        if (request === undefined && beads) {
+          if (Option.isNone(given.answer)) {
+            return yield* failed(`say how to answer ${id}: ${questionAnswerWords}`)
+          }
+          return yield* answerQuestion(id, given.answer.value).pipe(
+            Effect.provide(services(top)),
+            Effect.flatMap(Console.log),
+            Effect.catch((error) => failed(error.message)),
           )
         }
+        const word = Option.getOrUndefined(given.answer)
+        if (word === undefined || !isAnswerWord(word)) {
+          return yield* failed(`say how to answer request ${id}: allow, allow-run or deny`)
+        }
         const answering = {
-          request: given.request.value,
-          answer: given.answer.value,
+          request: id,
+          answer: word,
           ...(Option.isSome(given.reason) ? { reason: given.reason.value } : {}),
           choices: given.choice,
           confirm: given.confirm,
@@ -200,7 +255,7 @@ export const answerCommand = <E extends { readonly message: string } | string, R
       }),
   ).pipe(
     Command.withDescription(
-      "list the run's open attention requests, or answer one: tutti answer <request-id> allow|allow-run|deny",
+      "list the run's open attention requests and the open questions, or answer one: tutti answer <request-id> allow|allow-run|deny, or tutti answer <question> <option or your own answer>",
     ),
   )
 
@@ -929,7 +984,7 @@ export const tuttiWith = <E extends { readonly message: string } | string, R, S,
     Command.withDescription("runs Claude Code workers on a Beads backlog, one worktree per ticket"),
     Command.withSubcommands([
       initCommand,
-      answerCommand(repo),
+      answerCommand(repo, services),
       planCommand(repo, services),
       loginCommand(repo),
       coloursCommand(repo),
