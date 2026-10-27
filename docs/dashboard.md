@@ -88,7 +88,8 @@ machine, read every 5 seconds:
 
 - **Workers**: workers at work out of how many may run (`-c`).
 - **Memory**: what the workers' processes take (each worker's Claude Code, its process group and all
-  below them) and what tutti runs besides, its merge check above all; `· 1 unknown` for a worker
+  below them) and what tutti runs besides, its merge check above all, named `full check` while the
+  end-of-run full check runs; `· 1 unknown` for a worker
   whose processes can't be found. Each worker's own is on its line in Current, `1.2 GB`, or `? GB`.
 - **Pressure**: the kernel's memory pressure, `normal`, `warn` or `critical`, with the memory
   available on Linux. On macOS memory used against the total says little, as the kernel keeps spare
@@ -213,7 +214,9 @@ or the last line the worker wrote).
 Cards go two to a row from 120 columns, all as tall as the tallest. When the pane can't hold a card
 each, they take one line each in a single box, their tickets, statuses and times lined up
 as columns, so that the titles start at one column. With nothing running, a box says
-`picking the next ticket…`, or `stopping…`. The environment probe has a card of its own, labelled
+`picking the next ticket…`, or `stopping…`. Once the run has ended by itself having merged a ticket,
+it says what its full check runs and for how long: `setting up the full check: bun install · 12s`,
+then `full check: scripts/check-full.sh · 1m12s`. The environment probe has a card of its own, labelled
 `probe`. Elapsed times update every 3 seconds.
 
 ### Attention cards

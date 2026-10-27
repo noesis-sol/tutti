@@ -153,6 +153,7 @@ describe("a card", () => {
           width={80}
           room={20}
           stopping={false}
+          fullCheck={null}
           highlighted={null}
           open={(ticket) => opened.push(ticket)}
           focusOf={() => null}

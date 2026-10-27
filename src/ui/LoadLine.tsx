@@ -4,9 +4,9 @@
 //   ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · CPU 9.8/10 cores
 //
 // the workers at work out of their slots, the memory their processes take and what tutti runs
-// besides (its merge check above all), the kernel's memory pressure (and on Linux the memory
-// available), swapping while it is under way, and the 1-minute load average against the cores
-// (src/run/load.ts). The pressure, the swapping and the CPU are each in the colour of their own
+// besides (its merge check above all, named `full check` while the end-of-run full check runs), the
+// kernel's memory pressure (and on Linux the memory available), swapping while it is under way, and
+// the 1-minute load average against the cores (src/run/load.ts). The pressure, the swapping and the CPU are each in the colour of their own
 // level, `done`, `notice` or `needsYou` bold; the memory, which has no threshold, is uncoloured. Before the
 // run has read the machine's load the line has the workers alone.
 import { type Level, swappingPerMinute } from "../run/load.ts"
@@ -47,14 +47,14 @@ const workersPart = (totals: Totals, theme: Theme): Segments => {
 
 /**
  * The memory the workers' processes and tutti's own commands take: `memory 6.2 GB`, with
- * `breakdown` `(workers 4.8, merge check 1.4)` after it, and how many workers' are unknown, if any.
+ * `breakdown` `(workers 4.8, merge check 1.4)` after it (`full check` while that runs), and how many workers' are unknown, if any.
  */
 const memoryPart = (load: LoadView, breakdown: boolean): string => {
   const total = `memory ${gigabytes(load.workers + load.check)}`
   if (!breakdown) return total
   const parts: Array<string> = []
   if (load.check > 0 || load.unknown > 0) parts.push(`workers ${number(load.workers)}`)
-  if (load.check > 0) parts.push(`merge check ${number(load.check)}`)
+  if (load.check > 0) parts.push(`${load.checkName} ${number(load.check)}`)
   if (load.unknown > 0) parts.push(`${load.unknown} unknown`)
   return parts.length === 0 ? total : `${total} (${parts.join(", ")})`
 }

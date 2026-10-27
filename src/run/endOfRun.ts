@@ -4,8 +4,9 @@
 // you`); each ticket closed and not merged is labelled `unmerged`; then the summary lines (the run's
 // figures among them, figures.ts), the
 // closing line (the stops', or READY_EMPTY, LIMIT_REACHED or DRAINED, with a scoped run's SCOPE_
-// part), and the full check when the run ended by itself having merged a ticket (fullcheck.ts).
-import { Clock, Deferred, Duration, Effect, Result } from "effect"
+// part), and the full check when the run ended by itself having merged a ticket (fullcheck.ts), the
+// dashboard's Status saying what it runs meanwhile.
+import { Clock, Deferred, Duration, Effect, Result, type SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import type { AutoAnswered } from "../agent/Attention.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -36,8 +37,9 @@ import { detail, type Line, Log, line } from "./log.ts"
 import { closedAfter } from "./merge.ts"
 import { finished } from "./notices.ts"
 import { Move, stopsAtEnd, type TicketPhase } from "./phase.ts"
+import { quittingText } from "./quit.ts"
 import { Quitting, quitStop } from "./quitting.ts"
-import { emptyStatus, project, type Row, type Totals } from "./runView.ts"
+import { emptyStatus, project, type Row, type Status, showOn, type Totals } from "./runView.ts"
 import { sayer } from "./say.ts"
 import type { Scheduler } from "./schedule.ts"
 import * as scope from "./scope.ts"
@@ -196,6 +198,8 @@ export const make = (options: {
   readonly quitting: Deferred.Deferred<Quitting>
   /** The questions asked in the workers' sessions that --auto-answer answered (Attention's). */
   readonly autoAnswered?: Effect.Effect<ReadonlyArray<AutoAnswered>>
+  /** What the dashboard says of the run: the full check's step while it runs, a quit during it. */
+  readonly status?: SubscriptionRef.SubscriptionRef<Status>
 }): Effect.Effect<EndOfRun, never, WorkEnv | Notifier> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<WorkEnv | Notifier>()
@@ -373,6 +377,15 @@ export const make = (options: {
         return { said: [stop.text], sections: [], after: "", code: stop.code } satisfies Checked
       })
 
+    // The dashboard's Status, when the run shows one: what the full check runs, null once it ends.
+    const { status } = options
+    const showCheck = status === undefined ? () => Effect.void : showOn(status, "fullCheck")
+    // A quit during the full check: the dashboard says the run quits while the check is stopped.
+    const showQuit =
+      status === undefined
+        ? Effect.void
+        : Effect.andThen(showCheck(null), showOn(status, "quitting")(quittingText([])))
+
     const checkFull: EndOfRun["fullCheck"] = (phases, stopped, quit) =>
       Effect.gen(function* () {
         const command = config.settings.checks.full.command
@@ -380,12 +393,15 @@ export const make = (options: {
           const checked = yield* Effect.raceFirst(
             Effect.map(
               Effect.flatMap(setUps.now, (setup) =>
-                fullCheck({ base, started: begun, setup: setup.command }),
+                fullCheck({ base, started: begun, setup: setup.command, show: showCheck }),
               ),
               (done) => ({ done }),
             ),
-            Effect.map(Deferred.await(quitting), (quit) => ({ quit })),
-          )
+            Effect.map(
+              Effect.tap(Deferred.await(quitting), () => showQuit),
+              (quit) => ({ quit }),
+            ),
+          ).pipe(Effect.ensuring(showCheck(null)))
           if ("quit" in checked) return yield* lateStop(checked.quit, "during the full check")
           return {
             said: [checked.done.text],

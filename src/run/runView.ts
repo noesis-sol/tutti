@@ -30,6 +30,7 @@ import type { Motion, Shown, Tone } from "../ui/marks.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
+import type { FullCheckRun } from "./fullcheck.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
 import { resetLabel } from "./localTime.ts"
@@ -123,6 +124,11 @@ export interface Status {
    * box; null when it isn't so.
    */
   readonly endOfRun: ReadonlyArray<TicketId> | null
+  /**
+   * What the end-of-run full check runs while it runs (endOfRun.ts, fullcheck.ts): its setup, then
+   * the check; null otherwise, whatever its outcome.
+   */
+  readonly fullCheck: FullCheckRun | null
   readonly solo: Solo | null
   /** How many other tutti and orchestra runs share the machine, as the last look found them. */
   readonly shared: number
@@ -173,6 +179,7 @@ export const emptyStatus: Status = {
   stopping: false,
   quitting: null,
   endOfRun: null,
+  fullCheck: null,
   solo: null,
   shared: 0,
   keepAwake: false,
@@ -440,6 +447,8 @@ export interface LoadView {
   readonly unknown: number
   /** The memory of what tutti runs besides its workers, its merge check above all, in bytes. */
   readonly check: number
+  /** What `check` is named: the end-of-run full check while it runs, the merge check otherwise. */
+  readonly checkName: "merge check" | "full check"
   readonly pressure: Pressure
   /** The memory available, in bytes, where the kernel says (Linux); -1 where it doesn't. */
   readonly available: number
@@ -521,6 +530,8 @@ export interface RunView {
   readonly windDown: WindDownView | null
   /** The workers the end-of-run box names (D19), in place of the cards; null with no box. */
   readonly endOfRun: ReadonlyArray<Waiting> | null
+  /** What the end-of-run full check runs, its command sanitised, for Current's box; null otherwise. */
+  readonly fullCheck: FullCheckRun | null
   /** The warning line's notices, each once. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -563,6 +574,7 @@ export const emptyView: RunView = {
   banners: [],
   windDown: null,
   endOfRun: null,
+  fullCheck: null,
   warnings: [],
 }
 
@@ -861,13 +873,14 @@ const memoryOf = (load: Reading | null, ticket: TicketId): { readonly memory?: n
 }
 
 /** The load line's figures from `reading`. */
-export const loadView = (reading: Reading): LoadView => {
+export const loadView = (reading: Reading, fullCheck = false): LoadView => {
   const memories = [...reading.workers.values()]
   const { kernel } = reading
   return {
     workers: memories.reduce((sum, memory) => sum + Math.max(memory, 0), 0),
     unknown: memories.filter((memory) => memory === unknownMemory).length,
     check: reading.check,
+    checkName: fullCheck ? "full check" : "merge check",
     pressure: kernel.pressure,
     available: kernel.available,
     swapping: reading.swapping,
@@ -1086,7 +1099,11 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     autoAnswer: status.autoAnswer === null ? null : sanitizeLine(status.autoAnswer),
   }
   const warnings = [...new Set(status.warnings.map(sanitizeLine))]
-  const load = status.load === null ? null : loadView(status.load)
+  const load = status.load === null ? null : loadView(status.load, status.fullCheck !== null)
+  const fullCheck =
+    status.fullCheck === null
+      ? null
+      : { ...status.fullCheck, command: sanitizeLine(status.fullCheck.command) }
   // The box names each worker the run waits on that still has a request open, or a conflict
   // hand-back waiting for it (§ 4.3).
   const waiting = (status.endOfRun ?? []).flatMap((ticket): ReadonlyArray<Waiting> => {
@@ -1117,6 +1134,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     banners: keep(previous.banners, banners),
     windDown: keep(previous.windDown, windDown),
     endOfRun: keep(previous.endOfRun, endOfRun),
+    fullCheck: keep(previous.fullCheck, fullCheck),
     warnings: keep(previous.warnings, warnings),
   }
   const parts = Object.keys(next) as ReadonlyArray<keyof RunView>

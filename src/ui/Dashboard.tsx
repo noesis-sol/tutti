@@ -740,7 +740,8 @@ export const Dashboard = () => {
             layout={layout}
             width={width}
             room={laid.current}
-            stopping={view.title.stopping || view.windDown !== null}
+            stopping={view.title.stopping || view.title.quitting !== null || view.windDown !== null}
+            fullCheck={view.fullCheck}
             highlighted={panelFocused ? null : highlighted}
             open={open}
             focusOf={answering.focusOf}

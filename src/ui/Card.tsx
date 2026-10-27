@@ -13,8 +13,11 @@
 // they go one line each in a single compact box, framed `needsYou` when any of them waits for you,
 // their tickets, statuses, times and memory lined up as columns, each as wide as the widest.
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
-// With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
+// With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`, or, while
+// the end-of-run full check runs, its step, command and time: `setting up the full check: bun install
+// · 12s`, then `full check: scripts/check-full.sh · 1m12s`.
 import { memo, useCallback, useMemo } from "react"
+import type { FullCheckRun } from "../run/fullcheck.ts"
 import { pad } from "../run/localTime.ts"
 import { activityRows } from "../run/phase.ts"
 import type { Card, ShownRequest } from "../run/runView.ts"
@@ -308,21 +311,30 @@ export const compactLines = (
   })
 }
 
-/** The box with no worker in it: the spinner `live`, its text faint, framed `frame`. */
-export const idleBox = (
+/**
+ * What the box with no worker in it says at `now`: `stopping…`, else what the end-of-run full check
+ * runs and for how long, else `picking the next ticket…`.
+ */
+export const idleText = (
   stopping: boolean,
+  fullCheck: FullCheckRun | null,
+  now: number,
+): string => {
+  if (stopping) return "stopping…"
+  if (fullCheck === null) return "picking the next ticket…"
+  const what = fullCheck.step === "setup" ? "setting up the full check" : "full check"
+  return `${what}: ${fullCheck.command} · ${elapsed(now - fullCheck.began)}`
+}
+
+/** The box with no worker in it, saying `text`: the spinner `live`, its text faint, framed `frame`. */
+export const idleBox = (
+  text: string,
   theme: Theme,
   spin: string,
   width: number,
 ): ReadonlyArray<Segments> =>
   boxed(
-    [
-      [
-        seg(spin, theme.look("live")),
-        seg(" "),
-        seg(stopping ? "stopping…" : "picking the next ticket…", theme.styles.dim),
-      ],
-    ],
+    [[seg(spin, theme.look("live")), seg(" "), seg(text, theme.styles.dim)]],
     width,
     theme.look("frame"),
   )
@@ -395,18 +407,23 @@ export const keptLines = (width: number, slots: number, cards: number): number =
 }
 
 /**
- * The box with no worker in it, its spinner turning: it reads the spinner itself, so that nothing
- * over it is drawn anew ten times a second (tutti-axpo.5).
+ * The box with no worker in it, its spinner turning: it reads the spinner and the clock itself, so
+ * that nothing over it is drawn anew ten times a second (tutti-axpo.5).
  */
 const IdleBox = ({
   stopping,
+  fullCheck,
   theme,
   width,
 }: {
   readonly stopping: boolean
+  readonly fullCheck: FullCheckRun | null
   readonly theme: Theme
   readonly width: number
-}) => <Lines lines={idleBox(stopping, theme, useSpinner(true), width)} />
+}) => {
+  const text = idleText(stopping, fullCheck, useNow())
+  return <Lines lines={idleBox(text, theme, useSpinner(true), width)} />
+}
 
 /**
  * The compact box in `lines` lines, its frame included, a click on a card's line opening its worker;
@@ -531,6 +548,7 @@ export const Cards = ({
   width,
   room,
   stopping,
+  fullCheck,
   highlighted,
   open,
   focusOf,
@@ -543,6 +561,8 @@ export const Cards = ({
   /** The section's lines, its label included: the compact box keeps within them. */
   readonly room: number
   readonly stopping: boolean
+  /** What the end-of-run full check runs, for the box with no worker in it; null when it isn't. */
+  readonly fullCheck: FullCheckRun | null
   /** The highlighted card's ticket. */
   readonly highlighted: string | null
   /** Opens the view of the ticket's worker. */
@@ -558,7 +578,7 @@ export const Cards = ({
       return (
         <box flexDirection="column" flexShrink={0}>
           {label}
-          <IdleBox stopping={stopping} theme={theme} width={width} />
+          <IdleBox stopping={stopping} fullCheck={fullCheck} theme={theme} width={width} />
         </box>
       )
     case "Compact":

@@ -25,6 +25,7 @@ import {
   compactLines,
   elapsed,
   idleBox,
+  idleText,
   keptLines,
   layoutOf,
   statusLook,
@@ -326,14 +327,14 @@ describe("a card for each status", () => {
   })
 
   test("the box with no worker: picking the next ticket…, or stopping…", () => {
-    expect(textOf(idleBox(false, theme, spin, 40))).toMatchInlineSnapshot(`
+    expect(textOf(idleBox(idleText(false, null, 0), theme, spin, 40))).toMatchInlineSnapshot(`
       "
       ╭──────────────────────────────────────╮
       │ ⣾ picking the next ticket…           │
       ╰──────────────────────────────────────╯
       "
     `)
-    const stopping = idleBox(true, theme, spin, 40)
+    const stopping = idleBox(idleText(true, null, 0), theme, spin, 40)
     expect(textOf(stopping)).toContain("│ ⣾ stopping…")
     sameLook(lookOf(stopping, "stopping…"), theme.styles.dim)
     sameLook(lookOf(stopping, "⣾"), theme.look("live"))

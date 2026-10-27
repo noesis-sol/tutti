@@ -1002,6 +1002,7 @@ const runFrom = (
       scheduler,
       quitting,
       autoAnswered: attention.autoAnswered,
+      status,
     })
     const { saved, handedBack, neverSent } = yield* end.suspend({
       quit,

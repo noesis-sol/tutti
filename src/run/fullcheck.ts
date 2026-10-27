@@ -14,7 +14,8 @@
 // files a P2 bug labelled check-full for the suite it failed in (the last SUITE: line), titled
 // `Full check fails: <suite>`, unless one is open for that suite already, which is noted instead:
 // each failing suite has one ticket. A quit while it runs stops it (its process group is killed) and
-// says it was skipped. Each way it can go is a full_check record (§ 10).
+// says it was skipped. Each way it can go is a full_check record (§ 10). As the setup, then the
+// check, starts, it says so to the dashboard (FullCheckOptions' show), whose Current box names it.
 import { readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Clock, Duration, Effect, Result } from "effect"
@@ -55,6 +56,16 @@ export const titleWidth = 60
 
 /** How the full check went, as its full_check record's detail says. */
 export type FullCheckOutcome = (typeof fullCheckOutcomes)[number]
+
+/**
+ * What the full check runs now, for the dashboard (§ 7.2): the setup before it, or the check, its
+ * command, and when it began, in epoch milliseconds.
+ */
+export interface FullCheckRun {
+  readonly step: "setup" | "check"
+  readonly command: string
+  readonly began: number
+}
 
 /** How the full check went, for the report. */
 export interface FullChecked {
@@ -244,6 +255,8 @@ export interface FullCheckOptions {
   readonly started: number
   /** The setup command as the run has it now, a merge's settings taken (setup.ts); checks.setup's when absent. */
   readonly setup?: string | null
+  /** Says what it runs as each of its steps starts: the setup, when there is one, then the check. */
+  readonly show?: (running: FullCheckRun) => Effect.Effect<void>
 }
 
 /**
@@ -265,6 +278,12 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       command: options.setup === undefined ? config.settings.checks.setup.command : options.setup,
     }
     const command = full.command ?? ""
+    const show = (step: FullCheckRun["step"], what: string) =>
+      Effect.flatMap(Clock.currentTimeMillis, (began) =>
+        options.show === undefined ? Effect.void : options.show({ step, command: what, began }),
+      )
+    // Its worktree is made as part of the first step, so that the dashboard says so from the start.
+    yield* setup.command === null ? show("check", command) : show("setup", setup.command)
 
     const head = yield* Effect.result(git.revParse(config.repo, base))
     const made = Result.isSuccess(head)
@@ -311,6 +330,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
         if (Result.isFailure(ran)) {
           return yield* failed(options, at, yield* elapsed, ran.failure, path, setupLogName)
         }
+        yield* show("check", command)
       }
       const ran = yield* Effect.scoped(
         Effect.flatMap(outputTo({ worktree: path }, fullCheckLogName, "the full check's"), (to) =>
