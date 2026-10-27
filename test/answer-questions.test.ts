@@ -124,8 +124,9 @@ describe("recording an answer", () => {
   })
 
   test("an empty design takes the decision alone", () => {
-    expect(withDecision("", "Decided (q-1): Which?\nyes")).toBe("Decided (q-1): Which?\nyes")
-    expect(withDecision("  \n", "x")).toBe("x")
+    const q1 = "q-1" as TicketId
+    expect(withDecision("", "Decided (q-1): Which?\nyes", q1)).toBe("Decided (q-1): Which?\nyes")
+    expect(withDecision("  \n", "x", q1)).toBe("x")
     expect(decisionSection("q-1" as TicketId, " Which? ", " yes \n")).toBe(
       "Decided (q-1): Which?\nyes",
     )
@@ -143,6 +144,21 @@ describe("recording an answer", () => {
       )
       expect(issue(id)?.status).toBe(id === "q-3" ? "closed" : "open")
     }
+  })
+
+  test("answering again after a partial failure replaces the earlier decision", () => {
+    const q1 = "q-1" as TicketId
+    const once = withDecision("Plan.", decisionSection(q1, "Which?", "--flag"), q1)
+    const twice = withDecision(once, decisionSection(q1, "Which?", "--long-flag"), q1)
+    expect(twice).toBe("Plan.\n\nDecided (q-1): Which?\n--long-flag")
+    const other = withDecision(
+      twice,
+      decisionSection("q-2" as TicketId, "Colour?", "teal"),
+      "q-2" as TicketId,
+    )
+    expect(other).toBe(
+      "Plan.\n\nDecided (q-1): Which?\n--long-flag\n\nDecided (q-2): Colour?\nteal",
+    )
   })
 
   test("a design bd can't write leaves the question open, to answer again", async () => {

@@ -31,16 +31,24 @@ export interface Recorded {
 export const decisionSection = (question: TicketId, title: string, answer: string): string =>
   `Decided (${question}): ${title.trim()}\n${answer.trim()}`
 
-/** `design` with `section` below what is there already. */
-export const withDecision = (design: string, section: string): string => {
-  const before = design.trimEnd()
-  return before === "" ? section : `${before}\n\n${section}`
+/**
+ * `design` with `section`, the decision on `question`, below what is there already: in place of an
+ * earlier decision on it, which an answer bd failed to record partway left there.
+ */
+export const withDecision = (design: string, section: string, question: TicketId): string => {
+  const heading = `Decided (${question}):`
+  const kept = design
+    .trimEnd()
+    .split("\n\n")
+    .filter((paragraph) => paragraph !== "" && !paragraph.startsWith(heading))
+  return [...kept, section].join("\n\n")
 }
 
 /**
  * Answers the open question `question` with `answer`: the decision added to the design of each
  * open ticket it blocks, then bd human respond, which closes it. A ticket bd can't update fails the
- * whole, the question left open, so that answering again does it all.
+ * whole, the question left open, so that answering again does it all, its decision in place of the
+ * one written before.
  */
 export const recordAnswer = (
   question: TicketId,
@@ -64,7 +72,7 @@ export const recordAnswer = (
     const section = decisionSection(question, title, answer)
     for (const id of blocked) {
       const ticket = yield* beads.show(id)
-      yield* beads.update(id, { design: withDecision(ticket.design, section) })
+      yield* beads.update(id, { design: withDecision(ticket.design, section, question) })
     }
     yield* beads.respond(question, answer)
     return { title, decided: blocked }
