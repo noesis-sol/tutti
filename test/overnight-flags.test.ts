@@ -1,6 +1,6 @@
-// --overnight's flags (§ 8.2; tutti-kkb.46): it runs the current tickets without asking, turns on
-// --keep-awake and --auto-answer, which their own flags override, and goes with neither --feature
-// nor a --force-overnight of its own; --overnight-free-disk is the free disk its pre-flight wants.
+// --overnight's flags (§ 8.2; tutti-kkb.46): it runs the current tickets without asking, keeps the
+// machine awake whatever keep_awake says (keep-awake-default.test.ts), turns on --auto-answer,
+// which its own flag overrides, and goes with neither --feature nor a --force-overnight of its own; --overnight-free-disk is the free disk its pre-flight wants.
 import { describe, expect, test } from "bun:test"
 import { Duration, Option, Result } from "effect"
 import {
@@ -43,20 +43,19 @@ const problemsOf = (flags: Partial<Record<RunFlagName, string>>): ReadonlyArray<
 }
 
 describe("--overnight", () => {
-  test("is off by default, and so are what it turns on", () => {
+  test("is off by default, and so is the auto-answer it turns on", () => {
     const config = configOf({})
     expect(config).toMatchObject({
       overnight: false,
       forceOvernight: false,
       overnightFreeDisk: defaultOvernightFreeDisk,
-      keepAwake: false,
       autoAnswer: null,
       tickets: false,
     })
     expect(defaultOvernightFreeDisk).toBe(20)
   })
 
-  test("turns on --keep-awake and --auto-answer at once, and runs the current tickets", () => {
+  test("keeps the machine awake, turns on --auto-answer at once, and runs the current tickets", () => {
     const config = configOf({ overnight: "true" })
     expect(config).toMatchObject({ overnight: true, keepAwake: true, tickets: true })
     expect(config.autoAnswer).toEqual(Duration.zero)
@@ -77,11 +76,6 @@ describe("--overnight", () => {
       Duration.minutes(10),
     )
     expect(configOf({ overnight: "true" }, { TUTTI_AUTO_ANSWER: "0" }).autoAnswer).toBeNull()
-  })
-
-  test("--keep-awake=false given with it stays off, for the pre-flight to fail", () => {
-    expect(configOf({ overnight: "true", keepAwake: "false" }).keepAwake).toBe(false)
-    expect(configOf({ overnight: "true" }, { TUTTI_KEEP_AWAKE: "off" }).keepAwake).toBe(false)
   })
 
   test("with --feature is a usage problem", () => {

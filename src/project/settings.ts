@@ -189,8 +189,11 @@ export const Settings = Schema.Struct({
   concurrent: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: maxConcurrent })).pipe(
     withDefault(1),
   ),
-  /** Retired: whatever it is, it isn't read, and the START block says so (retiredSettings). */
-  keep_awake: Schema.optionalKey(Schema.Unknown),
+  /**
+   * Whether runs keep the machine awake (§ 8.2): the project's default, which keep_awake in the user
+   * config overrides for one person, and --overnight always keeps it awake.
+   */
+  keep_awake: Schema.Boolean.pipe(withDefault(true)),
   checks: Schema.Struct({
     /** The merge check, run on each finished ticket. */
     fast: Check("30m").pipe(withDefault({})),
@@ -301,11 +304,10 @@ export type Settings = typeof Settings.Type
 /**
  * The keys the settings no longer read, each with what the START block says of a file that still
  * has one. Such a file isn't refused, as an unknown key would be, and the key is ignored; the
- * published schema leaves the key out, so an editor flags it (scripts/gen-schemas.ts).
+ * published schema leaves the key out, so an editor flags it (scripts/gen-schemas.ts). None now:
+ * keep_awake, retired for --keep-awake, is read again.
  */
-export const retiredSettings = {
-  keep_awake: `keep_awake in ${settingsFile} is no longer read: keeping the machine awake is chosen for each run, with --keep-awake (TUTTI_KEEP_AWAKE); remove it from the settings`,
-} as const satisfies { readonly [K in keyof Settings]?: string }
+export const retiredSettings: { readonly [K in keyof Settings]?: string } = {}
 
 /** What the START block says of each retired key `settings` still has. */
 export const retiredIn = (settings: Settings): ReadonlyArray<string> =>

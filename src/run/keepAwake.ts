@@ -1,11 +1,14 @@
-// The machine kept awake while a run goes (§ 8.2 `--keep-awake`), as orchestra's keep_awake, but
-// chosen for each run rather than in the project's settings: with --keep-awake, the system's
-// keep-awake command, given tutti's PID, starts as the run begins and stops as the run's scope
-// closes, after the report's organs (src/main.ts). It goes through exec, in a process group of its
+// The machine kept awake while a run goes (§ 8.2), as orchestra's keep_awake: by default, unless
+// keep_awake is false in the project's settings or the user config (which wins over them), and
+// always with --overnight (AppConfig's keepAwake). The system's keep-awake command, given tutti's
+// PID, starts as the run begins and stops as the run's scope closes, after the report's organs
+// (src/main.ts). It goes through exec, in a process group of its
 // own that the scope kills; given the PID, it also ends by itself should tutti end some other way.
 // Where the system has none, or it isn't on the PATH, the START block warns once (`keepAwakePlan`),
-// and the run goes on all the same. While the command holds, the title line says so (§ 7.2).
+// and the run goes on all the same. While the command holds, the title line says so (§ 7.2). The
+// START block also says when keeping awake is off, and of a retired --keep-awake (`keepAwakeNotes`).
 import { Duration, Effect, SubscriptionRef } from "effect"
+import type { AppConfigValue } from "../cli/AppConfig.ts"
 import { type Command, exec, showCommand } from "../services/exec.ts"
 import { type Line, Log, line } from "./log.ts"
 
@@ -63,13 +66,13 @@ export const keepAwakePlan = (options: {
   if (awake === null) {
     return {
       _tag: "Missing",
-      warning: `--keep-awake: tutti can't keep the machine awake on ${options.platform}; set it not to sleep, or the run sleeps with it`,
+      warning: `keep awake: tutti can't keep the machine awake on ${options.platform}; set it not to sleep, or the run sleeps with it`,
     }
   }
   if (options.which(awake.command) === null) {
     return {
       _tag: "Missing",
-      warning: `--keep-awake: ${awake.command} isn't on the PATH, so nothing keeps the machine awake and the run sleeps with it; set the machine not to sleep`,
+      warning: `keep awake: ${awake.command} isn't on the PATH, so nothing keeps the machine awake and the run sleeps with it; set the machine not to sleep`,
     }
   }
   return { _tag: "Command", command: awake }
@@ -86,13 +89,26 @@ export const keepAwakePlan = (options: {
 export const lidNote = (platform: string): string | null => {
   switch (platform) {
     case "darwin":
-      return "--keep-awake prevents idle sleep only: closing the lid still sleeps the Mac unless it runs on power with an external display; sudo pmset -a disablesleep 1 keeps a closed Mac awake, system-wide, until sudo pmset -a disablesleep 0, which tutti never runs itself"
+      return "keeping the machine awake prevents idle sleep only: closing the lid still sleeps the Mac unless it runs on power with an external display; sudo pmset -a disablesleep 1 keeps a closed Mac awake, system-wide, until sudo pmset -a disablesleep 0, which tutti never runs itself"
     case "linux":
-      return "--keep-awake holds off idle sleep and suspend, but closing the lid still suspends the machine unless it is docked or has an external display, as logind ignores the lock for the lid (LidSwitchIgnoreInhibited); HandleLidSwitch=ignore in logind.conf keeps a closed laptop awake, system-wide, which tutti never sets itself"
+      return "keeping the machine awake holds off idle sleep and suspend, but closing the lid still suspends the machine unless it is docked or has an external display, as logind ignores the lock for the lid (LidSwitchIgnoreInhibited); HandleLidSwitch=ignore in logind.conf keeps a closed laptop awake, system-wide, which tutti never sets itself"
     default:
       return null
   }
 }
+
+/**
+ * What the START block says of keeping awake beyond its command: each retired flag given, and,
+ * where keeping awake is off, the file whose keep_awake turned it off.
+ */
+export const keepAwakeNotes = (
+  config: Pick<AppConfigValue, "keepAwakeOffBy" | "retiredNotes">,
+): ReadonlyArray<string> => [
+  ...config.retiredNotes,
+  ...(config.keepAwakeOffBy === null
+    ? []
+    : [`keep awake: off, keep_awake in ${config.keepAwakeOffBy}`]),
+]
 
 /** How long the keep-awake command has between SIGTERM and SIGKILL as it is stopped. */
 export const keepAwakeGrace: Duration.Duration = Duration.seconds(1)

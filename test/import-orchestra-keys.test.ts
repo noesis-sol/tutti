@@ -53,7 +53,6 @@ describe("orchestra's settings tutti has no place for", () => {
       "4h",
       "tutti takes it for each run, as --usage-limit-wait (6h by default), not from its settings",
     ],
-    ["keep_awake", true, "tutti takes it for each run, as --keep-awake, not from its settings"],
     [
       "overnight_free_disk_gb",
       30,

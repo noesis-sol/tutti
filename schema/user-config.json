@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/user-config.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "mouse": {
+      "type": "boolean",
+      "default": true
+    },
+    "notify": {
+      "type": "boolean",
+      "default": true
+    },
+    "billing": {
+      "type": "string",
+      "enum": [
+        "subscription",
+        "api"
+      ],
+      "default": "subscription"
+    },
+    "appearance": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "light",
+        "dark"
+      ],
+      "default": "auto"
+    },
+    "colour_scheme": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "keep_awake": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "additionalProperties": false
+}

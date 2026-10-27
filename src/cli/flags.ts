@@ -158,11 +158,6 @@ export const runFlags = {
     description:
       "start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included; 0 for no cap (default: ORCHESTRA_MACHINE_WORKERS, else half the cores, at least 2)",
   }),
-  keepAwake: runFlag("keep-awake", onOff, {
-    onOff: true,
-    description:
-      "keep the machine from sleeping when idle while the run goes, its report included: caffeinate on macOS, systemd-inhibit on Linux; a closed lid still sleeps a laptop without an external display, or a Mac on battery (default: off)",
-  }),
   autoAnswer: runFlag("auto-answer", autoAnswerAfter, {
     onOff: true,
     metavar: "on|off|time",
@@ -172,7 +167,7 @@ export const runFlags = {
   overnight: runFlag("overnight", onOff, {
     onOff: true,
     description:
-      "run the current tickets through the night: a pre-flight checklist first, its fixes offered in a terminal, a failed check refusing the run; turns on --keep-awake and --auto-answer (default: off)",
+      "run the current tickets through the night: a pre-flight checklist first, its fixes offered in a terminal, a failed check refusing the run; keeps the machine awake whatever keep_awake says, and turns on --auto-answer (default: off)",
   }),
   forceOvernight: runFlag("force-overnight", onOff, {
     onOff: true,
@@ -311,15 +306,50 @@ export const runFlags = {
 
 export type RunFlagName = keyof typeof runFlags
 
-/** The flags' texts as effect/cli parses them, each none when the flag isn't given. */
-export type RunFlags = { readonly [K in RunFlagName]: Option.Option<string> }
+/** A flag tutti no longer reads: still taken, with any value, so that scripts and habits don't break. */
+export interface RetiredFlag {
+  /** The flag's name, without its dashes. */
+  readonly name: string
+  /** Its environment variable, also no longer read. */
+  readonly variable: string
+  /** What the START block says after `--name is no longer read: `. */
+  readonly instead: string
+  /** The flag for effect/cli: hidden from --help, its text, if given. */
+  readonly flag: Flag.Flag<Option.Option<string>>
+}
 
-/** The run flags for effect/cli's Command.make. */
+const retiredFlag = (name: string, instead: string): RetiredFlag => ({
+  name,
+  variable: variableOf(name),
+  instead,
+  flag: Flag.optional(Flag.String(name).pipe(Flag.withOptionalValue("true"), Flag.withHidden)),
+})
+
+/** The flags tutti no longer reads, by the name RunFlags has them under. */
+export const retiredFlags = {
+  // Keeping awake is the default, and keep_awake in the settings or the user config turns it off.
+  keepAwake: retiredFlag(
+    "keep-awake",
+    "tutti keeps the machine awake unless keep_awake is false in .tutti/settings.json or ~/.config/tutti/config.json",
+  ),
+} as const
+
+export type RetiredFlagName = keyof typeof retiredFlags
+
+/** The flags' texts as effect/cli parses them, each none when the flag isn't given. */
+export type RunFlags = {
+  readonly [K in RunFlagName | RetiredFlagName]: Option.Option<string>
+}
+
+/** The run flags for effect/cli's Command.make, the retired ones among them. */
 export const cliFlags = Object.fromEntries(
-  Object.entries(runFlags).map(([key, { flag }]) => [key, flag]),
-) as { readonly [K in RunFlagName]: Flag.Flag<Option.Option<string>> }
+  [...Object.entries(runFlags), ...Object.entries(retiredFlags)].map(([key, { flag }]) => [
+    key,
+    flag,
+  ]),
+) as { readonly [K in RunFlagName | RetiredFlagName]: Flag.Flag<Option.Option<string>> }
 
 /** No flags given. */
 export const noFlags: RunFlags = Object.fromEntries(
-  Object.keys(runFlags).map((key) => [key, Option.none()]),
+  Object.keys(cliFlags).map((key) => [key, Option.none()]),
 ) as RunFlags

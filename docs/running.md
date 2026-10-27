@@ -148,9 +148,8 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 |---|---|
 | `-c N`, `--concurrent N` | tickets at the same time, 1 to 16 (default: the settings', else 1) |
 | `--machine-workers N` | start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included ([below](#runs-that-share-a-machine)); `0` for no cap (default: `ORCHESTRA_MACHINE_WORKERS`, else half the cores, at least 2) |
-| `--keep-awake` | keep the machine from sleeping when idle while the run goes, its report included: `caffeinate` on macOS, `systemd-inhibit` on Linux; the `START` block warns where there is none. A closed lid still sleeps a laptop ([below](#when-the-machine-sleeps)). `TUTTI_KEEP_AWAKE=1` in your shell's profile keeps every run on that machine awake (default: off) |
 | `--auto-answer`, `--auto-answer=10m` | answer the workers' questions with the option they recommend, at once, or once one has waited that long for you; never one only you can answer, nor a permission ([below](#answering-for-you-while-youre-away); default: off) |
-| `--overnight` | run the current tickets through the night, once a pre-flight has cleared the run; turns on `--keep-awake` and `--auto-answer` ([below](#overnight)) |
+| `--overnight` | run the current tickets through the night, once a pre-flight has cleared the run; keeps the machine awake whatever `keep_awake` says, and turns on `--auto-answer` ([below](#overnight)) |
 | `--force-overnight` | with `--overnight`, start though a pre-flight check failed |
 | `--overnight-free-disk <GB>` | the free disk `--overnight` wants where the worktrees go; `0` doesn't check (default: 20) |
 | `--tickets` | run the current tickets without asking first |
@@ -185,6 +184,25 @@ Most default to [the settings](setup.md#the-settings); the flag wins for its run
 Every `git` and `bd` command tutti runs has a time limit: 30 seconds for a read, 2 minutes for a git
 write or a `bd` update. A command still running then is stopped with everything it started.
 
+### Keeping the machine awake
+
+A run keeps the machine from sleeping when idle while it goes, its report included: `caffeinate`
+on macOS, `systemd-inhibit` on Linux, which the title line's ` keep awake ` badge shows while it
+holds. Where the machine has none, or it isn't on the `PATH`, the `START` block warns, and the run
+goes on. A closed lid still sleeps a laptop ([below](#when-the-machine-sleeps)).
+
+It is on unless `keep_awake` is `false`: in the project's [settings](setup.md#the-settings), the
+repository's default, or in your [user config](setup.md#the-user-config), which wins over the
+project's for you. The `START` block says when it is off and which file says so:
+
+```
+keep awake: off, keep_awake in ~/.config/tutti/config.json
+```
+
+`--overnight` keeps the machine awake whatever they say. There is no flag for it: `--keep-awake`
+and `TUTTI_KEEP_AWAKE`, which turned it on before it was the default, are still taken, with any
+value, and not read; the `START` block says so once.
+
 ### When the machine sleeps
 
 tutti's time limits count the time the machine is awake: those of the
@@ -196,10 +214,10 @@ record ([Event records](events.md)):
 
 ```
 SLEPT: the machine slept 34m (14:03-14:37); checks and limits don't count it
-  run with --keep-awake to keep the machine awake
+  keep_awake is false for this run, as the START block said: set it true to keep the machine awake
 ```
 
-The second line comes once, in a run without `--keep-awake`. tutti takes a gap of more than 15
+The second line comes once, in a run that doesn't keep the machine awake. tutti takes a gap of more than 15
 seconds in its own once-a-second look at the clock for a sleep, so tutti stopped as long (`kill
 -STOP`) reads as one too.
 
@@ -210,15 +228,15 @@ and on Linux.
 
 ```
 SLEPT: the machine slept 4m (09:41-09:45, lid closed); checks and limits don't count it
-  --keep-awake can't prevent a closed lid's sleep: keep the Mac on power with an external display, or run sudo pmset -a disablesleep 1 (and 0 after)
+  keeping the machine awake can't prevent a closed lid's sleep: keep the Mac on power with an external display, or run sudo pmset -a disablesleep 1 (and 0 after)
 ```
 
-`--keep-awake` prevents idle sleep only. Closing a laptop's lid sleeps it all the same: a Mac
+Keeping the machine awake prevents idle sleep only. Closing a laptop's lid sleeps it all the same: a Mac
 unless it runs on power with an external display (clamshell mode), a Linux laptop unless it is
 docked or has an external display, as logind ignores the inhibitor lock for the lid
 (`LidSwitchIgnoreInhibited` is `yes` by default). A run kept awake on a machine with a battery says
 so in its `START` block, and a closed lid's sleep in such a run adds the second line above; in a
-run without `--keep-awake`, a closed lid's sleep doesn't say to use it. To keep a closed Mac awake,
+run that doesn't keep the machine awake, a closed lid's sleep doesn't say to. To keep a closed Mac awake,
 `sudo pmset -a disablesleep 1`, and `sudo pmset -a disablesleep 0` afterwards; on Linux,
 `HandleLidSwitch=ignore` in `/etc/systemd/logind.conf`. Both are the whole machine's settings,
 which tutti never changes itself.
@@ -277,16 +295,17 @@ questions with:
 bd list --all --label auto-answered
 ```
 
-It is chosen for each run, like `--keep-awake`, as it depends on whether you are there;
+It is chosen for each run, as it depends on whether you are there;
 `TUTTI_AUTO_ANSWER=10m` in your shell's profile sets it for every run on that machine.
 
 ### Overnight
 
 `tutti --overnight` (or `TUTTI_OVERNIGHT=1`) runs the current tickets as `--tickets` does, or
 `--ticket <id>` and its subtickets, once a pre-flight has cleared the run to work through the
-night, so that it doesn't stop at 1am on something you could have settled at 11pm. It turns on
-`--keep-awake` and `--auto-answer` ([above](#answering-for-you-while-youre-away)), as nobody is
-there to answer in the night; `--auto-answer=false`, or a time, given with it overrides that. With
+night, so that it doesn't stop at 1am on something you could have settled at 11pm. It keeps the
+machine awake, whatever `keep_awake` says ([above](#keeping-the-machine-awake)), and turns on
+`--auto-answer` ([above](#answering-for-you-while-youre-away)), as nobody is there to answer in the
+night; `--auto-answer=false`, or a time, given with it overrides that. With
 `--feature` it is a setup problem, as is `--force-overnight` without it.
 
 The pre-flight runs once tutti holds the run lock, before the run starts. Each check passes, warns
@@ -309,9 +328,6 @@ What fails, refusing the run until it is fixed:
 - **A permission mode that asks** (`workers.permission_mode` `default`): a worker would wait on a
   prompt all night. `auto` and `acceptEdits` pass. Fix: start workers in `auto`, once Claude Code
   says it puts auto in effect for your account.
-- **`--keep-awake` turned off** (`--keep-awake=false`): the merge checks would time out while the
-  machine sleeps. Where tutti has no way to keep it awake, it warns instead: set the machine not
-  to sleep.
 - **Too little free disk** where the worktrees go: under `--overnight-free-disk` GB, 20 by
   default, `0` not checking. Free space tutti can't read warns.
 - **The merge check failing on the base**: run once on its head in a worktree of its own, the
@@ -332,6 +348,9 @@ What warns:
 - **A busy machine**: a 1-minute load over 1.5 per core, or memory pressure at warn or worse, naming
   the 3 processes using the most; and a virtual machine holding over 4 GB (Docker Desktop's,
   OrbStack's, …).
+- **No way to keep the machine awake** (no `caffeinate` or `systemd-inhibit` on the `PATH`), as the
+  merge checks would time out while it sleeps: set the machine not to sleep. `--overnight` keeps
+  it awake whatever `keep_awake` says, so this is the only thing the check asks.
 - **On battery**, with its level and what a closed lid does.
 - **A worker prompt or verifier older than tutti's templates**. Fix: bring them up to date as
   `tutti init --update` does and commit that on the base; the run's workers then follow the prompt

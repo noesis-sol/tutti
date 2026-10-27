@@ -366,10 +366,12 @@ describe("what the run says of a sleep", () => {
 
   const later: Sleep = { from: at(16, 0), to: at(16, 20) }
 
-  test("each sleep has its line and record; the hint comes once, without --keep-awake", async () => {
+  test("each sleep has its line and record; the hint comes once, not kept awake", async () => {
     const { log, records } = await said(false, [sleep33, later])
     expect(log).toEqual([sleptLine(sleep33), keepAwakeHint, sleptLine(later)])
-    expect<string>(keepAwakeHint).toBe("  run with --keep-awake to keep the machine awake")
+    expect<string>(keepAwakeHint).toBe(
+      "  keep_awake is false for this run, as the START block said: set it true to keep the machine awake",
+    )
     expect(records).toEqual([
       expect.objectContaining({ kind: "slept", seconds: 2059, text: sleptLine(sleep33) }),
       expect.objectContaining({ kind: "slept", seconds: 1200, text: sleptLine(later) }),
@@ -377,7 +379,7 @@ describe("what the run says of a sleep", () => {
     expect(new Date((records[0] as { from: string }).from).getTime()).toBe(sleep33.from)
   })
 
-  test("with --keep-awake there is no hint", async () => {
+  test("kept awake, there is no hint", async () => {
     const { log } = await said(true, [sleep33, later])
     expect(log).toEqual([sleptLine(sleep33), sleptLine(later)])
   })
@@ -435,6 +437,8 @@ describe("a run across a sleep", () => {
       ...defaults,
       concurrent: 1,
       workers: { ...defaults.workers, ticket_limit: Duration.hours(1) },
+      // A run that doesn't keep the machine awake, which says how it would.
+      keep_awake: false,
     }
     const ran = await scenario(
       {

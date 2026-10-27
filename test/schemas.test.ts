@@ -30,7 +30,8 @@ test("schema/settings.json has every settings key but the retired, and refuses o
   expect(Object.keys(settings.properties ?? {})).toEqual(
     Object.keys(Settings.fields).filter((key) => !Object.hasOwn(retiredSettings, key)),
   )
-  expect(Object.keys(retiredSettings)).toEqual(["keep_awake"])
+  expect(Object.keys(retiredSettings)).toEqual([])
+  expect(Object.keys(settings.properties ?? {})).toContain("keep_awake")
   expect(settings.additionalProperties).toBe(false)
 })
 

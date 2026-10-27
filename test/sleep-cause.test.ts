@@ -1,9 +1,9 @@
 // Why the machine slept (§ 5 item 15, tutti-abem): on macOS the SLEPT line names the cause pmset's
 // log gives for the sleep that began as the machine was last seen awake (src/run/sleepCause.ts),
 // none when no line matches, the log doesn't read or the system isn't macOS; a closed lid's sleep
-// under --keep-awake says that --keep-awake can't prevent it. The START block and --help say what
-// --keep-awake covers (src/run/keepAwake.ts, src/cli/flags.ts).
-import { describe, expect, setDefaultTimeout, test } from "bun:test"
+// in a run kept awake says that keeping awake can't prevent it. The START block says what keeping
+// awake covers (src/run/keepAwake.ts).
+import { describe, expect, test } from "bun:test"
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -21,11 +21,6 @@ import { layer as causesLayer } from "../src/testing/SleepCauses.ts"
 import { Asleep, layer as asleepLayer } from "../src/testing/Wake.ts"
 import { withVariable } from "./env.ts"
 
-// The --help test starts tutti as a bun process, which bun's 5 s default fails when other checks
-// run beside this one.
-setDefaultTimeout(30_000)
-
-const root = join(import.meta.dir, "..")
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dir, "fixtures", "pmset-log", name), "utf8")
 const causes = fixture("causes.log")
@@ -171,13 +166,13 @@ describe("the SLEPT line", () => {
     ])
   })
 
-  test("a closed lid under --keep-awake says --keep-awake can't prevent it", () => {
+  test("a closed lid in a run kept awake says keeping awake can't prevent it", () => {
     expect<string>(lidClosedHint).toBe(
-      "  --keep-awake can't prevent a closed lid's sleep: keep the Mac on power with an external display, or run sudo pmset -a disablesleep 1 (and 0 after)",
+      "  keeping the machine awake can't prevent a closed lid's sleep: keep the Mac on power with an external display, or run sudo pmset -a disablesleep 1 (and 0 after)",
     )
   })
 
-  test("without --keep-awake, a closed lid's sleep takes no hint to use it; the next sleep does", async () => {
+  test("not kept awake, a closed lid's sleep takes no hint to use it; the next sleep does", async () => {
     const { log } = await said(false, causes, [lid, idle])
     expect(log).toEqual([sleptLine(lid, "lid closed"), sleptLine(idle, "idle"), keepAwakeHint])
   })
@@ -188,29 +183,14 @@ describe("the SLEPT line", () => {
   })
 })
 
-describe("what --keep-awake covers", () => {
+describe("what keeping awake covers", () => {
   test("the START block's note on a laptop says a closed lid still sleeps it", () => {
     expect(lidNote("darwin")).toBe(
-      "--keep-awake prevents idle sleep only: closing the lid still sleeps the Mac unless it runs on power with an external display; sudo pmset -a disablesleep 1 keeps a closed Mac awake, system-wide, until sudo pmset -a disablesleep 0, which tutti never runs itself",
+      "keeping the machine awake prevents idle sleep only: closing the lid still sleeps the Mac unless it runs on power with an external display; sudo pmset -a disablesleep 1 keeps a closed Mac awake, system-wide, until sudo pmset -a disablesleep 0, which tutti never runs itself",
     )
     expect(lidNote("linux")).toContain(
       "closing the lid still suspends the machine unless it is docked or has an external display",
     )
     expect(lidNote("win32")).toBeNull()
-  })
-
-  test("--help says it prevents idle sleep, and a closed lid still sleeps a laptop", async () => {
-    const proc = Bun.spawn(["bun", join(root, "src", "main.ts"), "--help"], {
-      cwd: root,
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    expect(code).toBe(0)
-    const help = out.replace(/\s+/g, " ")
-    expect(help).toContain("keep the machine from sleeping when idle while the run goes")
-    expect(help).toContain(
-      "a closed lid still sleeps a laptop without an external display, or a Mac on battery",
-    )
   })
 })

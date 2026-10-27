@@ -99,7 +99,6 @@ describe("flags", () => {
     expect(Object.values(runFlags).map((flag) => flag.name)).toEqual([
       "concurrent",
       "machine-workers",
-      "keep-awake",
       "auto-answer",
       "overnight",
       "force-overnight",
@@ -345,7 +344,6 @@ describe("precedence", () => {
       plain: false,
       prompt: join(repo, ".tutti", "worker-prompt.md"),
       worktrees: "/work/project-tutti",
-      keepAwake: false,
       claude: null,
     })
     expect(defaults.usageLimitWait).toEqual(Duration.hours(6))
@@ -358,7 +356,6 @@ describe("precedence", () => {
       TUTTI_PROMPT: "/prompts/worker.md",
       TUTTI_WORKTREES: "../trees",
       TUTTI_USAGE_LIMIT_WAIT: "0",
-      TUTTI_KEEP_AWAKE: "on",
       TUTTI_CLAUDE: "/usr/local/bin/claude",
     }
     const fromEnv = configOf({ env })
@@ -369,7 +366,6 @@ describe("precedence", () => {
       plain: true,
       prompt: "/prompts/worker.md",
       worktrees: "/work/trees",
-      keepAwake: true,
       claude: "/usr/local/bin/claude",
     })
     expect(fromEnv.usageLimitWait).toEqual(Duration.zero)
@@ -384,7 +380,6 @@ describe("precedence", () => {
         prompt: "my-prompt.md",
         worktrees: "/elsewhere",
         usageLimitWait: "90m",
-        keepAwake: "false",
         claude: "claude",
       },
     })
@@ -395,7 +390,6 @@ describe("precedence", () => {
       plain: false,
       prompt: join(repo, "my-prompt.md"),
       worktrees: "/elsewhere",
-      keepAwake: false,
       claude: "claude",
     })
     expect(fromFlags.usageLimitWait).toEqual(minutes(90))

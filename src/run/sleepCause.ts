@@ -1,7 +1,7 @@
 // Why the machine slept (§ 5 item 15, tutti-abem): once the run notices a sleep (Wake.ts), on macOS
 // it reads pmset's log for the sleep that began as the machine was last seen awake, and the SLEPT
 // line names the cause in words: the lid closed, the battery low, idle, asked to sleep. A closed lid
-// sleeps a Mac whatever --keep-awake does (caffeinate -i prevents idle sleep only), and the SLEPT
+// sleeps a Mac whatever keeping it awake does (caffeinate -i prevents idle sleep only), and the SLEPT
 // line said only that the machine slept (2026-10-25: 'Clamshell Sleep' during a run).
 //
 // pmset's log is the system's text: only a line that reads as pmset writes it counts, its reason is

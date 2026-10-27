@@ -46,9 +46,10 @@ has gone, and the scope of a `--ticket` or feature run (`· ticket tut-8f2`), or
 `· stopping` while something holds the run, `Quitting…` while it quits, and
 `· solo <id> running` or `· solo <id> next` around a ticket labelled `solo`.
 
-A run started with `--keep-awake` shows ` keep awake ` after the version, a warm amber pill, while
-its keep-awake command holds the machine awake (`--keep-awake`, see [Running](running.md)). Where the machine has
-no such command, or it isn't on the PATH, the START block warns instead, and there is no badge.
+A run shows ` keep awake ` after the version, a warm amber pill, while its keep-awake command holds
+the machine awake, as it does unless `keep_awake` is `false` (see
+[Running](running.md#keeping-the-machine-awake)). Where the machine has no such command, or it isn't
+on the PATH, the START block warns instead, and there is no badge.
 
 A run started with `--auto-answer` shows ` auto-answer ` (` auto-answer after 10m ` with a time)
 after the version, a teal pill, for the whole run: tutti answers the workers' questions with their

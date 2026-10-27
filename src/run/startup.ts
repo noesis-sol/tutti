@@ -41,6 +41,7 @@ import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
+import { keepAwakeNotes } from "./keepAwake.ts"
 import { type Line, start, Tag } from "./log.ts"
 import { aboveCapNote, machineWorkersLabel } from "./machine.ts"
 import { readSpec, type Spec } from "./spec.ts"
@@ -483,6 +484,7 @@ export const check = <R>(checking: Checking<R>) =>
       ...claude.warnings,
       ...(leftWorkers.length > 0 ? [orchestraWarning(leftWorkers)] : []),
       ...retiredIn(given.settings),
+      ...keepAwakeNotes(given),
     ]
     if (
       notSetUp ||

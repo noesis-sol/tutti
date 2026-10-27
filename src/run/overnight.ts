@@ -386,23 +386,20 @@ export const ticketLimitCheck = (config: AppConfigValue): Found => {
 }
 
 /**
- * The machine kept awake: --keep-awake turned off fails, as the night's merge checks time out while
- * the Mac sleeps; where tutti can't keep it awake, a warning to set it not to sleep.
+ * The machine kept awake, which --overnight does whatever keep_awake says: where tutti can't keep
+ * it awake, a warning to set it not to sleep. A plan that keeps nothing awake fails, as the night's
+ * merge checks time out while the machine sleeps.
  */
-export const keepAwakeCheck = (config: AppConfigValue, awake: KeepAwakePlan): Found => {
-  if (!config.keepAwake) {
-    return failed(
-      "--keep-awake is off: the machine would sleep in the night, and the run with it, its merge checks timing out",
-    )
-  }
+export const keepAwakeCheck = (awake: KeepAwakePlan): Found => {
   switch (awake._tag) {
     case "Command":
       return passed(`the machine is kept awake while the run goes (${awake.command.command})`)
     case "Missing":
       return warned(awake.warning)
     case "Off":
-      // --keep-awake on gives a command or says why it can't.
-      return passed("the machine is kept awake while the run goes")
+      return failed(
+        "nothing keeps the machine awake: it would sleep in the night, and the run with it, its merge checks timing out",
+      )
   }
 }
 
@@ -796,7 +793,7 @@ export const checks = (started: Started, night: Night, say: Say, puts: boolean) 
       usageNow,
       usageWaitCheck(config),
       ticketLimitCheck(config),
-      keepAwakeCheck(config, night.awake),
+      keepAwakeCheck(night.awake),
       yield* diskCheck(config, night),
       otherRunsCheck(yield* night.otherRuns),
       loadCheck(yield* night.kernel, processes),

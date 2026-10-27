@@ -1,16 +1,12 @@
-// --keep-awake (§ 8.2; src/run/keepAwake.ts): the system's keep-awake command for tutti's PID, the
-// START block's warning where there is none, and the command held until the run's scope closes. The
-// settings' keep_awake it replaces is no longer read (§ 8.4).
+// Keeping the machine awake (§ 8.2; src/run/keepAwake.ts): the system's keep-awake command for
+// tutti's PID, the START block's warning where there is none, and the command held until the run's
+// scope closes. Whether a run keeps it awake: keep-awake-default.test.ts.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Effect, Exit, Option, Result, SubscriptionRef } from "effect"
-import { defaultSettings, defaultUserConfig, resolve, type Sources } from "../src/cli/AppConfig.ts"
-import { noFlags } from "../src/cli/flags.ts"
-import { decodeConfig } from "../src/project/configFile.ts"
-import { retiredIn, retiredSettings, Settings } from "../src/project/settings.ts"
+import { Effect, Exit, SubscriptionRef } from "effect"
 import {
   type AwakeCommand,
   awakeCommandOf,
@@ -98,7 +94,7 @@ describe("the keep-awake command", () => {
 describe("keepAwakePlan", () => {
   const on = { on: true, platform: "darwin", pid: 99 } as const
 
-  test("without --keep-awake, does nothing and looks for nothing", () => {
+  test("off, does nothing and looks for nothing", () => {
     const looked: Array<string> = []
     const plan = keepAwakePlan({
       ...on,
@@ -112,7 +108,7 @@ describe("keepAwakePlan", () => {
     expect(looked).toEqual([])
   })
 
-  test("with --keep-awake, runs the system's command when it is on the PATH", () => {
+  test("on, runs the system's command when it is on the PATH", () => {
     expect(keepAwakePlan({ ...on, which: (command) => `/usr/bin/${command}` })).toEqual({
       _tag: "Command",
       command: { command: "caffeinate", args: ["-i", "-w", "99"] },
@@ -123,7 +119,7 @@ describe("keepAwakePlan", () => {
     expect(keepAwakePlan({ ...on, platform: "linux", which: () => null })).toEqual({
       _tag: "Missing",
       warning:
-        "--keep-awake: systemd-inhibit isn't on the PATH, so nothing keeps the machine awake and the run sleeps with it; set the machine not to sleep",
+        "keep awake: systemd-inhibit isn't on the PATH, so nothing keeps the machine awake and the run sleeps with it; set the machine not to sleep",
     })
   })
 
@@ -131,7 +127,7 @@ describe("keepAwakePlan", () => {
     expect(keepAwakePlan({ ...on, platform: "freebsd", which: (c) => c })).toEqual({
       _tag: "Missing",
       warning:
-        "--keep-awake: tutti can't keep the machine awake on freebsd; set it not to sleep, or the run sleeps with it",
+        "keep awake: tutti can't keep the machine awake on freebsd; set it not to sleep, or the run sleeps with it",
     })
   })
 })
@@ -205,55 +201,5 @@ describe("keepAwake", () => {
       /^tutti-no-such-keep-awake ended \(.+\): nothing keeps the machine awake$/u,
     )
     expect(SubscriptionRef.getUnsafe(holding)).toBe(false)
-  })
-})
-
-/** The run's --keep-awake, resolved from `sources` over no flags, variables or settings. */
-const keepAwakeOf = (sources: Partial<Sources> = {}): boolean => {
-  const resolved = resolve({
-    repo: "/work/project",
-    flags: noFlags,
-    env: () => undefined,
-    user: defaultUserConfig,
-    settings: defaultSettings,
-    ...sources,
-  })
-  if (Result.isFailure(resolved)) throw new Error(resolved.failure.join("\n"))
-  return resolved.success.keepAwake
-}
-
-describe("--keep-awake", () => {
-  test("is off by default; the flag, else TUTTI_KEEP_AWAKE, turns it on", () => {
-    const env = (value: string) => (name: string) =>
-      name === "TUTTI_KEEP_AWAKE" ? value : undefined
-    expect(keepAwakeOf()).toBe(false)
-    expect(keepAwakeOf({ flags: { ...noFlags, keepAwake: Option.some("true") } })).toBe(true)
-    expect(keepAwakeOf({ env: env("1") })).toBe(true)
-    expect(
-      keepAwakeOf({ env: env("1"), flags: { ...noFlags, keepAwake: Option.some("false") } }),
-    ).toBe(false)
-  })
-})
-
-describe("the settings' keep_awake, retired", () => {
-  const decoded = (json: unknown): Settings => {
-    const exit = decodeConfig(Settings, "settings.json", json)
-    if (Exit.isFailure(exit)) throw new Error(`doesn't decode: ${JSON.stringify(json)}`)
-    return exit.value
-  }
-
-  test("is taken whatever its value, rather than refused as an unknown key", () => {
-    for (const value of [true, false, "yes", null]) decoded({ keep_awake: value })
-  })
-
-  test("keeps no run awake", () => {
-    expect(keepAwakeOf({ settings: decoded({ keep_awake: true }) })).toBe(false)
-  })
-
-  test("is named in the START block's warning, which says to use --keep-awake", () => {
-    expect(retiredIn(decoded({ keep_awake: true }))).toEqual([retiredSettings.keep_awake])
-    expect(retiredSettings.keep_awake).toContain("--keep-awake (TUTTI_KEEP_AWAKE)")
-    expect(retiredIn(decoded({}))).toEqual([])
-    expect(retiredIn(defaultSettings)).toEqual([])
   })
 })

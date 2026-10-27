@@ -236,6 +236,7 @@ describe("init --update over settings in the project's own formatting", () => {
   test("recording the templates' versions rewrites the templates' section alone", async () => {
     const before = `{
     "concurrent": 2,
+    "keep_awake": true,
     "templates": { "worker_prompt": ${currentTemplates.worker_prompt}, "check_suite_skill": 1 },
     "workers": { "mcp_servers": [] }
 }

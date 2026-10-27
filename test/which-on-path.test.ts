@@ -1,4 +1,4 @@
-// whichOnPath, where --keep-awake's command, init's tools and --claude's `claude` are looked for: on
+// whichOnPath, where the keep-awake command, init's tools and --claude's `claude` are looked for: on
 // process.env's PATH as it is now, the one a command is run with, not the one tutti started with.
 
 import { describe, expect, test } from "bun:test"

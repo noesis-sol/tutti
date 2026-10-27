@@ -259,11 +259,10 @@ entry, `✗` with what to do for one still missing.
 
 In a project with `.orchestra/` and no `.tutti/`, `init` first offers to import orchestra's settings
 and worker prompt. It imports the checks and their time limits, the setup command and its files,
-`concurrent`, `ticket_limit`, `mcp_servers`, the worker and organ effort, `exclude_types`,
-`footprint`, `resolve_conflicts`, `resolve_timeout`, `check_hand_backs`, `merge_train`,
-`environment_hold` and the `requires` list, and
-names what it can't import (`terminal`: tutti has no terminals; `keep_awake`: tutti takes it for each
-run, as `--keep-awake`). The worker prompt is copied with your
+`concurrent`, `keep_awake`, `ticket_limit`, `mcp_servers`, the worker and organ effort,
+`exclude_types`, `footprint`, `resolve_conflicts`, `resolve_timeout`, `check_hand_backs`,
+`merge_train`, `environment_hold` and the `requires` list, and names what it can't import
+(`terminal`: tutti has no terminals). The worker prompt is copied with your
 changes, and the summary lists, line by line, what it still needs for tutti: `.tutti/` for
 `.orchestra/`, `tutti/` branches for `wt/`, no tabs, and the like. `.orchestra/` is left as it is.
 
@@ -424,7 +423,8 @@ sections changed since and what changed in them:
 `init` says it too of the files it keeps. `tutti init --update` takes the changes: it rewrites only
 those sections from the templates, keeping the rest of each file, your own sections included (the
 worker prompt's lines on how to run each suite on part of the project among them), records the
-templates' versions in `.tutti/settings.json`, prints the diff, and leaves the commit to you. A
+templates' versions in `.tutti/settings.json`, adds `"keep_awake": true` there where it has no
+`keep_awake`, prints the diff, and leaves the commit to you. A
 section it rewrote loses your edits in it: read the diff, and carry over what you want to keep.
 
 ## The settings
@@ -439,6 +439,7 @@ for a project that sets them all; the table below gives each one's default:
   "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/settings.json",
   "version": 1,
   "concurrent": 1,
+  "keep_awake": true,
   "checks": {
     "fast": { "command": "scripts/check-fast.sh", "timeout": "30m" },
     "full": { "command": "scripts/check-full.sh", "timeout": "60m" },
@@ -477,6 +478,7 @@ for a project that sets them all; the table below gives each one's default:
 | `$schema` | | the published [JSON Schema](../schema/settings.json), so editors complete and check the file |
 | `version` | `1` | the format |
 | `concurrent` | `1` | tickets at the same time, 1 to 16; `-c` for a run |
+| `keep_awake` | `true` | runs keep the machine from sleeping when idle, the repository's default; `false` turns it off, and yours in the user config wins over it; [Keeping the machine awake](running.md#keeping-the-machine-awake) |
 | `checks.fast.command` | none | the merge check; [The checks](#the-checks) |
 | `checks.fast.timeout` | `"30m"` | its time limit; `--check-timeout` for a run |
 | `checks.full.command` | none | the full check |
@@ -510,9 +512,10 @@ for a project that sets them all; the table below gives each one's default:
 
 A run's flags override the settings for that run; [Running](running.md#options) lists them.
 
-Whether the machine is kept awake isn't a setting: it is yours to choose for each run, with
-[`--keep-awake`](running.md#options). A `keep_awake` left in the file from an earlier tutti isn't
-read, and the run's `START` block warns of it until it is removed.
+`keep_awake` is in both places on purpose: the project's settings say whether its runs keep the
+machine awake by default, and your user config overrides that for you, as keeping a machine awake
+is the choice of whoever runs tutti on it. `init` writes `"keep_awake": true`, and `init --update`
+adds it where it is missing.
 
 ## The user config
 
@@ -522,20 +525,24 @@ wrong kind, stops a run.
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/user-config.json",
   "mouse": true,
   "notify": true,
   "billing": "subscription",
   "appearance": "auto",
-  "colour_scheme": null
+  "colour_scheme": null,
+  "keep_awake": null
 }
 ```
 
 | Key | Default | |
 |---|---|---|
+| `$schema` | | the published [JSON Schema](../schema/user-config.json), so editors complete and check the file |
 | `mouse` | `true` | `false` leaves the mouse to the terminal; `--no-mouse` for a run or `tutti init` |
 | `notify` | `true` | desktop notifications; `--notify` for a run |
 | `billing` | `"subscription"` | `"api"` keeps `ANTHROPIC_API_KEY` beside a subscription login; `--billing` for a run |
 | `appearance` | `"auto"` | `"light"` or `"dark"` fixes the colour scheme's variant; `TUTTI_APPEARANCE` |
 | `colour_scheme` | none | your colour scheme, over the project's; `--colour-scheme` for a run |
+| `keep_awake` | none | `false` keeps your runs from keeping the machine awake, `true` has them keep it awake, over the project's `keep_awake`; none: the project's; [Keeping the machine awake](running.md#keeping-the-machine-awake) |
 
 Your own colour schemes go in `colour-schemes/` beside it (see [Colour schemes](colour-schemes.md)).

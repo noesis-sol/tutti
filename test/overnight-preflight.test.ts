@@ -433,14 +433,16 @@ describe("an overnight pre-flight", () => {
     )
   })
 
-  test("--keep-awake=false fails it", async () => {
+  test("nothing keeping the machine awake fails it", async () => {
     const repo = project()
     const { cleared, printed } = await runPreflight({
-      config: goodConfig(repo, { keepAwake: false }),
+      config: goodConfig(repo),
       night: { awake: { _tag: "Off" } },
     })
     expect(cleared).toEqual({ _tag: "Refused", failed: 1 })
-    expect(checklist(printed).some((line) => line.startsWith("  ✗ --keep-awake is off"))).toBe(true)
+    expect(
+      checklist(printed).some((line) => line.startsWith("  ✗ nothing keeps the machine awake")),
+    ).toBe(true)
   })
 
   test("a project without a merge check passes that check", async () => {

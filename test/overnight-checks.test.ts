@@ -156,20 +156,20 @@ describe("the failures", () => {
     expect(stuck.text).toContain("(auto mode isn't available here)")
   })
 
-  test("--keep-awake turned off fails; a system with no keep-awake command warns", () => {
+  test("checks only that the machine can be kept awake: a system with no keep-awake command warns", () => {
     const command: KeepAwakePlan = {
       _tag: "Command",
       command: { command: "caffeinate", args: ["-i", "-w", "1"] },
     }
-    expect(keepAwakeCheck(config(), command)).toEqual({
+    expect(keepAwakeCheck(command)).toEqual({
       verdict: "passed",
       text: "the machine is kept awake while the run goes (caffeinate)",
     })
-    const off = keepAwakeCheck(config({ keepAwake: false }), { _tag: "Off" })
+    const off = keepAwakeCheck({ _tag: "Off" })
     expect(off.verdict).toBe("failed")
-    expect(off.text).toStartWith("--keep-awake is off: the machine would sleep in the night")
+    expect(off.text).toStartWith("nothing keeps the machine awake: it would sleep in the night")
     expect(off.fix).toBeUndefined()
-    const missing = keepAwakeCheck(config(), { _tag: "Missing", warning: "set it not to sleep" })
+    const missing = keepAwakeCheck({ _tag: "Missing", warning: "set it not to sleep" })
     expect(missing).toEqual({ verdict: "warned", text: "set it not to sleep" })
   })
 

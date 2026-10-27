@@ -2,10 +2,11 @@
 // skill up to date with tutti's templates (./templates.ts). In each, only the sections the templates
 // changed since the project's copy was written are rewritten from them, the rest of the file, the
 // project's own sections included, kept as it is; .tutti/settings.json then records the templates'
-// versions now. Its files are written as one, as init's setup is (./staged.ts): staged, then put in
-// together, the settings last, so that a failed write leaves them as they were. It prints the diff
-// of each file it rewrote and leaves the commit to you. It holds the run lock, as init does, so
-// that no run starts in a tree it writes into.
+// versions now, and gets "keep_awake": true where it has no keep_awake. Its files are written as
+// one, as init's setup is (./staged.ts): staged, then put in together, the settings last, so that a
+// failed write leaves them as they were. It prints the diff of each file it rewrote and leaves the
+// commit to you. It holds the run lock, as init does, so that no run starts in a tree it writes
+// into.
 import { join } from "node:path"
 import { Clock, Effect, FileSystem, Option } from "effect"
 import { setIn } from "../project/jsonText.ts"
@@ -108,39 +109,56 @@ const planUpdate = (repo: string) =>
       verifier: verifierThere && !verifierOwn ? currentTemplates.verifier : 0,
       check_suite_skill: skillThere ? currentTemplates.check_suite_skill : 0,
     }
-    if (
+    const recordTemplates =
       read.json === null ||
       recorded.worker_prompt !== now.worker_prompt ||
       recorded.verifier !== now.verifier ||
       recorded.check_suite_skill !== now.check_suite_skill
-    ) {
+    // Keeping awake is the default: a file written before keep_awake was read again gets the key,
+    // so that the project sees it.
+    const addKeepAwake = read.json === null || !Object.hasOwn(read.json, "keep_awake")
+    if (recordTemplates || addKeepAwake) {
       const templates = {
         worker_prompt: now.worker_prompt,
         ...(now.verifier === 0 ? {} : { verifier: now.verifier }),
         ...(now.check_suite_skill === 0 ? {} : { check_suite_skill: now.check_suite_skill }),
       }
-      // The project's file keeps its own formatting but for the templates' section.
-      const text =
+      // The project's file keeps its own formatting but for the keys written.
+      let text =
         read.text === null
-          ? `${JSON.stringify({ templates }, null, 2)}\n`
-          : setIn(read.text, ["templates"], templates)
+          ? `${JSON.stringify({ keep_awake: true, templates }, null, 2)}\n`
+          : read.text
+      if (read.text !== null && addKeepAwake) text = setIn(text, ["keep_awake"], true)
+      if (read.text !== null && recordTemplates) text = setIn(text, ["templates"], templates)
       yield* fs.makeDirectory(join(repo, ".tutti"), { recursive: true })
       yield* writeFileAtomic(join(repo, settingsFile), text)
-      const versions = [
-        `worker prompt ${now.worker_prompt}`,
-        ...(now.verifier === 0 ? [] : [`verifier ${now.verifier}`]),
-        ...(now.check_suite_skill === 0
-          ? []
-          : [`create-check-suite skill ${now.check_suite_skill}`]),
-      ].join(", ")
-      steps.push(
-        step(
-          "done",
-          "settings",
-          `recorded the versions of the templates the files now have (${versions})`,
-          [settingsFile],
-        ),
-      )
+      if (addKeepAwake) {
+        steps.push(
+          step(
+            "done",
+            "settings",
+            `added "keep_awake": true: runs keep the machine awake unless it is false`,
+            [settingsFile],
+          ),
+        )
+      }
+      if (recordTemplates) {
+        const versions = [
+          `worker prompt ${now.worker_prompt}`,
+          ...(now.verifier === 0 ? [] : [`verifier ${now.verifier}`]),
+          ...(now.check_suite_skill === 0
+            ? []
+            : [`create-check-suite skill ${now.check_suite_skill}`]),
+        ].join(", ")
+        steps.push(
+          step(
+            "done",
+            "settings",
+            `recorded the versions of the templates the files now have (${versions})`,
+            [settingsFile],
+          ),
+        )
+      }
     }
     return { steps, updates } satisfies TemplatesUpdated
   })

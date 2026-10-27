@@ -136,9 +136,9 @@ describe("the docs", () => {
   test("docs/setup.md's example user config is complete, and tutti reads it", () => {
     const example = blockWith("docs/setup.md", "appearance")
     expect(Exit.isSuccess(decodeConfig(UserConfig, "config.json", example))).toBe(true)
-    // It has no published JSON Schema, so the example names none.
-    const keys = Object.keys(UserConfig.fields).filter((key) => key !== "$schema")
-    expect(Object.keys(example).sort()).toEqual(keys.sort())
+    const schema = JSON.parse(read("schema/user-config.json")) as JsonSchema
+    expect([...keysOf(example)].sort()).toEqual([...schemaKeys(schema)].sort())
+    expect(Object.keys(example).sort()).toEqual(Object.keys(UserConfig.fields).sort())
   })
 
   test("docs/events.md names every kind of record", () => {

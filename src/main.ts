@@ -466,8 +466,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       return yield* cannot(failed instanceof StartupFailed ? failed.message : String(failed))
     }
     yield* ready.step(readySteps.starting)
-    // --keep-awake (src/run/keepAwake.ts): the command started as the run begins, or the warning
-    // the START block gives where there is none.
+    // Keeping the machine awake (src/run/keepAwake.ts): the command started as the run begins, or
+    // the warning the START block gives where there is none.
     const awake = keepAwakePlan({
       on: checked.success.config.keepAwake,
       platform: process.platform,

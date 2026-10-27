@@ -84,7 +84,11 @@ const oldProject = (verifier: boolean) => {
     verifier ? prompt + fixture("verify-section-2026-10-19.md") : prompt,
   )
   if (verifier) write(repo, verifierPath, fixture("verifier-2026-10-19.md"))
-  write(repo, ".tutti/settings.json", `${JSON.stringify({ concurrent: 2 }, null, 2)}\n`)
+  write(
+    repo,
+    ".tutti/settings.json",
+    `${JSON.stringify({ concurrent: 2, keep_awake: true }, null, 2)}\n`,
+  )
   const lint = { name: "lint", command: "pnpm lint", foundIn: "package.json", serial: false }
   write(repo, "scripts/check-fast.sh", fastScript([lint]))
   write(repo, "scripts/check-full.sh", fullScript([], false))
@@ -354,6 +358,7 @@ describe("tutti init --update", () => {
     ])
     expect(JSON.parse(read(repo, ".tutti/settings.json"))).toEqual({
       concurrent: 2,
+      keep_awake: true,
       templates: { worker_prompt: currentTemplates.worker_prompt },
     })
   })

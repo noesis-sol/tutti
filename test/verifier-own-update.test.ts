@@ -38,7 +38,11 @@ const project = (templates: Record<string, number>) => {
   const repo = join(realpathSync(mkdtempSync(join(tmpdir(), "tutti-verifier-own-update-"))), "repo")
   mkdirSync(join(repo, ".git"), { recursive: true })
   write(repo, ".tutti/worker-prompt.md", builtInWorkerPrompt)
-  write(repo, ".tutti/settings.json", `${JSON.stringify({ templates }, null, 2)}\n`)
+  write(
+    repo,
+    ".tutti/settings.json",
+    `${JSON.stringify({ keep_awake: true, templates }, null, 2)}\n`,
+  )
   write(repo, verifierPath, ownVerifierText)
   return repo
 }

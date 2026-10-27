@@ -126,7 +126,7 @@ export interface Status {
   readonly solo: Solo | null
   /** How many other tutti and orchestra runs share the machine, as the last look found them. */
   readonly shared: number
-  /** The run's --keep-awake command holds the machine awake (keepAwake.ts): its title line's badge. */
+  /** The run's keep-awake command holds the machine awake (keepAwake.ts): its title line's badge. */
   readonly keepAwake: boolean
   /** --auto-answer's words for its title line's pill, `auto-answer after 10m`; null without it. */
   readonly autoAnswer: string | null
@@ -426,7 +426,7 @@ export interface TitleView {
   readonly solo: Solo | null
   /** How many other runs share the machine: `· shared with 2 runs` when any. */
   readonly shared: number
-  /** The machine is kept awake for the run (--keep-awake): the ` keep awake ` badge. */
+  /** The machine is kept awake for the run: the ` keep awake ` badge. */
   readonly keepAwake: boolean
   /** The ` auto-answer ` pill's words with --auto-answer, `auto-answer after 10m`; null without. */
   readonly autoAnswer: string | null

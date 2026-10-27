@@ -39,12 +39,14 @@ below are the coverage report's uncovered lines at 368899e.
 ## The command line: `--version`, `--help`, flags and variables
 
 - **Reached by**: `tutti --version`, `tutti <command> --help`, the run flags of spec § 8.2 and their
-  `TUTTI_*` variables (`--keep-awake` and `TUTTI_KEEP_AWAKE` among them), the user config.
+  `TUTTI_*` variables (the retired `--keep-awake` and `TUTTI_KEEP_AWAKE` among them), the user
+  config.
 - **Tests**: `smoke.test.ts` (e2e: `bun src/main.ts --version`; a bare `tutti` outside a git
   repository exits 2), `tutti-skill.test.ts` (e2e: each command's `--help` lists the flags the
   skill names), `version.test.ts`, `app-config.test.ts`, `settings.test.ts`, `schemas.test.ts`,
-  `keep-awake.test.ts` (`--keep-awake` off by default, the flag before its variable; the settings'
-  retired `keep_awake` taken whatever its value, and not read), `airtight-env.test.ts`,
+  `keep-awake-default.test.ts` (keeping awake on by default; `keep_awake` in the settings and,
+  over it, the user config; `--overnight` keeping awake whatever they say; `--keep-awake` out of
+  --help, taken and named in the START block; init, the import and the schemas), `airtight-env.test.ts`,
   `session-env.test.ts` (unit).
 - **Untested**: nothing found.
 
@@ -125,9 +127,9 @@ below are the coverage report's uncovered lines at 368899e.
 
 ## A run's start: startup checks, the lock, the start question
 
-- **Reached by**: a bare `tutti` (and `--ticket`, `--feature`, `--yes`, `--plain`, `--keep-awake`).
-- **Tests**: `startup.test.ts` (with the START block's warning for a key the settings no longer
-  read, `keep_awake`), `startup-ticket-scope.test.ts`, `run-lock.test.ts`,
+- **Reached by**: a bare `tutti` (and `--ticket`, `--feature`, `--yes`, `--plain`).
+- **Tests**: `startup.test.ts` (with the START block's note that keeping awake is off, and of a
+  retired flag given), `startup-ticket-scope.test.ts`, `run-lock.test.ts`,
   `untrusted-checkout.test.ts`, `start.test.ts`, `run-start-question.test.ts`,
   `run-start-ending.test.ts`, `start-question.test.tsx`, `start-deferred-free.test.ts`,
   `shared-machine.test.ts`, `shared-runs-title.test.ts`, `smoke.test.ts` (e2e: outside a repository),

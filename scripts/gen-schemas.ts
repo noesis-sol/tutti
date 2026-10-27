@@ -1,11 +1,12 @@
 // scripts/gen-schemas.ts: writes the JSON Schemas tutti publishes in schema/, for editors and
-// readers of the event stream, from their Effect Schemas: the settings (§ 8.4), the event records
-// (§ 10) and the colour scheme format (§ 7.11). Run it with `bun scripts/gen-schemas.ts` after
+// readers of the event stream, from their Effect Schemas: the settings (§ 8.4), the user config
+// (§ 8.5), the event records (§ 10) and the colour scheme format (§ 7.11). Run it with `bun scripts/gen-schemas.ts` after
 // changing one of them; test/schemas.test.ts fails while a file is out of date.
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Schema } from "effect"
 import { retiredSettings, Settings } from "../src/project/settings.ts"
+import { UserConfig } from "../src/project/userConfig.ts"
 import { EventRecord } from "../src/run/events.ts"
 import { ColourScheme } from "../src/ui/theme.ts"
 
@@ -34,11 +35,12 @@ const withoutRetired = (schema: Record<string, unknown>): Record<string, unknown
 }
 
 /**
- * Each published schema, by its file's name in schema/. The settings and colour schemes refuse an
- * unknown key, as tutti does reading them; an event record may have keys a reader doesn't know.
+ * Each published schema, by its file's name in schema/. The settings, the user config and colour
+ * schemes refuse an unknown key, as tutti does reading them; an event record may have keys a reader doesn't know.
  */
 export const schemas = {
   "settings.json": () => withoutRetired(jsonSchema(Settings, "settings.json", true)),
+  "user-config.json": () => jsonSchema(UserConfig, "user-config.json", true),
   "events.json": () => jsonSchema(EventRecord, "events.json", false),
   "colour-scheme.json": () => jsonSchema(ColourScheme, "colour-scheme.json", true),
 } as const

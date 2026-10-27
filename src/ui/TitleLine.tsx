@@ -1,5 +1,5 @@
 // The dashboard's title line (§ 7.2, § 7.11), under a blank line: the tutti pill, the version, the
-// ` keep awake ` badge while --keep-awake holds the machine awake, the ` auto-answer ` pill with
+// ` keep awake ` badge while the keep-awake command holds the machine awake, the ` auto-answer ` pill with
 // --auto-answer, and whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next,
 // and how many other runs share the machine; then, faint, the branch, the run's time and a scoped run's ticket; and on the right tutti's
 // banners, the usage (or, short of a limit, the account's windows) and the holds. A narrow pane

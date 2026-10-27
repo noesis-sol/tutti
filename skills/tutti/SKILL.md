@@ -321,8 +321,10 @@ finishes: it lifts by itself, within seconds. The records are `shared_machine` a
 
 `SLEPT: the machine slept 34m (14:03-14:37); checks and limits don't count it` (a `slept` record)
 means the machine went to sleep under the run: its time limits count only the time awake, so nothing
-failed for it, but the run made no progress meanwhile. Under the first, a run without `--keep-awake`
-says `run with --keep-awake to keep the machine awake`; suggest it for an unattended run.
+failed for it, but the run made no progress meanwhile. A run keeps the machine awake unless
+`keep_awake` is `false` in `.tutti/settings.json` or the user's `~/.config/tutti/config.json`
+(theirs wins); under the first SLEPT of such a run, `keep_awake is false for this run` says so:
+suggest setting it true for an unattended run. There is no flag for it.
 
 ## Quitting and resuming
 

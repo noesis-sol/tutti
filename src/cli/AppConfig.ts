@@ -23,7 +23,7 @@ import {
 import { Config, Context, Duration, Effect, Exit, Layer, Option, Result, Schema } from "effect"
 import { type ConfigFileInvalid, type ConfigProblem, decodeConfig } from "../project/configFile.ts"
 import { readSettings, Settings, settingsFile } from "../project/settings.ts"
-import { readUserConfig, UserConfig } from "../project/userConfig.ts"
+import { readUserConfig, UserConfig, userConfigShown } from "../project/userConfig.ts"
 import {
   defaultMachineWorkers,
   defaultMachineWorkersFrom,
@@ -37,9 +37,12 @@ import {
   type billings,
   oneOf,
   type Reader,
+  type RetiredFlag,
+  type RetiredFlagName,
   type RunFlag,
   type RunFlagName,
   type RunFlags,
+  retiredFlags,
   runFlags,
 } from "./flags.ts"
 
@@ -69,6 +72,9 @@ export const appearanceVariable = "TUTTI_APPEARANCE"
 
 /** The variable that, set and not empty, draws every colour role in the default colour. */
 export const noColorVariable = "NO_COLOR"
+
+/** The user config's file as the START block names it where its own path isn't given. */
+export const defaultUserFile = "~/.config/tutti/config.json"
 
 /** The default folder for the worktrees: `<repo>-tutti` beside the repository (§ 11). */
 export const defaultWorktrees = (repo: string): string =>
@@ -134,20 +140,31 @@ export interface AppConfigValue {
    */
   readonly machineWorkersFrom: string
   /**
-   * Whether the machine is kept from sleeping while the run goes (--keep-awake): chosen for each
-   * run, not in the project's settings (src/run/keepAwake.ts).
+   * Whether the machine is kept from sleeping while the run goes (src/run/keepAwake.ts): with
+   * --overnight, always; else keep_awake in the user config, else in the project's settings, else
+   * true.
    */
   readonly keepAwake: boolean
   /**
+   * The file whose keep_awake false turned keeping awake off, as the START block names it: the user
+   * config's or `.tutti/settings.json`; null while the machine is kept awake.
+   */
+  readonly keepAwakeOffBy: string | null
+  /**
+   * What the START block says of each retired flag given (src/cli/flags.ts's retiredFlags), once
+   * each, naming the flag, or its variable where the flag isn't given: none is read.
+   */
+  readonly retiredNotes: ReadonlyArray<string>
+  /**
    * Whether tutti answers the workers' questions with their recommended option (--auto-answer),
    * and once one has waited how long for the maintainer: Duration.zero at once, null not at all.
-   * Chosen for each run, as --keep-awake is (src/run/autoAnswer.ts).
+   * Chosen for each run (src/run/autoAnswer.ts).
    */
   readonly autoAnswer: Duration.Duration | null
   /**
    * An overnight run (--overnight): the current tickets, as with --tickets, once the pre-flight
-   * (src/run/overnight.ts) has cleared it; it turns on --keep-awake and --auto-answer, which their
-   * own flags or variables override.
+   * (src/run/overnight.ts) has cleared it; it keeps the machine awake whatever keep_awake says, and
+   * turns on --auto-answer, which its own flag or variable overrides.
    */
   readonly overnight: boolean
   /** Start an overnight run though a pre-flight check failed (--force-overnight). */
@@ -188,6 +205,8 @@ export interface Sources {
   /** An environment variable's value, undefined when it is unset. */
   readonly env: (name: string) => string | undefined
   readonly user: UserConfig
+  /** The user config's file, as the START block names it; `~/.config/tutti/config.json` if not given. */
+  readonly userFile?: string
   readonly settings: Settings
   /** The machine's cores, for the default --machine-workers; availableParallelism() when not given. */
   readonly cores?: number
@@ -261,7 +280,7 @@ export const resolveAll = (
     Option.getOrElse(read.get(key) ?? Option.none(), () => fallback) as never
 
   /** Whether the flag itself was given on the command line. */
-  const flagGiven = (key: RunFlagName) => Option.isSome(flags[key])
+  const flagGiven = (key: RunFlagName | RetiredFlagName) => Option.isSome(flags[key])
 
   const ticket = pick("ticket", null)
   const feature = pick("feature", null)
@@ -368,6 +387,25 @@ export const resolveAll = (
     )
   }
 
+  // Keeping awake is the default: the user config's keep_awake, else the project's, turns it off.
+  // --overnight keeps the machine awake whatever they say. A retired flag is taken and not read.
+  const keepAwake = overnight || (user.keep_awake ?? settings.keep_awake)
+  const keepAwakeOffBy = keepAwake
+    ? null
+    : user.keep_awake !== null
+      ? (sources.userFile ?? defaultUserFile)
+      : settingsFile
+  const retiredNotes = (
+    Object.entries(retiredFlags) as Array<[RetiredFlagName, RetiredFlag]>
+  ).flatMap(([key, flag]) => {
+    const given = flagGiven(key)
+      ? `--${flag.name}`
+      : Option.isSome(variable(flag.variable))
+        ? flag.variable
+        : null
+    return given === null ? [] : [`${given} is no longer read: ${flag.instead}`]
+  })
+
   const appearance = Option.match(variable(appearanceVariable), {
     onNone: () => user.appearance,
     onSome: (text) =>
@@ -428,8 +466,10 @@ export const resolveAll = (
     runs: runsDir(env),
     machineWorkers,
     machineWorkersFrom,
-    // --overnight turns both on; their own flags or variables, given, say otherwise.
-    keepAwake: pick("keepAwake", overnight),
+    keepAwake,
+    keepAwakeOffBy,
+    retiredNotes,
+    // --overnight turns it on; its own flag or variable, given, says otherwise.
     autoAnswer: pick("autoAnswer", overnight ? Duration.zero : null),
     overnight,
     forceOvernight,
@@ -476,6 +516,7 @@ export const defaultUserConfig: UserConfig = defaultsOf(UserConfig, "config.json
 const readVariables = Effect.gen(function* () {
   const names = [
     ...Object.values(runFlags).map((flag) => flag.variable),
+    ...Object.values(retiredFlags).map((flag) => flag.variable),
     appearanceVariable,
     noColorVariable,
     orchestraMachineWorkersVariable,
@@ -528,7 +569,8 @@ export const loadLenient = (
     )
     const env = (name: string) =>
       only === undefined || only.includes(name) ? variables.get(name) : undefined
-    const { value, problems } = resolveAll({ repo, cwd, flags, env, user, settings })
+    const userFile = yield* userConfigShown
+    const { value, problems } = resolveAll({ repo, cwd, flags, env, user, userFile, settings })
     return {
       value,
       problems,

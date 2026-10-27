@@ -19,7 +19,7 @@ import {
   SetupProblem,
 } from "../src/cli/AppConfig.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
-import { retiredSettings } from "../src/project/settings.ts"
+import { keepAwakeNotes } from "../src/run/keepAwake.ts"
 import {
   check,
   exitSetup,
@@ -174,12 +174,20 @@ describe("the startup checks", () => {
     expect(started.warnings).toEqual([])
   })
 
-  test("warn of a key the settings no longer read, and start all the same", async () => {
+  test("say when keeping awake is off and which file says so, and start all the same", async () => {
     const { repo } = project()
-    const settings = { ...defaultSettings, keep_awake: true }
+    const settings = { ...defaultSettings, keep_awake: false }
     const started = passed(await run(repo, { config: { settings } }))
-    expect(started.warnings).toEqual([retiredSettings.keep_awake])
+    expect(started.warnings).toEqual(["keep awake: off, keep_awake in .tutti/settings.json"])
     expect(started.config.keepAwake).toBe(false)
+  })
+
+  test("say that a retired --keep-awake isn't read (keep-awake-default.test.ts)", async () => {
+    const { repo } = project()
+    const notes = keepAwakeNotes({ keepAwakeOffBy: null, retiredNotes: ["--keep-awake is gone"] })
+    const started = passed(await run(repo, { config: { retiredNotes: ["--keep-awake is gone"] } }))
+    expect(started.warnings).toEqual([...notes])
+    expect(started.config.keepAwake).toBe(true)
   })
 
   test("the exit code of a run that can't start is 2", () => {

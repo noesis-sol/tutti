@@ -213,7 +213,7 @@ export interface RunOptions {
   /** The dashboard to show when Tty says the terminal can draw one; the run is plain without it. */
   readonly dashboard?: Dashboard
   /**
-   * Whether the --keep-awake command holds the machine awake (keepAwake.ts), as it changes: the
+   * Whether the keep-awake command holds the machine awake (keepAwake.ts), as it changes: the
    * title line's badge. None for a run that doesn't keep the machine awake.
    */
   readonly keepingAwake?: Stream.Stream<boolean>
@@ -629,7 +629,7 @@ const runFrom = (
           panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
         ),
       )
-    // The title line's badge while the --keep-awake command holds the machine awake.
+    // The title line's badge while the keep-awake command holds the machine awake.
     if (options.keepingAwake !== undefined) {
       yield* watch(Stream.runForEach(options.keepingAwake, showOn(status, "keepAwake")))
     }
