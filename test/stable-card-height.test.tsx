@@ -57,7 +57,7 @@ const viewOf = (
 ): RunView =>
   project({
     ledger: {
-      tickets: new Map(tickets.map((t, i) => [t, entryOf(t as TicketId, i)])),
+      tickets: new Map(tickets.map((t, i) => [t as TicketId, entryOf(t as TicketId, i)])),
       rows: tickets.length,
       windDown: null,
       bugs: [],
@@ -202,9 +202,9 @@ describe("the box with no worker", () => {
   })
 
   test("gives up its blank lines, not its text, in a room with fewer lines", () => {
-    expect([5, 4, 3, 2].map((lines) => idleBox("stopping…", theme, spin, 40, lines).length)).toEqual(
-      [5, 4, 3, 3],
-    )
+    expect(
+      [5, 4, 3, 2].map((lines) => idleBox("stopping…", theme, spin, 40, lines).length),
+    ).toEqual([5, 4, 3, 3])
   })
 })
 

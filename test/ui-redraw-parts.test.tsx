@@ -252,8 +252,9 @@ describe("the dashboard's cards", () => {
     }
     const one = await drawnFor(["Title of t-1", "Another title"])
     const both = await drawnFor(["A new title", "Another title"])
-    // Both cards changing draws the first card's four lines (its frame, head and title) besides.
-    expect(both - one).toBe(4)
+    // Both cards changing draws the first card's five lines (its frame, head, title and blank
+    // action line) besides.
+    expect(both - one).toBe(5)
   })
 })
 
