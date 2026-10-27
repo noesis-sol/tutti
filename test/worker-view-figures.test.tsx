@@ -139,7 +139,8 @@ describe("the figures", () => {
     expect(half.word?.look).toBeNull()
     expect(half.figure?.look).toBeNull()
     expect(half.of?.look).toBe(theme.styles.dim)
-    expect(textOf(lineOf(resources()))).not.toMatch(/[▰▱]/)
+    // Neither the title line's gauge (━─) nor the one before it (▰▱).
+    expect(textOf(lineOf(resources()))).not.toMatch(/[━─▰▱]/)
     const below = at(139_000)
     expect(below.figure?.look).toBeNull()
     const three = at(140_000)

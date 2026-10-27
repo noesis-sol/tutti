@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The title line's usage gauge is drawn with box-drawing lines, `Current usage ━━━━──────  41% · This week 12%`, a heavy line for each tenth used and a light one for each left (§ 4.12, § 7.2; `src/ui/marks.ts`'s `gaugeFull` and `gaugeEmpty`; tutti-1l30): it was `▰▱`, which common terminal fonts lack, so the terminal drew them from a fallback font, and in Ghostty the gauge's first and last cells looked off-colour against the eight between them. Terminals draw box-drawing lines themselves, to the cell. Still ten faint cells, one for each tenth to the nearest. A departure from the gauge before, on purpose. `test/usage-windows.test.ts` and `test/usage-gauge.test.tsx` cover it; `test/marks.test.ts` lists ━ and ─ as ambiguous-width, as the box-drawing lines of every border are.
+
 ## [0.4.0] - 2026-10-26
 
 - The leaked test worker test is macOS's (§ 13; tests only; `test/test-left-workers.test.ts`; tutti-6ns2): it SIGKILLed `bun test --parallel` and expected its workers still running, but on Linux Bun spawns each test worker with `PR_SET_PDEATHSIG` set to SIGKILL, so the kernel kills them with their coordinator, and CI's Ubuntu check failed on every push since tutti-gr4z.1. On Linux the test now checks that they die with their run; elsewhere it runs as before. A slow test reads a live process's command line and `TMPDIR` through `userProcesses`, from `/proc` on Linux and `ps -E` on macOS.

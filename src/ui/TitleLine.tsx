@@ -76,14 +76,14 @@ export const windowLabel = (name: string): string => {
   return name.replaceAll("_", " ")
 }
 
-/** `▰▰▱▱▱▱▱▱▱▱` for 17%: a cell for each tenth, to the nearest. */
+/** `━━────────` for 17%: a cell for each tenth, to the nearest. */
 export const gauge = (utilization: number): string => {
   const filled = Math.round(Math.min(1, utilization) * gaugeCells)
   return marks.gaugeFull.repeat(filled) + marks.gaugeEmpty.repeat(gaugeCells - filled)
 }
 
 /**
- * The account's windows at `now`, faint: `Current usage ▰▰▱▱▱▱▱▱▱▱  17% · This week 41%` in full,
+ * The account's windows at `now`, faint: `Current usage ━━────────  17% · This week 41%` in full,
  * the first with its gauge, two spaces before its figure; in a narrow pane the tighter window first
  * and no gauge, `This week 41% · Current usage 17%`, then the tighter alone. A window whose reset
  * has passed is left out: its figure is gone with it, until an event gives the next.

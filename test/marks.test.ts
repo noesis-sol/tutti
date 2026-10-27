@@ -15,8 +15,12 @@ import { workersDoing } from "./activity.ts"
 
 const all = Object.entries(marks) as ReadonlyArray<readonly [Mark, string]>
 
-/** East Asian Width A: a cell wide in most terminals, two in a CJK locale's. */
-const ambiguous: ReadonlyArray<string> = ["▶", "■", "◆", "•", "●", "○", "♪"]
+/**
+ * East Asian Width A: a cell wide in most terminals, two in a CJK locale's. The gauge's ━ and ─
+ * (tutti-1l30) are box-drawing lines, as every box's border is, so they risk nothing the borders
+ * don't.
+ */
+const ambiguous: ReadonlyArray<string> = ["▶", "■", "◆", "•", "●", "○", "♪", "━", "─"]
 
 /** Extended_Pictographic: an emoji with a variation selector after it, and in some fonts. */
 const pictographic: ReadonlyArray<string> = ["▶", "◼"]

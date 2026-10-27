@@ -57,9 +57,13 @@ export const marks = {
   current: "●",
   /** A step of init's form still to come. */
   toCome: "○",
-  /** A filled and an empty cell of a usage window's gauge. */
-  gaugeFull: "▰",
-  gaugeEmpty: "▱",
+  /**
+   * A filled and an empty cell of a usage window's gauge: box-drawing lines, which terminals draw
+   * to the cell themselves, not ▰▱, which common terminal fonts lack and a fallback font drew over
+   * the cell's edges (tutti-1l30).
+   */
+  gaugeFull: "━",
+  gaugeEmpty: "─",
 } as const
 
 export type Mark = keyof typeof marks
