@@ -176,11 +176,11 @@ const text = (banners: ReadonlyArray<Banner>, width: number, now = 0) => {
 
 describe("the account's windows on the title line", () => {
   test("show in full, the first with its gauge and two spaces before its figure", () => {
-    expect(text([windows], 120)).toEndWith("   Current usage ━━────────  17% · This week 41%")
+    expect(text([windows], 120)).toEndWith("   Current usage ━───────  17% · This week 41%")
     const segments = titleSegments(title, [windows], 0, theme, 120).map((s) => s.text)
     // The gauge, the gap and the figure are segments of their own, so a cut never joins them.
-    expect(segments).toContain("━━────────")
-    expect(segments[segments.indexOf("━━────────") + 1]).toBe("  ")
+    expect(segments).toContain("━───────")
+    expect(segments[segments.indexOf("━───────") + 1]).toBe("  ")
   })
 
   test("a narrow pane puts the tighter window first, then shows it alone", () => {
@@ -192,13 +192,13 @@ describe("the account's windows on the title line", () => {
   test("beside a hold, before which it is dropped", () => {
     const blocked: Banner = { _tag: "Hold", word: "BLOCKED", resetsAt: null }
     expect(text([windows, blocked], 120)).toEndWith(
-      "Current usage ━━────────  17% · This week 41%  BLOCKED",
+      "Current usage ━───────  17% · This week 41%  BLOCKED",
     )
     expect(text([windows, blocked], 24)).toEndWith("  BLOCKED")
   })
 
   test("a window whose reset has passed is left out", () => {
-    expect(text([windows], 120, 3_600_000)).toEndWith("   This week ━━━━──────  41%")
+    expect(text([windows], 120, 3_600_000)).toEndWith("   This week ━━━─────  41%")
     expect(text([windows], 120, 8 * 86_400_000)).toBe(" Tutti  0.1.0   main · 192h")
   })
 
@@ -220,29 +220,30 @@ describe("the account's windows on the title line", () => {
       "This week (Oauth apps)",
       "monthly",
     ])
-    expect([0, 0.04, 0.17, 0.5, 1, 1.3].map(gauge)).toEqual([
-      "──────────",
-      "──────────",
-      "━━────────",
-      "━━━━━─────",
-      "━━━━━━━━━━",
-      "━━━━━━━━━━",
+    // Filled to the nearest eighth: 6% is 0.48 of a cell, 7% 0.56, 17% 1.36, 94% 7.52.
+    expect([0, 0.06, 0.07, 0.17, 0.5, 0.94, 1, 1.3].map(gauge)).toEqual([
+      "────────",
+      "────────",
+      "━───────",
+      "━───────",
+      "━━━━────",
+      "━━━━━━━━",
+      "━━━━━━━━",
+      "━━━━━━━━",
     ])
-    // Every tenth, and past the whole: a heavy line for each filled tenth, a light one for the rest.
-    expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15].map((tenths) => gauge(tenths / 10))).toEqual([
-      "──────────",
-      "━─────────",
-      "━━────────",
-      "━━━───────",
-      "━━━━──────",
-      "━━━━━─────",
-      "━━━━━━────",
-      "━━━━━━━───",
-      "━━━━━━━━──",
-      "━━━━━━━━━─",
-      "━━━━━━━━━━",
-      "━━━━━━━━━━",
-      "━━━━━━━━━━",
+    // Every eighth, and past the whole: a heavy line for each filled eighth, a light one for the rest.
+    expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15].map((eighths) => gauge(eighths / 8))).toEqual([
+      "────────",
+      "━───────",
+      "━━──────",
+      "━━━─────",
+      "━━━━────",
+      "━━━━━───",
+      "━━━━━━──",
+      "━━━━━━━─",
+      "━━━━━━━━",
+      "━━━━━━━━",
+      "━━━━━━━━",
     ])
   })
 })

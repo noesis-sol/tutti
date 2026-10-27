@@ -65,7 +65,7 @@ describe("the account's windows are quiet", () => {
       const windowed = full.slice(at).filter((segment) => segment.text.trim() !== "")
       expect(windowed.map((segment) => segment.text)).toEqual([
         "Current usage ",
-        "━─────────",
+        "────────",
         "6%",
         " · ",
         "This week 12%",

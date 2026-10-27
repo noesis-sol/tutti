@@ -58,7 +58,7 @@ recommended options for you (see [Running](running.md#answering-for-you-while-yo
 On the right, the banners:
 
 - **The account's windows**, in a quiet grey (the `quiet` role), all the time on a subscription
-  login, once a worker's session has reported them: `Current usage ━━────────  17% · This week 41%`,
+  login, once a worker's session has reported them: `Current usage ━───────  17% · This week 41%`,
   how much of the five-hour and the weekly limits the account has used, whoever used it, in Claude
   Desktop's words. A model's own weekly limit names the model, `This week (Opus)`. A window whose
   reset has passed is left out until the next report.
