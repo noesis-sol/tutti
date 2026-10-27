@@ -39,7 +39,13 @@ Received: 1
  1 error
 `
 
-const timedOut: TestCase = { file: "t.test.ts", name: "group slow", failed: true, timedOut: true }
+const timedOut: TestCase = {
+  file: "t.test.ts",
+  name: "group slow",
+  failed: true,
+  timedOut: true,
+  skipped: false,
+}
 const failedOnly: TestCase = { ...timedOut, timedOut: false }
 
 describe("parseJUnit", () => {
@@ -51,8 +57,8 @@ describe("parseJUnit", () => {
   </testsuite>
 </testsuites>`
     expect(parseJUnit(report)).toEqual([
-      { file: "t.test.ts", name: "slow", failed: true, timedOut: true },
-      { file: "t.test.ts", name: "wrong", failed: true, timedOut: false },
+      { file: "t.test.ts", name: "slow", failed: true, timedOut: true, skipped: false },
+      { file: "t.test.ts", name: "wrong", failed: true, timedOut: false, skipped: false },
     ])
   })
 })

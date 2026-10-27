@@ -27,10 +27,11 @@
 // took 139 s where six workers took 89 s on the same loaded machine (2026-10-22). Each worker's
 // JavaScriptCore starts nearly as many garbage collector markers and FTL compiler threads as the
 // machine has cores (8 and 7 of 10, Bun 1.4.3), and so does each bun the suites start: the run keeps
-// them to the workers' part of the share (coreThreadVariables). A failed test's rerun, one test, runs
-// in one process. TUTTI_TEST_PARALLEL gives the workers' number instead (1 for one process). As the
-// files load the machine themselves, a test's time limit is 15 s where its file sets none
-// (testTimeLimit), not bun's 5 s.
+// them to the workers' part of the share (coreThreadVariables). A file's failed tests are rerun
+// together, in one process, and the files side by side, as many at a time as the first run's
+// workers. TUTTI_TEST_PARALLEL gives the workers' number instead (1 for one process). As the files
+// load the machine themselves, a test's time limit is 15 s where its file sets none (testTimeLimit),
+// not bun's 5 s.
 //
 // The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or
@@ -61,6 +62,8 @@ export interface TestCase {
   readonly failed: boolean
   /** Whether it failed by running past its time limit (the report's TimeoutError). */
   readonly timedOut: boolean
+  /** Whether it didn't run: skipped, or filtered out by a rerun's -t. */
+  readonly skipped: boolean
 }
 
 const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }
@@ -84,8 +87,11 @@ const attribute = (attrs: string, key: string): string | undefined => {
 export const parseJUnit = (xml: string): ReadonlyArray<TestCase> => {
   const cases: Array<TestCase> = []
   const suites: Array<{ readonly name: string; readonly file: string }> = []
-  let open: { file: string; name: string; failed: boolean; timedOut: boolean } | undefined
-  const tags = /<(\/?)(testsuites|testsuite|testcase|failure|error)\b((?:[^>"]|"[^"]*")*?)(\/?)>/g
+  let open:
+    | { file: string; name: string; failed: boolean; timedOut: boolean; skipped: boolean }
+    | undefined
+  const tags =
+    /<(\/?)(testsuites|testsuite|testcase|failure|error|skipped)\b((?:[^>"]|"[^"]*")*?)(\/?)>/g
   for (const [, closing, tag, attrs = "", selfClosing] of xml.matchAll(tags)) {
     if (tag === "testsuite") {
       if (closing) suites.pop()
@@ -104,20 +110,89 @@ export const parseJUnit = (xml: string): ReadonlyArray<TestCase> => {
         name: [...describes, attribute(attrs, "name") ?? ""].join(" "),
         failed: false,
         timedOut: false,
+        skipped: false,
       }
       if (selfClosing) cases.push(test)
       else open = test
     } else if ((tag === "failure" || tag === "error") && !closing && open) {
       open.failed = true
       if (tag === "failure" && attribute(attrs, "type") === "TimeoutError") open.timedOut = true
+    } else if (tag === "skipped" && !closing && open) {
+      open.skipped = true
     }
   }
   return cases
 }
 
+const escapeRegExp = (text: string): string => text.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")
+
 /** A -t pattern that matches exactly the test with this full name. */
-export const exactNamePattern = (name: string): string =>
-  `^${name.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`
+export const exactNamePattern = (name: string): string => `^${escapeRegExp(name)}$`
+
+/** A -t pattern that matches exactly each test with one of these full names, and no other. */
+export const exactNamesPattern = (names: ReadonlyArray<string>): string =>
+  `^(?:${[...new Set(names)].map(escapeRegExp).join("|")})$`
+
+/** A file's failed tests, rerun together in one bun test. */
+export interface RerunGroup {
+  readonly file: string
+  readonly tests: ReadonlyArray<TestCase>
+}
+
+/** The failed tests by file, the files in the order their first failures came. */
+export const rerunGroups = (failed: ReadonlyArray<TestCase>): ReadonlyArray<RerunGroup> => {
+  const groups = new Map<string, Array<TestCase>>()
+  for (const test of failed) groups.set(test.file, [...(groups.get(test.file) ?? []), test])
+  return [...groups].map(([file, tests]) => ({ file, tests }))
+}
+
+/**
+ * The tests of `group` that passed on its rerun, whose bun test exited with `code` and printed
+ * `output`, from its report `reran`: each test of the name ran and none failed, and the rerun
+ * failed outside its tests by nothing but leftovers of those that timed out again
+ * (timeoutLeftovers), as the first run's failures are read.
+ */
+export const passedOnRerun = (
+  group: RerunGroup,
+  code: number,
+  output: string,
+  reran: ReadonlyArray<TestCase>,
+  cwd: string,
+): ReadonlyArray<TestCase> => {
+  const failedAgain = reran.filter((test) => test.failed)
+  const counts = summaryCounts(output)
+  const clean =
+    code === 0 ||
+    (counts.fail === failedAgain.length && timeoutLeftovers(output, counts.error, failedAgain, cwd))
+  if (!clean) return []
+  return group.tests.filter((test) => {
+    const runs = reran.filter((run) => run.name === test.name)
+    return runs.length > 0 && runs.every((run) => !run.failed && !run.skipped)
+  })
+}
+
+/**
+ * Starts each of `tasks`, no more than `limit` at a time, in their order, and returns a promise of
+ * each one's result, in the same order.
+ */
+export const inPool = <A>(
+  tasks: ReadonlyArray<() => Promise<A>>,
+  limit: number,
+): ReadonlyArray<Promise<A>> => {
+  const results = tasks.map(() => Promise.withResolvers<A>())
+  let next = 0
+  const work = async (): Promise<void> => {
+    while (next < tasks.length) {
+      const index = next++
+      const task = tasks[index]
+      const result = results[index]
+      if (task === undefined || result === undefined) continue
+      await task().then(result.resolve, result.reject)
+    }
+  }
+  for (let i = 0; i < Math.max(1, Math.min(limit, tasks.length)); i++) void work()
+  return results.map((result) => result.promise)
+}
 
 export const flakyLine = (test: TestCase): string => `FLAKY: ${test.file} ${test.name}`
 
@@ -402,12 +477,20 @@ export const testEnvironment = (
   return result
 }
 
+// Its output is copied through to ours as it comes, or, with `echo` false, only returned: a rerun
+// beside others prints its own once it ends, so that its lines stay together.
 const runBunTest = async (
   args: ReadonlyArray<string>,
   report: string,
   temp: string,
   environment: Readonly<Record<string, string>>,
-): Promise<{ readonly code: number; readonly output: string }> => {
+  echo = true,
+): Promise<{
+  readonly code: number
+  readonly out: string
+  readonly err: string
+  readonly output: string
+}> => {
   const proc = Bun.spawn(
     [
       "bun",
@@ -426,11 +509,11 @@ const runBunTest = async (
     },
   )
   const [out, err, code] = await Promise.all([
-    tee(proc.stdout, process.stdout),
-    tee(proc.stderr, process.stderr),
+    echo ? tee(proc.stdout, process.stdout) : new Response(proc.stdout).text(),
+    echo ? tee(proc.stderr, process.stderr) : new Response(proc.stderr).text(),
     proc.exited,
   ])
-  return { code, output: `${out}\n${err}` }
+  return { code, out, err, output: `${out}\n${err}` }
 }
 
 const readReport = (report: string): ReadonlyArray<TestCase> => {
@@ -453,8 +536,6 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     ...suites,
     ...coreThreadVariables(process.env, undefined, workers),
   })
-  // A rerun is one test, in one process.
-  const environment = { ...suites, ...coreThreadVariables(process.env) }
   if (code === 0) return 0
   const failed = readReport(first).filter((test) => test.failed)
   // A failure outside any test (a file that doesn't load, an error between tests) isn't in the
@@ -463,21 +544,36 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   const counts = summaryCounts(output)
   if (failed.length === 0 || counts.fail !== failed.length) return code
   if (!timeoutLeftovers(output, counts.error, failed, process.cwd())) return code
+  // A file's failed tests are rerun together, in one process, and the files side by side, as many at
+  // a time as the first run's workers (tutti-0vbd.4): one after another, 19 failures took 779 s.
+  // Each prints its output once it ends, in the order the failures came.
+  const groups = rerunGroups(failed)
+  const rerunWorkers = testWorkers(
+    process.env,
+    groups.map((group) => fileArgument(group.file)),
+  )
+  const environment = { ...suites, ...coreThreadVariables(process.env, undefined, rerunWorkers) }
+  const reruns = inPool(
+    groups.map((group, index) => async () => {
+      const report = join(reports, `rerun-${index}.xml`)
+      const pattern = exactNamesPattern(group.tests.map((test) => test.name))
+      const rerunArgs = [...limit, fileArgument(group.file), "--test-name-pattern", pattern]
+      const rerun = await runBunTest(rerunArgs, report, temp, environment, false)
+      return { ...rerun, reran: readReport(report) }
+    }),
+    rerunWorkers,
+  )
   let stillFailing = 0
-  for (const [index, test] of failed.entries()) {
-    const report = join(reports, `rerun-${index}.xml`)
-    console.log(`\nRerunning ${test.file} ${test.name}`)
-    const rerun = await runBunTest(
-      [...limit, fileArgument(test.file), "--test-name-pattern", exactNamePattern(test.name)],
-      report,
-      temp,
-      environment,
-    )
-    const reran = readReport(report)
-    if (rerun.code === 0 && reran.length > 0 && reran.every((t) => !t.failed)) {
-      console.log(flakyLine(test))
-    } else {
-      stillFailing++
+  for (const [index, group] of groups.entries()) {
+    for (const test of group.tests) console.log(`\nRerunning ${test.file} ${test.name}`)
+    const rerun = await reruns[index]
+    if (rerun === undefined) continue
+    process.stdout.write(rerun.out)
+    process.stderr.write(rerun.err)
+    const passed = passedOnRerun(group, rerun.code, rerun.output, rerun.reran, process.cwd())
+    for (const test of group.tests) {
+      if (passed.includes(test)) console.log(flakyLine(test))
+      else stillFailing++
     }
   }
   return stillFailing === 0 ? 0 : 1
