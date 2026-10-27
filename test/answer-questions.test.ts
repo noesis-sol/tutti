@@ -151,6 +151,12 @@ describe("recording an answer", () => {
     const once = withDecision("Plan.", decisionSection(q1, "Which?", "--flag"), q1)
     const twice = withDecision(once, decisionSection(q1, "Which?", "--long-flag"), q1)
     expect(twice).toBe("Plan.\n\nDecided (q-1): Which?\n--long-flag")
+    const paragraphs = withDecision(
+      withDecision("Plan.", decisionSection(q1, "Which?", "first\n\n  \nsecond"), q1),
+      decisionSection(q1, "Which?", "--flag"),
+      q1,
+    )
+    expect(paragraphs).toBe("Plan.\n\nDecided (q-1): Which?\n--flag")
     const other = withDecision(
       twice,
       decisionSection("q-2" as TicketId, "Colour?", "teal"),
@@ -210,10 +216,10 @@ describe("tutti answer's questions", () => {
         "q-1  Which flag name?  (tut-1 waits on it)",
         "    1. --long-flag (recommended) - says what it does",
         "    2. --flag - short to type",
-        "    answer with: tutti answer q-1 <an option's number or label, or your own answer in quotes>",
+        "    answer with: tutti answer q-1 -- <an option's number or label, or your own answer in quotes>",
         "",
         "q-2  Which colour?  (no ticket waits on it)",
-        "    answer with: tutti answer q-2 <an option's number or label, or your own answer in quotes>",
+        "    answer with: tutti answer q-2 -- <an option's number or label, or your own answer in quotes>",
       ].join("\n"),
     )
     expect(questionsSection(questions).startsWith("\n\nOpen questions:\nq-1  ")).toBe(true)

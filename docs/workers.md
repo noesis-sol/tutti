@@ -269,11 +269,12 @@ Open questions:
 tut-q4  Which flag name?  (tut-7k2 waits on it)
     1. --json (recommended) - machine-readable output
     2. --format - a format name
-    answer with: tutti answer tut-q4 <an option's number or label, or your own answer in quotes>
+    answer with: tutti answer tut-q4 -- <an option's number or label, or your own answer in quotes>
 ```
 
-`tutti answer tut-q4 1`, `tutti answer tut-q4 --format` or `tutti answer tut-q4 "neither: use -o"`
-answers it: the option's label, or your words. tutti adds the decision to the design of each open
+`tutti answer tut-q4 1`, `tutti answer tut-q4 -- --format` or `tutti answer tut-q4 "neither: use -o"`
+answers it: the option's label, or your words. `--` before the answer has a label that starts with
+`-`, as `--format` does, taken as the answer rather than as a flag. tutti adds the decision to the design of each open
 ticket the question blocks, under `Decided (tut-q4)`, then records the answer with
 `bd human respond`, which closes the question. No run needs to be going: a run that is takes the
 ticket waiting on it back at its next look. A question only you answer says so

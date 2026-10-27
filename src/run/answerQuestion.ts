@@ -27,9 +27,12 @@ export interface Recorded {
   readonly decided: ReadonlyArray<TicketId>
 }
 
-/** The decision's section of a blocked ticket's design: its heading, the question and the answer. */
+/**
+ * The decision's section of a blocked ticket's design: its heading, the question and the answer,
+ * one paragraph, an answer's blank lines left out, so that withDecision can take it out whole.
+ */
 export const decisionSection = (question: TicketId, title: string, answer: string): string =>
-  `Decided (${question}): ${title.trim()}\n${answer.trim()}`
+  `Decided (${question}): ${title.trim()}\n${answer.trim().replace(/\n\s*\n/g, "\n")}`
 
 /**
  * `design` with `section`, the decision on `question`, below what is there already: in place of an

@@ -140,7 +140,7 @@ filing a batch of tickets: it proposes blocks links between tickets that touch t
 | `tutti init` | sets the project up |
 | `tutti plan [--apply]` | proposes blocks links between open tickets that touch the same code |
 | `tutti answer [<request-id> allow\|allow-run\|deny] [--json]` | lists or answers the workers' open requests |
-| `tutti answer <question> <answer>` | answers a question ticket a worker filed, by an option's number or label or in your own words; `tutti answer` lists them after the requests |
+| `tutti answer <question> [--] <answer>` | answers a question ticket a worker filed, by an option's number or label or in your own words (after `--` for a label that starts with `-`); `tutti answer` lists them after the requests |
 | `tutti login` | logs in to Claude, then says which account and billing workers get |
 | `tutti colours [<name>]` | previews a colour scheme, and checks it |
 | `tutti requires [--no-install] [--markdown\|--readme]` | checks what the machine must have for the project, installing what it can, or writes the README's section on it |

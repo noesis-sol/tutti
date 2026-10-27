@@ -16,9 +16,12 @@ import { sanitizeLine } from "../ui/sanitize.ts"
 /** What to give a question as its answer, as the listing and the errors say it. */
 export const questionAnswerWords = "an option's number or label, or your own answer in quotes"
 
-/** How to answer `question` with `tutti answer`. */
+/**
+ * How to answer `question` with `tutti answer`: after `--`, so that a label that starts with `-`,
+ * as a flag's name does, is taken as the answer, not as a flag of the command.
+ */
 export const answerQuestionWith = (question: TicketId): string =>
-  `tutti answer ${question} <${questionAnswerWords}>`
+  `tutti answer ${question} -- <${questionAnswerWords}>`
 
 /** There is neither an open request nor a question with that ID. */
 export class NoSuchQuestion extends Schema.TaggedError<NoSuchQuestion>()("NoSuchQuestion", {
