@@ -126,6 +126,8 @@ describe("a ticket's share of the window", () => {
     expect(windowShare(0.06, 0, 0)?.share).toBe(0)
     // Not heard yet: none.
     expect(windowShare(null, 1, 2)).toBeNull()
+    // A run whose whole cost is a denormal: its one ticket has the whole rise, not 0.
+    expect(windowShare(5e-7, 5e-324, 5e-324)?.share).toBe(5e-7)
   })
 
   test("the tickets' shares add up to the rise", () => {
@@ -140,6 +142,8 @@ describe("a ticket's share of the window", () => {
           expect(total).toBeCloseTo(run > 0 ? rise : 0, 6)
         },
       ),
+      // A denormal run cost (tutti-jlsj).
+      { examples: [[5e-7, [5e-324]]] },
     )
   })
 

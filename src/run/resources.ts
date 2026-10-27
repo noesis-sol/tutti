@@ -60,7 +60,8 @@ export const allTokens = (tokens: TokensByModel): number =>
 /**
  * A ticket's share of the five-hour window that rose `rise` over the run (null: not heard yet), its
  * workers' dollars `cost` of the run's `runCost`: the rise in proportion to the dollars, none while
- * nothing has been spent.
+ * nothing has been spent. The fraction of the dollars first, so that a cost too small to multiply
+ * (a denormal) still has its share.
  */
 export const windowShare = (
   rise: number | null,
@@ -70,7 +71,7 @@ export const windowShare = (
   rise === null
     ? null
     : {
-        share: runCost > 0 ? (Math.max(rise, 0) * Math.min(cost, runCost)) / runCost : 0,
+        share: runCost > 0 ? Math.max(rise, 0) * (Math.min(cost, runCost) / runCost) : 0,
         rise,
         cost,
         runCost,
