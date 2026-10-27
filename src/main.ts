@@ -62,6 +62,7 @@ import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
 import { screenOut } from "./print/screenOut.ts"
+import { talkQuestion } from "./run/answerTalk.ts"
 import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import {
@@ -1038,9 +1039,13 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           if (putInRenderer) {
             // What it says is held for the main screen until the renderer is gone, in its theme now.
             const theme = themeOf(shell.appearance.get())
+            // Talk it through shows the talk in the Interview view, in this renderer (§ 4.11).
             const putting = yield* putQuestions({
               questions,
-              put: Option.some((question, at) => askOpenQuestion(shell, themeOf, question, at)),
+              put: Option.some((question, at) =>
+                askOpenQuestion(shell, themeOf, question, at, true),
+              ),
+              talk: (question) => talkQuestion(question, interviewScreen(shell, themeOf, desktop)),
               say: { ...makePrinter(screen.out, theme), theme },
             })
             if (putting._tag === "Cancelled") {

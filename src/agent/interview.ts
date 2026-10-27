@@ -57,13 +57,17 @@ export const featureLead = "Here is the feature I'd like to talk through:"
 export const pasted = (description: string, id: string): string =>
   `<pasted_content id="${id}">\n${description.replace(/^\n+|\n+$/g, "")}\n</pasted_content id="${id}">`
 
-/** The interview's first message: featureLead, then `description` pasted under a fresh ID. */
-export const firstMessage = (description: string): Effect.Effect<string> =>
+/** `lead`, then `text` pasted under a fresh ID, drawn again while `text` holds it. */
+export const leadAndPasted = (lead: string, text: string): Effect.Effect<string> =>
   Effect.gen(function* () {
     let id = yield* evidenceId
-    while (description.includes(id)) id = yield* evidenceId
-    return `${featureLead}\n\n${pasted(description, id)}`
+    while (text.includes(id)) id = yield* evidenceId
+    return `${lead}\n\n${pasted(text, id)}`
   })
+
+/** The interview's first message: featureLead, then `description` pasted under a fresh ID. */
+export const firstMessage = (description: string): Effect.Effect<string> =>
+  leadAndPasted(featureLead, description)
 
 /** The filed feature, as the confirmation offers it: by the bd IDs of the epic and its tickets. */
 export const filedPlan = (plan: FeaturePlan, filed: FiledPlan): Plan => {

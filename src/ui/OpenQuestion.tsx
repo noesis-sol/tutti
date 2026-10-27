@@ -1,8 +1,9 @@
 // An open question put before an overnight run (§ 5 item 2; src/run/overnightQuestions.ts), in the
 // command's renderer, as the start question is asked there (Form.tsx's ask): the answer form's
 // choices for a question ticket, its heading, title and description, then its options from the
-// metadata, the recommended one first and marked, Other with a line to type your own, and Leave
-// open. ↑ and ↓ move the selector, Enter chooses (on Other it sends what is typed), PgUp and PgDn
+// metadata, the recommended one first and marked, Other with a line to type your own, Talk it
+// through where the caller offers it (§ 4.11: the question talked through in a session, whose
+// answer comes back as the form's), and Leave open. ↑ and ↓ move the selector, Enter chooses (on Other it sends what is typed), PgUp and PgDn
 // scroll a description taller than its room; Esc or Ctrl+C stops the run before it starts. A click
 // on a choice chooses it, as Enter on it does (D9, § 7.3); one on Other's line focuses it.
 import type { InputRenderable, ScrollBoxRenderable } from "@opentui/core"
@@ -24,6 +25,7 @@ import {
   type QuestionAt,
   questionHeading,
   type Reply,
+  talkChoice,
 } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -81,7 +83,7 @@ const hintInset = 2
 /** The fewest lines of the description shown, however short the screen. */
 const leastDescription = 1
 
-/** A choice's text: an option with its trade-off, Other, Leave open. */
+/** A choice's text: an option with its trade-off, Other, Talk it through, Leave open. */
 const choiceSegments = (choice: Choice, look: Look, theme: Theme): Segments => {
   switch (choice._tag) {
     case "Option":
@@ -93,6 +95,11 @@ const choiceSegments = (choice: Choice, look: Look, theme: Theme): Segments => {
       ]
     case "Other":
       return [seg(`${otherChoice}: `, look)]
+    case "Talk":
+      return [
+        seg(talkChoice, look),
+        seg(" — in a session that reads the code, before answering", theme.form.description),
+      ]
     case "LeaveOpen":
       return [seg(leaveOpen, look)]
   }
@@ -106,6 +113,7 @@ export const OpenQuestionForm = ({
   cancel,
   bind = useFormCommands,
   closing = beforeRun,
+  talk = false,
 }: {
   readonly theme: Theme
   readonly question: OpenQuestion
@@ -117,8 +125,10 @@ export const OpenQuestionForm = ({
    */
   readonly bind?: (commands: ReadonlyArray<Command>) => ReadonlyArray<Key>
   readonly closing?: Closing
+  /** Whether Talk it through is offered: where a talk can be shown, in the renderer before a run. */
+  readonly talk?: boolean
 } & Answers<Reply>) => {
-  const choices = choicesOf(question)
+  const choices = choicesOf(question, talk)
   const other = choices.findIndex((choice) => choice._tag === "Other")
   // The keys of one read each see the ones before them: Down and Enter together choose the second.
   const [highlighted, setHighlighted, highlightedNow] = useKeyState(() => 0)
@@ -145,6 +155,8 @@ export const OpenQuestionForm = ({
         return answer({ _tag: "Answer", answer: choice.answer })
       case "LeaveOpen":
         return answer({ _tag: "LeaveOpen" })
+      case "Talk":
+        return answer({ _tag: "Talk" })
       case "Other": {
         const text = typedNow().trim()
         if (text === "") setError(closing.noAnswer)
@@ -196,7 +208,12 @@ export const OpenQuestionForm = ({
     choices.slice(0, other).flatMap((_, index) => choiceLines(index)),
     room,
   )
-  const leave = targetLines(choiceLines(other + 1), room)
+  // The choices after Other: Talk it through where offered, and Leave open.
+  const after = choices.slice(other + 1).map((_, at) => other + 1 + at)
+  const leave = targetLines(
+    after.flatMap((index) => choiceLines(index)),
+    room,
+  )
   const errorLines = error === null ? [] : paragraph(error, form.error)
   const hintLines = wrap(formHintSegments(hint, theme), Math.max(width - hintInset, 1))
   // The description gets the lines the rest leaves, at least one, and scrolls within them.
@@ -251,9 +268,11 @@ export const OpenQuestionForm = ({
           </box>
           <Lines
             lines={leave}
-            press={() => {
-              highlight(other + 1)
-              choose(other + 1)
+            press={(at) => {
+              const index = after[at]
+              if (index === undefined) return
+              highlight(index)
+              choose(index)
             }}
           />
           <Lines lines={errorLines} />
@@ -268,14 +287,23 @@ export const OpenQuestionForm = ({
 
 /**
  * Puts the open question `question`, `at` of those put, in `shell`'s renderer: an option's label,
- * your own text, or Leave open. Fails with FormCancelled on Esc or Ctrl+C.
+ * your own text, Talk it through where `talk` offers it, or Leave open. Fails with FormCancelled on
+ * Esc or Ctrl+C.
  */
 export const askOpenQuestion = (
   shell: Shell,
   themeOf: (appearance: Appearance) => Theme,
   question: OpenQuestion,
   at: QuestionAt,
+  talk = false,
 ): Effect.Effect<Reply, FormCancelled> =>
   ask<Reply>(shell, themeOf, (theme, answers) => (
-    <OpenQuestionForm key={question.id} theme={theme} question={question} at={at} {...answers} />
+    <OpenQuestionForm
+      key={question.id}
+      theme={theme}
+      question={question}
+      at={at}
+      talk={talk}
+      {...answers}
+    />
   ))

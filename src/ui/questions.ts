@@ -259,10 +259,14 @@ export interface QuestionAt {
   readonly of: number
 }
 
-/** What the maintainer said to an open question: an answer to record, or to leave it open. */
+/**
+ * What the maintainer said to an open question: an answer to record, to leave it open, or to talk
+ * it through first (§ 4.11), where the form offers that.
+ */
 export type Reply =
   | { readonly _tag: "Answer"; readonly answer: string }
   | { readonly _tag: "LeaveOpen" }
+  | { readonly _tag: "Talk" }
 
 /** The label the recommended option is marked with, after its own. */
 export const recommendedMark = "(recommended)"
@@ -273,7 +277,13 @@ export const leaveOpen = "Leave open"
 /** The choice that types your own answer. */
 export const otherChoice = "Other"
 
-/** One of the choices an open question is put with: an option of its own, Other, or Leave open. */
+/** The choice that talks the question through in a session before answering it (§ 4.11). */
+export const talkChoice = "Talk it through"
+
+/**
+ * One of the choices an open question is put with: an option of its own, Other, Talk it through,
+ * or Leave open.
+ */
 export type Choice =
   | {
       readonly _tag: "Option"
@@ -284,10 +294,14 @@ export type Choice =
       readonly answer: string
     }
   | { readonly _tag: "Other" }
+  | { readonly _tag: "Talk" }
   | { readonly _tag: "LeaveOpen" }
 
-/** The choices `question` is put with: its options, the recommended one first, Other, Leave open. */
-export const choicesOf = (question: OpenQuestion): ReadonlyArray<Choice> => [
+/**
+ * The choices `question` is put with: its options, the recommended one first, Other, Talk it
+ * through where `talk` offers it, Leave open.
+ */
+export const choicesOf = (question: OpenQuestion, talk = false): ReadonlyArray<Choice> => [
   ...(question.options ?? []).map(
     (option, at): Choice => ({
       _tag: "Option",
@@ -297,6 +311,7 @@ export const choicesOf = (question: OpenQuestion): ReadonlyArray<Choice> => [
     }),
   ),
   { _tag: "Other" },
+  ...(talk ? [{ _tag: "Talk" } as const] : []),
   { _tag: "LeaveOpen" },
 ]
 

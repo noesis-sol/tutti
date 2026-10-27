@@ -125,6 +125,8 @@ export const interviewScreen =
         filing: yield* bridge(inputs.filing),
         ...(inputs.filed === undefined ? {} : { filed: yield* bridge(inputs.filed) }),
         ...(inputs.leaveQuestion === undefined ? {} : { leaveQuestion: inputs.leaveQuestion }),
+        ...(inputs.leaveAbout === undefined ? {} : { leaveAbout: inputs.leaveAbout }),
+        ...(inputs.name === undefined ? {} : { name: inputs.name }),
       }
       yield* mount(
         shell,

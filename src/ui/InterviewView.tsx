@@ -10,6 +10,8 @@
 // Leaving (`Esc` outside the composer, or a click on `← Back`) asks `End the interview? Nothing has
 // been filed.`: `y` ends it, `n` or `Esc` stays. Once file_feature has filed something, leaving
 // asks nothing. Leaving sends CloseWorker, which run/interview.ts takes as the interview's end.
+// A spec's refinement and a question's talk (run/answerTalk.ts) are shown the same way, with their
+// own name in the head and their own leaving question.
 //
 // The keys, in the view's layer: `Tab`, `Shift+Tab` and the arrows move between the items and the
 // panel's requests, and between a request's buttons; `Enter` expands or collapses the selected item
@@ -58,6 +60,10 @@ export interface InterviewValue {
   readonly filed?: External<boolean>
   /** What leaving asks while nothing is filed, in place of the interview's (leaveQuestion). */
   readonly leaveQuestion?: string
+  /** What leaving says under its question, in place of the interview's (leaveAbout). */
+  readonly leaveAbout?: string
+  /** What the head names the session by, in place of `Interview`: a question's talk (§ 4.11). */
+  readonly name?: string
 }
 
 export const InterviewContext = createContext<InterviewValue | null>(null)
@@ -156,16 +162,18 @@ export const LeaveQuestion = ({
   yes,
   no,
   question = leaveQuestion,
+  about = leaveAbout,
 }: {
   readonly yes: () => void
   readonly no: () => void
   readonly question?: string
+  readonly about?: string
 }) => {
   const theme = useTheme()
   return (
     <Modal
       frame={theme.look("notice")}
-      paragraphs={[seg(question, theme.look("notice", "bold")), seg(""), seg(leaveAbout)]}
+      paragraphs={[seg(question, theme.look("notice", "bold")), seg(""), seg(about)]}
       choices={leaveCommands(yes, no)}
     />
   )
@@ -272,13 +280,14 @@ export const InterviewView = () => {
 
   const rule: Segments = [seg("─".repeat(inner), theme.look("frame"))]
   const { styles } = theme
+  const name = interview.name ?? "Interview"
   const head = (now: number, spin: string): Segments =>
     card === undefined
-      ? [seg("Interview", styles.picked)]
+      ? [seg(name, styles.picked)]
       : [
           cardMark(card, theme, spin),
           seg("  "),
-          seg("Interview", styles.picked),
+          seg(name, styles.picked),
           seg("  "),
           seg(card.status, statusLook(card, theme)),
           seg("  "),
@@ -351,6 +360,7 @@ export const InterviewView = () => {
             {...(interview.leaveQuestion === undefined
               ? {}
               : { question: interview.leaveQuestion })}
+            {...(interview.leaveAbout === undefined ? {} : { about: interview.leaveAbout })}
           />
         ) : null}
       </box>

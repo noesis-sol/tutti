@@ -50,6 +50,10 @@ export interface InterviewInputs extends ScreenInputs {
   readonly filed?: SubscriptionRef.SubscriptionRef<boolean>
   /** What leaving asks while nothing is filed, in place of the interview's question. */
   readonly leaveQuestion?: string
+  /** What leaving says under its question, in place of the interview's. */
+  readonly leaveAbout?: string
+  /** What the view's head names the session by, in place of `Interview`: a question's talk. */
+  readonly name?: string
 }
 
 /** The Interview view: shows `inputs` until the scope closes. */
@@ -129,7 +133,7 @@ export const interviewView = (card: Card): RunView => ({
 /** How the Interview view was left: not at all, by Esc or ← Back, or by Ctrl+C's quit box. */
 export type Left = "no" | "left" | "quit"
 
-/** A session the Interview view shows: the feature interview's, or a spec's refinement. */
+/** A session the Interview view shows: the feature interview's, a spec's refinement, a question's talk. */
 export interface InView<A> {
   /** The description typed at the start question, or what the session is for, in its header. */
   readonly description: string
@@ -139,6 +143,10 @@ export interface InView<A> {
   readonly filed?: SubscriptionRef.SubscriptionRef<boolean>
   /** What leaving asks while nothing is filed, in place of the interview's question. */
   readonly leaveQuestion?: string
+  /** What leaving says under its question, in place of the interview's. */
+  readonly leaveAbout?: string
+  /** What the view's head names the session by, in place of `Interview`. */
+  readonly name?: string
   readonly send: (text: string, uuid?: MessageUuid) => Effect.Effect<unknown, unknown>
   /** Closes the session. */
   readonly leave: Effect.Effect<void>
@@ -237,6 +245,8 @@ export const inInterviewView = <A>(
           filing: session.filing,
           ...(session.filed === undefined ? {} : { filed: session.filed }),
           ...(session.leaveQuestion === undefined ? {} : { leaveQuestion: session.leaveQuestion }),
+          ...(session.leaveAbout === undefined ? {} : { leaveAbout: session.leaveAbout }),
+          ...(session.name === undefined ? {} : { name: session.name }),
         })
         return yield* session.ended
       }),

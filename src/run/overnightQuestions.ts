@@ -10,8 +10,12 @@
 // closes the question and frees what it blocked; those left open are listed
 // with the tickets they keep waiting and how to answer them later. A cancel (Esc, Ctrl+C, the end
 // of input) stops the run before it starts, the answers already given kept. orchestra's pre-flight
-// puts them in a Claude Code session; this is tutti's own.
+// puts them in a Claude Code session; this is tutti's own. In the renderer, the form also offers
+// Talk it through (tutti-i0sz): the question talked through in a session in the Interview view
+// (answerTalk.ts), whose answer is recorded as the form's; a talk that ends without one puts the
+// question again.
 import { Console, Effect, Option, Result } from "effect"
+import { type TalkEnd, talkLeftWhy } from "../agent/answerTalk.ts"
 import {
   Beads,
   type BeadsError,
@@ -112,17 +116,28 @@ export const openQuestionOf = (
   waiting: [...new Set(waiting)],
 })
 
+/** Talks a question through (answerTalk.ts): its answer, or why there is none. */
+export type Talk<R = never> = (question: OpenQuestion) => Effect.Effect<TalkEnd, never, R>
+
+/** What a talk that ended without an answer says, the question put again. */
+export const talkEndedText = (question: OpenQuestion, why: string): string =>
+  `overnight pre-flight: the talk about ${question.id} (${question.title}) ended without an answer: ${why}`
+
 /**
  * Puts `questions` one by one with `put` (none: without a terminal, nothing is asked), records each
  * answer with bd human respond and logs it, then says how many were answered and lists those left
  * open, with the tickets they keep waiting and how to answer them later. A cancel stops there, the
- * answers given kept. An answer bd couldn't record leaves its question open, saying why.
+ * answers given kept. An answer bd couldn't record leaves its question open, saying why. Talk it
+ * through, where `put` offers it, talks the question through with `talk`: its answer is recorded as
+ * the form's; one that ends without an answer puts the question again, saying why unless it was
+ * left.
  */
-export const putQuestions = (options: {
+export const putQuestions = <R = never>(options: {
   readonly questions: ReadonlyArray<OpenQuestion>
   readonly put: Option.Option<Put>
+  readonly talk?: Talk<R>
   readonly say: Pick<Say, "print" | "say" | "warn" | "theme">
-}): Effect.Effect<Putting, never, Beads | Log> =>
+}): Effect.Effect<Putting, never, Beads | Log | R> =>
   Effect.gen(function* () {
     const { questions, say } = options
     const logs = yield* Log
@@ -136,9 +151,26 @@ export const putQuestions = (options: {
         left.push(question)
         continue
       }
-      const reply = yield* Effect.result(
-        options.put.value(question, { index, of: questions.length }),
-      )
+      const put = options.put.value
+      const at = { index, of: questions.length }
+      // Talk it through comes back to the form until the talk gives an answer.
+      let reply = yield* Effect.result(put(question, at))
+      let talked = false
+      while (Result.isSuccess(reply) && reply.success._tag === "Talk") {
+        const ended = options.talk === undefined ? null : yield* options.talk(question)
+        if (ended?._tag === "Answered") {
+          reply = Result.succeed({ _tag: "Answer", answer: ended.answer })
+          talked = true
+          break
+        }
+        if (ended !== null) {
+          // Left, it is your doing: the log says so, not a warning.
+          const text = talkEndedText(question, ended.why)
+          if (ended.why !== talkLeftWhy) yield* say.warn(text)
+          yield* logs.write(line`${text}`)
+        }
+        reply = yield* Effect.result(put(question, at))
+      }
       if (Result.isFailure(reply)) {
         yield* logs.write(
           line`overnight pre-flight: the questions were cancelled, ${questionCount(answered)} answered: the run doesn't start`,
@@ -146,11 +178,12 @@ export const putQuestions = (options: {
         yield* counted
         return { _tag: "Cancelled", answered } as const
       }
-      if (reply.success._tag === "LeaveOpen") {
+      const replied = reply.success
+      if (replied._tag !== "Answer") {
         left.push(question)
         continue
       }
-      const answer = reply.success.answer
+      const answer = replied.answer
       const recorded = yield* Effect.result(recordAnswer(question.id, answer))
       if (Result.isFailure(recorded)) {
         const text = `overnight pre-flight: couldn't record the answer to ${question.id} (${question.title}): ${recordWhy(recorded.failure)}`
@@ -161,7 +194,7 @@ export const putQuestions = (options: {
       }
       answered++
       yield* logs.write(
-        line`overnight pre-flight: answered ${question.id} (${question.title}): ${answer}`,
+        line`overnight pre-flight: answered ${question.id} (${question.title})${talked ? " after talking it through" : ""}: ${answer}`,
       )
     }
     yield* counted
