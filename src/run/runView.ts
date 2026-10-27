@@ -225,6 +225,8 @@ export interface Totals {
   readonly triaged: number
   /** Each ticket once: Asked, Blocked, and those whose worker waits on you. */
   readonly needsYou: number
+  /** Of those, the Asked ones: each waits on your answer to a question ticket (Shift+A, § 7.3). */
+  readonly asked: number
   /** Workers at work, of `slots`. */
   readonly workers: number
   readonly slots: number
@@ -486,6 +488,7 @@ export const emptyView: RunView = {
     review: 0,
     triaged: 0,
     needsYou: 0,
+    asked: 0,
     workers: 0,
     slots: 0,
     queued: 0,
@@ -860,6 +863,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       phaseFacts[phase._tag].notice === "setAside"
         ? (status.verdicts.get(entry.ticket) ?? null)
         : null
+    if (phase._tag === "Asked") totals.asked++
     for (const total of countsUnder(phase, activity)) {
       if (total === "needsYou") needsYou.add(entry.ticket)
       else if (total === "setAside") {

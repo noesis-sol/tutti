@@ -1782,7 +1782,7 @@ test(
 
 
 
-      s stop after current · ? keys
+      s stop after current · A answer questions · ? keys
 
     Waiting:
 

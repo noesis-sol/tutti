@@ -136,6 +136,7 @@ describe("totals", () => {
       review: 1,
       triaged: 0,
       needsYou: 4,
+      asked: 1,
       workers: 4,
       slots: 3,
       queued: 1,

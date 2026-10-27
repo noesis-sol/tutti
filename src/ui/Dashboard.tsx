@@ -289,12 +289,8 @@ const moveRow: HelpRow = ["Tab, Shift+Tab, arrows", "move the highlight between 
 const denyRow: HelpRow = ["d, Shift+D", "deny the request; deny with a reason"]
 const pickRow: HelpRow = ["1–4 in a question", "pick an option"]
 
-/**
- * Whether a ticket waits on your answer to a question: one counted as needing you that has no open
- * request, which only an Asked ticket is.
- */
-export const questionsWaiting = (view: RunView): boolean =>
-  view.totals.needsYou > new Set(view.requests.map((request) => request.ticket)).size
+/** Whether a ticket waits on your answer to a question: one Asked. */
+export const questionsWaiting = (view: RunView): boolean => view.totals.asked > 0
 
 /**
  * The dashboard's keys (§ 7.3), its hint's and its key help's. The answer keys answer only a

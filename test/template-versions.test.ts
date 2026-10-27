@@ -171,7 +171,7 @@ describe("an older worker prompt or verifier", () => {
     for (const want of [
       "templates: .tutti/worker-prompt.md is older than tutti's worker prompt template, which has since changed ",
       "the opening (a removal Claude Code's safety check holds is refused outright in auto mode; a worker passes Bash no timeout of its own, as tutti raises Bash's default to the merge check's limit; a worker checks its own change and leaves the whole suite to the merge check; what a ticket needs of the machine goes in the project's requires list, never installed by hand outside it; a check that runs the slower suites with the faster ones is run alone, not after the faster one)",
-      ", Close (a ticket closes once the worker's own checks pass; a question gives its options and the recommended one in its metadata too; a question that asks the maintainer to act rather than choose is marked maintainer_only, never answered for them) and Working unattended (no to-do checklist is asked for, which Beads' own guidance forbids)",
+      ", Close (a ticket closes once the worker's own checks pass; a question gives its options and the recommended one in its metadata too; a question that asks the maintainer to act rather than choose is marked maintainer_only, never answered for them; a decision only the maintainer can make about another ticket is a question blocking that ticket, never left in the final message) and Working unattended (no to-do checklist is asked for, which Beads' own guidance forbids)",
       ": tutti init --update rewrites those sections from the template",
     ]) {
       expect(note).toContain(want)
