@@ -50,14 +50,15 @@ const spawnedAt = async (nice: number | undefined) => {
 const ours = getPriority()
 
 describe("withSessionProcess's priority", () => {
-  test("with a nice value, Claude Code and what it starts run at it, or tutti says why not", async () => {
+  test("with a nice value, Claude Code and what it starts run at it, and nothing is said", async () => {
     const at = Math.max(ours, workerNice)
-    const { own, started, said } = await spawnedAt(workerNice)
-    // tutti's own nice value and what it said are in the failure; where something kept the priority
-    // from being lowered, as on GitHub's macOS runners (tutti-djtt), tutti said why.
-    if (said.length > 0) console.warn(`tutti at nice ${ours}: ${said.join("")}`)
-    const promised = said.length === 0 ? { own: at, started: at } : { own, started: own }
-    expect({ ours, own, started, said }).toEqual({ ours, ...promised, said })
+    // tutti's own nice value and what lower() said about it are in the failure (tutti-djtt).
+    expect({ ours, ...(await spawnedAt(workerNice)) }).toEqual({
+      ours,
+      own: at,
+      started: at,
+      said: [],
+    })
   })
 
   test("without one, they run at tutti's own, and nothing is said", async () => {
