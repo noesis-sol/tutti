@@ -144,7 +144,11 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
         Box.Questions({ first: question as TicketId, back: { at: i, answered: [...answered] } }),
       )
     }
-    if (item._tag === "Need" && item.need._tag === "Blocked") setBlocked(item.need)
+    if (item._tag === "Need" && item.need._tag === "Blocked") {
+      // Opened by a click, it is chosen too: Esc comes back at the one after it.
+      setChosen(() => i)
+      setBlocked(item.need)
+    }
   }
   const back = () => {
     setBlocked(null)

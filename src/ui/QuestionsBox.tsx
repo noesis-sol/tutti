@@ -15,8 +15,7 @@
 // answered, at the same one otherwise; a toast says why a talk that wasn't left gave no answer.
 //
 // Opened from the Needs you list (NeedsList.tsx, tutti-fdv1), the box puts that question alone, and
-// once it is answered, left open or closed with Esc opens the list again: at the next item, or at
-// the same one after Esc.
+// once it is answered, left open or closed with Esc opens the list again at the next item.
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
@@ -123,9 +122,12 @@ const useBoxCommands = (commands: ReadonlyArray<Command>) =>
     "Questions",
   ).hint
 
+/** The Needs you list `back` came from, at the item after the one opened. */
+const nextIn = (back: NeedsAt): Box => Box.Needs({ ...back, at: back.at + 1 })
+
 /** Where Esc goes from the questions box `open`: the Needs you list it came from, or none. */
 const closedTo = (open: Box | null): Box | null =>
-  open?._tag === "Questions" && open.back !== undefined ? Box.Needs(open.back) : null
+  open?._tag === "Questions" && open.back !== undefined ? nextIn(open.back) : null
 
 /**
  * Esc, which closes the questions box, or goes back to the Needs you list it came from: bound
@@ -173,7 +175,7 @@ export const QuestionsBox = ({
   const read = useQuestionNews().find(
     (news) => news.uuid === uuid && (news._tag === "Read" || news._tag === "NotRead"),
   )
-  const close = () => box.set(back === undefined ? null : Box.Needs(back))
+  const close = () => box.set(back === undefined ? null : nextIn(back))
   const all = read?._tag === "Read" ? read.questions : undefined
   // From the Needs you list, its question alone.
   const questions = back === undefined ? all : all?.filter((question) => question.id === first)
@@ -226,10 +228,9 @@ export const QuestionsBox = ({
     if (back !== undefined) {
       const answered = given._tag === "Answer"
       return box.set(
-        Box.Needs({
-          at: answered ? back.at : back.at + 1,
-          answered: answered ? [...back.answered, question.id] : back.answered,
-        }),
+        answered
+          ? Box.Needs({ at: back.at, answered: [...back.answered, question.id] })
+          : nextIn(back),
       )
     }
     setAt((now) => now + 1)

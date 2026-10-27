@@ -371,6 +371,58 @@ describe("the Needs you list, without the panel", () => {
     })
   })
 
+  test("a click on an item not chosen, then Esc, comes back at the one after it", async () => {
+    const lexer = entry("t-3", "Fix the lexer", TicketPhase.Blocked({ why: "DIRTY_TREE" }), 2)
+    await scene(
+      viewOf([asked, blocked, lexer]),
+      Screen.Dashboard(),
+      async ({ news, commands, rendered }) => {
+        await until(rendered, has("Which flag name?"))
+        await press(rendered, "tab", "enter")
+        const uuid = await readUuid(rendered, commands)
+        await rendered.input(() =>
+          news.set([QuestionNews.Read({ uuid, questions: [flag, licence] })]),
+        )
+        const list = await until(rendered, has("? q-3 Which licence?"))
+        expect(list.chars).toContain("> ? q-1 Which flag name?")
+
+        // A click on t-3, below the one chosen: what clears it; Esc, the one after it.
+        const { x, y } = placeOf(list, "t-3 blocked: DIRTY_TREE")
+        await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+        await until(rendered, has("main's checkout has changes"))
+        await press(rendered, "escape")
+        const next = await until(rendered, has("> ? q-3 Which licence?"))
+        expect(next.chars).toContain("> ? q-3 Which licence?")
+
+        // Esc from a question opened from the list comes back at the one after it too.
+        await press(rendered, "down")
+        const first = await until(rendered, has("> ? q-1 Which flag name?"))
+        expect(first.chars).toContain("> ? q-1 Which flag name?")
+        await press(rendered, "enter")
+        const boxUuid = await readUuid(rendered, commands)
+        await rendered.input(() =>
+          news.set([
+            ...news.get(),
+            QuestionNews.Read({ uuid: boxUuid, questions: [flag, licence] }),
+          ]),
+        )
+        await until(rendered, has("Open question 1 of 1 · q-1"))
+        await press(rendered, "escape")
+        const backUuid = await readUuid(rendered, commands)
+        await rendered.input(() =>
+          news.set([
+            ...news.get(),
+            QuestionNews.Read({ uuid: backUuid, questions: [flag, licence] }),
+          ]),
+        )
+        const after = await until(rendered, has("> ■ t-2 blocked: MERGE_CONFLICT"))
+        expect(after.chars).toContain("> ■ t-2 blocked: MERGE_CONFLICT")
+        expect(after.chars).toContain("? q-1 Which flag name?")
+        expect(taken(commands).some((command) => command._tag === "AnswerQuestion")).toBe(false)
+      },
+    )
+  })
+
   test("isn't reached where the panel shows what needs you", async () => {
     await scene(
       viewOf([asked, blocked]),
