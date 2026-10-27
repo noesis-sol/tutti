@@ -22,8 +22,11 @@ import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import {
   answerQuestion,
   listQuestions,
+  NoSuchQuestion,
   questionAnswerWords,
   questionsSection,
+  type Talker,
+  talkAnswer,
 } from "../answer/questions.ts"
 import { scoutCostSteps, scoutSearch } from "../init/checks.ts"
 import {
@@ -164,13 +167,18 @@ const hasBeads = (top: string) =>
     fs.exists(join(top, ".beads")).pipe(Effect.orElseSucceed(() => false)),
   )
 
+/** Where `tutti answer --talk` can't talk: a build without a session to talk in. */
+export const noTalk = (): Talker<never> => () => Effect.fail("this tutti can't open a session")
+
 /**
  * `tutti answer`, finding the main checkout with `repo`: the run's attention requests, and the
- * questions workers filed, read from Beads with `services` (src/answer/questions.ts).
+ * questions workers filed, read from Beads with `services` (src/answer/questions.ts); --talk talks
+ * one through with the talk `talk` makes for the checkout (tutti-i0sz).
  */
-export const answerCommand = <E extends { readonly message: string } | string, R, S>(
+export const answerCommand = <E extends { readonly message: string } | string, R, S, T = never>(
   repo: Effect.Effect<string, E, R>,
   services: (repo: string) => Layer.Layer<Beads | Git | RunLock, never, S>,
+  talk: (repo: string) => Talker<T> = noTalk,
 ) =>
   Command.make(
     "answer",
@@ -201,6 +209,12 @@ export const answerCommand = <E extends { readonly message: string } | string, R
         Flag.withDescription("allow a request held by the safety check (defaultToNo)"),
         Flag.withDefault(false),
       ),
+      talk: Flag.Boolean("talk").pipe(
+        Flag.withDescription(
+          "talk the question through with Claude in the terminal first, then record the answer you settle on",
+        ),
+        Flag.withDefault(false),
+      ),
     },
     (given) =>
       Effect.gen(function* () {
@@ -225,6 +239,17 @@ export const answerCommand = <E extends { readonly message: string } | string, R
           return yield* Console.log(show(requests) + questionsSection(questions))
         }
         const id = given.request.value
+        if (given.talk) {
+          if (Option.isSome(given.answer) || given.json) {
+            return yield* failed(`--talk talks ${id} through: give it no answer and no --json`)
+          }
+          if (!beads) return yield* failed(new NoSuchQuestion({ question: id }).message)
+          return yield* talkAnswer(id, talk(top)).pipe(
+            Effect.provide(services(top)),
+            Effect.flatMap(Console.log),
+            Effect.catch((error) => failed(error.message)),
+          )
+        }
         // A request open under that ID is answered as one; any other ID may be a question.
         const request = requestIdPattern.test(id) ? yield* readRequestFile(top, id) : undefined
         if (request === undefined && beads) {
@@ -255,7 +280,7 @@ export const answerCommand = <E extends { readonly message: string } | string, R
       }),
   ).pipe(
     Command.withDescription(
-      "list the run's open attention requests and the open questions, or answer one: tutti answer <request-id> allow|allow-run|deny, or tutti answer <question> <option or your own answer>",
+      "list the run's open attention requests and the open questions, or answer one: tutti answer <request-id> allow|allow-run|deny, or tutti answer <question> <option or your own answer>, or tutti answer --talk <question> to talk it through with Claude first",
     ),
   )
 
@@ -974,17 +999,24 @@ export const initCommand = Command.make("init", initFlags, (given) =>
  * (`repo` without it). A bare `tutti` is `run` with its flags (src/main.ts gives it the run);
  * without one, it prints the version.
  */
-export const tuttiWith = <E extends { readonly message: string } | string, R, S, R2 = never>(
+export const tuttiWith = <
+  E extends { readonly message: string } | string,
+  R,
+  S,
+  R2 = never,
+  T = never,
+>(
   repo: Effect.Effect<string, E, R>,
   services: (repo: string) => Layer.Layer<Beads | Git | RunLock, never, S>,
   run: (flags: RunFlags) => Effect.Effect<void, never, R2> = () => Console.log(pkg.version),
   here: Effect.Effect<string, E, R> = repo,
+  talk: (repo: string) => Talker<T> = noTalk,
 ) =>
   Command.make("tutti", cliFlags, run).pipe(
     Command.withDescription("runs Claude Code workers on a Beads backlog, one worktree per ticket"),
     Command.withSubcommands([
       initCommand,
-      answerCommand(repo, services),
+      answerCommand(repo, services, talk),
       planCommand(repo, services),
       loginCommand(repo),
       coloursCommand(repo),

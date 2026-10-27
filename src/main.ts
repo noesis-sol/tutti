@@ -46,6 +46,7 @@ import { requiresServerFor } from "./agent/requiresTools.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
 import { UsageProbe } from "./agent/UsageProbe.ts"
+import { talkHere } from "./answer/talkHere.ts"
 import { AppConfig } from "./cli/AppConfig.ts"
 import {
   checkoutOf,
@@ -1186,6 +1187,8 @@ export const tutti = tuttiWith(
   planServices,
   (flags) => runFrom(process.cwd(), flags),
   Effect.suspend(() => checkoutOf(process.cwd())),
+  // tutti answer --talk: the question's talk in a renderer of its own (src/answer/talkHere.ts).
+  talkHere(process.cwd(), version),
 )
 
 /**

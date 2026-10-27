@@ -6,10 +6,13 @@
 // does: the decision in each blocked ticket's design, then bd human respond, which closes the
 // question. It needs no run: a run going on takes the ticket that waited back at its next look.
 // --json lists the requests alone, as it did. A project without Beads has no questions.
+// `tutti answer --talk <question>` talks it through first in a session (tutti-i0sz; talkAnswer),
+// in the Interview view in the terminal, and records the answer it gives the same way.
 import { Effect, Schema } from "effect"
+import { type TalkEnd, talkLeftWhy } from "../agent/answerTalk.ts"
 import { recordAnswer, recordWhy } from "../run/answerQuestion.ts"
 import { openQuestionOf, openQuestions, waitingText } from "../run/overnightQuestions.ts"
-import { Beads, type BeadsError, beadsWhy, type TicketId } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, HumanLabel, type TicketId } from "../services/Beads.ts"
 import { choicesOf, type OpenQuestion } from "../ui/questions.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 
@@ -130,4 +133,64 @@ export const answerQuestion = (
       ),
     )
     return answeredLine(question.id, recorded.title, answer, recorded.decided)
+  })
+
+/** A talk that ended without an answer, other than by being left: the question stays open. */
+export class TalkNotAnswered extends Schema.TaggedError<TalkNotAnswered>()("TalkNotAnswered", {
+  question: Schema.String,
+  why: Schema.String,
+}) {
+  override get message(): string {
+    return `the talk about ${this.question} ended without an answer: ${this.why}; it stays open`
+  }
+}
+
+/** A question's talk, as `tutti answer --talk` has it: its end, or why it couldn't be had. */
+export type Talker<R> = (question: OpenQuestion) => Effect.Effect<TalkEnd, string, R>
+
+/** What `tutti answer --talk` prints once the talk was left without an answer. */
+export const talkLeftLine = (question: TicketId): string =>
+  `The talk about ${question} ended; ${question} stays open.`
+
+/**
+ * `tutti answer --talk <id>` (tutti-i0sz, § 4.11): talks the open question `id` through with
+ * `talk`, and records the answer it gives as answerQuestion does: the line to print. Left without
+ * an answer, the question stays open, said; a talk that ends otherwise without one, or can't start,
+ * fails saying why.
+ */
+export const talkAnswer = <R>(
+  id: string,
+  talk: Talker<R>,
+): Effect.Effect<string, NoSuchQuestion | QuestionNotAnswered | TalkNotAnswered, Beads | R> =>
+  Effect.gen(function* () {
+    const beads = yield* Beads
+    const shown = yield* beads
+      .show(id as TicketId, { dependents: true })
+      .pipe(
+        Effect.mapError((error): NoSuchQuestion | QuestionNotAnswered =>
+          error._tag === "BeadsFailed" && error.noSuchIssue
+            ? new NoSuchQuestion({ question: id })
+            : new QuestionNotAnswered({ question: id, reason: beadsWhy(error) }),
+        ),
+      )
+    if (!shown.labels.includes(HumanLabel) || shown.status === "closed") {
+      return yield* new QuestionNotAnswered({ question: id, reason: "it isn't an open question" })
+    }
+    const question = openQuestionOf(shown, [])
+    const ended = yield* talk(question).pipe(
+      Effect.mapError(
+        (why) =>
+          new QuestionNotAnswered({ question: id, reason: `the talk couldn't start: ${why}` }),
+      ),
+    )
+    if (ended._tag === "Ended") {
+      if (ended.why === talkLeftWhy) return talkLeftLine(question.id)
+      return yield* new TalkNotAnswered({ question: id, why: ended.why })
+    }
+    const recorded = yield* recordAnswer(question.id, ended.answer).pipe(
+      Effect.mapError(
+        (error) => new QuestionNotAnswered({ question: id, reason: recordWhy(error) }),
+      ),
+    )
+    return answeredLine(question.id, recorded.title, ended.answer, recorded.decided)
   })
