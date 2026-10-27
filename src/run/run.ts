@@ -91,7 +91,7 @@ import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
 import { type Ending, printSummary, type Summary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { checkCommands } from "../project/settings.ts"
+import { checkCommands, scriptedChecks } from "../project/settings.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, gitWhy } from "../services/Git.ts"
 import type { Notifier } from "../services/Notifier.ts"
@@ -565,14 +565,16 @@ const runFrom = (
     // ticket about to start waits while the workers across them are at that cap.
     const machine = yield* makeMachineGate({ holds, status, wakeUp: wakeUp("hold") })
     // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
-    // the checks' scripts count as no ticket's, and the queue's shared files hold none apart. A ticket works in the worktree the Store saved for
-    // it, wherever git had it (a reused one, or one an earlier run's --worktrees put elsewhere), or
-    // else in <worktrees>/<id>.
+    // the checks' scripts, and what the merge and full checks' scripts run, count as no ticket's,
+    // and the queue's shared files hold none apart. A ticket works in the worktree the Store saved
+    // for it, wherever git had it (a reused one, or one an earlier run's --worktrees put
+    // elsewhere), or else in <worktrees>/<id>.
     const footprints = config.settings.queue.footprint
       ? yield* footprintsOf({
           repo: config.repo,
           base,
           checkCommands: checkCommands(config.settings),
+          scriptedChecks: scriptedChecks(config.settings),
           sharedFiles: config.settings.queue.shared_files,
           worktree: (ticket) =>
             Effect.map(

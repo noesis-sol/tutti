@@ -47,6 +47,7 @@ import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../
 import { Git, type Sha } from "../services/Git.ts"
 import { branchFolder, branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import { type Again, retrying } from "./again.ts"
+import { checkScriptLines } from "./checkScripts.ts"
 import type { ClosedBranches } from "./closedBranches.ts"
 import { readDeclared } from "./declared.ts"
 import { EventStream } from "./eventstream.ts"
@@ -145,12 +146,15 @@ export interface Footprints {
  * `base`, each ticket's branch's against `base`, its files' contents, and the names its source
  * files declare (`readDeclared`). git failing leaves names judged by their look, none merged by
  * union, a ticket's changes unknown and every function declared. `sharedFiles`, the
- * settings' `queue.shared_files`, hold no tickets apart (`RepoFiles.shared`).
+ * settings' `queue.shared_files`, hold no tickets apart (`RepoFiles.shared`). The files the check
+ * commands name are check files, and so are those the lines of `scriptedChecks`' scripts name, the
+ * merge check's and the full check's (`checkScriptLines`), read with the files.
  */
 export const footprintsOf = (options: {
   readonly repo: string
   readonly base: string
   readonly checkCommands: ReadonlyArray<string>
+  readonly scriptedChecks?: ReadonlyArray<string>
   readonly sharedFiles?: ReadonlyArray<string>
   readonly worktree: (ticket: TicketId) => Effect.Effect<string>
 }): Effect.Effect<Footprints, never, Git | FileSystem.FileSystem> =>
@@ -176,7 +180,12 @@ export const footprintsOf = (options: {
         .mergedByUnion(options.repo, files)
         .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
       const declared = yield* readDeclared(options.repo, files).pipe(Effect.provideContext(context))
-      return repoFiles(files, options.checkCommands, union, sharedFiles, declared)
+      const scripts = yield* checkScriptLines(
+        options.repo,
+        files,
+        options.scriptedChecks ?? [],
+      ).pipe(Effect.provideContext(context))
+      return repoFiles(files, [...options.checkCommands, ...scripts], union, sharedFiles, declared)
     })
     return {
       repo: Effect.gen(function* () {

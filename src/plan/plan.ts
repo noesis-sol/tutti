@@ -13,7 +13,8 @@
 // every command, in a process group of its own, out of the terminal's Ctrl+C. runMain exits 130.
 import { Console, Effect, type FileSystem } from "effect"
 import type { ConfigFileInvalid } from "../project/configFile.ts"
-import { checkCommands, readSettings } from "../project/settings.ts"
+import { checkCommands, readSettings, scriptedChecks } from "../project/settings.ts"
+import { checkScriptLines } from "../run/checkScripts.ts"
 import { readDeclared } from "../run/declared.ts"
 import {
   branchFootprint,
@@ -306,7 +307,14 @@ const proposal = (
             .mergedByUnion(repo, files)
             .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
           const declared = yield* readDeclared(repo, files)
-          return repoFiles(files, checks, union, settings.queue.shared_files, declared)
+          const scripts = yield* checkScriptLines(repo, files, scriptedChecks(settings))
+          return repoFiles(
+            files,
+            [...checks, ...scripts],
+            union,
+            settings.queue.shared_files,
+            declared,
+          )
         }),
       ),
       Effect.orElseSucceed(() => repoFiles(undefined, checks, [], settings.queue.shared_files)),

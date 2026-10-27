@@ -327,5 +327,14 @@ export const checkCommands = (settings: Settings): ReadonlyArray<string> =>
     (command): command is string => command !== null,
   )
 
+/**
+ * The merge check's and the full check's commands, whose scripts' lines count as check commands
+ * too in footprints (checkScripts.ts): not a worker's own, whose script runs what tickets change.
+ */
+export const scriptedChecks = (settings: Settings): ReadonlyArray<string> =>
+  [settings.checks.fast.command, settings.checks.full.command].filter(
+    (command): command is string => command !== null,
+  )
+
 /** Reads the settings of the project at `repo`; a missing file gives the defaults. */
 export const readSettings = (repo: string) => readConfigFile(Settings, settingsPath(repo))
