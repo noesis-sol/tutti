@@ -18,8 +18,9 @@
 # it ran on (HEAD's with what isn't committed yet, untracked files included), its mode and the test
 # files that passed. The next run picks tests from what changed since that tree too, and leaves out
 # the earlier pass's tests that this smaller change doesn't touch (scripts/check-own.ts' standOn),
-# saying how many. A TUTTI_SLOW=1 pass stands for a plain run as well; a plain pass doesn't for a
-# TUTTI_SLOW=1 run. A run whose tests failed keeps, at its tree, the test files whose tests all
+# saying how many. A TUTTI_SLOW=1 pass stands for a plain run as well; a plain pass stands for a
+# TUTTI_SLOW=1 run only for the test files with no slow gate (check-own.ts' slowGated), which run
+# the same in both modes. A run whose tests failed keeps, at its tree, the test files whose tests all
 # passed in it, which scripts/test.ts writes down (TUTTI_CHECK_OWN_PASSED), and the earlier pass's
 # that it left out (check-own.ts' afterFailure): the next run runs the files that failed again. Any
 # other failure (tsc, biome, shellcheck, or the tests without that list) keeps nothing and forgets

@@ -222,22 +222,32 @@ describe("scripts/check-own.sh after a pass", () => {
   })
 
   slow.test(
-    "lets a TUTTI_SLOW=1 pass stand for a plain run, and not a plain pass for a slow one",
+    "lets a TUTTI_SLOW=1 pass stand for a plain run, and a plain pass for a slow one only where no test is slow",
     () => {
       const slowFirst = project()
-      expect(slowFirst.run("slow").last).toBe("TUTTI_SLOW=1 scripts/check-own.sh: PASS")
+      const first = slowFirst.run("slow")
+      expect(first.last).toBe("TUTTI_SLOW=1 scripts/check-own.sh: PASS")
+      expect(first.out).toContain(both)
       slowFirst.repo.write({ "docs/notes.md": "notes\n" })
       expect(slowFirst.run("plain").out).toContain("running none.")
 
       const plainFirst = project()
+      plainFirst.repo.commit("Gate b", {
+        "test/b.test.ts":
+          'import { b } from "../src/b.ts"\nimport { slow } from "./gates.ts"\nslow.test("b", () => {})\n',
+      })
       plainFirst.run("plain")
       plainFirst.repo.write({ "docs/notes.md": "notes\n" })
       const { out } = plainFirst.run("slow")
-      expect(out).not.toContain("passed at")
-      expect(out).toContain(both)
-      // That slow pass now stands for the next slow run.
+      expect(out).toMatch(
+        /check-own: 1 test file with no slow test passed at [0-9a-f]{7} in a plain run and nothing since touches them; running 1\./,
+      )
+      expect(out).toContain("test.sh ./test/b.test.ts\n")
+      // That slow pass now stands for the next slow run, a.test.ts in it.
       plainFirst.repo.write({ "docs/notes.md": "more notes\n" })
-      expect(plainFirst.run("slow").out).toContain("running none.")
+      const again = plainFirst.run("slow").out
+      expect(again).toMatch(/check-own: 2 test files passed at [0-9a-f]{7} and nothing since/)
+      expect(again).toContain("running none.")
     },
   )
 

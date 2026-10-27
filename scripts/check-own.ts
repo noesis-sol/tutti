@@ -15,7 +15,8 @@
 // worktree's own git dir, the tree its tests passed on (HEAD's with what isn't committed yet,
 // untracked files included), its mode (plain, or slow for TUTTI_SLOW=1) and the test files that
 // passed there. The next run leaves out those that what changed since that tree doesn't touch. A
-// slow pass stands for a plain run too, as it ran more; a plain one doesn't for a slow run. A run
+// slow pass stands for a plain run too, as it ran more; a plain one stands for a slow run only for
+// the test files with no slow gate (slowGated), which run the same in both modes. A run
 // whose tests failed keeps, at its tree, the test files whose tests all passed in it and the earlier
 // pass's that it left out (afterFailure): the next one runs the files that failed again.
 //
@@ -109,6 +110,24 @@ export const pathMentions = (file: string): ReadonlyArray<string> => {
   return mentions
 }
 
+/** The modules that import, re-export or require each module of `sources`, by its path. */
+const importersOf = (
+  sources: ReadonlyMap<string, string>,
+  exists: (file: string) => boolean,
+): ReadonlyMap<string, ReadonlyArray<string>> => {
+  const importers = new Map<string, Array<string>>()
+  for (const [file, source] of sources) {
+    for (const specifier of specifiers(source)) {
+      const target = resolveSpecifier(file, specifier, exists)
+      if (target === undefined) continue
+      const list = importers.get(target)
+      if (list === undefined) importers.set(target, [file])
+      else list.push(file)
+    }
+  }
+  return importers
+}
+
 /**
  * The test files a change touches, sorted, or "all" for the whole suite. `sources` holds the text of
  * every module that may import or name another (src/, test/, scripts/), by repository-relative path.
@@ -119,21 +138,7 @@ export const testsFor = (
   exists: (file: string) => boolean,
 ): ReadonlyArray<string> | "all" => {
   if (changed.some((file) => wholeSuite.includes(file))) return "all"
-  const importers = new Map<string, Array<string>>()
-  const readsOf = (file: string): Array<string> => {
-    let list = importers.get(file)
-    if (list === undefined) {
-      list = []
-      importers.set(file, list)
-    }
-    return list
-  }
-  for (const [file, source] of sources) {
-    for (const specifier of specifiers(source)) {
-      const target = resolveSpecifier(file, specifier, exists)
-      if (target !== undefined) readsOf(target).push(file)
-    }
-  }
+  const importers = importersOf(sources, exists)
   const touched = new Set<string>()
   const queue: Array<string> = []
   const touch = (file: string) => {
@@ -155,6 +160,68 @@ export const testsFor = (
     for (const importer of importers.get(file) ?? []) touch(importer)
   }
   return [...touched].filter((file) => isTestFile(file) && exists(file)).sort()
+}
+
+/** The tests' gates (§ 13): slow.test and slow.describe there run only with TUTTI_SLOW=1. */
+export const gatesModule = "test/gates.ts"
+
+/** A named import's list and specifier: import { slow, live as l } from "./gates.ts". */
+const namedImportPattern = /\bimport\s*\{([^}]*)\}\s*from\s*["']([^"'\n]+)["']/g
+
+/** A namespace import's name and specifier: import * as gates from "./gates.ts". */
+const namespaceImportPattern = /\bimport\s*\*\s*as\s+([\w$]+)\s+from\s*["']([^"'\n]+)["']/g
+
+const escaped = (name: string): string => name.replace(/\$/g, "\\$")
+
+/**
+ * Whether a module's own text in test/, test/gates.ts aside, may run a test differently with
+ * TUTTI_SLOW=1: a call of the gates' slow (slow.test, slow.describe, or a property of the name it
+ * imports slow as), or the variable named, as a test that sets it for a script it runs does.
+ * Importing slow alone doesn't count: a test that imports it but calls only live runs the same.
+ * Modules outside test/ don't use the gates, and their text (this file's) names them freely.
+ */
+const gatesItself = (file: string, source: string, exists: (file: string) => boolean): boolean => {
+  if (!file.startsWith("test/") || file === gatesModule) return false
+  if (source.includes("TUTTI_SLOW")) return true
+  const calls = [/\bslow\s*\.\s*(?:test|describe)\b/]
+  const fromGates = (specifier: string) => resolveSpecifier(file, specifier, exists) === gatesModule
+  for (const [, names = "", specifier = ""] of source.matchAll(namedImportPattern)) {
+    if (!fromGates(specifier)) continue
+    for (const name of names.split(",")) {
+      const [imported, local = imported] = name.trim().split(/\s+as\s+/)
+      if (imported === "slow" && local !== undefined && local !== "slow") {
+        calls.push(new RegExp(`(?<![\\w$.])${escaped(local)}\\s*\\.`))
+      }
+    }
+  }
+  for (const [, name = "", specifier = ""] of source.matchAll(namespaceImportPattern)) {
+    if (fromGates(specifier))
+      calls.push(new RegExp(`(?<![\\w$.])${escaped(name)}\\s*\\.\\s*slow\\b`))
+  }
+  return calls.some((call) => call.test(source))
+}
+
+/**
+ * The test files that may run differently in a TUTTI_SLOW=1 run (slow-gated), sorted: those whose
+ * text calls the gates' slow or names TUTTI_SLOW (gatesItself), or imports a module that does, at
+ * any depth, as testsFor follows imports. A plain pass stands for the others in a slow run, as they
+ * run the same in both modes.
+ */
+export const slowGated = (
+  sources: ReadonlyMap<string, string>,
+  exists: (file: string) => boolean,
+): ReadonlyArray<string> => {
+  const importers = importersOf(sources, exists)
+  const gated = new Set<string>()
+  const queue = [...sources]
+    .filter(([file, source]) => gatesItself(file, source, exists))
+    .map(([file]) => file)
+  for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
+    if (gated.has(file)) continue
+    gated.add(file)
+    queue.push(...(importers.get(file) ?? []))
+  }
+  return [...gated].filter(isTestFile).sort()
 }
 
 /** A pass of check-own's tests: the tree it ran on, its mode, and the test files that passed. */
@@ -194,14 +261,42 @@ export const standOn = (
   readonly leftOut: number
   readonly passed: ReadonlyArray<string>
 } => {
+  const picked = standOnPasses(selection, [{ since, passed }], all)
+  return { run: picked.run, leftOut: picked.leftOut[0] ?? 0, passed: picked.passed }
+}
+
+/**
+ * standOn on several passes at once: a slow run stands on its mode's pass and on the plain pass's
+ * tests with no slow gate (slowGated), each with the change since its own tree. A test stands where
+ * any pass stands for it; `leftOut` counts, for each pass in turn, the selected tests it stands for
+ * that no earlier one does.
+ */
+export const standOnPasses = (
+  selection: ReadonlyArray<string> | "all",
+  passes: ReadonlyArray<{
+    readonly since: ReadonlyArray<string> | "all"
+    readonly passed: ReadonlyArray<string>
+  }>,
+  all: ReadonlyArray<string>,
+): {
+  readonly run: ReadonlyArray<string> | "all"
+  readonly leftOut: ReadonlyArray<number>
+  readonly passed: ReadonlyArray<string>
+} => {
   const chosen = selection === "all" ? all : selection
-  const touched = new Set(since === "all" ? all : since)
   const present = new Set(all)
-  const stands = new Set(passed.filter((test) => present.has(test) && !touched.has(test)))
+  const stands = new Set<string>()
+  const leftOut = passes.map(({ since, passed }) => {
+    const touched = new Set(since === "all" ? all : since)
+    const before = chosen.filter((test) => stands.has(test)).length
+    for (const test of passed) {
+      if (present.has(test) && !touched.has(test)) stands.add(test)
+    }
+    return chosen.filter((test) => stands.has(test)).length - before
+  })
   const run = chosen.filter((test) => !stands.has(test))
-  const leftOut = chosen.length - run.length
   return {
-    run: leftOut === 0 ? selection : run,
+    run: run.length === chosen.length ? selection : run,
     leftOut,
     passed: [...new Set([...run, ...stands])].sort(),
   }
@@ -320,29 +415,55 @@ const pick = (): void => {
   const gitDir = git(["rev-parse", "--absolute-git-dir"])
   const tree = gitDir === undefined ? undefined : workingTree(gitDir)
   const record = gitDir === undefined ? undefined : readKept(recordFile(gitDir, mode))
-  // A tree git no longer has (pruned) reads as no pass.
-  const since =
-    record === undefined || tree === undefined
-      ? undefined
-      : git(["diff", "--name-only", "--no-renames", record.tree, tree, "--"])
-  let picked: ReturnType<typeof standOn> = {
-    run: selection,
-    leftOut: 0,
-    passed: selection === "all" ? all : selection,
-  }
-  if (record !== undefined && since !== undefined) {
+  // In a slow run, the plain pass stands for the test files with no slow gate too.
+  const plain =
+    gitDir === undefined || mode !== "slow" ? undefined : readKept(recordFile(gitDir, "plain"))
+  // The tests the change since a pass's tree touches; undefined for a tree git no longer has
+  // (pruned), which reads as no pass.
+  const touchedSince = (pass: PassRecord): ReadonlyArray<string> | "all" | undefined => {
+    if (tree === undefined) return undefined
+    const since = git(["diff", "--name-only", "--no-renames", pass.tree, tree, "--"])
+    if (since === undefined) return undefined
     const changed = since.split("\n").filter((file) => file !== "")
-    const touched = changed.some((file) => setupFiles.includes(file))
+    return changed.some((file) => setupFiles.includes(file))
       ? "all"
       : testsFor(changed, sources, isFile)
-    picked = standOn(selection, touched, record.tests, all)
-    if (picked.leftOut > 0) {
-      const running = picked.run === "all" ? all.length : picked.run.length
-      console.log(
-        `check-own: ${picked.leftOut} test file${picked.leftOut === 1 ? "" : "s"} passed at ` +
-          `${record.tree.slice(0, 7)} and nothing since touches them; running ${running || "none"}.`,
-      )
-    }
+  }
+  const passes: Array<{
+    readonly since: ReadonlyArray<string> | "all"
+    readonly passed: ReadonlyArray<string>
+    readonly why: (count: number) => string
+  }> = []
+  const files = (count: number) => `${count} test file${count === 1 ? "" : "s"}`
+  const ownSince = record === undefined ? undefined : touchedSince(record)
+  if (record !== undefined && ownSince !== undefined) {
+    passes.push({
+      since: ownSince,
+      passed: record.tests,
+      why: (count) => `${files(count)} passed at ${record.tree.slice(0, 7)}`,
+    })
+  }
+  const plainSince = plain === undefined ? undefined : touchedSince(plain)
+  if (plain !== undefined && plainSince !== undefined) {
+    const gated = new Set(slowGated(sources, isFile))
+    passes.push({
+      since: plainSince,
+      passed: plain.tests.filter((test) => !gated.has(test)),
+      why: (count) =>
+        `${files(count)} with no slow test passed at ${plain.tree.slice(0, 7)} in a plain run`,
+    })
+  }
+  const picked = standOnPasses(selection, passes, all)
+  const reasons = passes.flatMap(({ why }, at) => {
+    const count = picked.leftOut[at] ?? 0
+    return count > 0 ? [why(count)] : []
+  })
+  if (reasons.length > 0) {
+    const running = picked.run === "all" ? all.length : picked.run.length
+    console.log(
+      `check-own: ${reasons.join(", and ")} and nothing since touches them; ` +
+        `running ${running || "none"}.`,
+    )
   }
   if (gitDir !== undefined && tree !== undefined) {
     writeRecord(recordFile(gitDir, "next"), { tree, mode, tests: picked.passed })
