@@ -39,10 +39,10 @@ export const contextLook = (full: number, theme: Theme): Look | null =>
       ? theme.look("notice")
       : null
 
-/** A share of the window to the whole point: `≈1%`, or `<1%` for one under half a point. */
+/** A share of the window to the whole point: `≈1%`, or `< 1%` for one under half a point. */
 export const shareText = (share: number): string => {
   const points = share * 100
-  return points > 0 && points < 0.5 ? "<1%" : `≈${Math.round(points)}%`
+  return points > 0 && points < 0.5 ? "< 1%" : `≈${Math.round(points)}%`
 }
 
 /** A usage limit's name as the warning says it: `5h window` for the five-hour limit. */

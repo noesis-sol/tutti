@@ -333,11 +333,12 @@ When the run ends, the dashboard closes and the main screen gets:
   `context 126k of 200k` (the figure yellow from 70%, red from 90%), its compactions once it has had
   one, and its memory. On a subscription
   login there are no dollars to spend: line 1 shows instead the ticket's share of your five-hour
-  window, `≈1% (estimate)`, in italic sand. Claude Code reports only the account's window, so tutti
-  estimates it: the window's rise over the run, shared among the workers by what each would cost at
-  API prices. It counts what you use beside the run too. Near a usage limit, the account's figure
-  follows the memory, `⚠ 5h window 92% · resets 14:20`. The view doesn't break the spending down
-  into tokens, model calls or dollars at API prices: the run's summary has its **Spent** line (see
+  window, `≈1% (estimate)`, or `< 1% (estimate)` under half a point, in italic sand. Claude Code
+  reports only the account's window, so tutti estimates it: the window's rise over the run, shared
+  among the workers by what each would cost at API prices. It counts what you use beside the run
+  too. Near a usage limit, the account's figure follows the memory, `⚠ 5h window 92% · resets
+  14:20`. The view doesn't break the spending down into tokens, model calls or dollars at API
+  prices: the run's summary has its **Spent** line (see
   [Running](running.md#the-runs-figures)).
 - **The ticket.** The box holds, under the title and a blank line, the first lines of the ticket's
   description, up to 5. `▾ whole ticket  t` is in its bottom border when the ticket has more than

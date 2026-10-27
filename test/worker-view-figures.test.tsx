@@ -116,7 +116,7 @@ describe("the figures", () => {
     expect((theme.styles.estimate.attributes & TextAttributes.ITALIC) !== 0).toBe(true)
     const plain = segmentsOf(resources(), {}, noColor)
     expect(textOf(plain)).toContain("≈1% (estimate)")
-    expect(shareText(0.004)).toBe("<1%")
+    expect(shareText(0.004)).toBe("< 1%")
     expect(shareText(0)).toBe("≈0%")
     expect(shareText(0.126)).toBe("≈13%")
   })
