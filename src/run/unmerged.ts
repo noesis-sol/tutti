@@ -21,6 +21,7 @@ import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import type { MergeTarget } from "./merge.ts"
 import { info, warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
+import { listedOrShown } from "./ticketReads.ts"
 
 /**
  * The metadata key holding the commit on the base a ticket's branch was cut from (their
@@ -223,17 +224,17 @@ const label = (id: TicketId, options: MergeTarget) =>
  * As the run ends, once its tickets have their last phases: each ticket it took up that is closed
  * in Beads and not merged (short of Done) is labelled `unmerged`, unless it is already; a ticket
  * still in progress isn't, since its worker ends with the run. One that merged in this run and still
- * has the label an earlier run gave it, which its merge couldn't remove, loses it. A ticket bd
- * can't show is passed over.
+ * has the label an earlier run gave it, which its merge couldn't remove, loses it. The tickets are
+ * read with one bd list (listedOrShown); a ticket bd can't give is passed over.
  */
 export const labelAtEnd = (
   options: MergeTarget,
 ): Effect.Effect<void, never, Git | Beads | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
-    const beads = yield* Beads
     const state = yield* (yield* Ledger).current
+    const read = yield* listedOrShown([...state.tickets.keys()])
     for (const entry of state.tickets.values()) {
-      const shown = yield* Effect.result(beads.show(entry.ticket))
+      const shown = yield* Effect.result(read(entry.ticket))
       if (Result.isFailure(shown)) continue
       const issue = shown.success
       const labelled = issue.labels.includes(unmergedLabel)

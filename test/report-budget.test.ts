@@ -23,7 +23,7 @@ import {
   runSections,
   showConcurrency,
 } from "../src/run/report.ts"
-import { Beads, type TicketId } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -242,11 +242,22 @@ describe("the reviewer's input on an overnight run", () => {
     )
   }, 60_000)
 
-  test("runs bd show for several tickets at once, keeping their order", async () => {
+  test("runs bd show for several tickets at once where its bd list fails, keeping their order", async () => {
     let inFlight = 0
     let most = 0
     const parts = await gathered(12, [], (beads) => ({
       ...beads,
+      list: (options) =>
+        options?.ids === undefined
+          ? beads.list(options)
+          : Effect.fail(
+              new BeadsFailed({
+                command: "bd list --id",
+                exitCode: 1,
+                stderr: "database is locked",
+                noSuchIssue: false,
+              }),
+            ),
       show: (id) =>
         Effect.gen(function* () {
           inFlight += 1

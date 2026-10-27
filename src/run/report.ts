@@ -39,6 +39,7 @@ import { clock, clockFrom, reportName, span } from "./localTime.ts"
 import * as log from "./log.ts"
 import { causeWhy, filed, type Kept, type Line, Log, line, Tag, tagged } from "./log.ts"
 import { phaseFacts, type ReportSection, type TicketPhase, WaitFor } from "./phase.ts"
+import { listedOrShown } from "./ticketReads.ts"
 
 /** Where the reports go, below the repository. */
 export const reportsDir = ".tutti/reports"
@@ -52,7 +53,10 @@ export const closeReasonWidth = 400
  */
 export const notesWidth = 1500
 
-/** How many bd show calls the report runs at once, for the tickets closed and set aside. */
+/**
+ * How many bd show calls the report runs at once, for the tickets closed and set aside that its one
+ * bd list didn't give.
+ */
 export const showConcurrency = 4
 
 /** What the run tells the report of itself as it ends. */
@@ -455,8 +459,14 @@ export const gather = (
       Effect.catch((error) => Effect.succeed(`(git log failed: ${failure(error)})`)),
     )
 
+    // One bd list for the tickets reported on; a show for one it didn't give (listedOrShown).
+    const read = yield* listedOrShown(
+      entries
+        .filter((entry) => inSection("closed")(entry) || inSection("setAside")(entry))
+        .map((entry) => entry.ticket),
+    )
     const shown = (entry: Entry, describe: (issue: Issue) => string) =>
-      beads.show(entry.ticket).pipe(
+      read(entry.ticket).pipe(
         Effect.map(describe),
         Effect.catch((error) =>
           Effect.succeed(`${entry.ticket}: ${entry.title}\n(bd show failed: ${failure(error)})`),
