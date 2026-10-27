@@ -1583,7 +1583,7 @@ A scheme is a JSON file defined with Effect Schema, with a published JSON Schema
 ```
 
 - **`name`** matches the file's name. **`description`** is optional.
-- **`extends`** names another scheme, such as `orchestra`. Every role the file leaves out comes from that scheme, so a scheme can change one colour and keep the rest. Without `extends`, the file must give every role.
+- **`extends`** names another scheme, such as `orchestra`. Every role the file leaves out comes from that scheme, so a scheme can change one colour and keep the rest. Without `extends`, the file must give every role but those added since schemes were first written, which come from `orchestra` where it leaves them out, so that an older scheme still loads: so far only `quiet` (tutti-04sn).
 - **`colours`** maps roles to values. A value is one colour for both variants, or `{ "light": …, "dark": … }`. A colour is:
   - **`#RRGGBB`**: exact. On a 256-colour terminal it becomes the nearest of the 256.
   - **`ansi:N`**, with N from 0 to 255: a palette slot. Slots 0 to 15 follow the terminal's own theme. The `orchestra` scheme avoids those, but a scheme that wants to follow the terminal's theme can use them. Slots 16 to 255 are the standard cube and greys.
