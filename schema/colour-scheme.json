@@ -55,6 +55,9 @@
         "emphasis": {
           "$ref": "#/$defs/RoleColour"
         },
+        "quiet": {
+          "$ref": "#/$defs/RoleColour"
+        },
         "estimate": {
           "$ref": "#/$defs/RoleColour"
         },
@@ -171,7 +174,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "roles to colours; without extends, every role"
+      "description": "roles to colours; without extends, every role but quiet, which comes from orchestra"
     }
   },
   "required": [

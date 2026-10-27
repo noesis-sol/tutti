@@ -14,6 +14,7 @@
     "toMerge": { "light": "#1D4ED8", "dark": "#60A5FA" },
     "merging": { "light": "#BE185D", "dark": "#F472B6" },
     "emphasis": { "light": "#374151", "dark": "#E5E7EB" },
+    "quiet": { "light": "#6B7280", "dark": "#9CA3AF" },
     "estimate": { "light": "#8A6D3B", "dark": "#D4B483" },
     "pill": "#7D56F4",
     "pillText": "#FAFAFA",

@@ -42,18 +42,19 @@ const value: ShellValue = {
 }
 
 describe("the title line's usage gauge", () => {
-  test("is one faint span of ten cells, ━ for each filled tenth and ─ for each empty one, one column each", async () => {
+  test("is one quiet span of ten cells, ━ for each filled tenth and ─ for each empty one, one column each", async () => {
     const frame = await renderFrame(<Root value={value} />, { width: 120, height: 30 })
     const line = frame.chars.split("\n").find((each) => each.includes("Current usage"))
     expect(line).toContain("Current usage ━━━━──────  41% · This week 12%")
     // The capture joins neighbouring cells of one look: the gauge is whole in the span of its label,
-    // faint as it is, and no other span holds a cell of it.
+    // in the quiet grey as it is, not faint, and no other span holds a cell of it.
     const spans = frame.spans.lines
       .flatMap((each) => each.spans)
       .filter((span) => span.text.includes("━"))
     expect(spans.map((span) => span.text)).toEqual(["Current usage ━━━━──────"])
     const [gauge] = spans
-    expect((gauge?.attributes ?? 0) & TextAttributes.DIM).toBe(TextAttributes.DIM)
+    expect((gauge?.attributes ?? 0) & TextAttributes.DIM).toBe(0)
+    expect(gauge?.fg?.toInts()).toEqual([156, 163, 175, 255])
     // Each cell one column: the span is as wide as it has characters.
     expect(gauge?.width).toBe([...(gauge?.text ?? "")].length)
     const at = line?.indexOf("━━━━──────") ?? -1

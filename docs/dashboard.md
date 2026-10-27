@@ -57,11 +57,11 @@ recommended options for you (see [Running](running.md#answering-for-you-while-yo
 
 On the right, the banners:
 
-- **The account's windows**, faint, all the time on a subscription login, once a worker's session
-  has reported them: `Current usage ━━────────  17% · This week 41%`, how much of the five-hour
-  and the weekly limits the account has used, whoever used it, in Claude Desktop's words. A model's
-  own weekly limit names the model, `This week (Opus)`. A window whose reset has passed is left
-  out until the next report.
+- **The account's windows**, in a quiet grey (the `quiet` role), all the time on a subscription
+  login, once a worker's session has reported them: `Current usage ━━────────  17% · This week 41%`,
+  how much of the five-hour and the weekly limits the account has used, whoever used it, in Claude
+  Desktop's words. A model's own weekly limit names the model, `This week (Opus)`. A window whose
+  reset has passed is left out until the next report.
 - **Usage**, in the windows' place once the account's usage passes its warning level:
   `usage 85% of the five-hour limit · resets 14:05`, with `· overage` while overage is in use. It
   turns bold at 100%.

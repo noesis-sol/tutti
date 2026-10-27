@@ -33,6 +33,7 @@ Each role has a variant for light backgrounds and one for dark ones. In the `orc
 | `toMerge` | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`) |
 | `emphasis` | `#374151` | `#E5E7EB` | keys to press, the `Tickets` label, tool names, `steered` |
+| `quiet` | `#6B7280` | `#9CA3AF` | secondary text a step above faint: the title line's account windows; `default` draws it faint |
 | `estimate` | `#8A6D3B` | `#D4B483` | estimates, in italics beside `(estimate)`: the summary's dollars at API prices on a subscription login |
 | `pill` | `#7D56F4` | `#7D56F4` | the title pill's background, and the frame of `tutti init`'s **Next** box |
 | `pillText` | `#FAFAFA` | `#FAFAFA` | text on the pill |
@@ -143,7 +144,9 @@ four roles of `orchestra` and keeps the rest:
 - **`name`** must match the file's name, without `.json`.
 - **`description`** is optional.
 - **`extends`** names another scheme, such as `orchestra`. Every role the file leaves out comes from
-  that scheme, which may extend another in turn. Without `extends`, the file must give every role.
+  that scheme, which may extend another in turn. Without `extends`, the file must give every role
+  but those added since schemes were first written, which come from `orchestra` where it leaves
+  them out, so that an older scheme still loads: so far only `quiet`.
 - **`colours`** maps roles to colours. A value is one colour for both variants, or
   `{ "light": …, "dark": … }` with both. A colour is one of:
   - `#RRGGBB`: an exact colour. On a 256-colour terminal it becomes the nearest of the 256.
@@ -172,7 +175,7 @@ The reasons:
 - a key isn't one the format knows, a role is unknown, or a colour can't be read
   (`'#12345' is not a colour: use #RRGGBB, ansi:N (0–255) or default`);
 - `name` doesn't match the file's name;
-- roles are missing and there's no `extends`;
+- roles are missing and there's no `extends` (`quiet`, added later, may be left out);
 - `extends` names a scheme that isn't found or can't be used, or loops back
   (`'extends' loops back: dusk → dawn → dusk`).
 

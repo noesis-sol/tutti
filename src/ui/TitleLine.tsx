@@ -83,7 +83,7 @@ export const gauge = (utilization: number): string => {
 }
 
 /**
- * The account's windows at `now`, faint: `Current usage ━━────────  17% · This week 41%` in full,
+ * The account's windows at `now`, `quiet`: `Current usage ━━────────  17% · This week 41%` in full,
  * the first with its gauge, two spaces before its figure; in a narrow pane the tighter window first
  * and no gauge, `This week 41% · Current usage 17%`, then the tighter alone. A window whose reset
  * has passed is left out: its figure is gone with it, until an event gives the next.
@@ -94,7 +94,7 @@ const windowSegments = (
   now: number,
   form: Form,
 ): Segments => {
-  const { dim } = theme.styles
+  const { quiet } = theme.styles
   const current = all.filter((window) => window.resetsAt === null || window.resetsAt > now)
   const percent = (window: UsageWindow) => `${Math.round(window.utilization * 100)}%`
   const figure = (window: UsageWindow) => `${windowLabel(window.name)} ${percent(window)}`
@@ -108,18 +108,19 @@ const windowSegments = (
   const head =
     form === "full"
       ? [
-          seg(`${windowLabel(first.name)} `, dim),
-          seg(gauge(first.utilization), dim),
+          seg(`${windowLabel(first.name)} `, quiet),
+          seg(gauge(first.utilization), quiet),
           seg("  "),
-          seg(percent(first), dim),
+          seg(percent(first), quiet),
         ]
-      : [seg(figure(first), dim)]
-  return [...head, ...rest.flatMap((window) => [seg(" · ", dim), seg(figure(window), dim)])]
+      : [seg(figure(first), quiet)]
+  return [...head, ...rest.flatMap((window) => [seg(" · ", quiet), seg(figure(window), quiet)])]
 }
 
 /**
  * A banner in its style: the usage `notice`, bold once the limit is reached, as the usage limit's
- * hold is; the account's windows faint; any other hold, such as `BLOCKED`, `needsYou` bold.
+ * hold is; the account's windows `quiet`, a grey a step above faint; any other hold, such as
+ * `BLOCKED`, `needsYou` bold.
  */
 const bannerSegments = (banner: Banner, theme: Theme, now: number, form: Form): Segments => {
   if (banner._tag === "Windows") return windowSegments(banner.windows, theme, now, form)

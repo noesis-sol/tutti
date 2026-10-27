@@ -28,6 +28,7 @@ export const roles = [
   "toMerge",
   "merging",
   "emphasis",
+  "quiet",
   "estimate",
   "pill",
   "pillText",
@@ -148,7 +149,8 @@ export const ColourScheme = Schema.Struct({
     }),
   ),
   colours: Colours.annotate({
-    description: "roles to colours; without extends, every role",
+    description:
+      "roles to colours; without extends, every role but quiet, which comes from orchestra",
   }),
 }).annotate({ title: "tutti colour scheme" })
 
@@ -196,8 +198,21 @@ const variantOf = (value: string | { readonly light: string; readonly dark: stri
     ? { light: parsed(value), dark: parsed(value) }
     : { light: parsed(value.light), dark: parsed(value.dark) }
 
-/** The scheme `file` gives, over `base`'s colours for the roles it leaves out. */
-const over = (file: ColourScheme, base: Scheme | null): Result.Result<Scheme, string> => {
+/**
+ * The roles added since schemes were first written, which a file without `extends` may leave out:
+ * it takes orchestra's colour for them, so that no scheme written before one becomes unusable.
+ */
+const addedRoles: ReadonlySet<Role> = new Set<Role>(["quiet"])
+
+/**
+ * The scheme `file` gives, over `base`'s colours for the roles it leaves out; without a base, over
+ * `added`'s for the roles added since schemes were first written.
+ */
+const over = (
+  file: ColourScheme,
+  base: Scheme | null,
+  added: Scheme | null = null,
+): Result.Result<Scheme, string> => {
   const colours: Partial<Record<Role, Variant>> = {}
   const from: Partial<Record<Role, string>> = {}
   const missing: Array<Role> = []
@@ -209,6 +224,9 @@ const over = (file: ColourScheme, base: Scheme | null): Result.Result<Scheme, st
     } else if (base !== null) {
       colours[role] = base.colours[role]
       from[role] = base.from[role]
+    } else if (added !== null && addedRoles.has(role)) {
+      colours[role] = added.colours[role]
+      from[role] = added.from[role]
     } else missing.push(role)
   }
   if (missing.length > 0) {
@@ -332,7 +350,7 @@ export const loadScheme = (
         if (Result.isFailure(found)) return Result.fail(found.failure)
         const file = found.success
         const base = file.extends
-        if (base === undefined) return Result.mapError(over(file, null), unusable)
+        if (base === undefined) return Result.mapError(over(file, null, orchestra), unusable)
         const seen = [...chain, name]
         if (seen.includes(base)) {
           return Result.fail(unusable(`'extends' loops back: ${[...seen, base].join(" → ")}`))
@@ -532,6 +550,7 @@ export const styleNames = [
   "key",
   "tickets",
   "dim",
+  "quiet",
   "title",
   "keepAwake",
   "autoAnswer",
@@ -584,6 +603,7 @@ export const styleSpecs: { readonly [S in StyleName]: StyleSpec } = {
   key: spec("emphasis", { bold: true }),
   tickets: spec("emphasis", { bold: true }),
   dim: spec(null, { faint: true }),
+  quiet: spec("quiet", { faint: true }),
   title: spec("pillText", { bg: "pill", bold: true }),
   keepAwake: spec("keepAwakeText", { bg: "keepAwake" }),
   autoAnswer: spec("autoAnswerText", { bg: "autoAnswer" }),
