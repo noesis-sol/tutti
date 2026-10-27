@@ -23,6 +23,7 @@ import type { QuestionNews } from "../run/questionNews.ts"
 import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
+import type { InterviewValue } from "./InterviewView.tsx"
 import type { UrlOpener } from "./openUrl.ts"
 import { frameInterval, spinnerFrames } from "./spinner.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -102,6 +103,14 @@ export interface ShellValue {
   readonly filings?: External<ReadonlyArray<TicketFiling>>
   /** What came of reading and answering the questions on the dashboard; none when left out. */
   readonly questions?: External<ReadonlyArray<QuestionNews>>
+  /** The question talked through from the dashboard, drawn in place of the screen; none when left out. */
+  readonly talk?: External<TalkShown | null>
+}
+
+/** A question's talk as the dashboard draws it (§ 4.11): its Interview view's shell and value. */
+export interface TalkShown {
+  readonly shell: ShellValue
+  readonly interview: InterviewValue
 }
 
 export const ShellContext = createContext<ShellValue | null>(null)
@@ -169,6 +178,11 @@ export const useClock = (): (() => number) => useShell().now ?? Date.now
 
 /** Which screen the run shows: the dashboard, a worker's view, the interview. */
 export const useScreen = (): Screen => useExternal(useShell().screen)
+
+const noTalk = external<TalkShown | null>(null)
+
+/** The talk the dashboard draws in place of its screen, or null. */
+export const useTalk = (): TalkShown | null => useExternal(useShell().talk ?? noTalk)
 
 /** The theme, in the appearance the terminal has now. */
 export const useTheme = (): Theme => {

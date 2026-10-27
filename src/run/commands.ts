@@ -48,6 +48,18 @@ export type UiCommand = Data.TaggedEnum<{
    * the screen's question news says how it went by it.
    */
   AnswerQuestion: { readonly question: TicketId; readonly answer: string; readonly uuid: string }
+  /**
+   * Talk the question `question`, titled `title`, through in a session shown in place of the
+   * screen (answerTalk.ts, § 4.11), under the uuid the box drew; its answer is recorded as
+   * AnswerQuestion's. The screen's question news says how it ended by it, with `next`, the question
+   * the box would have put after it, for the box to go on from.
+   */
+  TalkQuestion: {
+    readonly question: TicketId
+    readonly title: string
+    readonly next: TicketId | null
+    readonly uuid: string
+  }
   /** Stop after the current tickets: wind down. */
   Drain: Record<never, never>
   /** Take tickets again. */
@@ -139,7 +151,8 @@ export const resolve = (command: UiCommand, current: Current): Result.Result<Res
       // A ticket the run no longer has is left out as the ledger keeps the issue.
       return Result.succeed({ command, ticket: command.ticket })
     case "AnswerQuestion":
-      // bd says whether the question is still open (answerQuestion.ts).
+    case "TalkQuestion":
+      // bd says whether the question is still open (answerQuestion.ts, answerTalk.ts).
       return Result.succeed({ command, ticket: command.question })
     case "ReadQuestions":
       return Result.succeed({ command, ticket: null })

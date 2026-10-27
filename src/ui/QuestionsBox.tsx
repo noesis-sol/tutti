@@ -8,14 +8,20 @@
 // it with bd (answerQuestion.ts: the decision in each blocked ticket's design, then bd human
 // respond), and a toast says how it went, the box open or not (QuestionToasts). Esc closes the box,
 // leaving the rest open; the keys are bound in the box layer, Esc from before the box opens.
+//
+// Talk it through (tutti-i0sz, § 4.11) closes the box and offers TalkQuestion: the run shows the
+// talk in place of the screen (App.tsx) and records the answer it gives as any other. Once the run
+// says the talk is over (Talked), TalkReturn opens the box again: at the next question once it was
+// answered, at the same one otherwise; a toast says why a talk that wasn't left gave no answer.
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
+import { talkLeftWhy } from "../agent/answerTalk.ts"
 import { UiCommand } from "../run/commands.ts"
 import type { QuestionNews } from "../run/questionNews.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { type Command, useCommands } from "./keyCommands.ts"
-import { useInput } from "./keys.ts"
+import { Box, useInput } from "./keys.ts"
 import { seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { type Closing, OpenQuestionForm } from "./OpenQuestion.tsx"
@@ -52,7 +58,43 @@ export const newsToast = (
         text: sanitizeLine(`couldn't record the answer to ${news.question}: ${news.why}`),
         failure: true,
       }
+    case "Talked":
+      // An answer has its own toast; a talk you left, none.
+      return news.answered || news.why === null || news.why === talkLeftWhy
+        ? null
+        : {
+            text: sanitizeLine(
+              `the talk about ${news.question} ended without an answer: ${news.why}`,
+            ),
+            failure: true,
+          }
   }
+}
+
+/**
+ * Where the box opens again once the talk `news` says is over: the question after it once it was
+ * answered (none: the box stays closed), the same one otherwise; null for other news.
+ */
+export const returnTo = (news: QuestionNews): { readonly first: TicketId } | null => {
+  if (news._tag !== "Talked") return null
+  if (!news.answered) return { first: news.question }
+  return news.next === null ? null : { first: news.next }
+}
+
+/** Opens the box again as each talk from it is over (returnTo), unless another box is open. */
+export const TalkReturn = () => {
+  const news = useQuestionNews()
+  const { box } = useInput()
+  const seen = useRef(new Set<QuestionNews>())
+  useEffect(() => {
+    for (const item of news) {
+      if (seen.current.has(item)) continue
+      seen.current.add(item)
+      const to = returnTo(item)
+      if (to !== null && box.get() === null) box.set(Box.Questions(to))
+    }
+  }, [news, box])
+  return null
 }
 
 /**
@@ -128,6 +170,18 @@ export const QuestionsBox = ({ first }: { readonly first?: TicketId | undefined 
   const question = questions?.[at]
   if (questions === undefined || question === undefined) return null
   const reply = (given: Reply) => {
+    if (given._tag === "Talk") {
+      // The talk takes the screen; TalkReturn opens the box again once it is over.
+      command(
+        UiCommand.TalkQuestion({
+          question: question.id,
+          title: question.title,
+          next: questions[at + 1]?.id ?? null,
+          uuid: crypto.randomUUID(),
+        }),
+      )
+      return close()
+    }
     if (given._tag === "Answer") {
       command(
         UiCommand.AnswerQuestion({
@@ -160,6 +214,7 @@ export const QuestionsBox = ({ first }: { readonly first?: TicketId | undefined 
         cancel={close}
         bind={useBoxCommands}
         closing={dashboardClosing}
+        talk
       />
     </box>
   )

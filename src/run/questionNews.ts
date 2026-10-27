@@ -5,10 +5,22 @@
 // screen's other commands not waiting on bd, and puts what came of it in the screen's question
 // news under the uuid the box drew: the box shows the questions read, and the toasts say how each
 // answer went (QuestionsBox.tsx). The log has a line for each answer, recorded or not.
+//
+// Talk it through in the box offers TalkQuestion (tutti-i0sz): the run talks the question through
+// in a session shown in place of the screen (answerTalk.ts's talkQuestion, in the screen's talk
+// slot), records the answer it gives as AnswerQuestion does, and then says it is over in the news
+// (Talked), with the question the box goes on from: the next once answered, else the same.
 import { Data, Effect, Result, SubscriptionRef } from "effect"
+import type { AgentHost } from "../agent/AgentHost.ts"
+import type { Attention } from "../agent/Attention.ts"
+import { TalkEnd } from "../agent/answerTalk.ts"
+import type { Transcripts } from "../agent/Transcripts.ts"
+import type { AppConfig } from "../cli/AppConfig.ts"
 import { type Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
 import { recordAnswer, recordWhy } from "./answerQuestion.ts"
+import { inSlot, talkQuestion } from "./answerTalk.ts"
+import type { InterviewInputs } from "./interview.ts"
 import { Log, line } from "./log.ts"
 import { openQuestions } from "./overnightQuestions.ts"
 
@@ -25,6 +37,17 @@ export type QuestionNews = Data.TaggedEnum<{
     readonly decided: ReadonlyArray<TicketId>
   }
   NotAnswered: { readonly uuid: string; readonly question: TicketId; readonly why: string }
+  /**
+   * A talk is over, its answer recorded if it gave one (Answered or NotAnswered came first): `why`
+   * it gave none, or null; `next`, the question the box goes on from.
+   */
+  Talked: {
+    readonly uuid: string
+    readonly question: TicketId
+    readonly answered: boolean
+    readonly why: string | null
+    readonly next: TicketId | null
+  }
 }>
 
 export const QuestionNews = Data.taggedEnum<QuestionNews>()
@@ -71,4 +94,44 @@ export const answerQuestion = (
     const { title, decided } = recorded.success
     yield* logs.write(line`answered ${question} (${title}) on the dashboard: ${answer}`)
     yield* added(news, QuestionNews.Answered({ uuid, question, title, decided }))
+  })
+
+/** Why a talk didn't start while another is shown. */
+export const talkingAlready = "another talk is going on"
+
+/**
+ * Talks `request.question` through, shown in `slot` (the screen's talk slot), records the answer it
+ * gives as answerQuestion does, then puts Talked in `news` under `request.uuid`. Never fails.
+ */
+export const talkThrough = (
+  request: {
+    readonly question: TicketId
+    readonly title: string
+    readonly next: TicketId | null
+    readonly uuid: string
+  },
+  news: SubscriptionRef.SubscriptionRef<ReadonlyArray<QuestionNews>>,
+  slot: SubscriptionRef.SubscriptionRef<InterviewInputs | null>,
+): Effect.Effect<void, never, AgentHost | AppConfig | Attention | Beads | Log | Transcripts> =>
+  Effect.gen(function* () {
+    const logs = yield* Log
+    const { question, uuid, next } = request
+    const ended =
+      (yield* SubscriptionRef.get(slot)) === null
+        ? yield* talkQuestion({ id: question, title: request.title }, inSlot(slot))
+        : TalkEnd.Ended({ why: talkingAlready })
+    if (ended._tag === "Answered") {
+      yield* answerQuestion({ question, answer: ended.answer, uuid }, news)
+      return yield* added(
+        news,
+        QuestionNews.Talked({ uuid, question, answered: true, why: null, next }),
+      )
+    }
+    yield* logs.write(
+      line`the talk about ${question} on the dashboard ended without an answer: ${ended.why}`,
+    )
+    yield* added(
+      news,
+      QuestionNews.Talked({ uuid, question, answered: false, why: ended.why, next }),
+    )
   })

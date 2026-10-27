@@ -12,13 +12,15 @@
 // after the end (a hand-back merged, a worker steered, after the summary).
 import { Effect, Queue, Ref, Result, Semaphore, Stream, SubscriptionRef } from "effect"
 import { Attention } from "../agent/Attention.ts"
+import type { Transcripts } from "../agent/Transcripts.ts"
+import type { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { resolve, type UiCommand } from "./commands.ts"
 import { hear } from "./drain.ts"
 import { fileTicket } from "./fileTicket.ts"
 import { Ledger } from "./ledger.ts"
 import type { MergeQueue } from "./mergequeue.ts"
-import { answerQuestion, readQuestions } from "./questionNews.ts"
+import { answerQuestion, readQuestions, talkThrough } from "./questionNews.ts"
 import { fromDashboard, type QuitRequest } from "./quit.ts"
 import { Screen, type ScreenInputs } from "./screen.ts"
 import { handBackNow, interrupt, releaseAndHandOver, type SteerEnv } from "./steer.ts"
@@ -71,9 +73,9 @@ export const make = (options: {
   readonly repo: string
   readonly base: string
   readonly scope?: TicketId | null
-}): Effect.Effect<ScreenCommands, never, SteerEnv | Attention | Beads> =>
+}): Effect.Effect<ScreenCommands, never, SteerEnv | Attention | Beads | AppConfig | Transcripts> =>
   Effect.gen(function* () {
-    const context = yield* Effect.context<SteerEnv | Attention | Beads>()
+    const context = yield* Effect.context<SteerEnv | Attention | Beads | AppConfig | Transcripts>()
     const attention = yield* Attention
     const ledger = yield* Ledger
     const ending = yield* Ref.make(false)
@@ -94,6 +96,7 @@ export const make = (options: {
             case "ReadTicket":
             case "ReadQuestions":
             case "AnswerQuestion":
+            case "TalkQuestion":
               return
             case "Answer":
               return yield* attention
@@ -169,6 +172,18 @@ export const make = (options: {
               return yield* Effect.asVoid(
                 watch(
                   answerQuestion(command, screen.questions).pipe(
+                    Effect.provideContext(context),
+                    Effect.andThen(wakeUp),
+                  ),
+                ),
+              )
+            case "TalkQuestion":
+              // A session in a fiber of its own, shown in place of the screen while it goes; the
+              // answer it gives wakes the run as AnswerQuestion's does. Only the dashboard has a slot.
+              if (screen.talk === undefined) return
+              return yield* Effect.asVoid(
+                watch(
+                  talkThrough(command, screen.questions, screen.talk).pipe(
                     Effect.provideContext(context),
                     Effect.andThen(wakeUp),
                   ),

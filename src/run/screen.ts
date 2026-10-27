@@ -11,11 +11,13 @@
 import { Data, Duration, Effect, Option, type Scope, Stream, SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
+import { interviewWorker } from "../agent/interview.ts"
 import { type LatestAction, Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { type Commands, makeCommands } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
+import type { InterviewInputs } from "./interview.ts"
 import { keepsWorker, Ledger } from "./ledger.ts"
 import type { QuestionNews } from "./questionNews.ts"
 import { make as makeView, type RunView, type Sources, type Status } from "./runView.ts"
@@ -45,6 +47,12 @@ export interface ScreenInputs {
   readonly filings: SubscriptionRef.SubscriptionRef<ReadonlyArray<TicketFiling>>
   /** What came of reading and answering the questions on the dashboard, by the box's uuid. */
   readonly questions: SubscriptionRef.SubscriptionRef<ReadonlyArray<QuestionNews>>
+  /**
+   * The question talked through from the dashboard's questions box, shown in place of the screen
+   * while it goes (answerTalk.ts, § 4.11): its Interview view's inputs, or null. The dashboard's
+   * alone: the Interview view has none.
+   */
+  readonly talk?: SubscriptionRef.SubscriptionRef<InterviewInputs | null>
 }
 
 /** A dashboard: shows `inputs` until the scope closes. */
@@ -125,7 +133,8 @@ export const latestActions: Effect.Effect<
 
 /**
  * RunView's sources in a run: the ledger, the workers' states and latest actions, the open
- * requests, `status`.
+ * requests, `status`. A question's talk's requests are its own view's (answerTalk.ts), not the
+ * dashboard's.
  */
 export const sources = (
   status: Stream.Stream<Status>,
@@ -136,7 +145,9 @@ export const sources = (
     return {
       ledger: ledger.changes,
       workers: yield* workerStates,
-      requests: attention.open,
+      requests: attention.open.pipe(
+        Stream.map((open) => open.filter((request) => request.ticket !== interviewWorker)),
+      ),
       status,
       actions: yield* latestActions,
     }
@@ -145,8 +156,8 @@ export const sources = (
 /**
  * Shows `dashboard` for the rest of the scope: RunView projected from the run's sources, `status`
  * now and on each change among them, the screen at the dashboard, an empty command queue, the
- * transcripts, no hand-backs waiting yet (the run follows its merge queue's into them), and no
- * filings or question news.
+ * transcripts, no hand-backs waiting yet (the run follows its merge queue's into them), no
+ * filings or question news, and no talk.
  */
 export const show = (
   dashboard: Dashboard,
@@ -161,6 +172,7 @@ export const show = (
       handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
       filings: yield* SubscriptionRef.make<ReadonlyArray<TicketFiling>>([]),
       questions: yield* SubscriptionRef.make<ReadonlyArray<QuestionNews>>([]),
+      talk: yield* SubscriptionRef.make<InterviewInputs | null>(null),
     }
     yield* dashboard(inputs)
     return inputs

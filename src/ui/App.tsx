@@ -6,11 +6,13 @@
 // and the hand-backs waiting for their notices, and mounts the tree into the renderer until the
 // run's scope closes.
 // interviewScreen() is the Interview view's (src/run/interview.ts), mounted the same way, with the
-// description and what file_feature has filed beside it.
+// description and what file_feature has filed beside it. A question talked through from the
+// dashboard (src/run/answerTalk.ts) is put in the screen's talk slot: the dashboard bridges it as
+// interviewScreen does its inputs, and App draws its Interview view in place of the screen.
 import { createRoot } from "@opentui/react"
-import { Effect } from "effect"
+import { Effect, Exit, Scope, Stream, SubscriptionRef } from "effect"
 import type { ReactNode } from "react"
-import type { InterviewScreen } from "../run/interview.ts"
+import type { InterviewInputs, InterviewScreen } from "../run/interview.ts"
 import type { Dashboard as RunDashboard, ScreenInputs } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
 import { Dashboard } from "./Dashboard.tsx"
@@ -22,12 +24,31 @@ import type { Shell } from "./renderer.ts"
 import type { Timer } from "./Toasts.tsx"
 import type { Appearance, Theme } from "./theme.ts"
 import { transcriptFeed } from "./transcriptItems.ts"
-import { bridge, ShellContext, type ShellValue, useScreen } from "./useRunView.ts"
+import {
+  bridge,
+  type External,
+  external,
+  ShellContext,
+  type ShellValue,
+  type TalkShown,
+  useScreen,
+  useTalk,
+} from "./useRunView.ts"
 import { WorkerView } from "./WorkerView.tsx"
 
-/** The screen the run shows now. */
+/** The screen the run shows now, or the question talked through from the dashboard. */
 export const App = () => {
   const screen = useScreen()
+  const talk = useTalk()
+  if (talk !== null) {
+    return (
+      <ShellContext.Provider value={talk.shell}>
+        <InterviewContext.Provider value={talk.interview}>
+          <InterviewView />
+        </InterviewContext.Provider>
+      </ShellContext.Provider>
+    )
+  }
   switch (screen._tag) {
     case "Dashboard":
       return <Dashboard />
@@ -88,6 +109,57 @@ const shellValue = (
     } satisfies ShellValue
   })
 
+/** The Interview view's value over `inputs`, bridged for the scope's life. */
+const interviewValueOf = (inputs: InterviewInputs) =>
+  Effect.gen(function* () {
+    return {
+      description: inputs.description,
+      filing: yield* bridge(inputs.filing),
+      ...(inputs.filed === undefined ? {} : { filed: yield* bridge(inputs.filed) }),
+      ...(inputs.leaveQuestion === undefined ? {} : { leaveQuestion: inputs.leaveQuestion }),
+      ...(inputs.leaveAbout === undefined ? {} : { leaveAbout: inputs.leaveAbout }),
+      ...(inputs.name === undefined ? {} : { name: inputs.name }),
+    } satisfies InterviewValue
+  })
+
+/**
+ * The talk in `slot`, as the dashboard draws it: each one bridged until the slot changes, then let
+ * go of; null while there is none.
+ */
+const talkFeed = (
+  slot: SubscriptionRef.SubscriptionRef<InterviewInputs | null>,
+  shell: Shell,
+  themeOf: (appearance: Appearance) => Theme,
+  desktop: Desktop,
+) =>
+  Effect.gen(function* () {
+    const store = external<TalkShown | null>(null)
+    let open: Scope.Closeable | null = null
+    const letGo = Effect.suspend(() => {
+      const closing = open
+      open = null
+      return closing === null ? Effect.void : Scope.close(closing, Exit.void)
+    })
+    yield* Effect.addFinalizer(() => letGo)
+    yield* SubscriptionRef.changes(slot).pipe(
+      Stream.runForEach((inputs) =>
+        Effect.gen(function* () {
+          yield* letGo
+          if (inputs === null) return store.set(null)
+          const scope = yield* Scope.make()
+          open = scope
+          const shown = yield* Effect.all({
+            shell: shellValue(inputs, shell, themeOf, desktop),
+            interview: interviewValueOf(inputs),
+          }).pipe(Scope.provide(scope))
+          store.set(shown)
+        }),
+      ),
+      Effect.forkScoped,
+    )
+    return store as External<TalkShown | null>
+  })
+
 /** `node` mounted in `shell`'s renderer until the scope closes. */
 const mount = (shell: Shell, node: ReactNode) =>
   Effect.gen(function* () {
@@ -107,7 +179,11 @@ export const dashboard =
   (inputs) =>
     Effect.gen(function* () {
       const value = yield* shellValue(inputs, shell, themeOf, desktop)
-      yield* mount(shell, <Root value={value} />)
+      const talk =
+        inputs.talk === undefined
+          ? {}
+          : { talk: yield* talkFeed(inputs.talk, shell, themeOf, desktop) }
+      yield* mount(shell, <Root value={{ ...value, ...talk }} />)
     })
 
 /** The Interview view in `shell`'s renderer, as dashboard() shows the dashboard. */
@@ -120,14 +196,7 @@ export const interviewScreen =
   (inputs) =>
     Effect.gen(function* () {
       const value = yield* shellValue(inputs, shell, themeOf, desktop)
-      const interview: InterviewValue = {
-        description: inputs.description,
-        filing: yield* bridge(inputs.filing),
-        ...(inputs.filed === undefined ? {} : { filed: yield* bridge(inputs.filed) }),
-        ...(inputs.leaveQuestion === undefined ? {} : { leaveQuestion: inputs.leaveQuestion }),
-        ...(inputs.leaveAbout === undefined ? {} : { leaveAbout: inputs.leaveAbout }),
-        ...(inputs.name === undefined ? {} : { name: inputs.name }),
-      }
+      const interview = yield* interviewValueOf(inputs)
       yield* mount(
         shell,
         <InterviewContext.Provider value={interview}>

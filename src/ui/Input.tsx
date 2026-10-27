@@ -15,7 +15,7 @@ import { useCopyOnSelect } from "./clipboard.ts"
 import { globalCommands, useCommands } from "./keyCommands.ts"
 import { Box, guardInput, InputContext, type InputState, useInput } from "./keys.ts"
 import { SelectionLook, selectionLookOf } from "./line.tsx"
-import { QuestionsBox, QuestionsKeys, QuestionToasts } from "./QuestionsBox.tsx"
+import { QuestionsBox, QuestionsKeys, QuestionToasts, TalkReturn } from "./QuestionsBox.tsx"
 import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
 import { makeToasts, suspendToast, type Timer, Toasts } from "./Toasts.tsx"
@@ -112,6 +112,7 @@ export const Input = ({
           <AnswerFormKeys />
           <QuestionsKeys />
           <QuestionToasts toasts={input.toasts} />
+          <TalkReturn />
           <AnswerBox />
           <CopyOnSelect input={input} />
           <OpenBox input={input} />

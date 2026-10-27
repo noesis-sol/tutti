@@ -33,6 +33,7 @@ import { talkLeaveAbout, talkLeaveQuestion, talkName, talkQuestion } from "../sr
 import { UiCommand } from "../src/run/commands.ts"
 import type { InterviewInputs } from "../src/run/interview.ts"
 import { openQuestionOf } from "../src/run/overnightQuestions.ts"
+import { QuestionNews, talkingAlready, talkThrough } from "../src/run/questionNews.ts"
 import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import {
   gone as goneStep,
@@ -47,10 +48,10 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
-import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
+import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as memoryGit } from "../src/testing/Git.ts"
-import { layer as logLayer } from "../src/testing/Log.ts"
+import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { openFibers } from "./fibers.ts"
 
@@ -460,5 +461,155 @@ describe("talkQuestion, the run's side", () => {
     expect(ended).toEqual(
       TalkEnd.Ended({ why: "couldn't start: q-2 couldn't be read: q-2 isn't an open question" }),
     )
+  })
+})
+
+describe("talkThrough, the dashboard's talk", () => {
+  const talkInit = init({ mcp_servers: [{ name: serverName, status: "connected", source: "sdk" }] })
+
+  /** The tools the talk's session was started with, once it has been. */
+  const startedTools = Effect.gen(function* () {
+    const recording = yield* Recording
+    for (;;) {
+      const started = (yield* recording.sentTo(interviewWorker)).find((s) => s._tag === "Started")
+      const kind = started?._tag === "Started" ? started.session.kind : undefined
+      if (kind?._tag === "Interview" && kind.breakdown !== undefined) return kind.breakdown.tools
+      yield* Effect.sleep("5 millis")
+    }
+  })
+
+  /**
+   * Talks q-1 through from the dashboard, its session playing `script` (`tools`: the session's,
+   * for a turn that calls give_answer), with `slot` busy when `busy`.
+   */
+  const dashboardTalk = (
+    script: (tools: Deferred.Deferred<TalkTools["tools"]>) => Script,
+    busy = false,
+  ) => {
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-talk-")))
+    const tools = Effect.runSync(Deferred.make<TalkTools["tools"]>())
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        const news = yield* SubscriptionRef.make<ReadonlyArray<QuestionNews>>([])
+        const slot = yield* SubscriptionRef.make<InterviewInputs | null>(
+          busy ? ({} as InterviewInputs) : null,
+        )
+        const shown: Array<InterviewInputs | null> = []
+        yield* SubscriptionRef.changes(slot).pipe(
+          Stream.runForEach((inputs) => Effect.sync(() => shown.push(inputs))),
+          Effect.forkScoped,
+        )
+        yield* startedTools.pipe(
+          Effect.flatMap((found) => Deferred.succeed(tools, found)),
+          Effect.forkScoped,
+        )
+        yield* Effect.yieldNow
+        yield* talkThrough(
+          { question: "q-1" as TicketId, title: "Which flag name?", next: null, uuid: "u-1" },
+          news,
+          slot,
+        )
+        const backlogNow = yield* Backlog
+        return {
+          news: yield* SubscriptionRef.get(news),
+          shown,
+          slot: yield* SubscriptionRef.get(slot),
+          design: (yield* backlogNow.issues).find((issue) => issue.id === "tut-1")?.design,
+          logged: yield* texts,
+        }
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          scriptedHost({ [interviewWorker]: script(tools) }).pipe(
+            Layer.provideMerge(
+              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            ),
+            Layer.provideMerge(
+              Layer.mergeAll(
+                logLayer(),
+                eventsLayer(),
+                configLayer(appConfig({}, repo)),
+                beadsLayer(backlog),
+                memoryGit({ dir: repo, files: {} }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+
+  test("shown in the slot while it goes; its answer recorded, then Talked", async () => {
+    const answer = { answer: "--long-flag" }
+    const value = await dashboardTalk((tools) => [
+      [
+        wait,
+        talkInit,
+        sessionState("running"),
+        ...tool(
+          "mcp__tutti__give_answer",
+          answer,
+          Effect.flatMap(Deferred.await(tools), (found) => {
+            const give = found.find((t) => t.name === "give_answer")
+            if (give === undefined) return Effect.die("no give_answer")
+            return Effect.asVoid(Effect.promise(() => give.handler(answer as never, {})))
+          }),
+        ),
+        result("Decided."),
+        sessionState("idle"),
+      ],
+    ])
+    // The view was put in the slot, then let go of.
+    expect(value.shown.at(1)?.name).toBe(talkName)
+    expect(value.shown.at(1)?.description).toBe("q-1: Which flag name?")
+    expect(value.shown.at(-1)).toBeNull()
+    expect(value.slot).toBeNull()
+    // Recorded as AnswerQuestion is, before the box hears the talk is over.
+    expect(value.design).toContain("Decided (q-1): Which flag name?\n--long-flag")
+    expect(value.news).toEqual([
+      QuestionNews.Answered({
+        uuid: "u-1",
+        question: "q-1" as TicketId,
+        title: "Which flag name?",
+        decided: ["tut-1" as TicketId],
+      }),
+      QuestionNews.Talked({
+        uuid: "u-1",
+        question: "q-1" as TicketId,
+        answered: true,
+        why: null,
+        next: null,
+      }),
+    ])
+  })
+
+  test("a session that goes without an answer says why, the question open", async () => {
+    const value = await dashboardTalk(() => [[wait, talkInit, goneStep("Claude Code exited")]])
+    expect(value.design).not.toContain("Decided")
+    expect(value.news).toEqual([
+      QuestionNews.Talked({
+        uuid: "u-1",
+        question: "q-1" as TicketId,
+        answered: false,
+        why: "its session ended: Claude Code exited",
+        next: null,
+      }),
+    ])
+    expect(value.logged).toContain(
+      "the talk about q-1 on the dashboard ended without an answer: its session ended: Claude Code exited",
+    )
+  })
+
+  test("while another talk is shown, none starts", async () => {
+    const value = await dashboardTalk(() => [], true)
+    expect(value.news).toEqual([
+      QuestionNews.Talked({
+        uuid: "u-1",
+        question: "q-1" as TicketId,
+        answered: false,
+        why: talkingAlready,
+        next: null,
+      }),
+    ])
   })
 })

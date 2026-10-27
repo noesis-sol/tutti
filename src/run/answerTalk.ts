@@ -4,8 +4,10 @@
 // answer goes back to the form, which records it as every other (answerQuestion.ts); a talk left,
 // or whose session ended, before an answer gives none, and the form puts the question again.
 // Leaving before an answer asks `End the talk?`, the question staying open; once give_answer has
-// taken one, leaving asks nothing.
-import { Effect, SubscriptionRef } from "effect"
+// taken one, leaving asks nothing. In the overnight pre-flight the view is mounted in the
+// renderer in the form's place (App.tsx's interviewScreen); on the dashboard it is put in the
+// screen's talk slot (inSlot), which the dashboard draws in place of its screen.
+import { Effect, type Scope, SubscriptionRef } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import type { Attention } from "../agent/Attention.ts"
 import { startAnswerTalk, TalkEnd } from "../agent/answerTalk.ts"
@@ -14,7 +16,7 @@ import type { Transcripts } from "../agent/Transcripts.ts"
 import type { AppConfig } from "../cli/AppConfig.ts"
 import type { Beads } from "../services/Beads.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
-import { type InterviewScreen, inInterviewView } from "./interview.ts"
+import { type InterviewInputs, type InterviewScreen, inInterviewView } from "./interview.ts"
 
 /** What the Interview view's head names a talk by. */
 export const talkName = "Talk"
@@ -32,7 +34,7 @@ export const talkNotStarted = (why: string): TalkEnd =>
  * give_answer took, or why there is none.
  */
 export const talkQuestion = (
-  question: OpenQuestion,
+  question: Pick<OpenQuestion, "id" | "title">,
   screen: InterviewScreen,
 ): Effect.Effect<TalkEnd, never, AgentHost | AppConfig | Beads | Attention | Transcripts> =>
   Effect.gen(function* () {
@@ -58,3 +60,13 @@ export const talkQuestion = (
     // The talk's scope, which its tools' calls end with.
     Effect.scoped,
   )
+
+/** The Interview view put in `slot` while its scope is open: the dashboard draws it there. */
+export const inSlot =
+  (slot: SubscriptionRef.SubscriptionRef<InterviewInputs | null>): InterviewScreen =>
+  (inputs): Effect.Effect<void, never, Scope.Scope> =>
+    Effect.asVoid(
+      Effect.acquireRelease(SubscriptionRef.set(slot, inputs), () =>
+        SubscriptionRef.set(slot, null),
+      ),
+    )

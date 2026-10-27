@@ -9,6 +9,7 @@ import { emptyStatus, type Status } from "../src/run/runView.ts"
 import { make as makeScreenCommands } from "../src/run/screenCommands.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import * as TestAgentHost from "../src/testing/AgentHost.ts"
+import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestAttention from "../src/testing/Attention.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import * as TestLedger from "../src/testing/Ledger.ts"
@@ -22,6 +23,7 @@ const commandsLayer = Layer.mergeAll(
     Layer.provideMerge(Layer.mergeAll(attentionLayer, TestTranscripts.layer())),
   ),
   TestBeads.layer(),
+  TestAppConfig.layer(TestAppConfig.appConfig({}, "/repo")),
 )
 
 /** A holds gate over a fresh status, with how often it woke the run. */
