@@ -427,8 +427,8 @@ a hand-back not done in time is (`MERGE_CONFLICT`, `CHECKS_FAILED`), its notes s
 had done already, the rebase finished or a fix committed, is taken and checked. A question that is `maintainer_only`, or has no options, waits for you as
 in any run, and the run goes on without its ticket. What makes carrying on unsafe, or would only
 fail again, still stops an overnight run: `DIRTY_TREE`, `GIT_FAILED`, `MERGE_FAILED`,
-`ENVIRONMENT`, `REQUIREMENTS_MISSING`, `BEADS_FAILED`, `SETUP_PROBLEM`, `PANIC`, and the usage
-limit held past `--usage-limit-wait`.
+`ENVIRONMENT`, `REQUIREMENTS_MISSING`, `BEADS_FAILED`, `SETUP_PROBLEM`, `LOGIN`, `PANIC`, and the
+usage limit held past `--usage-limit-wait`.
 
 ### One ticket and its subtickets
 
@@ -949,6 +949,12 @@ An [overnight run](#overnight) sets the ticket aside for these three instead, an
 - **`REQUIREMENTS_MISSING`**: what the project's requires list names is missing as the run starts,
   or once a merge has changed the list; the run ends at once, or once the running tickets finish,
   exit 2 ([above](#starting-a-run)).
+- **`LOGIN`**: a worker's turn was refused for Claude's login (an OAuth session that expired and
+  couldn't be refreshed), which the startup check can't see, as the account still reads. The run
+  stops as a quit does, without waiting for the running tickets: their workers are interrupted and
+  their sessions kept, no ticket is deferred or triaged, and there is no report; exit 2. Log in again
+  (`claude /login`, or `tutti login`) and start tutti again: it resumes them, telling the refused one
+  again what its turn was to tell it.
 
 **Winding down yourself.** `s` in the dashboard, then `y`, or `kill -USR1 <pid>`: no new tickets, the
 running ones finish and merge, and the run ends `DRAINED`, exit 0, with the full check and the report
@@ -1113,7 +1119,7 @@ same lines, without colour, in the summary at the end of its log.
 | Code | Meaning |
 |---|---|
 | 0 | the run ended by itself: nothing left (`READY_EMPTY`), the limit reached (`LIMIT_REACHED`), or wound down as asked (`DRAINED`); also nothing to run, a feature plan declined, or an interview that filed nothing or wasn't run |
-| 2 | a setup problem (all are listed), one a worker's first `system/init` showed (`SETUP_PROBLEM`), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
+| 2 | a setup problem (all are listed), one a worker's first `system/init` showed (`SETUP_PROBLEM`), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), Claude's login refused in a worker's turn (`LOGIN`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
 | 3 | a worker idle with its ticket in progress (`PAUSED`), a request unanswered (`BLOCKED`), or a worker past its ticket limit (`TICKET_LIMIT`) |
 | 4 | Beads or git failing (`BEADS_FAILED`, `GIT_FAILED`, …), or tutti failing itself (`PANIC`) |
 | 5 | uncommitted changes in the main checkout, or it left its branch (`DIRTY_TREE`) |
