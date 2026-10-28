@@ -43,7 +43,7 @@ import {
   toolHandler,
   toolRefusal,
 } from "./callbacks.ts"
-import { interviewWorker, leadAndPasted } from "./interview.ts"
+import { interviewWorker, leadAndPasted, turnOver } from "./interview.ts"
 import { readTools, serverName } from "./interviewTools.ts"
 import { interviewBuiltins } from "./options.ts"
 import { SessionKind } from "./sessionKind.ts"
@@ -305,9 +305,7 @@ export const startAnswerTalk = (
       ),
       Stream.filter(
         ({ state, answer }) =>
-          state._tag === "Gone" ||
-          state._tag === "Closed" ||
-          (answer !== null && (state._tag === "Idle" || state._tag === "Failed")),
+          state._tag === "Gone" || state._tag === "Closed" || (answer !== null && turnOver(state)),
       ),
       Stream.runHead,
       Effect.flatMap(

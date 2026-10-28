@@ -37,9 +37,17 @@ import {
   makeInterviewTools,
 } from "./interviewTools.ts"
 import { SessionKind } from "./sessionKind.ts"
+import type { WorkerState } from "./WorkerState.ts"
 
 /** The name AgentHost knows the interview's session by, as a ticket's worker is known by its ID. */
 export const interviewWorker = "tutti-interview" as TicketId
+
+/**
+ * Whether the session's turn is over, so a filed plan or a given answer can end it: idle, failed,
+ * or refused for Claude's login (§ 4.13), which no later turn gets past until the login is renewed.
+ */
+export const turnOver = (state: WorkerState): boolean =>
+  state._tag === "Idle" || state._tag === "Failed" || state._tag === "LoginRefused"
 
 /** The interview's description, under the main checkout's .tutti/run/. */
 export const featureRequestName = "feature-request.md"
@@ -178,7 +186,7 @@ export const startInterview = (
         ({ state, filing }) =>
           state._tag === "Gone" ||
           state._tag === "Closed" ||
-          (filing._tag === "Filed" && (state._tag === "Idle" || state._tag === "Failed")),
+          (filing._tag === "Filed" && turnOver(state)),
       ),
       Stream.runHead,
       Effect.flatMap(
