@@ -43,6 +43,7 @@ import type { CheckedTree, FiledTree } from "../run/specTree.ts"
 import { liftAfter, retryEvery } from "../run/usageLimit.ts"
 import type { Beads, Issue, TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
+import { loginRefusedText } from "./Account.ts"
 import { type AgentGone, AgentHost, AgentStartFailed, type MessageUuid } from "./AgentHost.ts"
 import {
   type BreakdownState,
@@ -373,6 +374,13 @@ export const startBreakdown = (
           yield* Ref.set(limit, "waiting")
           yield* FiberSet.run(waits, waitOut(wait.at, state.resetsAt ?? now))
           return Option.none()
+        }
+        if (state._tag === "LoginRefused") {
+          // No turn goes on until the login is renewed (§ 4.13).
+          yield* host.end(worker)
+          return Option.some(
+            BreakdownEnd.Failed({ why: loginRefusedText(state.error), state: filed }),
+          )
         }
         if ((yield* Ref.get(limit)) === "told") yield* Ref.set(limit, "free")
         if (!turnOver) return Option.none()

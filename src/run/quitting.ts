@@ -1,5 +1,6 @@
 // Quitting (§ 4.8, quit.ts), as the run does it: the first request to quit (SIGINT, SIGTERM,
-// SIGHUP, the quit box's `q`), or a panic in one of the run's fibers, cuts the run's loop short; a
+// SIGHUP, the quit box's `q`), a panic in one of the run's fibers, or a worker's turn refused for
+// Claude's login (login.ts, § 4.13), cuts the run's loop short; a
 // second request says what is under way and how to abandon it; a third ends tutti at once, saving
 // the workers not merged or dropped. Once the loop has stopped scheduling, quitting's first four
 // steps: the dashboard says what it waits for; every worker is interrupted at once, its result
@@ -37,24 +38,34 @@ import type { Scheduler } from "./schedule.ts"
 import { endRecord } from "./spending.ts"
 import type { Triage } from "./triage.ts"
 
-/** Why the run quits: a request to quit now, or a panic in one of its fibers (§ 4.8, § 7.4). */
+/**
+ * Why the run quits: a request to quit now, a panic in one of its fibers (§ 4.8, § 7.4), or a
+ * worker's turn refused for Claude's login (§ 4.13).
+ */
 export type Quitting = Data.TaggedEnum<{
   /** A request to quit: SIGINT's, SIGTERM's or SIGHUP's, the quit box's `q`. */
   Quit: { readonly request: QuitRequest }
   /** A panic in one of the run's fibers: its PANIC stop. */
   Panic: { readonly stop: StopReason }
+  /** A worker's turn refused for Claude's login: its LOGIN stop. */
+  Login: { readonly stop: StopReason }
 }>
 
 export const Quitting = Data.taggedEnum<Quitting>()
 
 /**
- * The stop `quit` ends the run with: a panic's PANIC, or INTERRUPTED for a request to quit, its text
- * `text` says of the request.
+ * The stop `quit` ends the run with: a panic's PANIC, INTERRUPTED for a request to quit, its text
+ * `text` says of the request, or LOGIN, `kept` said after its line.
  */
-export const quitStop = (quit: Quitting, text: (request: QuitRequest) => string): StopReason =>
+export const quitStop = (
+  quit: Quitting,
+  text: (request: QuitRequest) => string,
+  kept = "",
+): StopReason =>
   Quitting.$match(quit, {
     Quit: ({ request }) => stopFor("INTERRUPTED", text(request)),
     Panic: ({ stop }) => stop,
+    Login: ({ stop }) => ({ ...stop, text: `${stop.text}${kept}` as Line }),
   })
 
 export interface Quits {

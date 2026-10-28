@@ -273,7 +273,9 @@ export const closingWhy = "its session was closing, so the message never went"
 
 /**
  * Pushes a message into the session's inbox; its uuid. An inbox already ended, the session closing,
- * takes nothing: the send is withdrawn, nothing recorded, and the worker gone.
+ * takes nothing: the send is withdrawn, nothing recorded, and the worker gone. `told` is what the
+ * worker keeps of it for a turn refused for the login to tell again (§ 4.13): the caller's text,
+ * without what the host put before it.
  */
 export const push = (
   workers: Workers,
@@ -281,11 +283,15 @@ export const push = (
     readonly claude: Pick<ClaudeSession, "send">
   },
   message: Message,
+  told: string = message.text,
 ): Effect.Effect<MessageUuid, AgentGone> =>
   Effect.gen(function* () {
     const uuid = message.uuid ?? MessageUuid.draw()
     // Outstanding before the CLI can see it, so its turn's result can't come first.
-    yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
+    yield* workers.fold(
+      session.entry,
+      WorkerEvent.Sent({ session: session.sessionId, uuid, text: told }),
+    )
     const sdk = userMessage(message, { uuid, session: session.sessionId })
     if (!(yield* session.claude.send(sdk))) {
       yield* workers.fold(
@@ -912,10 +918,12 @@ export const layer = (
                 notes === undefined || notesGiven.get(ticket) === notes
                   ? push(workers, opened, message)
                   : Effect.tap(
-                      push(workers, opened, {
-                        ...message,
-                        text: resumedNotes(notes) + message.text,
-                      }),
+                      push(
+                        workers,
+                        opened,
+                        { ...message, text: resumedNotes(notes) + message.text },
+                        message.text,
+                      ),
                       () => Effect.sync(() => void notesGiven.set(ticket, notes)),
                     )
               return sent.pipe(

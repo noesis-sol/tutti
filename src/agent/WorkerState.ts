@@ -37,6 +37,12 @@ export type WorkerState = Data.TaggedEnum<{
   /** The turn ended on the account's usage limit (§ 4.12); `resetsAt` null when nothing said when. */
   UsageLimited: { readonly resetsAt: number | null }
   /**
+   * The turn ended on Claude's login refused (`authentication_failed`, § 4.13): `error` is its
+   * result's text, and `told` the texts of the sends it was to answer, for the next run to send
+   * again. It never settles: no turn goes on until the login is renewed.
+   */
+  LoginRefused: { readonly error: string; readonly told: ReadonlyArray<string> }
+  /**
    * The turns are over (`idle` after the last result, which was clean), none of tutti's sends is
    * outstanding and no background task is live or report to come, since `at`.
    */
@@ -72,8 +78,11 @@ export const settled = (state: WorkerState): boolean =>
 export type WorkerEvent = Data.TaggedEnum<{
   /** A message from the session's stream, as the host read it. */
   Message: { readonly session: string; readonly reading: Reading }
-  /** tutti is pushing the message `uuid` into the session's inbox: it is outstanding from now. */
-  Sent: { readonly session: string; readonly uuid: string }
+  /**
+   * tutti is pushing the message `uuid` into the session's inbox: it is outstanding from now. Its
+   * `text` is kept while it is, for a turn refused for the login to tell again.
+   */
+  Sent: { readonly session: string; readonly uuid: string; readonly text?: string }
   /** An interrupt's receipt or `cancel_async_message` cancelled these sends. */
   Cancelled: { readonly session: string; readonly uuids: ReadonlyArray<string> }
   /** An in-process hook callback's input (PreToolUse, PostToolUse, SubagentStart, …). */
@@ -135,6 +144,11 @@ export type Turn = Data.TaggedEnum<{
   Ended: Empty
   /** The turn's result arrived with is_error on the usage limit. */
   Limited: Empty
+  /**
+   * The turn's result arrived with is_error, an assistant message of it having said
+   * `authentication_failed`; `told` the texts of the sends it listed.
+   */
+  LoginRefused: { readonly error: string; readonly told: ReadonlyArray<string> }
   /** The turn's result arrived with is_error for another reason: a failed turn. */
   Failed: { readonly error: string; readonly interrupted: boolean }
 }>
@@ -156,6 +170,8 @@ export interface Worker {
    * listed in a result's `user_message_uuids`, or cancelled by an interrupt's receipt.
    */
   readonly outstanding: ReadonlyArray<string>
+  /** The texts of the outstanding sends that came with one, by uuid. */
+  readonly texts: ReadonlyMap<string, string>
   /** Why the session ended, when it did: Closed by tutti, or Gone. */
   readonly end:
     | { readonly closed: true }
@@ -184,6 +200,8 @@ export interface Worker {
   readonly subagents: ReadonlyArray<string>
   /** What this turn's messages said of the usage limit. */
   readonly limit: TurnLimit
+  /** Whether an assistant message of this turn said `authentication_failed` (§ 4.13). */
+  readonly loginRefused: boolean
 }
 
 /** A worker whose session has just been spawned; `checks` are the project's check commands. */
@@ -194,6 +212,7 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   turn: Turn.None(),
   idle: false,
   outstanding: [],
+  texts: new Map(),
   end: null,
   tasks: [],
   report: null,
@@ -203,6 +222,7 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   tool: null,
   subagents: [],
   limit: noTurnLimit,
+  loginRefused: false,
 })
 
 /**
@@ -219,13 +239,22 @@ const newTurn = (worker: Worker): Worker => ({
   report: null,
   retry: null,
   limit: noTurnLimit,
+  loginRefused: false,
 })
 
 /** `worker` with the sends `uuids` no longer outstanding. */
-const done = (worker: Worker, uuids: ReadonlyArray<string>): Worker => ({
-  ...worker,
-  outstanding: worker.outstanding.filter((uuid) => !uuids.includes(uuid)),
-})
+const done = (worker: Worker, uuids: ReadonlyArray<string>): Worker => {
+  if (!uuids.some((uuid) => worker.texts.has(uuid))) {
+    return { ...worker, outstanding: worker.outstanding.filter((uuid) => !uuids.includes(uuid)) }
+  }
+  const texts = new Map(worker.texts)
+  for (const uuid of uuids) texts.delete(uuid)
+  return {
+    ...worker,
+    outstanding: worker.outstanding.filter((uuid) => !uuids.includes(uuid)),
+    texts,
+  }
+}
 
 /** A step's handling of `value`, for `worker` at `now`. */
 type Handle<E> = (worker: Worker, value: E, now: number) => Worker
@@ -279,14 +308,18 @@ const onReading: Handlers<Reading> = {
   Assistant: (worker, reading) => {
     const next = unretried(worker)
     const limit = turnLimitStep(next.limit, reading)
-    return limit === next.limit ? next : { ...next, limit }
+    const refused = next.loginRefused || reading.loginRefused
+    return limit === next.limit && refused === next.loginRefused
+      ? next
+      : { ...next, limit, loginRefused: refused }
   },
   Denied: unretried,
   Result: (worker, result) => {
     const next = unretried(worker)
     // A result that lists no sends, from a CLI that doesn't report them, answered them all.
+    const answered = result.sends ?? next.outstanding
     const ended = {
-      ...done(next, result.sends ?? next.outstanding),
+      ...done(next, answered),
       idle: false,
       requiresAction: false,
       tool: null,
@@ -300,6 +333,13 @@ const onReading: Handlers<Reading> = {
     }
     if (endedOnLimit(next.limit, result.apiStatus)) {
       return { ...ended, turn: Turn.Limited() }
+    }
+    if (next.loginRefused) {
+      const told = answered.flatMap((uuid) => {
+        const text = next.texts.get(uuid)
+        return text === undefined ? [] : [text]
+      })
+      return { ...ended, turn: Turn.LoginRefused({ error: result.error, told }) }
     }
     return {
       ...ended,
@@ -361,6 +401,10 @@ const derive = (worker: Worker, now: number): WorkerState => {
   switch (worker.turn._tag) {
     case "Limited":
       return WorkerState.UsageLimited({ resetsAt: worker.limit.resetsAt })
+    case "LoginRefused":
+      return worker.state._tag === "LoginRefused"
+        ? worker.state
+        : WorkerState.LoginRefused({ error: worker.turn.error, told: worker.turn.told })
     case "Ended":
       if (over) {
         return worker.state._tag === "Idle" ? worker.state : WorkerState.Idle({ at: now })
@@ -385,7 +429,11 @@ const derive = (worker: Worker, now: number): WorkerState => {
 const onEvent: Handlers<WorkerEvent> = {
   Message: (worker, { reading }, now) =>
     (onReading[reading._tag] as Handle<Reading>)(worker, reading, now),
-  Sent: (worker, { uuid }) => ({ ...worker, outstanding: [...worker.outstanding, uuid] }),
+  Sent: (worker, { uuid, text }) => ({
+    ...worker,
+    outstanding: [...worker.outstanding, uuid],
+    texts: text === undefined ? worker.texts : new Map(worker.texts).set(uuid, text),
+  }),
   Cancelled: (worker, { uuids }) => done(worker, uuids),
   Hook: (worker, { input }) => onHook(worker, input),
   ReportLate: (worker, { since }) =>

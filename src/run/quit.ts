@@ -119,6 +119,15 @@ export const interruptedText = (
   how: string,
   saved: ReadonlyArray<string>,
   handedBack: ReadonlyArray<string>,
+): string => `quit ${how}${keptText(saved, handedBack)}`
+
+/**
+ * What a quit's stop line says it kept, after its own words: the sessions `saved` for the next run,
+ * and the tickets left `handedBack` to their workers; nothing for neither.
+ */
+export const keptText = (
+  saved: ReadonlyArray<string>,
+  handedBack: ReadonlyArray<string>,
 ): string => {
   const sessions = [...saved].sort()
   const kept =
@@ -132,7 +141,7 @@ export const interruptedText = (
     left.length === 0
       ? ""
       : `; ${left.join(", ")} ${left.length === 1 ? "was" : "were"} handed back, the rebase or fix left as it is`
-  return `quit ${how}${kept}${handed}`
+  return `${kept}${handed}`
 }
 
 /** The INTERRUPTED stop's text of a third request, which exits at once. */
@@ -181,7 +190,8 @@ export const logSuspends = (
   )
 
 /** Whether a worker in `state` has no turn to wait for: its result is in, or it can't come. */
-const answered = (state: WorkerState): boolean => settled(state) || state._tag === "UsageLimited"
+const answered = (state: WorkerState): boolean =>
+  settled(state) || state._tag === "UsageLimited" || state._tag === "LoginRefused"
 
 /**
  * Interrupts the workers of `tickets` at once and waits for their results, `wait` at most for all

@@ -17,7 +17,9 @@
 //   once its question is answered, it is resumed and told so (asked.ts), at once when it was
 //   answered between runs;
 // - any other is resumed, `resume: <session ID>`, Working (§ 5.1's Resumed): told it was interrupted
-//   and to carry on, with this run's facts (§ 4.1), as its session starts. Its fiber takes a slot,
+//   and to carry on, with this run's facts (§ 4.1), as its session starts; or, where the last run's
+//   turn was refused for Claude's login, sent again what that turn was to tell it (login.ts),
+//   which its record forgets as it is sent. Its fiber takes a slot,
 //   counting toward no limit (the scheduler's carry), its ticket limit counted afresh, and goes on
 //   as a dispatched ticket's does. A session that can't be resumed drops its ticket: WORKER_GONE,
 //   left for review (sessions.ts). One with no slot for it (every slot taken by those resumed
@@ -59,6 +61,7 @@ import { handedBackOf, uncheckedKey, uncheckedOf } from "./check.ts"
 import { byHand, removedText } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
+import { retellKey, retellText, toldOf } from "./login.ts"
 import { removeMerged } from "./merge.ts"
 import { asideOvernight } from "./overnightAside.ts"
 import { Move } from "./phase.ts"
@@ -490,11 +493,14 @@ const takeUp = (
           ticketLimit: config.settings.workers.ticket_limit,
           scope: config.ticket,
         })
+        // Forgotten before it is sent: a turn refused again saves what it was to tell anew.
+        const told = toldOf(record.metadata)
+        if (retellKey in record.metadata) yield* Effect.ignore(store.unsetMetadata(id, retellKey))
         const resumed = yield* Effect.result(
           resume({
             ticket: id,
             why: "suspended",
-            message: resumedText(id, why, facts),
+            message: told.length > 0 ? retellText(told, facts) : resumedText(id, why, facts),
             what:
               record.suspended === undefined
                 ? line`${id} was in progress as the last run crashed`

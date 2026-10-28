@@ -51,6 +51,7 @@ import type { EventStream } from "./eventstream.ts"
 import type { Ledger } from "./ledger.ts"
 import type { Log } from "./log.ts"
 import * as log from "./log.ts"
+import { withoutTold } from "./login.ts"
 import { asideOvernight, overnightWhy } from "./overnightAside.ts"
 import { info } from "./say.ts"
 import { resume } from "./sessions.ts"
@@ -441,7 +442,10 @@ export const start = (
     // An earlier attempt's session isn't this start's: until this one begins, none is to resume,
     // nor is the ticket suspended (a record carry-over kept).
     if ((yield* store.ticket(id)) !== undefined) {
-      yield* store.updateTicket(id, ({ session: _, suspended: __, phase: ___, ...rest }) => rest)
+      yield* store.updateTicket(id, ({ session: _, suspended: __, phase: ___, ...rest }) => ({
+        ...rest,
+        metadata: withoutTold(rest.metadata),
+      }))
     }
     const session = crypto.randomUUID()
     // Saved once Claude Code has made the session, as its first system/init says (§ 4.8): a start

@@ -42,8 +42,15 @@ export type Reading = Data.TaggedEnum<{
   Tasks: { readonly live: ReadonlyArray<string>; readonly counted: ReadonlyArray<string> }
   /** A `rate_limit_event`: its info, and the account's windows it carries (`windowsOf`). */
   RateLimit: { readonly info: RateLimit; readonly windows: ReadonlyMap<string, WindowFigure> }
-  /** An assistant message: its tool calls, its subagents' too, and whether it has `rate_limit`. */
-  Assistant: { readonly calls: ReadonlyArray<Call>; readonly rateLimited: boolean }
+  /**
+   * An assistant message: its tool calls, its subagents' too, and whether it has the error
+   * `rate_limit`, or `authentication_failed` (Claude's login refused, § 4.13).
+   */
+  Assistant: {
+    readonly calls: ReadonlyArray<Call>
+    readonly rateLimited: boolean
+    readonly loginRefused: boolean
+  }
   /** A `permission_denied`: a call Claude Code denied without asking. */
   Denied: { readonly message: SDKPermissionDeniedMessage }
   /** A result: the turn's end. */
@@ -150,6 +157,7 @@ const rateLimit: Reader = (raw, kind) => {
 // The frequent case, so a loop over the content blocks, allocating only for a tool call.
 const assistant: Reader = (raw) => {
   const rateLimited = raw.error === "rate_limit"
+  const loginRefused = raw.error === "authentication_failed"
   const content = Predicate.isObject(raw.message) ? raw.message.content : undefined
   let calls: Array<Call> | undefined
   if (Array.isArray(content)) {
@@ -161,7 +169,7 @@ const assistant: Reader = (raw) => {
       calls.push([id, input])
     }
   }
-  return Reading.Assistant({ calls: calls ?? noCalls, rateLimited })
+  return Reading.Assistant({ calls: calls ?? noCalls, rateLimited, loginRefused })
 }
 
 const denied: Reader = (raw) =>

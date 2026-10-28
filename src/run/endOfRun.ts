@@ -220,7 +220,11 @@ export const make = (options: {
         const ended =
           quit === null
             ? null
-            : Quitting.$match(quit, { Quit: () => "quit", Panic: ({ stop }) => stop.why })
+            : Quitting.$match(quit, {
+                Quit: () => "quit",
+                Panic: ({ stop }) => stop.why,
+                Login: ({ stop }) => stop.why,
+              })
         const whyOf = (entry: { readonly ticket: TicketId; readonly phase: TicketPhase }) =>
           entry.phase._tag === "Working" && over.has(entry.ticket)
             ? "TICKET_LIMIT"

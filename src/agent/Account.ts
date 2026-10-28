@@ -32,6 +32,14 @@ export class NotLoggedIn extends Schema.TaggedError<NotLoggedIn>()("NotLoggedIn"
   }
 }
 
+/**
+ * What a turn refused for Claude's login (`authentication_failed`, § 4.13) says, `error` being its
+ * result's text: the startup probe reads the account, which an expired login still has, so only a
+ * turn finds it refused.
+ */
+export const loginRefusedText = (error: string): string =>
+  `Claude's login was refused (${error}): run claude /login, or tutti login`
+
 /** A settings file Claude Code skipped for an error, and the error. */
 export const SettingsFileError = Schema.Struct({
   /** The file, when Claude Code names it. */

@@ -693,6 +693,8 @@ export const stateStatus = (
       return state.resetsAt === null
         ? "usage limit"
         : `usage limit · resets ${resetLabel(state.resetsAt, now ?? state.resetsAt)}`
+    case "LoginRefused":
+      return "login refused"
     case "Idle":
       return "done"
     case "Failed":
@@ -763,6 +765,7 @@ export const statusTone = (
       return "done"
     case "Failed":
       return state.interrupted ? "deferred" : "failed"
+    case "LoginRefused":
     case "Gone":
       return "failed"
   }

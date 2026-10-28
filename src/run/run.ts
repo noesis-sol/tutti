@@ -23,9 +23,10 @@
 // instead, as it does one PAUSED or past its ticket limit, and goes on (overnightAside.ts).
 //
 // Quitting (§ 4.8, quit.ts): the first request to quit (SIGINT, SIGTERM, SIGHUP, the quit box's
-// `q`), or a panic in one of the run's fibers, cuts the loop short: the workers are interrupted at
-// once and their results waited for, the merges and hand-backs stopped, triage aborted, then the end
-// below suspends every session and the run ends INTERRUPTED (130), or PANIC (4). A second request
+// `q`), a panic in one of the run's fibers, or a worker's turn refused for Claude's login (login.ts),
+// cuts the loop short: the workers are interrupted at once and their results waited for, the merges
+// and hand-backs stopped, triage aborted, then the end below suspends every session and the run
+// ends INTERRUPTED (130), PANIC (4) or LOGIN (2), with no report. A second request
 // says what is under way; a third ends tutti at once, through RunOptions.exitNow.
 //
 // Before its first dispatch the run checks the tickets earlier runs left labelled `unmerged`
@@ -142,6 +143,7 @@ import { make as makeHoldsGate } from "./holdsGate.ts"
 import { Ledger } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
 import { type Line, Log, tagged } from "./log.ts"
+import { loginStop, refusedLine, saveTold, watchLogins } from "./login.ts"
 import { make as makeLoop } from "./look.ts"
 import { make as makeMachineGate } from "./machineGate.ts"
 import { make as makeQueue, type QueueState } from "./mergequeue.ts"
@@ -149,13 +151,14 @@ import { putBackLeft } from "./mergetrain.ts"
 import { make as makeOvernightAside } from "./overnightAside.ts"
 import type { TicketPhase } from "./phase.ts"
 import { make as makePredictor } from "./predict.ts"
-import { interruptedText, panicLines, type QuitRequest } from "./quit.ts"
+import { interruptedText, keptText, panicLines, type QuitRequest } from "./quit.ts"
 import { make as makeQuits, Quitting, quitStop } from "./quitting.ts"
 import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { runRequires } from "./requires.ts"
 import { emptyStatus, type Status, showOn } from "./runView.ts"
+import { warn } from "./say.ts"
 import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
 import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
@@ -631,6 +634,20 @@ const runFrom = (
           panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
         ),
       )
+    // A worker's turn refused for Claude's login quits the run, LOGIN (login.ts, § 4.13): what the
+    // turn was to tell a ticket's worker is saved for the next run to tell it again.
+    yield* watch(
+      watchLogins((refused) =>
+        Effect.gen(function* () {
+          const ours = (yield* ledger.current).tickets.has(refused.ticket)
+          if (ours) yield* saveTold(refused.ticket, refused.told)
+          const stop = loginStop(refused.error, ours ? refused.ticket : undefined)
+          if (yield* Deferred.succeed(quitting, Quitting.Login({ stop }))) {
+            yield* warn(refusedLine(refused), ours ? refused.ticket : undefined)
+          }
+        }),
+      ),
+    )
     // The title line's badge while the keep-awake command holds the machine awake.
     if (options.keepingAwake !== undefined) {
       yield* watch(Stream.runForEach(options.keepingAwake, showOn(status, "keepAwake")))
@@ -1014,10 +1031,14 @@ const runFrom = (
       open: quits.openWorkers,
     })
 
-    // Quitting's last step: the run ends INTERRUPTED (exit 130), or PANIC (exit 4), before any
-    // stop the run had.
+    // Quitting's last step: the run ends INTERRUPTED (exit 130), PANIC (exit 4) or LOGIN (exit 2),
+    // before any stop the run had.
     if (quit !== null) {
-      const stop = quitStop(quit, ({ how }) => interruptedText(how, saved, handedBack))
+      const stop = quitStop(
+        quit,
+        ({ how }) => interruptedText(how, saved, handedBack),
+        keptText(saved, handedBack),
+      )
       yield* changeHolds((now) => changeStops(now, (all) => putFirst(all, stop)))
     }
     yield* changeHolds((now) => changeStops(now, (all) => extendFirst(all, neverSent)))

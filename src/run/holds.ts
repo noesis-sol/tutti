@@ -264,8 +264,8 @@ export const exitCodes = {
   /** Nothing left to run, the limit reached, or wound down as asked. */
   ok: 0,
   /**
-   * A setup problem found before the run started, or in a worker's first system/init, or a
-   * requirement missing as it starts.
+   * A setup problem found before the run started, or in a worker's first system/init, a
+   * requirement missing as it starts, or Claude's login refused in a worker's turn.
    */
   setup: 2,
   /** A worker needs you: PAUSED, BLOCKED, TICKET_LIMIT. */
@@ -294,7 +294,8 @@ export const exitMeanings: Record<keyof typeof exitCodes, string> = {
     "a run of one ticket says in its final line whether all of it is merged",
   setup:
     "a setup problem: the startup checks failed, a worker's first system/init showed one " +
-    "(SETUP_PROBLEM), or a requirement went missing as the run went (REQUIREMENTS_MISSING)",
+    "(SETUP_PROBLEM), a requirement went missing as the run went (REQUIREMENTS_MISSING), or " +
+    "Claude's login was refused in a worker's turn (LOGIN)",
   stuck: "a worker stopped the run (PAUSED, BLOCKED, TICKET_LIMIT) and needs attention",
   tool:
     "a Beads or git command failed (BEADS_FAILED, GIT_FAILED), " +
@@ -315,6 +316,7 @@ export const exitMeanings: Record<keyof typeof exitCodes, string> = {
 export const stopCodes = {
   REQUIREMENTS_MISSING: exitCodes.setup,
   SETUP_PROBLEM: exitCodes.setup,
+  LOGIN: exitCodes.setup,
   PAUSED: exitCodes.stuck,
   BLOCKED: exitCodes.stuck,
   TICKET_LIMIT: exitCodes.stuck,

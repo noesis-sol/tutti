@@ -352,6 +352,8 @@ export const make = (options: {
           return `it went away without running its command: ${worker.why}`
         case "UsageLimited":
           return "it reached the account's usage limit without running its command"
+        case "LoginRefused":
+          return `Claude's login was refused without its command run: ${worker.error}`
       }
       return undefined
     }
@@ -380,7 +382,7 @@ export const make = (options: {
         Effect.map(ran, (ok) =>
           ok
             ? null
-            : isSettled(worker) || worker._tag === "UsageLimited"
+            : isSettled(worker) || worker._tag === "UsageLimited" || worker._tag === "LoginRefused"
               ? unran(worker)
               : undefined,
         )
