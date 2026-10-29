@@ -10,6 +10,7 @@ import { basename, join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { fastScript, fullScript } from "../src/init/runners.ts"
+import { type Summary, summary } from "../src/print/summary.ts"
 import {
   emptyWhy,
   environmentOf,
@@ -20,9 +21,11 @@ import {
   type RunnerRead,
   runsOf,
 } from "../src/run/checksGate.ts"
+import { summaryLines } from "../src/run/endOfRun.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import { emptyView } from "../src/run/runView.ts"
 import { HumanLabel, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, CheckOutput } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
@@ -31,6 +34,7 @@ import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Seed } from "../src/testing/Beads.ts"
 import type { CheckRun, Script as ChecksScript } from "../src/testing/Checks.ts"
 import { Repository } from "../src/testing/Git.ts"
+import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { backlog, expectExitCode, expectLog, type Ran, scenario, type World } from "./harness.ts"
 
 const fast = "scripts/check-fast.sh"
@@ -419,5 +423,32 @@ describe("what the gate reads of the runners", () => {
       spec,
     )
     expect(String(last?.id)).toBe("e")
+  })
+})
+
+describe("the summary's line on the gate", () => {
+  const ended: Summary = {
+    version: "0.1.0",
+    branch: "main",
+    scope: "s-1",
+    spec,
+    took: 1000,
+    totals: { ...emptyView.totals, slots: 1 },
+    figures: [],
+    rows: [],
+  }
+  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+
+  test("says how it went, styled and plain; nothing where it didn't run", () => {
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR sequences are what is stripped
+    const strip = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "")
+    const styled = strip(summary({ ...ended, checksGate: "passed in 4m12s" }, theme, 80)).split(
+      "\n",
+    )
+    expect(styled).toContain("  Checks gate  passed in 4m12s")
+    expect(summary(ended, theme, 80)).not.toContain("Checks gate")
+    const plain = summaryLines({ ...ended, base: "main", checksGate: "passed in 4m12s" })
+    expect(plain.map(String)).toContain("  Checks gate: passed in 4m12s")
+    expect(summaryLines({ ...ended, base: "main" }).join("\n")).not.toContain("Checks gate")
   })
 })
