@@ -866,8 +866,10 @@ interface Asking {
   /** Its form's title. */
   readonly heading: FormHeading
   readonly noMouse: boolean | undefined
-  /** A spec run's setup: no form, and its steps printed for the run to commit. */
+  /** A spec run's setup without a terminal: no form. */
   readonly unattended: boolean
+  /** A spec run's setup: its steps printed for the run to commit, not init's summary. */
+  readonly forSpec?: boolean
   /** The scout's calls' cost, which its summary starts with. */
   readonly organCost: OrganCost["Service"]
 }
@@ -982,7 +984,7 @@ const withInitForm = <R>(
         if (ending.stdout.length > 0) yield* Console.log(ending.stdout.join("\n"))
         yield* Console.error(ending.stderr)
         process.exitCode = ending.code
-        return
+        return error instanceof FormCancelled ? ("cancelled" as const) : undefined
       }
       if (scouted.length > 0) yield* Console.log(printedSteps(scouted, theme, width).join("\n"))
       return yield* initStopped([
@@ -990,7 +992,7 @@ const withInitForm = <R>(
       ])
     }
     const summary = withScout(ran.success, scouted)
-    if (unattended) {
+    if (asking.forSpec === true) {
       // A spec run's setup: its steps, which the run then commits; it says what comes next itself.
       yield* Console.log(summary.steps.map((step) => `  ${stepLine(step)}`).join("\n"))
       return
@@ -1008,7 +1010,11 @@ const withInitForm = <R>(
  * tutti init in the folder `cwd`: from the main checkout, asking through init's form what the
  * flags don't give (withInitForm); then its summary on the main screen.
  */
-const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
+const runInit = (
+  cwd: string,
+  flags: InitFlags,
+  spec: { readonly attended: boolean } | null = null,
+) =>
   Effect.gen(function* () {
     const located = yield* locate(cwd, "tutti init")
     if (located === null) return
@@ -1032,10 +1038,11 @@ const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
       program: "tutti init",
       heading: initHeading,
       noMouse: flags.noMouse,
-      unattended,
+      unattended: spec !== null && !spec.attended,
+      forSpec: spec !== null,
       organCost,
     }
-    yield* withInitForm(repo, asking, (form, catchStops) =>
+    return yield* withInitForm(repo, asking, (form, catchStops) =>
       init({
         repo,
         commonDir,
@@ -1088,15 +1095,16 @@ const runChecks = (cwd: string, flags: ChecksCommandFlags) =>
   }).pipe(Effect.provide(Git.layer()), Effect.provide(GitWriter.layer))
 
 /**
- * What a spec run's setup gives init (§ 4.14): its defaults, declining what it offers (the verifier,
- * CHANGELOG.md merge=union, installing bd), runners that check nothing yet, which the breakdown's
- * environment ticket wires up, and no MCP servers; the run's -c where it gives one.
+ * What a spec run's setup gives init without a terminal (§ 4.14): its defaults, the verifier on, as
+ * nobody is there to have said no, declining what else it offers (CHANGELOG.md merge=union,
+ * installing bd), runners that check nothing yet, which the breakdown's environment ticket wires up
+ * and the checks gate then checks, and no MCP servers; the run's -c where it gives one.
  */
 export const specSetupFlags = (concurrent: number | null): InitFlags => ({
   force: false,
   checkFast: "",
   checkFull: "",
-  verifier: false,
+  verifier: true,
   changelogUnion: false,
   installBeads: false,
   mcp: [],
@@ -1104,15 +1112,50 @@ export const specSetupFlags = (concurrent: number | null): InitFlags => ({
 })
 
 /**
- * A spec run's setup of a repository init hasn't set up, from `cwd`: init without a terminal, with
- * specSetupFlags, its steps printed. Whether it set the repository up; it says why not on stderr.
+ * What a spec run's setup gives init in a terminal (§ 4.14): `tutti init --no-checks`, its form
+ * asking the rest; the run's -c where it gives one.
+ */
+export const specFormFlags = (concurrent: number | null): InitFlags => ({
+  force: false,
+  noChecks: true,
+  ...(concurrent === null ? {} : { concurrent }),
+})
+
+/**
+ * How a spec run's setup asks, where init's form would be `kind` (initFormKind): in a terminal,
+ * specFormFlags, its form asking; without one, specSetupFlags, asking nothing.
+ */
+export const specInit = (
+  kind: "renderer" | "lines" | null,
+  concurrent: number | null,
+): { readonly attended: boolean; readonly flags: InitFlags } =>
+  kind === null
+    ? { attended: false, flags: specSetupFlags(concurrent) }
+    : { attended: true, flags: specFormFlags(concurrent) }
+
+/**
+ * A spec run's setup of a repository init hasn't set up, from `cwd`: in a terminal, init's form as
+ * `tutti init --no-checks` puts it (specFormFlags); without one, init with specSetupFlags; its steps
+ * printed. Its exit code: 0 where it set the repository up, 130 where the form was cancelled, having
+ * changed nothing, else init's, having said why on stderr.
  */
 export const setUpForSpec = (cwd: string, concurrent: number | null) =>
   Effect.gen(function* () {
+    const tty = yield* Effect.provide(
+      Effect.gen(function* () {
+        return yield* Tty.Tty
+      }),
+      Tty.layer,
+    )
+    const { attended, flags } = specInit(initFormKind(tty), concurrent)
     const before = process.exitCode
-    yield* runInit(cwd, specSetupFlags(concurrent), true)
-    const failed = process.exitCode !== before && process.exitCode !== 0
-    return !failed
+    const ended = yield* runInit(cwd, flags, { attended })
+    if (ended === "cancelled") {
+      process.exitCode = before
+      return exitCodes.interrupted
+    }
+    const code = process.exitCode
+    return code !== before && code !== undefined && code !== 0 ? Number(code) : 0
   })
 
 /** `tutti init`, in the folder tutti was started in. */

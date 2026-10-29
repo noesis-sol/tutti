@@ -1,7 +1,9 @@
 // A spec run's setup (§ 4.14 "From an empty repository"): where --spec (or TUTTI_SPEC) is given in a
 // repository `tutti init` hasn't set up, and no worker prompt of its own, the run sets it up first,
-// as init does without a terminal (`setUp`, src/cli/commands.ts's setUpForSpec), before its startup
-// checks; the files that wrote are no clean-tree problem, and are committed with the spec.
+// as `tutti init --no-checks` does in a terminal, its form asking, and as init does without one
+// (`setUp`, src/cli/commands.ts's setUpForSpec), before its startup checks; the files that wrote are
+// no clean-tree problem, and are committed with the spec. A form cancelled changes nothing, and the
+// run ends with 130, its spec not committed.
 //
 // Nothing is set up for a spec the run can't read: the startup checks then say what is wrong with
 // it, beside the setup that is missing, and nothing is left behind. A setup an earlier spec run
@@ -29,8 +31,11 @@ export interface SpecSetup<R = never> {
   readonly spec: { readonly given: string; readonly from: string } | null
   /** A worker prompt of its own was given (--prompt): a run that needs no setup. */
   readonly ownPrompt: boolean
-  /** Sets the repository up from `cwd`, as init does without a terminal: whether it did. */
-  readonly setUp: Effect.Effect<boolean, never, R>
+  /**
+   * Sets the repository up from `cwd`, as init does: its exit code, 0 where it did, 130 where its
+   * form was cancelled.
+   */
+  readonly setUp: Effect.Effect<number, never, R>
   /** Says a line before the setup: what it is doing. */
   readonly say: (text: string) => Effect.Effect<void>
   /** Fetches a spec at a URL: the run's one fetch, which the startup checks share (fetchOnce). */
@@ -39,7 +44,7 @@ export interface SpecSetup<R = never> {
 
 /** What a spec run's setup says as it begins. */
 export const settingUpLine =
-  "tutti init hasn't set this repository up: setting it up as init does without a terminal"
+  "tutti init hasn't set this repository up: setting it up as tutti init --no-checks does, its checks left for the spec's environment ticket"
 
 /** What it says of a setup an earlier spec run left uncommitted. */
 export const leftSetupLine =
@@ -58,13 +63,13 @@ export const leftSetup = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<str
 /**
  * The files a spec run's setup wrote, or left uncommitted from an earlier run, for the startup
  * checks to take as no uncommitted changes and the run to commit with the spec: none where there is
- * nothing to set up, the checks saying what else is amiss; null when the setup failed, having said
- * why.
+ * nothing to set up, the checks saying what else is amiss; the exit code the run ends with when the
+ * setup failed, having said why, or its form was cancelled.
  */
 export const specSetup = <R>(
   setup: SpecSetup<R>,
 ): Effect.Effect<
-  ReadonlyArray<string> | null,
+  ReadonlyArray<string> | number,
   never,
   FileSystem.FileSystem | Git | LiveFetch | R
 > =>
@@ -91,6 +96,7 @@ export const specSetup = <R>(
     if (Result.isFailure(spec)) return []
     const already = new Set((yield* status).map((entry) => entry.path))
     yield* setup.say(settingUpLine)
-    if (!(yield* setup.setUp)) return null
+    const code = yield* setup.setUp
+    if (code !== 0) return code
     return (yield* status).map((entry) => entry.path).filter((path) => !already.has(path))
   })

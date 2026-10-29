@@ -34,7 +34,7 @@ const setUp = (
     readonly spec?: string | null
     readonly work?: Readonly<Record<string, string>>
     readonly wrote?: Readonly<Record<string, string>>
-    readonly fails?: boolean
+    readonly fails?: number
   } = {},
 ) => {
   const said: Array<string> = []
@@ -50,7 +50,7 @@ const setUp = (
         setUp: Effect.gen(function* () {
           ran += 1
           yield* git.write(repo, options.wrote ?? {})
-          return options.fails !== true
+          return options.fails ?? 0
         }),
         say: (text) => Effect.sync(() => void said.push(text)),
       })
@@ -77,9 +77,10 @@ describe("a spec run's setup", () => {
     expect(await setUp(repo, { spec: "nope.md" })).toEqual({ files: [], said: [], ran: 0 })
   })
 
-  test("a setup that fails is null, having said why", async () => {
+  test("a setup that fails, or whose form is cancelled, is the exit code the run ends with", async () => {
     const repo = checkout({ "shop.md": "# Shop\n" })
-    expect((await setUp(repo, { fails: true })).files).toBeNull()
+    expect((await setUp(repo, { fails: 2 })).files).toBe(2)
+    expect((await setUp(repo, { fails: 130 })).files).toBe(130)
   })
 
   test("takes the setup an earlier spec run left uncommitted, to commit with the spec", async () => {
@@ -107,7 +108,7 @@ describe("a spec run's setup", () => {
           cwd: repo,
           spec: { given: "shop.md", from: "--spec" },
           ownPrompt: false,
-          setUp: Effect.succeed(true),
+          setUp: Effect.succeed(0),
           say: () => Effect.void,
         })
       }).pipe(Effect.provide(Layer.mergeAll(memoryGit({ dir: repo }), BunServices.layer))),

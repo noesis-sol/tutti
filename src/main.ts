@@ -459,7 +459,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       say: (text) => Effect.andThen(ready.end, Console.log(text)),
       fetch,
     }).pipe(Effect.provide(gitLayer))
-    if (setup === null) return exitCodes.setup
+    if (typeof setup === "number") return setup
     const checked = yield* Effect.result(
       check(live(cwd, flags, ready.unpacking, setup, fetch)).pipe(Effect.provide(gitLayer)),
     )

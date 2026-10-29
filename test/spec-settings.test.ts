@@ -9,7 +9,7 @@ import {
   defaultUserConfig,
   resolve,
 } from "../src/cli/AppConfig.ts"
-import { specSetupFlags } from "../src/cli/commands.ts"
+import { specFormFlags, specInit, specSetupFlags } from "../src/cli/commands.ts"
 import { noFlags, type RunFlagName } from "../src/cli/flags.ts"
 import { importSettings } from "../src/init/import.ts"
 
@@ -114,16 +114,27 @@ describe("orchestra's spec settings, imported", () => {
 })
 
 describe("a spec run's setup", () => {
-  test("is init without a terminal: its defaults, declining what it offers, checks to come", () => {
+  test("is init without a terminal: its defaults, the verifier on, declining the rest, checks to come", () => {
     expect(specSetupFlags(null)).toEqual({
       force: false,
       checkFast: "",
       checkFull: "",
-      verifier: false,
+      verifier: true,
       changelogUnion: false,
       installBeads: false,
       mcp: [],
     })
     expect(specSetupFlags(3).concurrent).toBe(3)
+  })
+
+  test("is init --no-checks in a terminal, its form asking the rest", () => {
+    expect(specFormFlags(null)).toEqual({ force: false, noChecks: true })
+    expect(specFormFlags(2)).toEqual({ force: false, noChecks: true, concurrent: 2 })
+  })
+
+  test("asks with init's form where there is one, in a renderer or in lines; else nothing", () => {
+    expect(specInit("renderer", null)).toEqual({ attended: true, flags: specFormFlags(null) })
+    expect(specInit("lines", 3)).toEqual({ attended: true, flags: specFormFlags(3) })
+    expect(specInit(null, 3)).toEqual({ attended: false, flags: specSetupFlags(3) })
   })
 })

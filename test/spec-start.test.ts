@@ -96,7 +96,7 @@ describe("a spec run's setup from the flags", () => {
             Effect.gen(function* () {
               setUpWith.push(concurrent)
               yield* git.write(repo, { ".tutti/settings.json": "{}\n" })
-              return true
+              return 0
             }),
           say: (text) => Effect.sync(() => void said.push(text)),
         })

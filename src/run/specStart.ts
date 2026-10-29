@@ -46,14 +46,15 @@ export const setupFlags = (
 
 /**
  * A spec run's setup (src/run/specSetup.ts), from the flags and their variables: the files it wrote,
- * or an earlier one left, for the startup checks and the run to commit with the spec; null when it
- * failed, having said why. `setUp` sets the repository up with the concurrency given.
+ * or an earlier one left, for the startup checks and the run to commit with the spec; the exit code
+ * the run ends with when it failed, having said why, or was cancelled. `setUp` sets the repository
+ * up with the concurrency given.
  */
 export const setUpFromFlags = <R>(options: {
   readonly cwd: string
   readonly flags: Pick<RunFlags, "spec" | "prompt" | "concurrent">
   readonly env: (name: string) => string | undefined
-  readonly setUp: (concurrent: number | null) => Effect.Effect<boolean, never, R>
+  readonly setUp: (concurrent: number | null) => Effect.Effect<number, never, R>
   readonly say: (text: string) => Effect.Effect<void>
   /** Fetches a spec at a URL: the run's one fetch, which the startup checks share (fetchOnce). */
   readonly fetch?: SpecFetch<LiveFetch>
