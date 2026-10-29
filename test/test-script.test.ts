@@ -39,3 +39,19 @@ describe("scripts/test.sh", () => {
     expect(code).toBe(1)
   })
 })
+
+// A tutti a test spawns shows its notices on the desktop where notifications are on: osascript stays
+// on the suites' PATH, and the machine's TUTTI_NOTIFY doesn't reach them (tutti-twdw).
+describe("scripts/test.sh's notifications", () => {
+  test("are off in the suites, though the machine turns them on", () => {
+    const seen = join(mkdtempSync(join(tmpdir(), "tutti-test-script-")), "seen.json")
+    const proc = Bun.spawnSync([script, "./test/fixtures/airtight/airtight.fixture.ts"], {
+      cwd: resolve(import.meta.dir, ".."),
+      env: { ...testEnv, TUTTI_NOTIFY: "1", TUTTI_FIXTURE_AIRTIGHT: seen },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    expect(proc.exitCode, proc.stderr.toString()).toBe(0)
+    expect(JSON.parse(readFileSync(seen, "utf8")).notify).toBe("0")
+  }, 30_000)
+})

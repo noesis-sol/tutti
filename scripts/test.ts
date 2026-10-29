@@ -39,8 +39,9 @@
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or
 // bd and passes, or skips, only where they are installed (orchestra-nqbn, orchestra-163s); and none
 // of the variables of the terminal, the Claude Code session or the tools the tests run under, which
-// reached the live tests' sessions (tutti-y0e). Tests read it through test/env.ts, which Biome's
-// rules hold them to (biome.json, test/lint/).
+// reached the live tests' sessions (tutti-y0e); and notifications off (TUTTI_NOTIFY=0), so that no
+// tutti a test runs shows a desktop notification on the machine (tutti-twdw). Tests read it through
+// test/env.ts, which Biome's rules hold them to (biome.json, test/lint/).
 import {
   lstatSync,
   mkdirSync,
@@ -478,7 +479,9 @@ export const airtightPath = (path: string, shadows: string): string => {
 
 /**
  * The suites' environment: `env` without the machine's variables (machineVariable), its PATH made
- * airtight in `shadows` (airtightPath), and the machine's PATH as TUTTI_TEST_MACHINE_PATH.
+ * airtight in `shadows` (airtightPath), the machine's PATH as TUTTI_TEST_MACHINE_PATH, and
+ * notifications off (TUTTI_NOTIFY=0): a tutti the tests spawn would otherwise show its notices on
+ * the machine's desktop, as osascript stays on the PATH. Tests of the notifier give their own config.
  */
 export const testEnvironment = (
   env: Readonly<Record<string, string | undefined>>,
@@ -490,6 +493,7 @@ export const testEnvironment = (
   }
   result.PATH = airtightPath(env.PATH ?? "", shadows)
   result.TUTTI_TEST_MACHINE_PATH = env.PATH ?? ""
+  result.TUTTI_NOTIFY = "0"
   return result
 }
 

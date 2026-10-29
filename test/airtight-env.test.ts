@@ -121,12 +121,20 @@ describe("testEnvironment", () => {
     expect(Object.keys(env).sort()).toEqual([
       "HOME",
       "PATH",
+      "TUTTI_NOTIFY",
       "TUTTI_SLOW",
       "TUTTI_TEST_MACHINE_PATH",
     ])
     expect(env.TUTTI_TEST_MACHINE_PATH).toBe(bin)
     expect(which("claude", env.PATH ?? "")).toBeNull()
     expect(which("git", env.PATH ?? "")).not.toBeNull()
+  })
+
+  test("turns notifications off, whatever the machine's TUTTI_NOTIFY", () => {
+    const shadows = join(folder("shadows"), "path")
+    for (const machine of [{}, { TUTTI_NOTIFY: "1" }, { TUTTI_NOTIFY: "0" }]) {
+      expect(testEnvironment({ PATH: "", ...machine }, shadows).TUTTI_NOTIFY).toBe("0")
+    }
   })
 })
 

@@ -1,7 +1,8 @@
 // A test that writes what the suites see of the machine to the file TUTTI_FIXTURE_AIRTIGHT names,
 // for test/airtight-env.test.ts: where the PATH finds each of the hidden tools and a few others,
-// where machineWhich finds the hidden ones, and the names of the variables set. Not named
-// *.test.ts, so bun test runs it only when given its path.
+// where machineWhich finds the hidden ones, and the names of the variables set; and for
+// test/test-script.test.ts, TUTTI_NOTIFY's value. Not named *.test.ts, so bun test runs it only
+// when given its path.
 import { test } from "bun:test"
 import { writeFileSync } from "node:fs"
 import { hiddenTools } from "../../../scripts/test.ts"
@@ -16,6 +17,7 @@ test("writes what it sees", () => {
       machineWhich: Object.fromEntries(hiddenTools.map((tool) => [tool, machineWhich(tool)])),
       variables: Object.keys(testEnv),
       machinePath: testEnv.TUTTI_TEST_MACHINE_PATH ?? null,
+      notify: testEnv.TUTTI_NOTIFY ?? null,
     }),
   )
 })
