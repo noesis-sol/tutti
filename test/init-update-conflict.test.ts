@@ -18,6 +18,7 @@ const texts: InitFlagTexts = {
   verifier: none,
   prefix: none,
   noMouse: none,
+  noChecks: none,
   force: false,
 }
 const conflict = "--update takes no other flag: run tutti init without it to change the rest"

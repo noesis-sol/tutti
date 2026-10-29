@@ -58,6 +58,7 @@ import {
   applyVerifier,
   asksChecks,
   type ChecksAnswers,
+  type ChecksChoice,
   type ChecksQuestions,
   filesTestWork,
   fileTestWork,
@@ -136,6 +137,11 @@ export interface InitFlags {
   readonly checkFast?: string
   /** The slower suites' command, which check-full.sh runs after check-fast.sh. */
   readonly checkFull?: string
+  /**
+   * Leave the checks for later: no scout and no check question; a runner that is missing written
+   * checking nothing, one there kept, no test work filed. Never with checkFast or checkFull.
+   */
+  readonly noChecks?: boolean
   readonly checkFastTimeout?: Duration.Duration
   readonly checkFullTimeout?: Duration.Duration
   /** The setup command; "" for none. */
@@ -542,7 +548,12 @@ const writeGitignore = (repo: string) =>
 interface RunnerPlan {
   readonly suites: ReadonlyArray<Suite> | null
   readonly replace: boolean
+  /** The checks are left for later (--no-checks): a runner there is kept as it is, unasked. */
+  readonly later?: boolean
 }
+
+/** What a runner's step adds where the checks are left for later. */
+const leftForLater = "the checks left for later"
 
 /**
  * Writes the runner at `path` from `suites`, mode 755, as the plan for it says (see writeRunners):
@@ -565,6 +576,9 @@ const writeRunner = (
     const file = join(repo, path)
     const there = yield* fs.readFileString(file).pipe(Effect.option)
     const kept = (step: Step) => ({ steps: [step], onDisk: Option.getOrNull(there) })
+    if (planned.later === true && Option.isSome(there)) {
+      return kept(step("kept", label, `${path} is there; left as it is, ${leftForLater}`))
+    }
     if (suites === null) {
       return kept(
         Option.isSome(there)
@@ -590,7 +604,9 @@ const writeRunner = (
     const did = Option.isSome(there) ? "replaced" : "wrote"
     const covering = withoutRunners(suites).kept.find((suite) => suite.coversFast === true)
     const about = checksNothing(text)
-      ? `: it checks nothing yet (${flag} "<command>" gives it one)`
+      ? planned.later === true
+        ? `: it checks nothing yet, ${leftForLater}`
+        : `: it checks nothing yet (${flag} "<command>" gives it one)`
       : path === fullRunner && covering !== undefined
         ? `: '${covering.command.trim()}' runs all ${fastRunner} does, so ${fastRunner} doesn't run first`
         : ""
@@ -668,8 +684,15 @@ const prerequisites = (repo: string, machine: Machine) =>
     ]
   })
 
-/** What's left for you, in order: the first thing missing, the prompt to read, what to commit. */
-const nextSteps = (repo: string, machine: Machine, steps: ReadonlyArray<Step>) =>
+/** How to set the checks left for later, as the Next lines say it. */
+export const setChecksLater =
+  'Set the checks once the project has them, with tutti init\'s Checks step or its flags:\ntutti init --check-fast "<command>" --check-full "<command>"'
+
+/**
+ * What's left for you, in order: the first thing missing, the prompt to read, how to set the checks
+ * where they are `later`, what to commit.
+ */
+const nextSteps = (repo: string, machine: Machine, steps: ReadonlyArray<Step>, later: boolean) =>
   Effect.gen(function* () {
     const next: Array<string> = []
     const missing = steps.find((each) => each.kind === "missing")
@@ -684,6 +707,7 @@ const nextSteps = (repo: string, machine: Machine, steps: ReadonlyArray<Step>) =
     } else if (steps.some((each) => each.label === "worker prompt" && each.kind === "done")) {
       next.push(`Read ${workerPromptPath} and adjust it to the project.`)
     }
+    if (later) next.push(setChecksLater)
     // Advice: a git status that fails only leaves out the commit step.
     const status = yield* machine
       .run(
@@ -871,9 +895,11 @@ const initWork = <R>(options: InitOptions<R>) =>
       (yield* fs.exists(join(repo, verifierPath))) &&
       promptThere !== null &&
       usesVerifier(promptThere)
+    // --no-checks leaves them for later: no scout, and none of the check questions.
+    const later = flags.noChecks === true
     const checksQuestions: ChecksQuestions = {
       checks:
-        flags.checkFast === undefined && flags.checkFull === undefined
+        flags.checkFast === undefined && flags.checkFull === undefined && !later
           ? {
               scout: Effect.provideContext(options.scout, yield* Effect.context<R>()),
               checkScript: hasCheckScript,
@@ -898,7 +924,7 @@ const initWork = <R>(options: InitOptions<R>) =>
     }
     const checked: ChecksAnswers =
       form !== null && asksChecks(checksQuestions) ? yield* form.checks(checksQuestions) : {}
-    const choice = checked.checks
+    const choice: ChecksChoice | undefined = later ? { kind: "later" } : checked.checks
     const prefixAnswer =
       checked.prefix === undefined || checksQuestions.prefix === null
         ? null
@@ -926,9 +952,11 @@ const initWork = <R>(options: InitOptions<R>) =>
           ? { suites: choice.fast, replace: checked.replaceFast ?? false }
           : choice?.kind === "scratch"
             ? { suites: [], replace: checked.replaceFast ?? false }
-            : choice?.kind === "manual" && choice.command.trim() !== manualCommand
-              ? { suites: runnerSuites(choice.command, fromForm, fastRunner), replace: true }
-              : { suites: null, replace: false }
+            : choice?.kind === "later"
+              ? { suites: [], replace: false, later: true }
+              : choice?.kind === "manual" && choice.command.trim() !== manualCommand
+                ? { suites: runnerSuites(choice.command, fromForm, fastRunner), replace: true }
+                : { suites: null, replace: false }
     const fullPlan: RunnerPlan =
       flags.checkFull !== undefined
         ? { suites: runnerSuites(flags.checkFull, "--check-full", fullRunner), replace: true }
@@ -936,7 +964,9 @@ const initWork = <R>(options: InitOptions<R>) =>
           ? { suites: choice.full, replace: checked.replaceFull ?? false }
           : choice?.kind === "scratch"
             ? { suites: [], replace: checked.replaceFull ?? false }
-            : { suites: null, replace: false }
+            : choice?.kind === "later"
+              ? { suites: [], replace: false, later: true }
+              : { suites: null, replace: false }
     // How to run each suite on part of the project, for the worker prompt, where the runners are
     // written from the suites found: none where a runner there that differs from them is kept.
     const differ =
@@ -1003,8 +1033,11 @@ const initWork = <R>(options: InitOptions<R>) =>
           : { checkFullTimeout: flags.checkFullTimeout }),
         ...(setup === undefined ? {} : { setup: setup.trim() }),
         ...(sharedFile === undefined ? {} : { sharedFile }),
-        fastRunnerChecks: flags.checkFast !== undefined || fastPlan.suites !== null,
-        fullRunnerChecks: flags.checkFull !== undefined || fullPlan.suites !== null,
+        // A check left for later keeps the settings' command, as it keeps the runner there.
+        fastRunnerChecks:
+          flags.checkFast !== undefined || (fastPlan.suites !== null && fastPlan.later !== true),
+        fullRunnerChecks:
+          flags.checkFull !== undefined || (fullPlan.suites !== null && fullPlan.later !== true),
         fromTemplates,
       })
       steps.push(written.step)
@@ -1132,7 +1165,7 @@ const initWork = <R>(options: InitOptions<R>) =>
         ]
         const steps = [...(yield* runSteps(taken, stop, options.starting))]
         steps.push(...(yield* prerequisites(repo, machine)))
-        const next = yield* nextSteps(repo, machine, steps)
+        const next = yield* nextSteps(repo, machine, steps, choice?.kind === "later")
         return {
           steps,
           next,

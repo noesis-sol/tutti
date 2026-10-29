@@ -538,6 +538,11 @@ export const initFlags = {
     `the slower suites' command, which scripts/check-full.sh runs after check-fast.sh, once at the end of a run; "" for none`,
     { metavar: "command" },
   ),
+  noChecks: initFlag(
+    "no-checks",
+    "leave the checks for later, as for a project with no code yet: no scout and no check question; a runner that is missing is written checking nothing, one there is kept, and no test work is filed (not with --check-fast or --check-full)",
+    { onOff: true },
+  ),
   checkFastTimeout: initFlag(
     "check-fast-timeout",
     "how long check-fast may run on a ticket before it merges, e.g. 5m (default 30m)",
@@ -636,6 +641,7 @@ export const readInitFlags = (
     ...pick("prefix", read("prefix", given.prefix, asIs)),
     ...pick("checkFast", read("check-fast", given.checkFast, asIs)),
     ...pick("checkFull", read("check-full", given.checkFull, asIs)),
+    ...pick("noChecks", read("no-checks", given.noChecks, onOff)),
     ...pick("checkFastTimeout", read("check-fast-timeout", given.checkFastTimeout, positiveTime)),
     ...pick("checkFullTimeout", read("check-full-timeout", given.checkFullTimeout, positiveTime)),
     ...pick("setup", read("setup", given.setup, asIs)),
@@ -648,6 +654,17 @@ export const readInitFlags = (
     ([key, text]) =>
       key !== "force" && key !== "update" && Option.isOption(text) && Option.isSome(text),
   )
+  if (flags.noChecks === true) {
+    const clashing = [
+      ...(Option.isSome(given.checkFast) ? ["--check-fast"] : []),
+      ...(Option.isSome(given.checkFull) ? ["--check-full"] : []),
+    ]
+    if (clashing.length > 0) {
+      problems.push(
+        `--no-checks leaves the checks for later, which ${clashing.join(" and ")} ${clashing.length === 1 ? "sets" : "set"}: give one or the other`,
+      )
+    }
+  }
   if (given.update === true && (given.force || others)) {
     problems.push("--update takes no other flag: run tutti init without it to change the rest")
   }

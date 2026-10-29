@@ -202,6 +202,9 @@ lines; `Ctrl+D` cancels.
     `init` files tickets, labelled `tutti-tests`, for a worker to set up the project's tests with the
     skill (which it writes to `.claude/skills/create-check-suite/`).
   - **Manual**: the one command `scripts/check-fast.sh` runs.
+  - **Not yet: leave them empty**: the checks are left for later, as `--no-checks` leaves them: a
+    runner that is missing is written checking nothing, one there is kept as it is, and no ticket
+    is filed.
 
   Where it files the test work, `init` lists the features map the skill writes (`test/FEATURES.md`,
   or where the project has it) in the settings' `queue.shared_files`, as nearly every ticket keeps
@@ -226,6 +229,7 @@ lines; `Ctrl+D` cancels.
 |---|---|
 | `--check-fast "<command>"` (`--check`) | the command `scripts/check-fast.sh` runs; `""` for a check that passes at once. Skips the scout |
 | `--check-full "<command>"` | the slower suites' command, which `scripts/check-full.sh` runs after `check-fast.sh`; `""` for none |
+| `--no-checks` | leave the checks for later, for a project with no code yet: no scout and no check question (the setup command, the ticket prefix and the verifier are still asked). A runner that is missing is written checking nothing; one there is kept as it is; no test work is filed. Not with `--check-fast` or `--check-full`. Set the checks later with `tutti init` again |
 | `--check-fast-timeout 30m` (`--check-timeout`) | how long the merge check may run on a ticket |
 | `--check-full-timeout 60m` | how long the full check may run |
 | `--setup "<command>"` | the setup command; `""` for none |

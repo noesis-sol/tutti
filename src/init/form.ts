@@ -271,6 +271,8 @@ export const initForm = (fields: Fields): InitForm => ({
           choice = chooseFound(scouted, fast, full, fileUntested)
         } else if (kind === "scratch") {
           choice = { kind: "scratch" }
+        } else if (kind === "later") {
+          choice = { kind: "later" }
         } else {
           const typed = yield* fields.text({
             title: "Check command",

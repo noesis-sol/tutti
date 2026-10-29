@@ -510,7 +510,8 @@ describe("init's form in lines", () => {
       1. Use them as they are
       2. Create from scratch with the create-check-suite skill
       3. Manual
-      Enter a number between 1 and 3 > 
+      4. Not yet: leave them empty
+      Enter a number between 1 and 4 > 
       On every merge (check-fast)
       scripts/check-fast.sh runs these on every ticket rebased before it merges: the quick ones.
       1. npm test  · unit tests · package.json:7

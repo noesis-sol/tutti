@@ -91,7 +91,10 @@ choice it left, so ask the user first and pass the answers as flags:
 - `--check-fast "<command>"` (lint, build and the fast tests: the merge check), `--check-full
   "<command>"` (the slower suites, run once at the end of a run), `--check-fast-timeout 5m` and
   `--check-full-timeout 90m` (defaults 30m and 60m: a few times the check's usual running time).
-  `--check-fast ""` writes a runner that checks nothing yet.
+  `--check-fast ""` writes a runner that checks nothing yet. `--no-checks` leaves the checks for
+  later, for a project with no code yet (a new repository holding only its spec): no scout, no check
+  question, runners that are missing written checking nothing, ones there kept; not with
+  `--check-fast` or `--check-full`.
 - `--concurrent N` / `-c N`, 1 to 16: tickets at the same time. Above 1 needs checks that can run
   side by side, and about 1 GiB of memory per worker; say so.
 - `--mcp a,b`, the MCP servers workers get, by name (`claude mcp list` shows what this machine

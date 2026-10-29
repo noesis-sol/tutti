@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `tutti init --no-checks` sets a project up with its checks left for later, as for a new repository holding only its spec (§ 8.3; `src/cli/commands.ts`'s `initFlags` and `readInitFlags`, `src/init/init.ts`'s `writeRunner` and `nextSteps`, `src/init/checks.ts`'s `checksOptions`, `src/init/form.ts`; tutti-g1wf): saying "no checks yet" took `--check-fast "" --check-full ""`, hard to find, and without them init ran the scout, a paid call, and asked the Checks step's questions, which have nothing to find in an empty repository. Now `--no-checks` (`[=on|off]`, as `--no-mouse` is) runs no scout and asks none of the check questions (the setup command, the ticket prefix and the verifier are asked as before); a runner that is missing is written checking nothing, one there is kept byte for byte, as is the settings' check command; no test work is filed. The summary's runner lines end `the checks left for later` and the Next lines say how to set them afterwards. With `--check-fast` or `--check-full` it is a setup problem, said with the rest. In the form, *The project's checks* has a fourth option, *Not yet: leave them empty*, which does the same. `test/init-no-checks.test.ts` covers it.
+
 ## [0.5.0] - 2026-10-29
 
 - A `--feature` interview or a question's talk whose turn is refused for Claude's login once the plan is filed or the answer given ends as filed, or with the answer, as on a failed turn, rather than wait until you leave (§ 4.13; `src/agent/interview.ts`'s `turnOver`, `src/agent/answerTalk.ts`; tutti-1flm).

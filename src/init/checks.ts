@@ -1,11 +1,13 @@
 // tutti init's Checks step (§ 8.3), as orchestra init's stage 2: the scout (§ 6.3) looks for the
-// suites the project has, which the form runs under a spinner and Esc skips; then one of three
+// suites the project has, which the form runs under a spinner and Esc skips; then one of four
 // choices, the one that fits what it found selected:
 //
 //   use them as they are   the suites found, in two checklists: check-fast's and check-full's
 //   create from scratch    runners that check nothing yet, and a ticket to set the tests up with
 //                          the create-check-suite skill
 //   manual                 one command, the one check-fast.sh runs
+//   not yet                the checks left for later, as --no-checks leaves them: a runner that
+//                          is missing written checking nothing, one there kept, no ticket filed
 //
 // It also asks the setup command (offered for the lockfiles at the repository's top), the ticket
 // prefix and the verifier, a Claude Code subagent that checks each ticket's change in a fresh
@@ -41,14 +43,15 @@ import type { Consent } from "./workers.ts"
 
 // --- The questions ---
 
-/** The Checks step's three choices. */
-export type ChecksKind = "found" | "scratch" | "manual"
+/** The Checks step's four choices. */
+export type ChecksKind = "found" | "scratch" | "manual" | "later"
 
 /** Each choice as the form offers it, in order. */
 export const checksOptions: ReadonlyArray<{ readonly kind: ChecksKind; readonly label: string }> = [
   { kind: "found", label: "Use them as they are" },
   { kind: "scratch", label: "Create from scratch with the create-check-suite skill" },
   { kind: "manual", label: "Manual" },
+  { kind: "later", label: "Not yet: leave them empty" },
 ]
 
 /** Whether a copy of the create-check-suite skill is in the project, and how it compares. */
@@ -70,7 +73,10 @@ export interface PrefixQuestion {
 
 /** What the Checks step asks, each question null (or false) where a flag answered it or it isn't asked. */
 export interface ChecksQuestions {
-  /** The choice of checks, after the scout; null where --check-fast or --check-full gives them. */
+  /**
+   * The choice of checks, after the scout; null where --check-fast, --check-full or --no-checks
+   * gives them.
+   */
   readonly checks: {
     /** The scout's search, which the form runs, Esc interrupting it: what it found, or why not. */
     readonly scout: Effect.Effect<Scouting, string>
@@ -103,6 +109,8 @@ export type ChecksChoice =
     }
   | { readonly kind: "scratch" }
   | { readonly kind: "manual"; readonly command: string }
+  /** The checks left for later (--no-checks): no runner replaced, no test work filed. */
+  | { readonly kind: "later" }
 
 /** The Checks step's answers: one for each question asked. */
 export interface ChecksAnswers {
@@ -354,7 +362,8 @@ export const chooseFound = (
 }
 
 /**
- * The runners a choice writes, or null for manual, whose command init writes over the one there:
+ * The runners a choice writes, or null for manual, whose command init writes over the one there,
+ * and for the checks left for later, which keep the runners there:
  * check-full.sh as it is beside `keptFast`, the check-fast.sh there that init keeps, where it keeps
  * one.
  */
@@ -362,7 +371,7 @@ export const choiceScripts = (
   choice: ChecksChoice,
   keptFast: string | null = null,
 ): { readonly fast: string; readonly full: string } | null => {
-  if (choice.kind === "manual") return null
+  if (choice.kind === "manual" || choice.kind === "later") return null
   const fast = fastScript(choice.kind === "found" ? choice.fast : [])
   const full = choice.kind === "found" ? choice.full : []
   return { fast, full: fullScript(full, runsNothing(keptFast ?? fast)) }
@@ -847,9 +856,9 @@ const runnersAsWritten = (onDisk: RunnersOnDisk, unchecked: string): string => {
  * The work a choice files for the project's tests on `base`, an epic before its tickets: from
  * scratch, an epic and the solo P1 ticket that sets the tests up; with the suites found, the solo
  * P1 ticket that gets the runners passing, under an epic with the ticket mapping the untested areas
- * after it where those are filed. Manual files nothing. Every ticket is labelled tutti-tests. The
- * tickets say what the runners on disk do (readRunners), as init writes them where none were there
- * by default.
+ * after it where those are filed. Manual files nothing, nor do the checks left for later. Every
+ * ticket is labelled tutti-tests. The tickets say what the runners on disk do (readRunners), as
+ * init writes them where none were there by default.
  */
 export const testWork = (
   choice: ChecksChoice | undefined,

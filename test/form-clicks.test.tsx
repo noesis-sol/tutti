@@ -426,6 +426,7 @@ describe("--no-mouse", () => {
         verifier: Option.none(),
         prefix: Option.none(),
         noMouse: text === "" ? Option.none() : Option.some(text),
+        noChecks: Option.none(),
         force: false,
       })
       if (flags._tag === "Failure") throw new Error(flags.failure.join("\n"))
