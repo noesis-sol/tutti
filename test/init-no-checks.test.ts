@@ -240,7 +240,11 @@ describe("tutti init --no-checks", () => {
   test("in a terminal, asks the rest of the Checks step but no check question", async () => {
     const project = newProject()
     const { form, asked } = recordingForm()
-    const { summary, calls } = await runInit(project, { force: false, mcp: [], changelogUnion: false, noChecks: true }, form)
+    const { summary, calls } = await runInit(
+      project,
+      { force: false, mcp: [], changelogUnion: false, noChecks: true },
+      form,
+    )
 
     expect(asked).toHaveLength(1)
     expect(asked[0]?.checks).toBeNull()
