@@ -15,6 +15,7 @@ import {
   type AutoAnsweredItem,
   autoAnsweredHeading,
   autoAnsweredTexts,
+  checksGateLabel,
   Ending,
   type Summary,
 } from "../print/summary.ts"
@@ -69,6 +70,7 @@ export const summaryLines = (s: {
   readonly figures: ReadonlyArray<FiguresLine>
   readonly rows: ReadonlyArray<Row>
   readonly autoAnswered?: ReadonlyArray<AutoAnsweredItem>
+  readonly checksGate?: string
 }): ReadonlyArray<Line> => {
   const auto = autoAnsweredTexts(s.autoAnswered ?? [])
   const scoped =
@@ -77,6 +79,7 @@ export const summaryLines = (s: {
   return [
     line`tutti ${s.version} on ${s.base}${scoped} · ${runTime(s.took)}`,
     detail`Completed ${totals.completed} · Set aside ${totals.deferred + totals.review} · Needs you ${totals.needsYou}`,
+    ...(s.checksGate === undefined ? [] : [detail`${checksGateLabel} ${s.checksGate}`]),
     ...(s.rows.length === 0 ? [] : s.figures.map((each) => detail`${figuresText(each)}`)),
     ...s.rows.map((row) => detail`${marks[row.mark]} ${row.ticket} ${row.word}: ${row.note}`),
     ...(auto.length === 0 ? [] : [detail`${autoAnsweredHeading}:`]),
@@ -200,6 +203,8 @@ export const make = (options: {
   readonly autoAnswered?: Effect.Effect<ReadonlyArray<AutoAnswered>>
   /** What the dashboard says of the run: the full check's step while it runs, a quit during it. */
   readonly status?: SubscriptionRef.SubscriptionRef<Status>
+  /** What a spec run's checks gate says of how it went, for the summary; null where it didn't run. */
+  readonly checksGate?: Effect.Effect<string | null>
 }): Effect.Effect<EndOfRun, never, WorkEnv | Notifier> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<WorkEnv | Notifier>()
@@ -302,6 +307,7 @@ export const make = (options: {
           requests: [],
           status: { ...emptyStatus, branch: base, concurrency: config.settings.concurrent },
         })
+        const gate = yield* options.checksGate ?? Effect.succeed(null)
         const summarised: Summary = {
           version: options.version,
           branch: base,
@@ -324,6 +330,7 @@ export const make = (options: {
               choice: each.answers.join(", "),
             })),
           ],
+          ...(gate === null ? {} : { checksGate: gate }),
         }
         const lines = summaryLines({ ...summarised, base })
         yield* logs.write(...lines)

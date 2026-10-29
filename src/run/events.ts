@@ -325,6 +325,45 @@ export const FullCheck = Schema.Struct({
   text: Schema.String,
 })
 
+/** How a spec run's checks gate went (checksGate.ts). */
+export const checksGateOutcomes = [
+  "passed",
+  "empty",
+  "failed",
+  "timed out",
+  "not run",
+  "answered",
+  "waiting",
+  "skipped",
+] as const
+
+/** A check the checks gate ran: which, how long, and how it went. */
+export const GateRan = Schema.Struct({
+  check: Schema.Literals(["setup", "fast", "full"]),
+  seconds: Seconds,
+  outcome: Schema.Literals(["passed", "failed", "timed out", "not run", "skipped"]),
+})
+
+/**
+ * A spec run's checks gate, once its environment ticket merged (§ 4.14): what it ran, how long it
+ * took and how it went; `changed` where its checks were changed in tutti checks' form. tutti's own.
+ */
+export const ChecksGate = Schema.Struct({
+  ...head("checks_gate"),
+  detail: Schema.Literals(checksGateOutcomes),
+  /** The environment ticket whose merge it followed. */
+  ticket: Schema.String,
+  ran: Schema.Array(GateRan),
+  seconds: Seconds,
+  /** Where the whole output of the check that failed is. */
+  output: optional(Schema.String),
+  /** The question it filed, or waited on, for the maintainer. */
+  question: optional(Schema.String),
+  /** The checks were changed, and committed on the base, in tutti checks' form. */
+  changed: optional(Schema.Boolean),
+  text: Schema.String,
+})
+
 /** The run's organ calls, added up: those of unknown cost count in `calls` alone. */
 export const OrganTotals = Schema.Struct({ calls: Count, turns: Count, cost_usd: Usd })
 
@@ -638,6 +677,7 @@ export const kinds = {
   stop: Stop,
   done: Done,
   full_check: FullCheck,
+  checks_gate: ChecksGate,
   check: Check,
   turn: Turn,
   organ: Organ,

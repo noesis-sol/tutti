@@ -449,7 +449,7 @@ export interface LoadView {
   /** The memory of what tutti runs besides its workers, its merge check above all, in bytes. */
   readonly check: number
   /** What `check` is named: the end-of-run full check while it runs, the merge check otherwise. */
-  readonly checkName: "merge check" | "full check"
+  readonly checkName: "merge check" | "full check" | "checks gate"
   readonly pressure: Pressure
   /** The memory available, in bytes, where the kernel says (Linux); -1 where it doesn't. */
   readonly available: number
@@ -883,15 +883,21 @@ const memoryOf = (load: Reading | null, ticket: TicketId): { readonly memory?: n
   return memory === undefined ? {} : { memory }
 }
 
-/** The load line's figures from `reading`. */
-export const loadView = (reading: Reading, fullCheck = false): LoadView => {
+/**
+ * The load line's figures from `reading`, its check named as what runs: the end-of-run full check,
+ * a spec run's checks gate, else the merge check.
+ */
+export const loadView = (
+  reading: Reading,
+  fullCheck: false | "full check" | "checks gate" = false,
+): LoadView => {
   const memories = [...reading.workers.values()]
   const { kernel } = reading
   return {
     workers: memories.reduce((sum, memory) => sum + Math.max(memory, 0), 0),
     unknown: memories.filter((memory) => memory === unknownMemory).length,
     check: reading.check,
-    checkName: fullCheck ? "full check" : "merge check",
+    checkName: fullCheck === false ? "merge check" : fullCheck,
     pressure: kernel.pressure,
     available: kernel.available,
     swapping: reading.swapping,
@@ -1110,7 +1116,13 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     autoAnswer: status.autoAnswer === null ? null : sanitizeLine(status.autoAnswer),
   }
   const warnings = [...new Set(status.warnings.map(sanitizeLine))]
-  const load = status.load === null ? null : loadView(status.load, status.fullCheck !== null)
+  const running =
+    status.fullCheck === null
+      ? false
+      : status.fullCheck.gate === true
+        ? "checks gate"
+        : "full check"
+  const load = status.load === null ? null : loadView(status.load, running)
   const fullCheck =
     status.fullCheck === null
       ? null

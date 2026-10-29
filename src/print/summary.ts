@@ -70,7 +70,12 @@ export interface Summary {
   readonly rows: ReadonlyArray<Row>
   /** The questions --auto-answer answered, in the order it did; none without it. */
   readonly autoAnswered?: ReadonlyArray<AutoAnsweredItem>
+  /** How a spec run's checks gate went (src/run/checksGate.ts); none where it didn't run. */
+  readonly checksGate?: string
 }
+
+/** What the summary's line on a spec run's checks gate starts with. */
+export const checksGateLabel = "Checks gate:"
 
 /** How the run ended, for its closing line. */
 export type Ending = Data.TaggedEnum<{
@@ -192,6 +197,14 @@ const parts = (theme: Theme, width: number) => {
       return drawn
     })
 
+  /** A spec run's checks gate: its label faint, as the figures' are, then how it went. */
+  const gate = (text: string | undefined): ReadonlyArray<Segments> => {
+    if (text === undefined) return []
+    const label = `${checksGateLabel.replace(/:$/, "")}  `
+    const room = Math.max(w - 2 - Bun.stringWidth(label), 1)
+    return [[seg("  "), seg(label, styles.dim), seg(fit(sanitizeLine(text), room))]]
+  }
+
   /** The Tickets label and the dashboard's table under it: every row, and no blank one. */
   const tickets = (rows: ReadonlyArray<Row>): ReadonlyArray<Segments> =>
     ticketsLines(rows, theme, w, { fill: false })
@@ -212,13 +225,13 @@ const parts = (theme: Theme, width: number) => {
     ]
   }
 
-  return { title, totals, figures, tickets, autoAnswered }
+  return { title, totals, gate, figures, tickets, autoAnswered }
 }
 
 /**
  * The summary `width` columns wide (`minWidth` at the least), in `theme`'s styles: a blank line,
- * the title, the totals and, when the run took any up, its figures and every ticket; then what
- * --auto-answer answered, if anything.
+ * the title, the totals, how a spec run's checks gate went and, when the run took any up, its
+ * figures and every ticket; then what --auto-answer answered, if anything.
  */
 export const summary = (s: Summary, theme: Theme, width: number): string => {
   const p = parts(theme, width)
@@ -226,6 +239,7 @@ export const summary = (s: Summary, theme: Theme, width: number): string => {
     [],
     p.title(s),
     ...p.totals(s.totals),
+    ...p.gate(s.checksGate),
     ...(s.rows.length === 0 ? [] : [...p.figures(s.figures), ...p.tickets(s.rows)]),
     ...p.autoAnswered(s.autoAnswered ?? []),
   ]

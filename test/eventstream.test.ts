@@ -203,6 +203,32 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
     },
     { ...head, kind: "full_check", detail: "not run", text: "x" },
   ],
+  checks_gate: [
+    {
+      ...head,
+      kind: "checks_gate",
+      detail: "failed",
+      ticket: "a-1.1",
+      ran: [
+        { check: "setup", seconds: 12.5, outcome: "passed" },
+        { check: "fast", seconds: 40, outcome: "failed" },
+      ],
+      seconds: 53.1,
+      output: "/r/.tutti/run/checks-gate-fast-2-of-3.log",
+      question: "a-7",
+      changed: true,
+      text: "CHECKS_GATE: held",
+    },
+    {
+      ...head,
+      kind: "checks_gate",
+      detail: "passed",
+      ticket: "a-1.1",
+      ran: [],
+      seconds: 0,
+      text: "x",
+    },
+  ],
   end: [
     { ...head, kind: "end", code: 0 },
     {
@@ -477,7 +503,8 @@ describe("the records", () => {
         ...["start", "info", "dispatch", "queue", "closed", "deferred", "asked", "answered"],
         ...["waits", "reopened", "triage", "warn", "hold", "drain", "resume", "probed", "stop"],
         ...["shared_machine", "machine_hold", "slept", "battery"],
-        ...["done", "full_check", "end", "phase", "attention", "attention_answered", "denied"],
+        ...["done", "full_check", "checks_gate", "end", "phase", "attention"],
+        ...["attention_answered", "denied"],
         ...[
           "usage_limit",
           "usage_window",

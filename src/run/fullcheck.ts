@@ -65,6 +65,11 @@ export interface FullCheckRun {
   readonly step: "setup" | "check"
   readonly command: string
   readonly began: number
+  /**
+   * The checks gate's (checksGate.ts), which a spec run's dashboard shows as the full check's, its
+   * time counted from the gate's start; the end-of-run full check without it.
+   */
+  readonly gate?: boolean
 }
 
 /** How the full check went, for the report. */
@@ -202,48 +207,54 @@ const copyTo = (from: number, to: number): void => {
 }
 
 /** Why git or the file system failed, for a line. */
-const worktreeWhy = (error: GitError | PlatformError): string =>
+export const worktreeWhy = (error: GitError | PlatformError): string =>
   error._tag === "GitFailed" || error._tag === "GitTimedOut" ? gitWhy(error) : error.message
 
-/** CLEANUP_FAILED: the full check's worktree at `path` is left, as `error` says. */
-const leftWarning = (
+/** CLEANUP_FAILED: `whose` worktree at `path` is left, as `error` says. */
+export const leftWarning = (
   path: string,
   error: GitError | PlatformError,
+  whose = "the full check's",
 ): Effect.Effect<void, never, Log | EventStream> =>
   Effect.gen(function* () {
     const text = ticketLine(
       Tag.cleanupFailed,
-    )`the full check's worktree ${path} is left (${worktreeWhy(error)}); git worktree remove --force ${path} removes it`
+    )`${whose} worktree ${path} is left (${worktreeWhy(error)}); git worktree remove --force ${path} removes it`
     yield* warn(text)
   })
 
 /**
- * Removes the full check's worktrees a killed run left, as a run starts: a run killed while its
- * full check ran (kill -9, a crash) never removed its worktree, nor what the setup installed in it,
- * and git worktree prune keeps one while its folder is there. Each removed is a detail line; one
- * that can't be, a CLEANUP_FAILED warning, as at the end of a full check. It never fails.
+ * Removes the worktrees whose folders start with `prefix` that a killed run left, `whose` they
+ * are (the full check's, the checks gate's), as a run starts: a run killed while such a check ran
+ * (kill -9, a crash) never removed its worktree, nor what the setup installed in it, and git
+ * worktree prune keeps one while its folder is there. Each removed is a detail line; one that can't
+ * be, a CLEANUP_FAILED warning, as at the end of a check. It never fails.
  */
-export const removeLeftFullChecks: Effect.Effect<void, never, Worktrees | Log | EventStream> =
+export const removeLeftWorktrees = (
+  prefix: string,
+  whose: string,
+): Effect.Effect<void, never, Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const worktrees = yield* Worktrees
     const logs = yield* Log
-    const left = yield* Effect.result(worktrees.leftDetached(fullCheckFolderPrefix))
+    const left = yield* Effect.result(worktrees.leftDetached(prefix))
     if (Result.isFailure(left)) {
       const text = ticketLine(
         Tag.cleanupFailed,
-      )`could not look for the full check's worktrees a killed run left (${worktreeWhy(left.failure)})`
+      )`could not look for ${whose} worktrees a killed run left (${worktreeWhy(left.failure)})`
       yield* warn(text)
       return
     }
     for (const path of left.success) {
       const removed = yield* Effect.result(worktrees.removeDetached(path))
-      if (Result.isFailure(removed)) yield* leftWarning(path, removed.failure)
-      else
-        yield* logs.write(
-          detail`removed the full check's worktree ${path}, which a killed run left`,
-        )
+      if (Result.isFailure(removed)) yield* leftWarning(path, removed.failure, whose)
+      else yield* logs.write(detail`removed ${whose} worktree ${path}, which a killed run left`)
     }
   })
+
+/** Removes the full check's worktrees a killed run left, as a run starts (removeLeftWorktrees). */
+export const removeLeftFullChecks: Effect.Effect<void, never, Worktrees | Log | EventStream> =
+  removeLeftWorktrees(fullCheckFolderPrefix, "the full check's")
 
 type Env = AppConfig | Beads | Checks | Git | Worktrees | Log | EventStream
 
@@ -376,15 +387,24 @@ const flaky = (command: string, passed: CheckPassed) =>
 /**
  * Keeps the whole output of the full check that failed, `name` in its worktree's .tutti/run/, in
  * the main checkout's .tutti/run/check-full.log, and says where it is; the log, which has the
- * output's end, when it can't be kept there. Both are opened through the symlink guard, so a link
- * or a named pipe the check left in place of its output is refused, not followed or waited on.
+ * output's end, when it can't be kept there.
  */
 const keepOutput = (worktree: string, name: string) =>
+  keepRunOutput(worktree, name, fullCheckLogName, "the full check's")
+
+/**
+ * Keeps the whole output `name` in a worktree's .tutti/run/ as `keptAs` in the main checkout's
+ * .tutti/run/, and says where it is; the log, which has the output's end, when it can't be kept
+ * there, said on a detail line naming `whose` output it is. Both are opened through the symlink
+ * guard, so a link or a named pipe the check left in place of its output is refused, not followed
+ * or waited on.
+ */
+export const keepRunOutput = (worktree: string, name: string, keptAs: string, whose: string) =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const worktrees = yield* Worktrees
     const from = join(worktree, runFolder, name)
-    const to = join(config.repo, runFolder, fullCheckLogName)
+    const to = join(config.repo, runFolder, keptAs)
     const kept = yield* Effect.result(
       Effect.scoped(
         Effect.gen(function* () {
@@ -394,7 +414,7 @@ const keepOutput = (worktree: string, name: string) =>
           )
           const target = yield* worktrees.openRunFile(
             config.repo,
-            fullCheckLogName,
+            keptAs,
             O.WRONLY | O.CREAT | O.TRUNC,
           )
           yield* Effect.try({
@@ -406,9 +426,7 @@ const keepOutput = (worktree: string, name: string) =>
     )
     if (Result.isSuccess(kept)) return to
     const logs = yield* Log
-    yield* logs.write(
-      detail`the full check's whole output can't be kept in ${to}: ${kept.failure.message}`,
-    )
+    yield* logs.write(detail`${whose} whole output can't be kept in ${to}: ${kept.failure.message}`)
     return join(config.repo, logFile)
   })
 

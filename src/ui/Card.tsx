@@ -317,8 +317,8 @@ export const compactLines = (
 }
 
 /**
- * What the box with no worker in it says at `now`: `stopping…`, else what the end-of-run full check
- * runs and for how long, else `picking the next ticket…`.
+ * What the box with no worker in it says at `now`: `stopping…`, else what the end-of-run full check,
+ * or a spec run's checks gate, runs and for how long, else `picking the next ticket…`.
  */
 export const idleText = (
   stopping: boolean,
@@ -327,7 +327,8 @@ export const idleText = (
 ): string => {
   if (stopping) return "stopping…"
   if (fullCheck === null) return "picking the next ticket…"
-  const what = fullCheck.step === "setup" ? "setting up the full check" : "full check"
+  const name = fullCheck.gate === true ? "checks gate" : "full check"
+  const what = fullCheck.step === "setup" ? `setting up the ${name}` : name
   return `${what}: ${fullCheck.command} · ${elapsed(now - fullCheck.began)}`
 }
 

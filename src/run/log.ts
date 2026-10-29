@@ -91,6 +91,7 @@ export const Tag = {
   fullCheckFailed: "FULL_CHECK_FAILED",
   fullCheckNotRun: "FULL_CHECK_NOT_RUN",
   fullCheckSkipped: "FULL_CHECK_SKIPPED",
+  checksGate: "CHECKS_GATE",
   cleanupFailed: "CLEANUP_FAILED",
   labelFailed: "LABEL_FAILED",
   closedUnmerged: "CLOSED_UNMERGED",

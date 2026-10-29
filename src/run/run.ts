@@ -111,6 +111,7 @@ import {
 import { Battery, watchBattery } from "./battery.ts"
 import { make as makeBlockedWatch } from "./blockedWatch.ts"
 import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carry.ts"
+import { type GateAsk, make as makeChecksGate } from "./checksGate.ts"
 import { closedBranches } from "./closedBranches.ts"
 import { noteCompactions } from "./compactions.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
@@ -226,6 +227,11 @@ export interface RunOptions {
    * shows as a hold's banner, and the run waits for the rest rather than end, until it is null.
    */
   readonly filing?: SubscriptionRef.SubscriptionRef<string | null>
+  /**
+   * How a spec run's checks gate asks in a terminal (checksGate.ts): tutti checks' form in place
+   * of the dashboard. Without it, a hold files a question for the maintainer.
+   */
+  readonly gateAsk?: GateAsk
   /**
    * Leaves the report and the end record to `finish`, run once the dashboard's renderer is gone,
    * so that they follow the summary on the main screen (§ 5 item 14 "Then", § 7.1).
@@ -563,6 +569,17 @@ const runFrom = (
         }),
       )
       .pipe(Effect.provideContext(requiresContext))
+    // A spec run's checks gate (checksGate.ts): once its environment ticket has merged, the checks
+    // on the base are checked before anything else of the tree starts or resumes; a hold stops the
+    // run. The dashboard shows it as the full check's phase.
+    const checksGate = yield* makeChecksGate({
+      base,
+      setup: Effect.map(setUps.now, (setup) => setup.command),
+      stopped: (stop) => stopped(stop),
+      show: showOn(status, "fullCheck"),
+      ...(options.gateAsk === undefined ? {} : { ask: options.gateAsk }),
+    })
+    const beforeStart = Effect.andThen(requiresChecked, checksGate.before)
 
     // The machine's other tutti and orchestra runs (machineGate.ts): with --machine-workers, the
     // ticket about to start waits while the workers across them are at that cap.
@@ -605,7 +622,7 @@ const runFrom = (
       excludeTypes: config.settings.queue.exclude_types,
       start: { start: ticketFiber },
       gate,
-      beforeStart: requiresChecked,
+      beforeStart,
       room: machine.room,
       machineFull,
       carrying: Ref.get(carrying),
@@ -895,8 +912,9 @@ const runFrom = (
       // first, each in a slot: each is done but for its merge, and others may wait on it. One left
       // for a hold, a solo ticket or a slot is due again at a later look (recheck.ts).
       yield* queue.recheck
-      // The requires list a merge changed, checked before anything starts (requiresChecked).
-      yield* requiresChecked
+      // The requires list a merge changed, checked before anything starts (requiresChecked), then a
+      // spec run's checks gate, once its environment ticket has merged.
+      yield* beforeStart
       // The workers carried over that waited for a slot, then the answered tickets, come back
       // before new ones start, each in a slot of its own and counting toward no limit (carry.ts,
       // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
@@ -1022,6 +1040,7 @@ const runFrom = (
       quitting,
       autoAnswered: attention.autoAnswered,
       status,
+      checksGate: checksGate.said,
     })
     const { saved, handedBack, neverSent } = yield* end.suspend({
       quit,

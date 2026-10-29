@@ -1120,7 +1120,7 @@ same lines, without colour, in the summary at the end of its log.
 | Code | Meaning |
 |---|---|
 | 0 | the run ended by itself: nothing left (`READY_EMPTY`), the limit reached (`LIMIT_REACHED`), or wound down as asked (`DRAINED`); also nothing to run, a feature plan declined, or an interview that filed nothing or wasn't run |
-| 2 | a setup problem (all are listed), one a worker's first `system/init` showed (`SETUP_PROBLEM`), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), Claude's login refused in a worker's turn (`LOGIN`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
+| 2 | a setup problem (all are listed), one a worker's first `system/init` showed (`SETUP_PROBLEM`), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), a spec run's checks gate holding its tree (`CHECKS_HELD`), Claude's login refused in a worker's turn (`LOGIN`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
 | 3 | a worker idle with its ticket in progress (`PAUSED`), a request unanswered (`BLOCKED`), or a worker past its ticket limit (`TICKET_LIMIT`) |
 | 4 | Beads or git failing (`BEADS_FAILED`, `GIT_FAILED`, …), or tutti failing itself (`PANIC`) |
 | 5 | uncommitted changes in the main checkout, or it left its branch (`DIRTY_TREE`) |

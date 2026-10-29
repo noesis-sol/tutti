@@ -314,6 +314,7 @@ describe("stops and exit codes", () => {
     expect(stopCodes).toEqual({
       REQUIREMENTS_MISSING: 2,
       SETUP_PROBLEM: 2,
+      CHECKS_HELD: 2,
       LOGIN: 2,
       PAUSED: 3,
       BLOCKED: 3,
