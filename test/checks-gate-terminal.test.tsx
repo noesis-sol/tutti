@@ -10,7 +10,13 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber, SubscriptionRef } from "effect"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { fastScript, fullScript } from "../src/init/runners.ts"
-import { type GateAsk, gateQuestionTitle } from "../src/run/checksGate.ts"
+import {
+  fingerprint,
+  type GateAsk,
+  gateKey,
+  gateQuestionTitle,
+  gateSpecKey,
+} from "../src/run/checksGate.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { keepDescription, keepQuestion } from "../src/run/gateForm.ts"
@@ -18,7 +24,7 @@ import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"
-import type { TicketId } from "../src/services/Beads.ts"
+import { HumanLabel, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -197,7 +203,10 @@ describe("the checks gate in a terminal", () => {
  * A whole spec run whose gate asks through `ask`, as the form would: the environment ticket writes
  * nothing, so the runners still check nothing.
  */
-const askedRun = (ask: (repository: Repository["Service"], repo: string) => GateAsk) => {
+const askedRun = (
+  ask: (repository: Repository["Service"], repo: string) => GateAsk,
+  seeds: ReadonlyArray<Seed> = tree,
+) => {
   const repo = folder("repo")
   const root = folder("worktrees")
   return scenario(
@@ -205,7 +214,7 @@ const askedRun = (ask: (repository: Repository["Service"], repo: string) => Gate
       config: config(repo),
       git: { dir: repo },
       worktrees: { root },
-      backlog: tree,
+      backlog: seeds,
       scripts: (world) => ({
         "s-1.1": [commits(world, root, "s-1.1", { "README.md": "# Shop\n" })],
         "s-1.2": [commits(world, root, "s-1.2", { "shop.ts": "export {}\n" })],
@@ -255,6 +264,41 @@ describe("the gate's hold, asked in a terminal", () => {
     expect(started(ran)).toEqual(["s-1.1", "s-1.2"])
     expect(gateRecords(ran)).toMatchObject([{ detail: "passed", changed: true }])
     expect(ran.issues.some((each) => each.title === gateQuestionTitle)).toBe(false)
+  })
+
+  test("a question an earlier run filed for these checks opens the form, and is closed once they pass", async () => {
+    const print = fingerprint([
+      { check: "fast", command: fast, path: fast, script: emptyRunners[fast] ?? null },
+      { check: "full", command: full, path: full, script: emptyRunners[full] ?? null },
+    ])
+    const seeds = backlog()
+      .ticket("s-1", { type: "epic", metadata: { spec } })
+      .ticket("s-1.1", { parent: "s-1", priority: 0, labels: ["solo"], metadata: { spec } })
+      .ticket("s-9", {
+        title: gateQuestionTitle,
+        labels: [HumanLabel],
+        metadata: { [gateSpecKey]: spec, [gateKey]: print },
+      })
+      .ticket("s-1.2", { parent: "s-1", blockedBy: ["s-1.1", "s-9"], metadata: { spec } }).seeds
+    const held: Array<string> = []
+    const ran = await askedRun(
+      (repository, repo) => ({
+        held: (why) =>
+          Effect.gen(function* () {
+            held.push(why)
+            yield* Effect.orDie(repository.commit(repo, "tutti: set the checks", realRunners))
+            return "set" as const
+          }),
+        shown: () => Effect.succeed("accepted" as const),
+      }),
+      seeds,
+    )
+    expectExitCode(ran, 0)
+    expect(held).toHaveLength(1)
+    expect(started(ran)).toEqual(["s-1.1", "s-1.2"])
+    expect(ran.issues.find((each) => each.id === "s-9")?.status).toBe("closed")
+    expect(ran.issues.filter((each) => each.title === gateQuestionTitle)).toHaveLength(1)
+    expectLog(ran, [/^CHECKS_GATE: closed s-9: the checks gate passed on main at \w+$/])
   })
 
   test("left as they are, the hold files its question as without a terminal", async () => {

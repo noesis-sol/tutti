@@ -666,7 +666,9 @@ files a question for you, `Set the checks the spec's tree is checked with`, whic
 tickets wait on, and stops the run, `CHECKS_HELD: the checks gate held the spec's tree: …; it waits
 on <id>`, exit 2. Set the checks with `tutti checks` and commit them, then answer it; or answer it to
 go on with the checks as they are. The next run checks them again, or goes on with them where the
-question was answered for the runners as they still are.
+question was answered for the runners as they still are; without a terminal, a question still open
+for them holds the tree again, while in one the form opens. A hold notes a question still open
+rather than file another, and once the checks pass tutti closes it, as the tree's tickets wait on it.
 
 It waits while a stop or the usage limit holds the run, and a run that winds down leaves it to the
 next. While it runs, Current's box says `checks gate: <command> · <time>` (`setting up the checks gate`

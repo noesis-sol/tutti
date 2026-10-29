@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { Duration, Effect, Fiber } from "effect"
+import { Duration, Effect, Fiber, Queue } from "effect"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { fastScript, fullScript } from "../src/init/runners.ts"
 import { type Summary, summary } from "../src/print/summary.ts"
@@ -21,6 +21,7 @@ import {
   type RunnerRead,
   runsOf,
 } from "../src/run/checksGate.ts"
+import type { DrainRequest } from "../src/run/drain.ts"
 import { summaryLines } from "../src/run/endOfRun.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { line } from "../src/run/log.ts"
@@ -450,5 +451,51 @@ describe("the summary's line on the gate", () => {
     const plain = summaryLines({ ...ended, base: "main", checksGate: "passed in 4m12s" })
     expect(plain.map(String)).toContain("  Checks gate: passed in 4m12s")
     expect(summaryLines({ ...ended, base: "main" }).join("\n")).not.toContain("Checks gate")
+  })
+})
+
+describe("the gate while the run winds down", () => {
+  test("isn't run: the next run runs it", async () => {
+    const repo = folder("repo")
+    const root = folder("worktrees")
+    const drains = Effect.runSync(Queue.unbounded<DrainRequest>())
+    const ran = await scenario(
+      {
+        config: config(repo),
+        git: { dir: repo },
+        worktrees: { root },
+        backlog: tree(),
+        scripts: (world) => ({
+          // Its worker asks the run to wind down as it claims the ticket, as SIGUSR1 does.
+          "s-1.1": [
+            claimsAndCloses("s-1.1" as TicketId, {
+              claim: Effect.andThen(
+                Queue.offer(drains, { on: true, how: "by SIGUSR1" }),
+                Effect.asVoid(
+                  Effect.orDie(world.beads.update("s-1.1" as TicketId, { claim: true })),
+                ),
+              ),
+              commit: Effect.asVoid(
+                Effect.orDie(world.repository.commit(join(root, "s-1.1"), "Change", realRunners)),
+              ),
+              close: Effect.asVoid(Effect.orDie(world.beads.close("s-1.1" as TicketId, "done"))),
+            }),
+          ],
+        }),
+      },
+      Effect.gen(function* () {
+        yield* (yield* Repository).commit(repo, "tutti: set up for spec shop.md", emptyRunners)
+        yield* (yield* Git).addWorktree(repo, join(root, "s-1.1"), {
+          branch: "tutti/s-1.1",
+          base: "main",
+        })
+        return yield* run({ version: "0.1.0-test", base: "main", drains })
+      }),
+    )
+    expectExitCode(ran, 0)
+    expect(started(ran)).toEqual(["s-1.1"])
+    expect(gateRecords(ran)).toEqual([])
+    expect(ran.log.some((each) => each.startsWith("CHECKS_GATE"))).toBe(false)
+    expect(issue(ran, "s-1")?.metadata[gateKey]).toBeUndefined()
   })
 })

@@ -331,10 +331,14 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
         ) =>
           Effect.gen(function* () {
             const outputSaid = output === undefined ? "" : line`; the whole output is in ${output}`
-            const filed = yield* fileQuestion(env, why, outputSaid, fingerprint(runners), runners)
+            // A question still open for the spec is the one the tree waits on: noted, not filed again.
+            const filed =
+              waitingOn === undefined
+                ? yield* fileQuestion(env, why, outputSaid, fingerprint(runners), runners)
+                : yield* noteQuestion(waitingOn, why, outputSaid, fingerprint(runners))
             const waits =
               filed.question === undefined
-                ? line`; bd couldn't file the question for it (${filed.why}), so nothing records the hold`
+                ? line`; bd couldn't file the question for it (${filed.why ?? ""}), so nothing records the hold`
                 : line`; the spec's tree waits on ${filed.question}, a question for you`
             const text = gateLine`held on ${base} at ${shortHash(at)}: ${why}${outputSaid}${waits}`
             yield* end(detail, text, `held: ${why}${outputSaid}`, {
@@ -348,6 +352,9 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
               ),
             )
           })
+
+        // A gate question still open for the spec, as the last look at them found it.
+        let waitingOn: Issue | undefined
 
         const run = Effect.gen(function* () {
           for (;;) {
@@ -365,23 +372,28 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             )
 
             // Answered already for these runners, or asked and not answered yet.
+            // The gate's questions for this spec: one answered for these runners lets the tree go
+            // on with them; one open for them holds it again, unless the form can open in a
+            // terminal. Open ones are closed once the checks pass, as the tree's tickets wait on them.
             const asked = yield* Effect.result(
-              beads.list({
-                all: true,
-                labels: [HumanLabel],
-                metadata: { [gateSpecKey]: path, [gateKey]: print },
-              }),
+              beads.list({ all: true, labels: [HumanLabel], metadata: { [gateSpecKey]: path } }),
             )
             const questions = Result.isSuccess(asked) ? asked.success : []
-            const answered = questions.find((issue) => issue.status === "closed")
-            const open = questions.find((issue) => issue.status !== "closed")
+            const forThese = (issue: Issue) => issue.metadata[gateKey] === print
+            const answered = questions.find((issue) => issue.status === "closed" && forThese(issue))
+            const opened = questions.filter((issue) => issue.status !== "closed")
+            const open = opened.find(forThese)
             if (answered !== undefined) {
               yield* record(print)
+              yield* closeQuestions(
+                opened,
+                `the checks gate went on with the checks ${answered.id} was answered for`,
+              )
               const text = gateLine`${answered.id} was answered for these checks: the tree goes on with them as they are`
               yield* end("answered", text, `answered: ${answered.id}`, { question: answered.id })
               return
             }
-            if (open !== undefined) {
+            if (open !== undefined && options.ask === undefined) {
               const why = line`the checks are still as ${open.id} asks about`
               const text = gateLine`held on ${base} at ${shortHash(at)}: ${why}; the spec's tree waits on it`
               yield* end("waiting", text, `held: waiting on ${open.id}`, { question: open.id })
@@ -393,6 +405,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
               )
               return
             }
+            waitingOn = opened[0]
 
             // 1. Still empty.
             const empty = runners.flatMap((runner) => {
@@ -463,6 +476,10 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
               continue
             }
             yield* record(print)
+            yield* closeQuestions(
+              waitingOn === undefined ? [] : [waitingOn],
+              `the checks gate passed on ${base} at ${shortHash(at)}`,
+            )
             const ms = yield* elapsed
             const text = gateLine`passed on ${base} at ${shortHash(at)} in ${took(ms)}: check-fast three times with the merge's, check-full once; the rest of ${root} starts`
             yield* end(
@@ -630,6 +647,44 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
         )
       })
 
+    /** Closes the gate's `questions` still open, as the checks went on: `why`. */
+    const closeQuestions = (questions: ReadonlyArray<Issue>, why: string) =>
+      Effect.forEach(
+        questions,
+        (question) =>
+          Effect.gen(function* () {
+            const closed = yield* Effect.result(beads.close(question.id, `tutti: ${why}`))
+            if (Result.isFailure(closed)) {
+              yield* logs.write(
+                gateLine`bd can't close ${question.id} (${beadsWhy(closed.failure)}); the tree's tickets wait on it until it is answered`,
+              )
+            } else yield* logs.write(gateLine`closed ${question.id}: ${why}`)
+          }),
+        { discard: true },
+      )
+
+    /**
+     * Notes on `question`, open for the spec already, that the gate held the tree again, `why`, for
+     * the runners `print`: the question the tree waits on, or why bd couldn't note it.
+     */
+    const noteQuestion = (question: Issue, why: Line, outputSaid: string, print: string) =>
+      Effect.gen(function* () {
+        const noted = yield* Effect.result(
+          Effect.andThen(
+            beads.update(question.id, {
+              appendNotes: `tutti: the checks gate held the tree again: ${why}${outputSaid}.`,
+            }),
+            beads.setMetadata(question.id, gateKey, print),
+          ),
+        )
+        if (Result.isFailure(noted)) {
+          yield* logs.write(
+            gateLine`bd can't add a note to ${question.id} (${beadsWhy(noted.failure)})`,
+          )
+        }
+        return { question: question.id } as { question: TicketId | undefined; why?: string }
+      })
+
     /**
      * Files the question a hold asks, which the tree's open tickets wait on: the question, or why
      * bd couldn't file it.
@@ -705,6 +760,8 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             return
           }
           if (!(yield* merged(env))) return
+          // Not while a stop or the usage limit holds the run, or it winds down: the next run does.
+          if (!(yield* options.takesWork ?? Effect.succeed(true))) return
           yield* Ref.set(settled, true)
           // Passed already for the runners on the base: a run carried on, or an update that left them.
           const head = yield* Effect.result(git.revParse(config.repo, base))
