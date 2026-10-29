@@ -455,45 +455,27 @@ describe("the summary's line on the gate", () => {
 })
 
 describe("the gate while the run winds down", () => {
-  test("isn't run: the next run runs it", async () => {
+  test("isn't run, and records nothing: the next run runs it", async () => {
     const repo = folder("repo")
     const root = folder("worktrees")
     const drains = Effect.runSync(Queue.unbounded<DrainRequest>())
+    // The environment ticket merged in an earlier run; the run is asked to wind down as it starts.
+    Effect.runSync(Queue.offer(drains, { on: true, how: "by SIGUSR1" }))
     const ran = await scenario(
       {
         config: config(repo),
         git: { dir: repo },
         worktrees: { root },
-        backlog: tree(),
-        scripts: (world) => ({
-          // Its worker asks the run to wind down as it claims the ticket, as SIGUSR1 does.
-          "s-1.1": [
-            claimsAndCloses("s-1.1" as TicketId, {
-              claim: Effect.andThen(
-                Queue.offer(drains, { on: true, how: "by SIGUSR1" }),
-                Effect.asVoid(
-                  Effect.orDie(world.beads.update("s-1.1" as TicketId, { claim: true })),
-                ),
-              ),
-              commit: Effect.asVoid(
-                Effect.orDie(world.repository.commit(join(root, "s-1.1"), "Change", realRunners)),
-              ),
-              close: Effect.asVoid(Effect.orDie(world.beads.close("s-1.1" as TicketId, "done"))),
-            }),
-          ],
-        }),
+        backlog: tree({ status: "closed" }),
       },
       Effect.gen(function* () {
-        yield* (yield* Repository).commit(repo, "tutti: set up for spec shop.md", emptyRunners)
-        yield* (yield* Git).addWorktree(repo, join(root, "s-1.1"), {
-          branch: "tutti/s-1.1",
-          base: "main",
-        })
+        yield* (yield* Repository).commit(repo, "tutti: set up for spec shop.md", realRunners)
         return yield* run({ version: "0.1.0-test", base: "main", drains })
       }),
     )
     expectExitCode(ran, 0)
-    expect(started(ran)).toEqual(["s-1.1"])
+    expect(started(ran)).toEqual([])
+    expect(ran.checkRuns).toEqual([])
     expect(gateRecords(ran)).toEqual([])
     expect(ran.log.some((each) => each.startsWith("CHECKS_GATE"))).toBe(false)
     expect(issue(ran, "s-1")?.metadata[gateKey]).toBeUndefined()
