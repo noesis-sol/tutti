@@ -607,9 +607,11 @@ const writeRunner = (
       ? planned.later === true
         ? `: it checks nothing yet, ${leftForLater}`
         : `: it checks nothing yet (${flag} "<command>" gives it one)`
-      : path === fullRunner && covering !== undefined
-        ? `: '${covering.command.trim()}' runs all ${fastRunner} does, so ${fastRunner} doesn't run first`
-        : ""
+      : planned.later === true
+        ? `: it runs ${fastRunner}, ${leftForLater}`
+        : path === fullRunner && covering !== undefined
+          ? `: '${covering.command.trim()}' runs all ${fastRunner} does, so ${fastRunner} doesn't run first`
+          : ""
     const steps = [step("done", label, `${did} ${path}${about}`, [path])]
     for (const left of withoutRunners(suites).left) {
       steps.push(

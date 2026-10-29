@@ -235,6 +235,9 @@ describe("tutti init --no-checks", () => {
     expect(lines(summary)).toContain(
       "• check-fast  scripts/check-fast.sh is there; left as it is, the checks left for later",
     )
+    expect(lines(summary)).toContain(
+      "✓ check-full  wrote scripts/check-full.sh: it runs scripts/check-fast.sh, the checks left for later",
+    )
   })
 
   test("in a terminal, asks the rest of the Checks step but no check question", async () => {
