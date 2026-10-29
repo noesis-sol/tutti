@@ -345,7 +345,7 @@ const hasSharedFiles = (json: Json | null): boolean => {
 }
 
 /** What init changes in the settings: each absent where it keeps what is there. */
-interface SettingsChanges {
+export interface SettingsChanges {
   readonly concurrent: number | null
   readonly mcp: ReadonlyArray<string> | null
   readonly checkFastTimeout?: Duration.Duration
@@ -369,7 +369,7 @@ interface SettingsChanges {
  * lacks (the runners as the checks where their keys are absent, their time limits): the settings it
  * holds now, and the step.
  */
-const writeSettings = (
+export const writeSettings = (
   repo: string,
   existing: { readonly json: Json | null; readonly text: string | null },
   changes: SettingsChanges,
@@ -545,7 +545,7 @@ const writeGitignore = (repo: string) =>
   )
 
 /** What init writes in a runner: its suites, null to keep the one there; and whether it replaces one that differs. */
-interface RunnerPlan {
+export interface RunnerPlan {
   readonly suites: ReadonlyArray<Suite> | null
   readonly replace: boolean
   /** The checks are left for later (--no-checks): a runner there is kept as it is, unasked. */
@@ -606,7 +606,7 @@ const writeRunner = (
     const about = checksNothing(text)
       ? planned.later === true
         ? `: it checks nothing yet, ${leftForLater}`
-        : `: it checks nothing yet (${flag} "<command>" gives it one)`
+        : ": it checks nothing yet (tutti checks gives it one)"
       : planned.later === true
         ? `: it runs ${fastRunner}, ${leftForLater}`
         : path === fullRunner && covering !== undefined
@@ -629,9 +629,11 @@ const writeRunner = (
  * Writes the runners, mode 755: a runner the plan gives suites, and one that is missing; one that
  * is there is kept, as is one that differs from what the plan writes unless it replaces it. A
  * missing check-fast.sh calls an existing scripts/check.sh as its suite. check-full.sh is `exit 0`
- * only where the check-fast.sh there afterwards runs nothing either: one init keeps runs first.
+ * only where the check-fast.sh there afterwards runs nothing either: one init keeps runs first, and
+ * a check-full.sh there that runs nothing is written again to run it, as the full check would
+ * otherwise check nothing once check-fast.sh is given its suites.
  */
-const writeRunners = (
+export const writeRunners = (
   repo: string,
   plan: { readonly fast: RunnerPlan; readonly full: RunnerPlan },
 ) =>
@@ -660,16 +662,130 @@ const writeRunners = (
       planned: plan.fast,
     })
     const fastEmpty = fast.onDisk === null || runsNothing(fast.onDisk)
+    const fullThere = yield* fs.readFileString(join(repo, fullRunner)).pipe(Effect.option)
+    const fullPlan: RunnerPlan =
+      plan.full.suites !== null
+        ? plan.full
+        : Option.isNone(fullThere)
+          ? { suites: [], replace: false }
+          : !fastEmpty && runsNothing(fullThere.value)
+            ? { suites: [], replace: true }
+            : plan.full
     const full = yield* writeRunner(repo, {
       label: "check-full",
       path: fullRunner,
       flag: "--check-full",
-      suites: plan.full.suites ?? ((yield* exists(fullRunner)) ? null : []),
+      suites: fullPlan.suites,
       script: (suites) => fullScript(suites, fastEmpty),
-      planned: plan.full,
+      planned: fullPlan,
     })
     return [...fast.steps, ...full.steps]
   })
+
+/** The Checks step's flags, which tutti checks takes too. */
+export type ChecksFlags = Pick<
+  InitFlags,
+  "checkFast" | "checkFull" | "checkFastTimeout" | "checkFullTimeout" | "setup"
+>
+
+/**
+ * The Checks step's questions of the checks and the setup command in the project at `repo`, whose
+ * settings are `current`, each null where `flags` answer it, the choice of checks running `scout`
+ * (null too where the checks are left for `later`);
+ * and what their answers are planned from: Manual's command as it is now, the setup command in the
+ * settings, and the one found for the lockfiles.
+ */
+export const checksAsked = <R>(
+  repo: string,
+  current: Settings,
+  flags: ChecksFlags,
+  scout: Effect.Effect<Scouting, string, R>,
+  later = false,
+) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const readThere = (path: string) =>
+      fs.readFileString(join(repo, path)).pipe(Effect.option, Effect.map(Option.getOrNull))
+    const fastThere = yield* readThere(fastRunner)
+    const hasCheckScript = yield* fs.stat(join(repo, checkScript)).pipe(
+      Effect.map((info) => info.type === "File"),
+      Effect.orElseSucceed(() => false),
+    )
+    const currentFast = current.checks.fast.command
+    const manualCommand =
+      currentFast !== null && !isRunner(currentFast, fastRunner)
+        ? currentFast
+        : fastThere === null && hasCheckScript
+          ? checkScript
+          : ""
+    const setupWas = current.checks.setup.command
+    const setupFound = yield* findSetup(repo)
+    const checks: ChecksQuestions["checks"] =
+      flags.checkFast === undefined && flags.checkFull === undefined && !later
+        ? {
+            scout: Effect.provideContext(scout, yield* Effect.context<R>()),
+            checkScript: hasCheckScript,
+            command: manualCommand,
+            keepsRunner: fastThere !== null,
+            runners: { fast: fastThere, full: yield* readThere(fullRunner) },
+            skill: yield* skillState(repo),
+          }
+        : null
+    const setup: ChecksQuestions["setup"] =
+      flags.setup === undefined && setupWas === null && setupFound.offer !== "" ? setupFound : null
+    return { checks, setup, manualCommand, setupWas, setupFound }
+  })
+
+/**
+ * What the Checks step's answers, `checked`, and `flags` make of the questions `asked`: each
+ * runner's plan, a command typed in Manual said to come `fromForm`; how to run each suite on part of
+ * the project, for the worker prompt ("" where it isn't known); and the setup command, undefined to
+ * keep the one there.
+ */
+export const checksPlan = (
+  flags: ChecksFlags,
+  asked: { readonly checks: ChecksQuestions["checks"]; readonly manualCommand: string },
+  checked: ChecksAnswers,
+  fromForm: string,
+) => {
+  const choice = checked.checks
+  const fast: RunnerPlan =
+    flags.checkFast !== undefined
+      ? { suites: runnerSuites(flags.checkFast, "--check-fast", fastRunner), replace: true }
+      : choice?.kind === "found"
+        ? { suites: choice.fast, replace: checked.replaceFast ?? false }
+        : choice?.kind === "scratch"
+          ? { suites: [], replace: checked.replaceFast ?? false }
+          : choice?.kind === "later"
+            ? { suites: [], replace: false, later: true }
+            : choice?.kind === "manual" && choice.command.trim() !== asked.manualCommand
+              ? { suites: runnerSuites(choice.command, fromForm, fastRunner), replace: true }
+              : { suites: null, replace: false }
+  const full: RunnerPlan =
+    flags.checkFull !== undefined
+      ? { suites: runnerSuites(flags.checkFull, "--check-full", fullRunner), replace: true }
+      : choice?.kind === "found"
+        ? { suites: choice.full, replace: checked.replaceFull ?? false }
+        : choice?.kind === "scratch"
+          ? { suites: [], replace: checked.replaceFull ?? false }
+          : choice?.kind === "later"
+            ? { suites: [], replace: false, later: true }
+            : { suites: null, replace: false }
+  // How to run each suite on part of the project, for the worker prompt, where the runners are
+  // written from the suites found: none where a runner there that differs from them is kept.
+  const differ =
+    choice?.kind === "found" && asked.checks !== null
+      ? runnersDiffer(asked.checks.runners, choice, checked.replaceFast === true)
+      : { fast: false, full: false }
+  const promptSuites =
+    choice?.kind === "found" &&
+    (!differ.fast || checked.replaceFast === true) &&
+    (!differ.full || checked.replaceFull === true)
+      ? suiteLines(choice.fast, choice.full)
+      : ""
+  const setup: string | undefined = flags.setup ?? checked.setup
+  return { fast, full, promptSuites, setup }
+}
 
 /** What tutti needs and whether it is there: bd on the PATH, and Beads set up. */
 const prerequisites = (repo: string, machine: Machine) =>
@@ -687,14 +803,18 @@ const prerequisites = (repo: string, machine: Machine) =>
   })
 
 /** How to set the checks left for later, as the Next lines say it. */
-export const setChecksLater =
-  'Set the checks once the project has them, with tutti init\'s Checks step or its flags:\ntutti init --check-fast "<command>" --check-full "<command>"'
+export const setChecksLater = "Set the checks once the project has them:\ntutti checks"
 
 /**
  * What's left for you, in order: the first thing missing, the prompt to read, how to set the checks
- * where they are `later`, what to commit.
+ * where they are `later` or check-fast.sh checks nothing, what to commit.
  */
-const nextSteps = (repo: string, machine: Machine, steps: ReadonlyArray<Step>, later: boolean) =>
+export const nextSteps = (
+  repo: string,
+  machine: Machine,
+  steps: ReadonlyArray<Step>,
+  later = false,
+) =>
   Effect.gen(function* () {
     const next: Array<string> = []
     const missing = steps.find((each) => each.kind === "missing")
@@ -709,7 +829,19 @@ const nextSteps = (repo: string, machine: Machine, steps: ReadonlyArray<Step>, l
     } else if (steps.some((each) => each.label === "worker prompt" && each.kind === "done")) {
       next.push(`Read ${workerPromptPath} and adjust it to the project.`)
     }
-    if (later) next.push(setChecksLater)
+    // A check-fast.sh that runs nothing merges every ticket unchecked: tutti checks gives it some,
+    // unless the test work filed sets them up.
+    const fast = yield* (yield* FileSystem.FileSystem)
+      .readFileString(join(repo, fastRunner))
+      .pipe(Effect.option)
+    const testWorkFiled = steps.some((each) => each.label === "ticket")
+    if (later) {
+      next.push(setChecksLater)
+    } else if (Option.isSome(fast) && runsNothing(fast.value) && !testWorkFiled) {
+      next.push(
+        `${fastRunner} checks nothing yet, so nothing merged is checked: set the project's checks with\ntutti checks`,
+      )
+    }
     // Advice: a git status that fails only leaves out the commit step.
     const status = yield* machine
       .run(
@@ -874,47 +1006,22 @@ const initWork = <R>(options: InitOptions<R>) =>
 
     // The Checks step.
     const fs = yield* FileSystem.FileSystem
-    const readThere = (path: string) =>
-      fs.readFileString(join(repo, path)).pipe(Effect.option, Effect.map(Option.getOrNull))
-    const fastThere = yield* readThere(fastRunner)
-    const hasCheckScript = yield* fs.stat(join(repo, checkScript)).pipe(
-      Effect.map((info) => info.type === "File"),
-      Effect.orElseSucceed(() => false),
-    )
-    const currentFast = current.checks.fast.command
-    const manualCommand =
-      currentFast !== null && !isRunner(currentFast, fastRunner)
-        ? currentFast
-        : fastThere === null && hasCheckScript
-          ? checkScript
-          : ""
-    const setupWas = current.checks.setup.command
-    const setupFound = yield* findSetup(repo)
+    // --no-checks leaves them for later: no scout, and none of the check questions.
+    const later = flags.noChecks === true
+    const asked = yield* checksAsked(repo, current, flags, options.scout, later)
+    const { setupWas, setupFound } = asked
     // The verifier is in use where it is there and the worker prompt on disk runs it, --force or
     // not: --force replaces the prompt with the template, which has no Verify section.
-    const promptThere = yield* readThere(workerPromptPath)
+    const promptThere = yield* fs
+      .readFileString(join(repo, workerPromptPath))
+      .pipe(Effect.option, Effect.map(Option.getOrNull))
     const verifierInUse =
       (yield* fs.exists(join(repo, verifierPath))) &&
       promptThere !== null &&
       usesVerifier(promptThere)
-    // --no-checks leaves them for later: no scout, and none of the check questions.
-    const later = flags.noChecks === true
     const checksQuestions: ChecksQuestions = {
-      checks:
-        flags.checkFast === undefined && flags.checkFull === undefined && !later
-          ? {
-              scout: Effect.provideContext(options.scout, yield* Effect.context<R>()),
-              checkScript: hasCheckScript,
-              command: manualCommand,
-              keepsRunner: fastThere !== null,
-              runners: { fast: fastThere, full: yield* readThere(fullRunner) },
-              skill: yield* skillState(repo),
-            }
-          : null,
-      setup:
-        flags.setup === undefined && setupWas === null && setupFound.offer !== ""
-          ? setupFound
-          : null,
+      checks: asked.checks,
+      setup: asked.setup,
       // Asked where bd is there or init offers to install it, and the prefix can be read.
       prefix:
         form !== null &&
@@ -946,42 +1053,17 @@ const initWork = <R>(options: InitOptions<R>) =>
             was: checksQuestions.prefix.isNew ? null : checksQuestions.prefix.current,
             tickets: checksQuestions.prefix.tickets,
           })
-    const fromForm = "tutti init's form"
-    const fastPlan: RunnerPlan =
-      flags.checkFast !== undefined
-        ? { suites: runnerSuites(flags.checkFast, "--check-fast", fastRunner), replace: true }
-        : choice?.kind === "found"
-          ? { suites: choice.fast, replace: checked.replaceFast ?? false }
-          : choice?.kind === "scratch"
-            ? { suites: [], replace: checked.replaceFast ?? false }
-            : choice?.kind === "later"
-              ? { suites: [], replace: false, later: true }
-              : choice?.kind === "manual" && choice.command.trim() !== manualCommand
-                ? { suites: runnerSuites(choice.command, fromForm, fastRunner), replace: true }
-                : { suites: null, replace: false }
-    const fullPlan: RunnerPlan =
-      flags.checkFull !== undefined
-        ? { suites: runnerSuites(flags.checkFull, "--check-full", fullRunner), replace: true }
-        : choice?.kind === "found"
-          ? { suites: choice.full, replace: checked.replaceFull ?? false }
-          : choice?.kind === "scratch"
-            ? { suites: [], replace: checked.replaceFull ?? false }
-            : choice?.kind === "later"
-              ? { suites: [], replace: false, later: true }
-              : { suites: null, replace: false }
-    // How to run each suite on part of the project, for the worker prompt, where the runners are
-    // written from the suites found: none where a runner there that differs from them is kept.
-    const differ =
-      choice?.kind === "found" && checksQuestions.checks !== null
-        ? runnersDiffer(checksQuestions.checks.runners, choice, checked.replaceFast === true)
-        : { fast: false, full: false }
-    const promptSuites =
-      choice?.kind === "found" &&
-      (!differ.fast || checked.replaceFast === true) &&
-      (!differ.full || checked.replaceFull === true)
-        ? suiteLines(choice.fast, choice.full)
-        : ""
-    const setup = flags.setup ?? checked.setup
+    const {
+      fast: fastPlan,
+      full: fullPlan,
+      promptSuites,
+      setup,
+    } = checksPlan(
+      flags,
+      asked,
+      choice === undefined ? checked : { ...checked, checks: choice },
+      "tutti init's form",
+    )
     // One in use is kept unasked: with --force, the template's prompt gets the section again.
     const verifierConsent =
       flags.verifier === undefined && verifierInUse

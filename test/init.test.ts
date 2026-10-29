@@ -227,7 +227,7 @@ describe("the files init writes", () => {
       "✓ worker prompt  wrote .tutti/worker-prompt.md from the built-in template",
     )
     expect(lines(summary)).toContain(
-      `✓ check-fast  wrote scripts/check-fast.sh: it checks nothing yet (--check-fast "<command>" gives it one)`,
+      `✓ check-fast  wrote scripts/check-fast.sh: it checks nothing yet (tutti checks gives it one)`,
     )
     expect(summary.next).toContain("Read .tutti/worker-prompt.md and adjust it to the project.")
   })

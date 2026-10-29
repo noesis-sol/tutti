@@ -927,14 +927,15 @@ export const testWork = (
  * (labelled tutti-tests, with the same title) and not filed again. One found open is never filed
  * again; one found closed only where this init wrote or replaced a runner (`runnersWritten`), as
  * runners it left alone are those the closed ticket saw to. A ticket that can't be filed is a step
- * saying why, naming those after it: the files init wrote stand, and init run again files what is
- * missing.
+ * saying why, naming those after it: the files init wrote stand, and `again` (init, or tutti
+ * checks) run again files what is missing.
  */
 export const fileTestWork = (
   repo: string,
   choice: ChecksChoice | undefined,
   base: string,
   runnersWritten: boolean,
+  again = "tutti init",
 ) =>
   Effect.gen(function* () {
     const plan = testWork(choice, base, yield* readRunners(repo, choice))
@@ -948,7 +949,7 @@ export const fileTestWork = (
         `not filed: ${plan
           .slice(from)
           .map((ticket) => `"${ticket.title}"`)
-          .join(", ")} (${why}); run tutti init again to file them`,
+          .join(", ")} (${why}); run ${again} again to file them`,
       )
     const filed = yield* Effect.result(beads.list({ labels: [testWorkLabel], all: true }))
     if (filed._tag === "Failure") return [notFiled(0, beadsWhy(filed.failure))]

@@ -9,14 +9,22 @@
 import type { InitSummary } from "../init/init.ts"
 import { cancelledLine, signOff } from "../init/init.ts"
 import { marks, type Step, type StepKind } from "../init/steps.ts"
-import { initAbout, initTitle } from "../ui/initTitle.ts"
+import { initHeading, initTitle } from "../ui/initTitle.ts"
 import { boxed, paint, type Segments, seg, wrapText } from "../ui/line.tsx"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Style, Theme } from "../ui/theme.ts"
 
-/** The title as the line forms and the summary print it: a blank line above, init's words under. */
-export const initHeader = (theme: Theme, repo: string): string =>
-  ["", paint(initTitle(theme, repo)), theme.form.faint.paint(initAbout), ""].join("\n")
+/**
+ * The title as the line forms and the summary print it, init's or tutti checks' (`heading`): a
+ * blank line above, its words under.
+ */
+export const initHeader = (theme: Theme, repo: string, heading = initHeading): string =>
+  [
+    "",
+    paint(initTitle(theme, repo, heading.command)),
+    theme.form.faint.paint(heading.about),
+    "",
+  ].join("\n")
 
 /** A step's label is padded to this width; its detail starts past it. */
 const labelWidth = 15

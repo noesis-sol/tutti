@@ -41,7 +41,7 @@ import { serverLabel } from "../init/workers.ts"
 import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
 import { clickable, Field, formHintSegments, Themed, targetLines } from "./Form.tsx"
-import { initAbout, initTitle, scoutClock } from "./initTitle.ts"
+import { type FormHeading, initHeading, initTitle, scoutClock } from "./initTitle.ts"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { InputGuards } from "./keys.ts"
 import { Line, Lines, type Segments, seg, styled, wrap } from "./line.tsx"
@@ -565,17 +565,22 @@ const WorkingView = ({
   )
 }
 
-/** The form's screen at `now` (epoch milliseconds), which turns its spinners. */
+/**
+ * The form's screen at `now` (epoch milliseconds), which turns its spinners, under init's title or
+ * tutti checks' (`heading`).
+ */
 export const InitView = ({
   theme,
   repo,
   screen,
   now,
+  heading = initHeading,
 }: {
   readonly theme: Theme
   readonly repo: string
   readonly screen: InitScreen
   readonly now: number
+  readonly heading?: FormHeading
 }) => {
   const { asking } = screen
   // Each part as tall as its lines, wrapped by tutti's wrap: the field whole, and above it what is
@@ -584,8 +589,8 @@ export const InitView = ({
   const { width, height } = useTerminalDimensions()
   const formRoom = Math.max(width - formInset, 1)
   const head = [
-    ...wrap(initTitle(theme, repo), formRoom),
-    ...wrap([seg(initAbout, theme.form.faint)], formRoom),
+    ...wrap(initTitle(theme, repo, heading.command), formRoom),
+    ...wrap([seg(heading.about, theme.form.faint)], formRoom),
     ...(screen.at === null
       ? []
       : [[], ...wrap(stepperParts(theme, screen.steps, screen.at), formRoom)]),
@@ -632,11 +637,13 @@ const LiveInitView = ({
   repo,
   screen,
   clock,
+  heading,
 }: {
   readonly theme: Theme
   readonly repo: string
   readonly screen: Settable<InitScreen>
   readonly clock: () => number
+  readonly heading: FormHeading
 }) => {
   const now = useSyncExternalStore(screen.subscribe, screen.get)
   const spinning = now.asking === null || now.asking._tag === "Scout"
@@ -647,7 +654,7 @@ const LiveInitView = ({
     const timer = setInterval(() => setTime(clock()), spinnerTick)
     return () => clearInterval(timer)
   }, [clock, spinning])
-  return <InitView theme={theme} repo={repo} screen={now} now={time} />
+  return <InitView theme={theme} repo={repo} screen={now} now={time} heading={heading} />
 }
 
 /** What the field answered leaves above the next one. */
@@ -772,14 +779,15 @@ export const screenFields = (screen: Settable<InitScreen>, clock: () => number):
 /**
  * init's form in `shell`'s renderer, for the repository `repo`, for the rest of the scope: shown
  * at once, init working until its first question, and unmounted when the scope closes. `clock`
- * turns the spinners and times the scout. Ctrl+C while init works fails `cancels` until init
- * catches stops, and stops init from then on.
+ * turns the spinners and times the scout; `heading` titles it init's, or tutti checks'. Ctrl+C
+ * while init works fails `cancels` until init catches stops, and stops init from then on.
  */
 export const openInitForm = (
   shell: Shell,
   themeOf: (appearance: Appearance) => Theme,
   repo: string,
   clock: () => number = Date.now,
+  heading: FormHeading = initHeading,
 ): Effect.Effect<InitForm, never, Scope.Scope> =>
   Effect.acquireRelease(
     Effect.sync(() => {
@@ -798,7 +806,13 @@ export const openInitForm = (
           {(theme) => (
             <>
               <InputGuards />
-              <LiveInitView theme={theme} repo={repo} screen={screen} clock={clock} />
+              <LiveInitView
+                theme={theme}
+                repo={repo}
+                screen={screen}
+                clock={clock}
+                heading={heading}
+              />
             </>
           )}
         </Themed>,

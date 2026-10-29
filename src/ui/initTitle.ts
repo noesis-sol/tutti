@@ -12,13 +12,13 @@ export const tildify = (path: string, home: string = homedir()): string =>
     ? `~${path.slice(home.length)}`
     : path
 
-/** init's title: the pill, `init`, and the repository it sets up. */
-export const initTitle = (theme: Theme, repo: string): Segments => {
+/** init's title: the pill, `command` (`init`, or `checks` for tutti checks), and the repository. */
+export const initTitle = (theme: Theme, repo: string, command = "init"): Segments => {
   const { title, organ } = theme.styles
   return [
     seg(" Tutti ", title),
     seg(" "),
-    seg("init", organ),
+    seg(command, organ),
     seg("  "),
     seg(sanitizeLine(tildify(repo)), theme.form.faint),
   ]
@@ -26,6 +26,19 @@ export const initTitle = (theme: Theme, repo: string): Segments => {
 
 /** What init says under its title. */
 export const initAbout = " Sets this project up for tutti, in .tutti/."
+
+/** What the title of init's form names, and what it says under it: init's, or tutti checks'. */
+export interface FormHeading {
+  readonly command: string
+  readonly about: string
+}
+
+export const initHeading: FormHeading = { command: "init", about: initAbout }
+
+export const checksHeading: FormHeading = {
+  command: "checks",
+  about: " Sets this project's checks: the runners in scripts/ and their settings.",
+}
 
 /** How long the scout has looked, as its spinner says it: m:ss. */
 export const scoutClock = (millis: number): string => {

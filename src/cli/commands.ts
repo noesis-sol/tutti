@@ -4,7 +4,17 @@
 // requires`, which reads and writes the checkout it is started in, so that a worker changing the
 // list in its worktree checks its own list and writes its own README.
 import { join } from "node:path"
-import { Console, Effect, FileSystem, Layer, Option, Result, Schema } from "effect"
+import {
+  Console,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Predicate,
+  Result,
+  Schema,
+  type Scope,
+} from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
 import { Account } from "../agent/Account.ts"
@@ -30,6 +40,7 @@ import {
 } from "../answer/questions.ts"
 import { scoutCostSteps, scoutSearch } from "../init/checks.ts"
 import {
+  type ChecksFlags,
   cancelledLine,
   type InitFlags,
   type InitForm,
@@ -38,13 +49,8 @@ import {
   summaryLines,
 } from "../init/init.ts"
 import { lineForm } from "../init/lineForm.ts"
-import {
-  type InitFailed,
-  type InitStopped,
-  liveMachine,
-  type Step,
-  stepLine,
-} from "../init/steps.ts"
+import { setChecks } from "../init/setChecks.ts"
+import { InitFailed, InitStopped, liveMachine, type Step, stepLine } from "../init/steps.ts"
 import { initUpdate, updateLines } from "../init/update.ts"
 import { parseMcpNames } from "../init/workers.ts"
 import { layer as languageModelLayer } from "../organs/AgentSdkLanguageModel.ts"
@@ -68,7 +74,9 @@ import { Git, GitWriter } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
 import * as Tty from "../services/Tty.ts"
 import { initFormKind, openInitForm } from "../ui/InitForm.tsx"
+import { checksHeading, type FormHeading, initHeading } from "../ui/initTitle.ts"
 import { streamInput } from "../ui/plain/forms.ts"
+import { FormCancelled } from "../ui/questions.ts"
 import { open as openRenderer } from "../ui/renderer.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import {
@@ -708,11 +716,12 @@ export const stoppedEnding = (
   theme: Theme | null,
   width: number,
   scout: ReadonlyArray<Step> = [],
+  program = "tutti init",
 ) => ({
   stdout: printedSteps([...scout, ...stopped.steps], theme, width),
   stderr:
     theme === null
-      ? `tutti init: ${stderrText(stopped.message)}`
+      ? `${program}: ${stderrText(stopped.message)}`
       : initStoppedLine(theme, stopped.words),
   code: exitCodes.interrupted,
 })
@@ -727,9 +736,10 @@ export const failedEnding = (
   theme: Theme | null,
   width: number,
   scout: ReadonlyArray<Step> = [],
+  program = "tutti init",
 ) => ({
   stdout: printedSteps([...scout, ...failed.steps], theme, width),
-  stderr: `tutti init: ${stderrText(failed.message)}`,
+  stderr: `${program}: ${stderrText(failed.message)}`,
   code: exitCodes.setup,
 })
 
@@ -755,52 +765,57 @@ export const cancelledEnding = (
 export const withScout = (summary: InitSummary, scout: ReadonlyArray<Step>): InitSummary =>
   scout.length === 0 ? summary : { ...summary, steps: [...scout, ...summary.steps] }
 
+/** Where init and tutti checks work: the main checkout, its git folder, and the branch it is on. */
+interface Located {
+  readonly repo: string
+  readonly commonDir: string
+  readonly branch: string
+}
+
 /**
- * tutti init in the folder `cwd`: from the main checkout, asking in its own renderer where stdin and
- * stdout are a terminal that draws one, in lines with TERM=dumb, else asking nothing; then its
- * summary on the main screen.
+ * The main checkout the folder `cwd` is in, for `program` (tutti init, tutti checks): with its git
+ * folder and its branch; null where it is in none, or in a linked worktree, having said so (exit 2).
  */
-const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
+const locate = (cwd: string, program: string) =>
   Effect.gen(function* () {
     const found = yield* findRepository(cwd)
-    if (Result.isFailure(found)) return yield* initStopped([`tutti init: ${found.failure}`])
+    if (Result.isFailure(found)) {
+      yield* initStopped([`${program}: ${found.failure}`])
+      return null
+    }
     const { repo, linked } = found.success
     if (linked !== null) {
-      return yield* initStopped([
-        `tutti init: ${linked} is a linked worktree. Run this from the main checkout.`,
+      yield* initStopped([
+        `${program}: ${linked} is a linked worktree. Run this from the main checkout.`,
       ])
+      return null
     }
     const git = yield* Git
     const commonDir = yield* Effect.result(git.commonDir(repo))
     if (Result.isFailure(commonDir)) {
-      return yield* initStopped([`tutti init: tutti cannot find the git folder of ${repo}`])
+      yield* initStopped([`${program}: tutti cannot find the git folder of ${repo}`])
+      return null
     }
     const branch = Option.getOrElse(
       yield* git.currentBranch(repo).pipe(Effect.orElseSucceed(() => Option.none<string>())),
       () => "HEAD",
     )
-    if (flags.update === true) {
-      const updated = yield* Effect.result(
-        initUpdate({ repo, commonDir: commonDir.success, branch, version: pkg.version }).pipe(
-          Effect.provide(RunLock.layer),
-        ),
-      )
-      if (Result.isFailure(updated)) {
-        return yield* initStopped([`tutti init --update: ${updated.failure.message}`])
-      }
-      yield* Console.log(updateLines(updated.success).join("\n"))
-      return
-    }
-    const machine = yield* liveMachine
-    const claudeConfig = yield* claudeConfigFile
+    return { repo, commonDir: commonDir.success, branch } satisfies Located
+  })
+
+/**
+ * The configuration of a run in the project at `repo`, started from `cwd`; and the scout under it,
+ * over the Agent SDK with the login the probe finds, its calls' cost totalled in `organCost`.
+ */
+const scoutIn = (repo: string, cwd: string) =>
+  Effect.gen(function* () {
     const configure = Effect.gen(function* () {
       const config = yield* load(noFlags, repo)
       const claude = yield* resolveClaude(config.claude, cwd)
       if (claude.problems.length > 0) return yield* new SetupProblem({ problems: claude.problems })
       return { ...config, claude: claude.path }
     })
-    // The scout, under the project's configuration as it is, over the Agent SDK with the login the
-    // probe finds. init keeps no log, so its organ cost lines go nowhere: its summary says what the
+    // init keeps no log, so the scout's organ cost lines go nowhere: its summary says what the
     // scout cost, from the total of the OrganCost below, read once init ends.
     const quietLog = Layer.succeed(
       Log,
@@ -841,6 +856,37 @@ const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
         ),
       )
     })
+    return { configure, scout, organCost }
+  })
+
+/** How init or tutti checks asks and says what it did. */
+interface Asking {
+  /** What its lines on stderr start with: `tutti init`, `tutti checks`. */
+  readonly program: string
+  /** Its form's title. */
+  readonly heading: FormHeading
+  readonly noMouse: boolean | undefined
+  /** A spec run's setup: no form, and its steps printed for the run to commit. */
+  readonly unattended: boolean
+  /** The scout's calls' cost, which its summary starts with. */
+  readonly organCost: OrganCost["Service"]
+}
+
+/**
+ * Runs `work` (init, or tutti checks) in the main checkout `repo`, with init's form: in its own
+ * renderer where stdin and stdout are a terminal that draws one, in lines with TERM=dumb, else none,
+ * when it asks nothing; then its summary on the main screen, or how it ended, with its exit code.
+ */
+const withInitForm = <R>(
+  repo: string,
+  asking: Asking,
+  work: (
+    form: InitForm | null,
+    catchStops: (stop: () => void) => Effect.Effect<void, never, Scope.Scope>,
+  ) => Effect.Effect<InitSummary, unknown, R>,
+) =>
+  Effect.gen(function* () {
+    const { program, heading, unattended } = asking
     const tty = yield* Effect.provide(
       Effect.gen(function* () {
         return yield* Tty.Tty
@@ -854,7 +900,7 @@ const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
       onSome: (value) => value.appearance,
     })
     const mouse = initMouse(
-      flags,
+      asking.noMouse === undefined ? { force: false } : { force: false, noMouse: asking.noMouse },
       Option.map(config, (value) => value.mouse),
     )
     const themeOf = (appearance: Appearance) =>
@@ -883,7 +929,7 @@ const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
           const shell = yield* Effect.option(openRenderer({ chosen, mouse }))
           if (Option.isSome(shell)) {
             const opened = shell.value
-            form = yield* openInitForm(opened, themeOf, repo)
+            form = yield* openInitForm(opened, themeOf, repo, Date.now, heading)
             yield* Effect.addFinalizer(() =>
               Effect.sync(() => {
                 printed.theme = themeOf(opened.appearance.get())
@@ -897,52 +943,41 @@ const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
             tty.dumb ? appearanceOf(chosen, null) : yield* outputAppearance(chosen, null),
           )
           printed.theme = theme
-          process.stdout.write(`${initHeader(theme, repo)}\n`)
+          process.stdout.write(`${initHeader(theme, repo, heading)}\n`)
           const input = yield* streamInput(process.stdin)
           form = lineForm({ input, write: (text) => process.stdout.write(text), theme })
         }
+        const asked = form
         return yield* Effect.result(
-          init({
-            repo,
-            commonDir: commonDir.success,
-            branch,
-            version: pkg.version,
-            flags,
-            form,
-            scout,
-            machine,
-            configure,
-            account: Account.layer,
-            claudeConfig,
-            // Once the questions are answered: SIGINT, SIGTERM and SIGHUP, and Ctrl+C in the
-            // renderer, stop init after the step under way rather than interrupt it.
-            catchStops: (stop) =>
-              Effect.andThen(
-                listen(() => stop()),
-                form?.catchStops === undefined ? Effect.void : form.catchStops(stop),
-              ),
-          }).pipe(Effect.provide(RunLock.layer), Effect.provide(Beads.layer({ cwd: repo }))),
+          // Once the questions are answered: SIGINT, SIGTERM and SIGHUP, and Ctrl+C in the
+          // renderer, stop it after the step under way rather than interrupt it.
+          work(asked, (stop) =>
+            Effect.andThen(
+              listen(() => stop()),
+              asked?.catchStops === undefined ? Effect.void : asked.catchStops(stop),
+            ),
+          ),
         )
       }),
     )
     const { theme } = printed
     const width = Math.min(process.stdout.columns ?? 80, 100)
-    // What the scout cost, where it ran: said however init ends, a cancelled form's included.
-    const scouted = scoutCostSteps(yield* organCost.total)
+    // What the scout cost, where it ran: said however it ends, a cancelled form's included.
+    const scouted = scoutCostSteps(yield* asking.organCost.total)
     if (Result.isFailure(ran)) {
       const error = ran.failure
       const ending =
-        error._tag === "InitStopped"
-          ? stoppedEnding(error, theme, width, scouted)
-          : error._tag === "InitFailed"
-            ? failedEnding(error, theme, width, scouted)
-            : error._tag === "FormCancelled"
+        error instanceof InitStopped
+          ? stoppedEnding(error, theme, width, scouted, program)
+          : error instanceof InitFailed
+            ? failedEnding(error, theme, width, scouted, program)
+            : error instanceof FormCancelled
               ? cancelledEnding(scouted, theme, width)
               : null
       if (ending !== null) {
-        const said = error._tag !== "FormCancelled" || ending.stdout.length > 0
+        const said = !(error instanceof FormCancelled) || ending.stdout.length > 0
         if (theme !== null && kind === "renderer" && said) {
-          yield* Console.log(initHeader(theme, repo))
+          yield* Console.log(initHeader(theme, repo, heading))
         }
         if (ending.stdout.length > 0) yield* Console.log(ending.stdout.join("\n"))
         yield* Console.error(ending.stderr)
@@ -950,7 +985,9 @@ const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
         return
       }
       if (scouted.length > 0) yield* Console.log(printedSteps(scouted, theme, width).join("\n"))
-      return yield* initStopped([`tutti init: ${error.message}`])
+      return yield* initStopped([
+        `${program}: ${Predicate.hasProperty(error, "message") ? String(error.message) : String(error)}`,
+      ])
     }
     const summary = withScout(ran.success, scouted)
     if (unattended) {
@@ -963,8 +1000,91 @@ const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
       return
     }
     // After the renderer's form, on the main screen: the title the alternate screen took with it.
-    if (kind === "renderer") yield* Console.log(initHeader(theme, repo))
+    if (kind === "renderer") yield* Console.log(initHeader(theme, repo, heading))
     yield* Console.log(`${initSummary(summary, theme, width)}\n`)
+  })
+
+/**
+ * tutti init in the folder `cwd`: from the main checkout, asking through init's form what the
+ * flags don't give (withInitForm); then its summary on the main screen.
+ */
+const runInit = (cwd: string, flags: InitFlags, unattended = false) =>
+  Effect.gen(function* () {
+    const located = yield* locate(cwd, "tutti init")
+    if (located === null) return
+    const { repo, commonDir, branch } = located
+    if (flags.update === true) {
+      const updated = yield* Effect.result(
+        initUpdate({ repo, commonDir, branch, version: pkg.version }).pipe(
+          Effect.provide(RunLock.layer),
+        ),
+      )
+      if (Result.isFailure(updated)) {
+        return yield* initStopped([`tutti init --update: ${updated.failure.message}`])
+      }
+      yield* Console.log(updateLines(updated.success).join("\n"))
+      return
+    }
+    const machine = yield* liveMachine
+    const claudeConfig = yield* claudeConfigFile
+    const { configure, scout, organCost } = yield* scoutIn(repo, cwd)
+    const asking: Asking = {
+      program: "tutti init",
+      heading: initHeading,
+      noMouse: flags.noMouse,
+      unattended,
+      organCost,
+    }
+    yield* withInitForm(repo, asking, (form, catchStops) =>
+      init({
+        repo,
+        commonDir,
+        branch,
+        version: pkg.version,
+        flags,
+        form,
+        scout,
+        machine,
+        configure,
+        account: Account.layer,
+        claudeConfig,
+        catchStops,
+      }).pipe(Effect.provide(RunLock.layer), Effect.provide(Beads.layer({ cwd: repo }))),
+    )
+  }).pipe(Effect.provide(Git.layer()), Effect.provide(GitWriter.layer))
+
+/**
+ * tutti checks in the folder `cwd`: init's Checks step on its own, from the main checkout, asking
+ * through init's form what the flags don't give (withInitForm); then its summary.
+ */
+const runChecks = (cwd: string, flags: ChecksCommandFlags) =>
+  Effect.gen(function* () {
+    const located = yield* locate(cwd, "tutti checks")
+    if (located === null) return
+    const { repo, commonDir, branch } = located
+    const machine = yield* liveMachine
+    const { scout, organCost } = yield* scoutIn(repo, cwd)
+    const { noMouse, ...given } = flags
+    const asking: Asking = {
+      program: "tutti checks",
+      heading: checksHeading,
+      noMouse,
+      unattended: false,
+      organCost,
+    }
+    yield* withInitForm(repo, asking, (form, catchStops) =>
+      setChecks({
+        repo,
+        commonDir,
+        branch,
+        version: pkg.version,
+        flags: given,
+        form,
+        scout,
+        machine,
+        catchStops,
+      }).pipe(Effect.provide(RunLock.layer), Effect.provide(Beads.layer({ cwd: repo }))),
+    )
   }).pipe(Effect.provide(Git.layer()), Effect.provide(GitWriter.layer))
 
 /**
@@ -1010,6 +1130,55 @@ export const initCommand = Command.make("init", initFlags, (given) =>
   ),
 )
 
+/** tutti checks' flags: those of init's Checks step, and --no-mouse. */
+export const checksFlags = {
+  checkFast: initFlags.checkFast,
+  checkFull: initFlags.checkFull,
+  checkFastTimeout: initFlags.checkFastTimeout,
+  checkFullTimeout: initFlags.checkFullTimeout,
+  setup: initFlags.setup,
+  noMouse: initFlags.noMouse,
+}
+
+/** tutti checks' flags, read: each absent where the command line doesn't give it. */
+export type ChecksCommandFlags = ChecksFlags & { readonly noMouse?: boolean }
+
+/** Reads tutti checks' flags as init reads them: their values, or every problem with them. */
+export const readChecksFlags = (
+  given: {
+    readonly [K in keyof typeof checksFlags]: Option.Option<string>
+  },
+): Result.Result<ChecksCommandFlags, ReadonlyArray<string>> =>
+  Result.map(
+    readInitFlags({
+      ...given,
+      concurrent: Option.none(),
+      mcp: Option.none(),
+      changelogUnion: Option.none(),
+      installBeads: Option.none(),
+      verifier: Option.none(),
+      prefix: Option.none(),
+      noChecks: Option.none(),
+      force: false,
+    }),
+    ({ force: _, ...flags }): ChecksCommandFlags => flags,
+  )
+
+/** `tutti checks`, in the folder tutti was started in. */
+export const checksCommand = Command.make("checks", checksFlags, (given) =>
+  Effect.gen(function* () {
+    const flags = readChecksFlags(given)
+    if (Result.isFailure(flags)) {
+      return yield* initStopped(flags.failure.map((problem) => `tutti checks: ${problem}`))
+    }
+    yield* runChecks(process.cwd(), flags.success)
+  }),
+).pipe(
+  Command.withDescription(
+    "set the project's checks again after tutti init, in init's Checks step: the scout looks for the project's suites, then you use them as they are, create them from scratch with the create-check-suite skill or give one command, and the setup command; it writes scripts/check-fast.sh, scripts/check-full.sh and the checks' settings as one, and files the test work init would. In a terminal it asks what the flags don't give; without one it takes the flags and asks nothing. Run it from the main checkout of a project tutti init set up, between runs",
+  ),
+)
+
 /**
  * tutti and its subcommands, the main checkout found with `repo`; `tutti plan` reads it with
  * `services`, and `tutti requires` works in the checkout `here` finds, the one it is started in
@@ -1033,6 +1202,7 @@ export const tuttiWith = <
     Command.withDescription("runs Claude Code workers on a Beads backlog, one worktree per ticket"),
     Command.withSubcommands([
       initCommand,
+      checksCommand,
       answerCommand(repo, services, talk),
       planCommand(repo, services),
       loginCommand(repo),
