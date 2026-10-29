@@ -1,35 +1,36 @@
 // The panel beside the tickets table (§ 7.2, tutti-h2o9): in a pane at least 130 columns wide, the
-// table gives up a share of its width, which its last column rarely fills, to a panel of the same
-// height, its label on the `Tickets` label's line and its rounded frame beside the table's. While
-// nothing needs you it shows Up next: the tickets waiting in the queue, those only a free slot holds
-// back first (`ready`), then each held back or waiting with why, as the log says it (`touches
-// scripts/check.sh, like running t-1`), wrapped under its ID; `+N more` for those that don't fit.
-// While something needs you (tutti-07nj) it shows that instead, one at a time: an Asked ticket's
-// question, its title, which ticket waits on it, as much of its description as fits and its options,
-// the recommended one first, to answer in place; or a Blocked ticket, why, and what clears it. The
-// dashboard's keys and clicks act on it (Dashboard.tsx); a click target names an option by its index,
-// or one of panelTargets.
+// table gives up its right side, which its last column rarely fills, to a panel of the same height,
+// under the totals strip's In queue cell (tutti-ebra), its label on the `Tickets` label's line and
+// its rounded frame beside the table's. While nothing needs you it shows Up next: the tickets
+// waiting in the queue, those only a free slot holds back first (`ready`), then each held back or
+// waiting with why, as the log says it (`touches scripts/check.sh, like running t-1`), wrapped
+// under its ID; `+N more` for those that don't fit. While something needs you (tutti-07nj) it shows
+// that instead, one at a time: an Asked ticket's question, its title, which ticket waits on it, as
+// much of its description as fits and its options, the recommended one first, to answer in place;
+// or a Blocked ticket, why, and what clears it. The dashboard's keys and clicks act on it
+// (Dashboard.tsx); a click target names an option by its index, or one of panelTargets.
 // A narrower pane has no panel, and the table its whole width, as before.
 import type { Need, QueueRow, Totals } from "../run/runView.ts"
 import { type Border, boxed, cut, fit, padded, type Segments, seg, wrap } from "./line.tsx"
+import { queueDivider } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
 
 /** The narrowest pane with a panel. */
 export const panelPane = 130
 
-/** The panel's narrowest and widest. */
+/** The panel's narrowest. */
 const leastWidth = 44
-const mostWidth = 64
 
 /** The columns between the table and the panel. */
 export const panelGap = 1
 
 /**
- * The panel's width in a pane `width` wide: about a third of it, 44 to 64 columns; 0 where the pane
- * is too narrow for one.
+ * The panel's width in a pane `width` wide: from the totals strip's bar before In queue to the
+ * pane's right edge, so that its left border is under that bar (tutti-ebra), at least 44 columns; 0
+ * where the pane is too narrow for one.
  */
 export const panelWidth = (width: number): number =>
-  width < panelPane ? 0 : Math.min(Math.max(Math.floor(width * 0.36), leastWidth), mostWidth)
+  width < panelPane ? 0 : Math.max(width - queueDivider(width), leastWidth)
 
 /** The table's width beside a panel `panel` wide, in a pane `width` wide: all of it with none. */
 export const tableWidth = (width: number, panel: number): number =>

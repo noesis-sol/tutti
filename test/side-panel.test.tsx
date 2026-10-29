@@ -1,7 +1,8 @@
 // The panel beside the tickets table (§ 7.2, tutti-h2o9; src/ui/SidePanel.tsx): in a pane at least
-// 130 columns wide it takes a share of the table's width, the table's height; while nothing needs
-// you it shows Up next, the ready tickets first, then each held back or waiting with why, as the log
-// says it, and `+N more` for those that don't fit. A narrower pane has none.
+// 130 columns wide it takes the table's right side, under the strip's In queue cell, the table's
+// height; while nothing needs you it shows Up next, the ready tickets first, then each held back or
+// waiting with why, as the log says it, and `+N more` for those that don't fit. A narrower pane has
+// none.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
@@ -165,22 +166,24 @@ const panelOf = (frame: Frame, from: number): ReadonlyArray<string> =>
 describe("the panel beside the tickets table", () => {
   test("is drawn from 130 columns, not at 129", async () => {
     expect(panelWidth(129)).toBe(0)
-    expect(panelWidth(130)).toBe(46)
-    expect(panelWidth(155)).toBe(55)
-    expect(panelWidth(250)).toBe(64)
+    expect(panelWidth(130)).toBe(52)
+    expect(panelWidth(155)).toBe(62)
+    expect(panelWidth(250)).toBe(100)
     expect((await drawn(129, 36)).chars).not.toContain("Up next")
     expect((await drawn(130, 36)).chars).toContain("Up next")
   })
 
   test("Up next: the ready tickets first, then each held back with why, as the log says it", async () => {
-    const panel = panelOf(await drawn(155, 36), 155 - 55).filter((line) => line.startsWith("│"))
-    expect(panel.slice(0, 6)).toEqual([
-      "│ tutti-gr4z.11  ready                                │",
-      "│ tutti-h2o9     ready                                │",
-      "│ tutti-gr4z.9   touches scripts/check.sh, like       │",
-      "│                running tutti-gr4z.7                 │",
-      "│ tutti-07nj     tutti-h2o9 not merged yet            │",
-      "│ tutti-fdv1     waits for solo tutti-kkb.28, running │",
+    const panel = panelOf(await drawn(155, 36), 155 - 62).filter((line) => line.startsWith("│"))
+    // The strip's In queue cell is over the panel, its bars over the panel's (tutti-ebra).
+    expect(panel.slice(0, 7)).toEqual([
+      "│ 2 In queue · 3 held back                                   │",
+      "│ tutti-gr4z.11  ready                                       │",
+      "│ tutti-h2o9     ready                                       │",
+      "│ tutti-gr4z.9   touches scripts/check.sh, like running      │",
+      "│                tutti-gr4z.7                                │",
+      "│ tutti-07nj     tutti-h2o9 not merged yet                   │",
+      "│ tutti-fdv1     waits for solo tutti-kkb.28, running        │",
     ])
   })
 

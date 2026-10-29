@@ -202,9 +202,10 @@ export const dashboardLayout = (
   const hint = allHint.slice(0, take(allHint.length))
   // Where there is no panel, the totals' Needs you is a click target, and the highlight reaches it.
   const needsReach = { target: needsTarget, highlighted: spot === "needs" }
-  const totalsOf = (reach: boolean) =>
-    totalsLines(view.totals, theme, width, small, reach ? needsReach : undefined)
-  const allTotals = totalsOf(true)
+  // Beside the panel, the strip's bar before In queue is over the panel's left border.
+  const totalsOf = (besidePanel: boolean) =>
+    totalsLines(view.totals, theme, width, small, besidePanel ? undefined : needsReach, besidePanel)
+  const allTotals = totalsOf(false)
   if (small) {
     const totals = allTotals.slice(0, take(allTotals.length))
     const cards: CardsLayout = { _tag: "Compact" }
@@ -245,7 +246,7 @@ export const dashboardLayout = (
   const room = kept + take(rest())
   // In a wide pane the panel beside the table (SidePanel.tsx) takes a share of its width.
   const panel = table === 0 ? 0 : panelWidth(width)
-  const totals = (panel === 0 ? allTotals : totalsOf(false)).slice(0, totalsTaken)
+  const totals = (panel === 0 ? allTotals : totalsOf(true)).slice(0, totalsTaken)
   const drawn = {
     small,
     panel,

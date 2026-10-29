@@ -164,11 +164,14 @@ leaves it out. The summary after the run lists every ticket.
 
 ### The panel beside the table
 
-In a pane at least 130 columns wide, a panel takes about a third of the table's width (44 to 64
-columns), at the table's height. While nothing needs you it shows **Up next**: the tickets waiting
-in the queue, those only a free slot holds back first (`ready`), then each held back or waiting with
-why, as the log says it (`touches scripts/check.sh, like running tutti-gr4z.7`), and `+N more` for
-those that don't fit.
+In a pane at least 130 columns wide, a panel takes the table's right side, at the table's height:
+its left border is under the totals strip's bar before In queue, and it is as wide as In queue's
+cell, about two fifths of the pane, at least 44 columns. Beside it the strip's first three cells
+keep a fifth each, so that the bar doesn't move as verdicts arrive: Set aside's triage note is cut
+to ` · ◆ n`, then left out, where it would widen its cell. While nothing needs you it shows **Up
+next**: the tickets waiting in the queue, those only a free slot holds back first (`ready`), then
+each held back or waiting with why, as the log says it (`touches scripts/check.sh, like running
+tutti-gr4z.7`), and `+N more` for those that don't fit.
 
 While something needs you it shows that instead, one at a time, `Needs you · 1 of 2` above it: a
 question an Asked ticket waits on, with its title, the ticket waiting on it, as much of its

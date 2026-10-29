@@ -2,7 +2,8 @@
 // and its label faint beside it on one line, or on one line in a pane too narrow for the strip, or
 // too small for the dashboard (below 60×16). `✓ n Completed`, `↷ n Set aside` with ` · ◆ n
 // triaged`, ` · ◆ n` or neither as the pane narrows, `n Needs you`, and `n of N In queue` with
-// ` · N held back`, ` · N setup failed` and ` · held`; zeros are faint.
+// ` · N held back`, ` · N setup failed` and ` · held`; zeros are faint. Beside the panel the bar
+// before In queue is over the panel's left border, both at queueDivider (tutti-ebra).
 // The workers are on the load line above the strip (LoadLine.tsx), and on the one line, `▶ n/N`,
 // which is drawn without it.
 // Where there is no panel beside the tickets table, Needs you is a click target, and the highlight
@@ -111,28 +112,61 @@ export const totalsLine = (
 }
 
 /**
+ * The room a strip `width` wide has for its four cells: each one's padding and the bar after it,
+ * and the frame's first bar, taken out.
+ */
+const roomOf = (width: number): number => width - 1 - 3 * 4
+
+/** The first three cells' width where they line up: a fifth of a strip `width` wide's room. */
+const fifthOf = (width: number): number => Math.floor(roomOf(width) / 5)
+
+/**
+ * The column, from 0, of the bar before In queue in a strip `width` wide whose first three cells
+ * are a fifth of it each, as beside the panel (SidePanel.tsx's panelWidth reads it, tutti-ebra).
+ */
+export const queueDivider = (width: number): number => 3 * (fifthOf(width) + 3)
+
+/**
  * The strip's line `width` wide, in its frame, or null when the pane is too narrow for it, even
  * with Set aside's triage note cut to ` · ◆ n` and then left out. The first three cells are as wide
  * as each other, up to a fifth of the strip, and the queue's takes the rest; where that leaves the
  * queue too little, they give up their width down to the widest's, then each down to its own, so
  * that they line up while they can. The triage note doesn't set the others' width: Set aside goes
  * past them where it makes the cell wider, so that the queue keeps the room (tutti-iolm).
+ * `besidePanel`, the cells are a fifth each whatever they say, so that the bar before In queue stays
+ * at queueDivider, over the panel's left border: Set aside's triage note is cut to ` · ◆ n`, then
+ * left out, where it would widen its cell past the fifth (tutti-ebra).
  */
 export const totalsStrip = (
   t: TotalsView,
   theme: Theme,
   width: number,
   reach?: NeedsReach,
+  besidePanel = false,
 ): ReadonlyArray<Segments> | null => {
   const bare = cells(t, theme, "none").slice(0, -1).map(widthOf)
   const forms = function* () {
     for (const triage of ["full", "short", "none"] as const) {
       const all = cells(t, theme, triage, reach)
-      const widths = cellWidths(all.map(widthOf), bare, width)
+      const natural = all.map(widthOf)
+      const widths = besidePanel
+        ? natural.slice(0, -1).every((n) => n <= fifthOf(width))
+          ? fifths(width)
+          : null
+        : cellWidths(natural, bare, width)
       yield widths === null ? null : framed([all], widths, theme.look("frame"))
     }
   }
-  return firstFitting(forms(), (strip) => strip !== null) ?? null
+  const strip = firstFitting(forms(), (strip) => strip !== null) ?? null
+  if (strip !== null || !besidePanel) return strip
+  // A cell wider than its fifth even without the note is cut to it.
+  return framed([cells(t, theme, "none", reach)], fifths(width), theme.look("frame"))
+}
+
+/** The cells' widths beside the panel, in a strip `width` wide: a fifth each, and the queue's the rest. */
+const fifths = (width: number): ReadonlyArray<number> => {
+  const fifth = fifthOf(width)
+  return [fifth, fifth, fifth, roomOf(width) - 3 * fifth]
 }
 
 /**
@@ -145,14 +179,13 @@ const cellWidths = (
   aligned: ReadonlyArray<number>,
   width: number,
 ): ReadonlyArray<number> | null => {
-  // Each cell's padding and the bar after it, and the frame's first bar.
-  const room = width - 1 - 3 * natural.length
+  const room = roomOf(width)
   const queue = natural.at(-1) ?? 0
   const firsts = natural.slice(0, -1)
   const widthsAt = (least: number) => firsts.map((n) => Math.max(n, least))
   const sum = (ns: ReadonlyArray<number>) => ns.reduce((total, n) => total + n, 0)
   if (sum(firsts) + queue > room) return null
-  let least = Math.max(Math.floor(room / 5), ...aligned)
+  let least = Math.max(fifthOf(width), ...aligned)
   while (least > 0 && sum(widthsAt(least)) + queue > room) least -= 1
   const widths = widthsAt(least)
   return [...widths, room - sum(widths)]
@@ -160,7 +193,8 @@ const cellWidths = (
 
 /**
  * The totals' lines: the strip, or the one line when `oneLine` (a pane too small for the dashboard,
- * which has no load line, so the line says the workers) or the pane is too narrow for the strip.
+ * which has no load line, so the line says the workers) or the pane is too narrow for the strip;
+ * `besidePanel`, the strip's bar before In queue over the panel's left border.
  */
 export const totalsLines = (
   t: TotalsView,
@@ -168,7 +202,10 @@ export const totalsLines = (
   width: number,
   oneLine: boolean,
   reach?: NeedsReach,
+  besidePanel = false,
 ): ReadonlyArray<Segments> =>
   oneLine
     ? [totalsLine(t, theme, width, true, reach)]
-    : (totalsStrip(t, theme, width, reach) ?? [totalsLine(t, theme, width, false, reach)])
+    : (totalsStrip(t, theme, width, reach, besidePanel) ?? [
+        totalsLine(t, theme, width, false, reach),
+      ])
