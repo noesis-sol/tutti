@@ -99,6 +99,8 @@ const specRun = (o: {
   readonly checks?: ChecksScript
   readonly backlog?: ReadonlyArray<Seed>
   readonly specRun?: boolean
+  /** A spec update's environment ticket, s-1.3, and what its worker commits. */
+  readonly updateWrites?: Record<string, string>
 }): Promise<Ran<Outcome>> => {
   const repo = folder("repo")
   const root = folder("worktrees")
@@ -112,6 +114,9 @@ const specRun = (o: {
       scripts: (world) => ({
         "s-1.1": [commits(world, root, "s-1.1", o.environmentWrites ?? realRunners)],
         "s-1.2": [commits(world, root, "s-1.2", { "shop.ts": "export {}\n" })],
+        ...(o.updateWrites === undefined
+          ? {}
+          : { "s-1.3": [commits(world, root, "s-1.3", o.updateWrites)] }),
       }),
     },
     Effect.gen(function* () {
@@ -119,7 +124,7 @@ const specRun = (o: {
       if (o.onMain !== undefined) {
         yield* (yield* Repository).commit(repo, "tutti: set up for spec shop.md", o.onMain)
       }
-      for (const id of ["s-1.1", "s-1.2"]) {
+      for (const id of ["s-1.1", "s-1.2", "s-1.3"]) {
         yield* git.addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
       }
       const running = yield* Effect.forkChild(
@@ -286,6 +291,37 @@ describe("the checks gate, once the environment ticket merges", () => {
     expectLog(ran, ["CHECKS_GATE: the checks on main passed it for shop.md already; not run again"])
   })
 
+  test("a spec update's environment ticket that left the runners as they were: not run again", async () => {
+    const passedFor = fingerprint([
+      { check: "fast", command: fast, path: fast, script: realRunners[fast] ?? null },
+      { check: "full", command: full, path: full, script: realRunners[full] ?? null },
+    ])
+    const ran = await specRun({
+      onMain: realRunners,
+      backlog: backlog()
+        .ticket("s-1", { type: "epic", metadata: { spec, [gateKey]: passedFor } })
+        .ticket("s-1.1", {
+          parent: "s-1",
+          status: "closed",
+          priority: 0,
+          labels: ["solo"],
+          metadata: { spec },
+        })
+        .ticket("s-1.3", { parent: "s-1", priority: 0, labels: ["solo"], metadata: { spec } })
+        .ticket("s-1.2", { parent: "s-1", blockedBy: ["s-1.3"], metadata: { spec } }).seeds,
+      updateWrites: { "docs/update.md": "# Update\n" },
+    })
+    expectExitCode(ran, 0)
+    expect(started(ran)).toEqual(["s-1.3", "s-1.2"])
+    expect(kinds(ran.checkRuns)).toEqual(["fast", "fast", "full"])
+    expect(gateRecords(ran)).toEqual([])
+    expectLog(ran, [
+      /s-1\.3 dispatching/,
+      "CHECKS_GATE: the checks on main passed it for shop.md already; not run again",
+      /s-1\.2 dispatching/,
+    ])
+  })
+
   test("runs for an environment ticket merged in an earlier run whose runners it hasn't passed", async () => {
     const ran = await specRun({ onMain: realRunners, backlog: tree({ status: "closed" }) })
     expectExitCode(ran, 0)
@@ -360,7 +396,7 @@ describe("what the gate reads of the runners", () => {
     expect(fingerprint([read("fast", "a\n"), read("full", "c\n")])).not.toBe(a)
   })
 
-  test("the environment ticket: the solo P0 ticket with the spec's metadata, the first filed", () => {
+  test("the environment ticket: the solo P0 ticket with the spec's metadata, the last filed", () => {
     const of = (id: string, fields: Partial<Issue>): Issue =>
       ({
         id: id as TicketId,
@@ -373,10 +409,15 @@ describe("what the gate reads of the runners", () => {
       }) as Issue
     expect(environmentOf([of("a", { priority: 1 }), of("b", { labels: [] })], spec)).toBeNull()
     expect(environmentOf([of("c", { metadata: { spec: "other.md" } })], spec)).toBeNull()
-    const first = environmentOf(
-      [of("e", { createdAt: "2026-10-29T11:00:00Z" }), of("d", {}), of("f", { type: "epic" })],
+    // A spec update's environment ticket, filed after the first, is the one the gate waits for.
+    const last = environmentOf(
+      [
+        of("e", { createdAt: "2026-10-29T11:00:00Z" }),
+        of("d", {}),
+        of("f", { type: "epic", createdAt: "2026-10-29T12:00:00Z" }),
+      ],
       spec,
     )
-    expect(String(first?.id)).toBe("d")
+    expect(String(last?.id)).toBe("e")
   })
 })

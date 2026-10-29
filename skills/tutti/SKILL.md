@@ -179,7 +179,11 @@ tickets under a root epic and runs them, starting on its environment ticket whil
 Run again, the same command carries on, or updates the tickets for a changed spec; `✓ <path> is
 built` (exit 0) once its root epic is closed. A request for a feature run by an agent goes in a file
 for `--spec`. `--refine` breaks the spec down with the user and needs the dashboard: leave it to a
-user at the keyboard.
+user at the keyboard. In a repository `tutti init` hasn't set up, it sets it up as `tutti init
+--no-checks` does, asking nothing without a terminal, the verifier on. Once the environment ticket
+has merged, its checks gate checks the checks before the rest of the tree starts (`CHECKS_GATE:`
+lines): a runner still checking nothing, or check-fast (run twice more) or check-full failing, files
+a question for the user and stops the run, `CHECKS_HELD` (below).
 
 Useful flags (each also a `TUTTI_*` variable, `--concurrent` as `TUTTI_CONCURRENT`; on-or-off ones
 take `=false` or `0`): `-c N` / `--concurrent N`, `--limit N` (tickets this run starts, default 40),

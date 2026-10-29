@@ -631,10 +631,51 @@ mkdir shop && cd shop && git init && tutti --spec ~/specs/shop.md
 ```
 
 In a repository `tutti init` hasn't set up, even one with no commit yet, a spec run sets it up first,
-as `tutti init` does without a terminal: Beads, the worker prompt, the settings (`-c`'s concurrency,
-no MCP servers) and runners that check nothing yet, the verifier and the rest it offers declined. It
+as `tutti init --no-checks` does. In a terminal it puts init's form first, its checks left out: Beads
+and the ticket prefix, the concurrency, the MCP servers, the verifier and `CHANGELOG.md
+merge=union`, then the login check; cancelling it exits 130, having changed nothing and committed no
+spec. Without a terminal it asks nothing: Beads, the worker prompt, the settings (`-c`'s concurrency,
+no MCP servers), runners that check nothing yet and the verifier, the rest it offers declined. It
 commits that with the spec, as `tutti: set up for spec <name>`; the breakdown's environment ticket
-then sets up the toolchain, the scaffold and the checks.
+then sets up the toolchain, the scaffold and the checks, which [the checks gate](#the-checks-gate)
+checks once it merges.
+
+#### The checks gate
+
+Every merge of the tree relies on the runners the environment ticket wrote, so once that ticket (the
+solo P0 ticket under the root epic) has merged, and before the run starts or resumes any other
+ticket of the tree, tutti checks them on the base, each step a `CHECKS_GATE:` line:
+
+1. **Still empty.** `scripts/check-fast.sh` or `scripts/check-full.sh` that still runs nothing but
+   `exit 0` (or is missing, or a check the settings turn off) holds the tree.
+2. **Run again.** check-fast runs twice more on the base's head, three runs in all with the merge's
+   own, then check-full once: each in a worktree of its own on no branch, the setup command first,
+   within its time limit (counted awake), its whole output kept in `.tutti/run/checks-gate-*.log`,
+   its `FLAKY:` warnings said. A failure holds the tree, naming the output's file.
+3. **Shown.** What each runner runs, a `CHECKS_GATE: <runner> runs: …` line each. In a terminal,
+   init's form takes the dashboard's place, under the title `checks gate`, and asks `Keep these
+   checks?`: Enter keeps them; No opens `tutti checks`' step.
+
+The rest of the tree then starts: `CHECKS_GATE: passed on main at ffd6ce4 in 4m12s: …`.
+
+A hold, in a terminal, opens `tutti checks`' step at once, saying why. Whatever it sets is written in
+a worktree of the base's head of its own, committed on the base as `tutti: set the checks` and the
+base fast-forwarded to it, so the main checkout stays clean; the gate then checks the checks again
+from step 1. Esc there leaves them as they are, and the hold goes on as without a terminal: tutti
+files a question for you, `Set the checks the spec's tree is checked with`, which the tree's open
+tickets wait on, and stops the run, `CHECKS_HELD: the checks gate held the spec's tree: …; it waits
+on <id>`, exit 2. Set the checks with `tutti checks` and commit them, then answer it; or answer it to
+go on with the checks as they are. The next run checks them again, or goes on with them where the
+question was answered for the runners as they still are.
+
+It waits while a stop or the usage limit holds the run, and a run that winds down leaves it to the
+next. While it runs, Current's box says `checks gate: <command> · <time>` (`setting up the checks gate`
+during a setup) and the load line names its memory `checks gate`. A quit stops it, and the next run
+runs it again. It runs once per spec: once it passes, the root epic records the runners it passed
+(`checks_gate` in its metadata), so a run carried on, or a spec update whose environment ticket left
+the runners as they were, doesn't run it again. Its end is a `checks_gate` record
+([events](events.md)), and the run's summary says how it went (`Checks gate: passed in 4m12s`). It
+never runs in a run that isn't a spec run, nor in one whose tree has no environment ticket.
 
 ## Several tickets at once
 
@@ -950,6 +991,9 @@ An [overnight run](#overnight) sets the ticket aside for these three instead, an
 - **`REQUIREMENTS_MISSING`**: what the project's requires list names is missing as the run starts,
   or once a merge has changed the list; the run ends at once, or once the running tickets finish,
   exit 2 ([above](#starting-a-run)).
+- **`CHECKS_HELD`**: a spec run's checks gate held its tree once the environment ticket merged: a
+  runner still checks nothing, or failed when run again; the line names the question the tree waits
+  on, exit 2 ([the checks gate](#the-checks-gate)).
 - **`LOGIN`**: a worker's turn was refused for Claude's login (an OAuth session that expired and
   couldn't be refreshed), which the startup check can't see, as the account still reads. The run
   stops as a quit does, without waiting for the running tickets: their workers are interrupted and

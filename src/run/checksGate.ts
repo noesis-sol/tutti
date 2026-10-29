@@ -121,7 +121,8 @@ export const fingerprint = (runners: ReadonlyArray<RunnerRead>): string => {
 
 /**
  * The environment ticket of the spec at `path` among `issues`, the root epic's subtickets: the
- * solo P0 ticket with the spec's metadata, the first filed where there are more; null for none.
+ * solo P0 ticket with the spec's metadata, the last filed where there are more (a spec update's
+ * own, which the gate waits for); null for none.
  */
 export const environmentOf = (issues: ReadonlyArray<Issue>, path: string): Issue | null =>
   issues
@@ -132,7 +133,7 @@ export const environmentOf = (issues: ReadonlyArray<Issue>, path: string): Issue
         issue.labels.includes(soloLabel) &&
         issue.metadata[SpecMetadata.spec] === path,
     )
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))[0] ?? null
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))[0] ?? null
 
 /** A time a check took, to the second: `2m5s`, `0s`. */
 const took = (millis: number): string => {
@@ -176,6 +177,11 @@ export interface ChecksGateOptions {
   readonly stopped: (stop: StopReason) => Effect.Effect<void>
   /** Says what it runs as each check starts, for the dashboard; null once it is over. */
   readonly show?: (running: FullCheckRun | null) => Effect.Effect<void>
+  /**
+   * Whether the run takes work back now (holds.ts's takesBack): the gate starts only then, not
+   * while a stop or the usage limit holds the run, or it winds down. Always without it.
+   */
+  readonly takesWork?: Effect.Effect<boolean>
   /** How it asks in a terminal; none without one. */
   readonly ask?: GateAsk
 }

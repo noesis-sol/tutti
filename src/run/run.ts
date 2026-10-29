@@ -597,6 +597,7 @@ const runFrom = (
       setup: Effect.map(setUps.now, (setup) => setup.command),
       stopped: (stop) => stopped(stop),
       show: showOn(status, "fullCheck"),
+      takesWork: Effect.map(gate, takesBack),
       ...(gateAsk === undefined ? {} : { ask: gateAsk }),
     })
     const beforeStart = Effect.andThen(requiresChecked, checksGate.before)
