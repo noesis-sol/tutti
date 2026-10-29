@@ -138,6 +138,7 @@ filing a batch of tickets: it proposes blocks links between tickets that touch t
 |---|---|
 | `tutti` | a run |
 | `tutti init` | sets the project up |
+| `tutti checks` | sets the project's checks again after `tutti init`, in its Checks step |
 | `tutti plan [--apply]` | proposes blocks links between open tickets that touch the same code |
 | `tutti answer [<request-id> allow\|allow-run\|deny] [--json]` | lists or answers the workers' open requests |
 | `tutti answer <question> [--] <answer>` | answers a question ticket a worker filed, by an option's number or label or in your own words (after `--` for a label that starts with `-`); `tutti answer` lists them after the requests |

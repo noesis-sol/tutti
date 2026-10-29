@@ -27,19 +27,27 @@ import {
   testsEpicTitle,
   testWorkLabel,
 } from "../src/init/checks.ts"
-import { type InitForm, InitRefused, type InitSummary, init } from "../src/init/init.ts"
+import {
+  type InitForm,
+  InitRefused,
+  type InitSummary,
+  init,
+  setChecksLater,
+} from "../src/init/init.ts"
 import { lineForm } from "../src/init/lineForm.ts"
 import { runnerCommands, runsNothing } from "../src/init/runners.ts"
 import { type ChecksOptions, checksUnasked, setChecks } from "../src/init/setChecks.ts"
 import { InitFailed, type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import type { Scouting } from "../src/organs/scout.ts"
+import { initHeader } from "../src/print/initSummary.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
+import { checksHeading } from "../src/ui/initTitle.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
 import { FormCancelled } from "../src/ui/questions.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -323,6 +331,23 @@ describe("tutti checks' form", () => {
     expect(issues).toEqual([])
   })
 
+  test("Not yet keeps the runners and the settings' checks as they are", async () => {
+    const project = newProject()
+    await setUp(project)
+    const before = tree(project.repo)
+    // Not yet, the fourth choice; Enter for npm ci.
+    const { exit, issues } = await runInLines(project, "4\n\n", twoSuites)
+    const summary = summaryOf(exit)
+    const after = tree(project.repo)
+    for (const path of ["scripts/check-fast.sh", "scripts/check-full.sh"]) {
+      expect(after[path]).toBe(before[path])
+    }
+    expect(settings(project).checks.fast.command).toBe("scripts/check-fast.sh")
+    expect(settings(project).checks.setup.command).toBe("npm ci")
+    expect(issues).toEqual([])
+    expect(summary.next).toContain(setChecksLater)
+  })
+
   test("a cancel changes nothing", async () => {
     const project = newProject()
     await setUp(project)
@@ -550,6 +575,16 @@ const tuttiChecks = async (cwd: string, args: ReadonlyArray<string> = []) => {
   ])
   return { code, stdout, stderr }
 }
+
+describe("tutti checks' title", () => {
+  test("names checks, and what it sets, where init's names init", () => {
+    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const checks = Bun.stripANSI(initHeader(theme, "/work/shop", checksHeading))
+    expect(checks).toContain(" Tutti  checks  /work/shop")
+    expect(checks).toContain(checksHeading.about)
+    expect(Bun.stripANSI(initHeader(theme, "/work/shop"))).toContain(" Tutti  init  /work/shop")
+  })
+})
 
 describe("tutti checks' command", () => {
   slow.test("in a linked worktree: exit 2, and to run it from the main checkout", async () => {

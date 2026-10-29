@@ -229,7 +229,7 @@ lines; `Ctrl+D` cancels.
 |---|---|
 | `--check-fast "<command>"` (`--check`) | the command `scripts/check-fast.sh` runs; `""` for a check that passes at once. Skips the scout |
 | `--check-full "<command>"` | the slower suites' command, which `scripts/check-full.sh` runs after `check-fast.sh`; `""` for none |
-| `--no-checks` | leave the checks for later, for a project with no code yet: no scout and no check question (the setup command, the ticket prefix and the verifier are still asked). A runner that is missing is written checking nothing; one there is kept as it is; no test work is filed. Not with `--check-fast` or `--check-full`. Set the checks later with `tutti init` again |
+| `--no-checks` | leave the checks for later, for a project with no code yet: no scout and no check question (the setup command, the ticket prefix and the verifier are still asked). A runner that is missing is written checking nothing; one there is kept as it is; no test work is filed. Not with `--check-fast` or `--check-full`. Set the checks later with [`tutti checks`](#setting-the-checks-again-tutti-checks) |
 | `--check-fast-timeout 30m` (`--check-timeout`) | how long the merge check may run on a ticket |
 | `--check-full-timeout 60m` | how long the full check may run |
 | `--setup "<command>"` | the setup command; `""` for none |
@@ -242,6 +242,30 @@ lines; `Ctrl+D` cancels.
 | `--no-mouse` | leave the mouse to the terminal, for its own selection; the form takes keys only. Else the form takes clicks on its buttons and options, unless `"mouse": false` is in the [user config](#the-user-config) |
 | `--force` | replace `.tutti/worker-prompt.md` with the built-in template |
 | `--update` | take the changes to tutti's templates into the worker prompt, the verifier and the create-check-suite skill, and nothing else; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |
+
+### Setting the checks again: `tutti checks`
+
+`tutti checks` is init's Checks step on its own, for a project `tutti init` has set up: one set up
+with no checks yet (`--no-checks`, or *Not yet: leave them empty*), or whose checks have changed.
+Run it from the main checkout, between runs. It asks what init's Checks step asks, in the same form:
+the scout, **The project's checks** and its checklists, **Also file tickets for untested areas?**,
+whether to replace a runner that is there and differs, then the **Setup command** where `init`
+would ask it; not the ticket prefix or the verifier. It writes the runners, the create-check-suite
+skill where test work needs it, and the checks' settings (`checks.fast`, `checks.full`,
+`checks.setup`) together, so that a failure or `Esc` leaves the project as it was; files the test
+work `init` would; and ends with `init`'s summary: what changed, and the files to commit. A
+`scripts/check-full.sh` that runs nothing is written again to run `scripts/check-fast.sh` once that
+checks something, so the full check isn't left checking nothing.
+
+`--check-fast`, `--check-full`, `--check-fast-timeout`, `--check-full-timeout` and `--setup` answer
+as `init`'s do, and `--no-mouse` too. Without a terminal it asks nothing and takes the flags; with
+none of them, it says what it needs and exits 2. It refuses in a linked worktree, while a run holds
+the repository, and in a project `tutti init` hasn't set up.
+
+```sh
+tutti checks                                   # the Checks step, in a terminal
+tutti checks --check-fast "npm test" --check-full "npx playwright test"
+```
 
 ### Trusting the main checkout
 
