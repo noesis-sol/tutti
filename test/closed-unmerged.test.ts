@@ -99,11 +99,11 @@ describe("asksGit and mergeHold", () => {
     ])
     expect(
       mergeHold(state, { dependencies: [link("x" as TicketId, "blocks")] }, branches)?.text,
-    ).toBe("x closed but not merged (tutti/x is not on main)")
+    ).toBe("after x merges: closed but not merged (tutti/x is not on main)")
     expect(
       mergeHold(state, { dependencies: [link("x" as TicketId, "discovered-from")] }, branches)
         ?.text,
-    ).toBe("filed by x's worker; x closed but not merged (tutti/x is not on main)")
+    ).toBe("after x merges: filed by its worker, closed but not merged (tutti/x is not on main)")
     // The run merged it: what git said of a branch left behind doesn't count.
     expect(
       mergeHold(state, { dependencies: [link("done" as TicketId, "blocks")] }, branches),
@@ -296,8 +296,8 @@ describe("a blocker closed by hand, its branch not merged", () => {
     expect(warned(ran, "t-1" as TicketId)).toBe(1)
     expectLog(ran, [
       closedUnmergedLine("t-1" as TicketId, "main"),
-      "  t-2 waits: t-1 closed but not merged (tutti/t-1 is not on main)",
-      "  t-3 waits: t-1 closed but not merged (tutti/t-1 is not on main)",
+      "  t-2 waits: after t-1 merges: closed but not merged (tutti/t-1 is not on main)",
+      "  t-3 waits: after t-1 merges: closed but not merged (tutti/t-1 is not on main)",
       "READY_EMPTY after 0 tickets",
     ])
   })
@@ -322,7 +322,7 @@ describe("a blocker closed by hand, its branch not merged", () => {
     expect(ran.log.some((each) => each.includes("dispatching"))).toBe(false)
     expect(warned(ran, "t-1" as TicketId)).toBe(0)
     expectLog(ran, [
-      "  t-2 waits: t-1 closed but not merged (git can't tell whether tutti/t-1 is on main: fatal: the index is locked)",
+      "  t-2 waits: after t-1 merges: closed but not merged (git can't tell whether tutti/t-1 is on main: fatal: the index is locked)",
       "READY_EMPTY after 0 tickets",
     ])
   })
@@ -356,7 +356,7 @@ describe("a blocker closed by hand, its branch not merged", () => {
     expectPhases(ran, { "t-0": "Done", "t-2": "Done" })
     expect(warned(ran, "t-1" as TicketId)).toBe(1)
     expectLog(ran, [
-      "  t-2 waits: t-1 closed but not merged (tutti/t-1 is not on main)",
+      "  t-2 waits: after t-1 merges: closed but not merged (tutti/t-1 is not on main)",
       /t-0 dispatching/,
       /t-2 dispatching/,
     ])

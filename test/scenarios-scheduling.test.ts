@@ -475,11 +475,11 @@ describe("footprints", () => {
     expect(dispatches(ran)).toEqual(["a 0m", "c 0m", "b 2m"])
     // Said once, though each fill and poll meanwhile looks again.
     expect(ran.log.filter((text) => text.startsWith("  skipping"))).toEqual([
-      "  skipping b: touches src/a.ts, like running a",
+      "  skipping b: after a: both touch src/a.ts",
     ])
     expectLog(ran, [
       "[1] a dispatching: a",
-      "  skipping b: touches src/a.ts, like running a",
+      "  skipping b: after a: both touch src/a.ts",
       "[2] c dispatching: c",
       settledLine("a"),
       "[3] b dispatching: b",
@@ -538,7 +538,7 @@ describe("footprints", () => {
     // a, past its work, still holds b back until it merges.
     expectLog(ran, [
       "[1] a dispatching: a",
-      "  skipping b: touches src/b.ts, like running a",
+      "  skipping b: after a: both touch src/b.ts",
       settledLine("a"),
       closedLine("a"),
       "[2] b dispatching: b",
@@ -612,16 +612,21 @@ describe("parents and epics", () => {
     expect(heldFor(ran, "p")).toEqual(["parent"])
     expect(dispatches(ran)).toEqual(["p.1 0m", "p.2 0m", "p 2m"])
     expectLog(ran, [
-      "  p waits: its subtickets are not all closed and merged",
+      "  p waits: after its subtickets: p.1, p.2",
       "[1] p.1 dispatching: p.1",
       "[2] p.2 dispatching: p.2",
       closedLine("p.1"),
+      "  p waits: after its subtickets: p.2",
       closedLine("p.2"),
       "[3] p dispatching: p",
       closedLine("p"),
       "READY_EMPTY after 3 tickets",
     ])
-    expect(ran.log.filter((text) => text.includes("p waits"))).toHaveLength(1)
+    // Said again only as the subtickets it waits for change (tutti-zv69).
+    expect(ran.log.filter((text) => text.includes("p waits"))).toEqual([
+      "  p waits: after its subtickets: p.1, p.2",
+      "  p waits: after its subtickets: p.2",
+    ])
     expectEvents(ran, ["dispatch", "dispatch", "closed", "closed", "dispatch", "closed", "end"])
   }, 30_000)
 
@@ -663,7 +668,7 @@ describe("blockers and follow-ups", () => {
   test("a blocked ticket and a follow-up wait for the ticket before them to merge, not to close", async () => {
     // a closes its ticket, then works on for 2m: bd ready lists b from then, but a isn't merged.
     const waits = checkedOnceLogged(
-      "  f waits: filed by a's worker; a closed but not merged (waiting to merge)",
+      "  f waits: after a merges: filed by its worker, closed but not merged (waiting to merge)",
     )
     const ran = await runs({
       backlog: backlog()
@@ -687,11 +692,11 @@ describe("blockers and follow-ups", () => {
     }
     expectLog(ran, [
       "[1] a dispatching: a",
-      "  f waits: filed by a's worker; waiting for it to merge",
-      "  b waits: waiting for a to merge",
+      "  f waits: after a merges: filed by its worker",
+      "  b waits: after a merges",
       settledLine("a"),
-      "  b waits: a closed but not merged (waiting to merge)",
-      "  f waits: filed by a's worker; a closed but not merged (waiting to merge)",
+      "  b waits: after a merges: closed but not merged (waiting to merge)",
+      "  f waits: after a merges: filed by its worker, closed but not merged (waiting to merge)",
       closedLine("a"),
       "[2] b dispatching: b",
       "[3] f dispatching: f",
@@ -703,7 +708,7 @@ describe("blockers and follow-ups", () => {
   test("a follow-up its worker files is picked up by the ready poll, and waits for it to merge", async () => {
     // a files test-2, discovered from it, and works on for 2m.
     const waits = checkedOnceLogged(
-      "  test-2 waits: filed by a's worker; a closed but not merged (waiting to merge)",
+      "  test-2 waits: after a merges: filed by its worker, closed but not merged (waiting to merge)",
     )
     const ran = await runs({
       backlog: backlog().ticket("a"),
@@ -733,9 +738,9 @@ describe("blockers and follow-ups", () => {
     expect(dispatches(ran)).toEqual(["a 0m", "test-2 2m"])
     expectLog(ran, [
       "[1] a dispatching: a",
-      "  test-2 waits: filed by a's worker; waiting for it to merge",
+      "  test-2 waits: after a merges: filed by its worker",
       settledLine("a"),
-      "  test-2 waits: filed by a's worker; a closed but not merged (waiting to merge)",
+      "  test-2 waits: after a merges: filed by its worker, closed but not merged (waiting to merge)",
       closedLine("a"),
       "[2] test-2 dispatching: Follow-up",
       closedLine("test-2"),
@@ -1019,7 +1024,7 @@ describe("unmerged at the end", () => {
   test("a ticket closed and not merged is labelled, and the ticket it blocks waits for it", async () => {
     // b's check fails on main at x and nothing lands after it, so it isn't checked again.
     const waits = checkedOnceLogged(
-      "  c waits: b closed but not merged (waiting to merge)",
+      "  c waits: after b merges: closed but not merged (waiting to merge)",
       Effect.fail(fails()),
     )
     const ran = await runs({
@@ -1040,9 +1045,9 @@ describe("unmerged at the end", () => {
     expect(pathOf(ran, "c")).toEqual(["Queued", "HeldBack"])
     expectLog(ran, [
       closedLine("x"),
-      "  c waits: b closed but not merged (waiting to merge)",
+      "  c waits: after b merges: closed but not merged (waiting to merge)",
       /^ {2}CHECKS_FAILED: b closed, but /,
-      "  c waits: b closed but not merged (CHECKS_FAILED)",
+      "  c waits: after b merges: closed but not merged (CHECKS_FAILED)",
       "  b is closed but not merged, labelled 'unmerged': tickets it blocks wait until tutti/b is merged into main, in later runs too",
       "READY_EMPTY after 2 tickets",
     ])

@@ -43,6 +43,8 @@ export const marks = {
   selected: "▸",
   /** Before a message you sent a worker. */
   said: "›",
+  /** Before why a ticket in Up next waits: `› after t-1 merges`. */
+  waitsFor: "›",
   /** The closing line of a run that finished by itself. */
   end: "♪",
   /** A ticket on the wind-down line. */

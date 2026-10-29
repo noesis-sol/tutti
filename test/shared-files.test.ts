@@ -79,13 +79,13 @@ describe("a shared file", () => {
   test("by default none is shared: the same tickets are held apart", () => {
     const mine = "Map the export in test/FEATURES.md and change src/a.ts."
     const running = "Map the import in test/FEATURES.md and change src/b.ts."
-    expect(heldFor([], mine, running)).toBe("touches test/FEATURES.md, like running t-1")
+    expect(heldFor([], mine, running)).toBe("after t-1: both touch test/FEATURES.md")
   })
 
   test("a ticket overlapping in a shared file and another file is held back over the other", () => {
     const mine = "Map the export in test/FEATURES.md and change src/a.ts."
     const running = "Map the import in test/FEATURES.md and change src/a.ts."
-    expect(heldFor(["test/FEATURES.md"], mine, running)).toBe("touches src/a.ts, like running t-1")
+    expect(heldFor(["test/FEATURES.md"], mine, running)).toBe("after t-1: both touch src/a.ts")
   })
 
   test("stays in the footprint, for the log", () => {
@@ -101,8 +101,8 @@ describe("a shared file", () => {
     expect(heldFor(["docs/*.md"], docs, otherDocs)).toBeUndefined()
     expect(heldFor(["docs/**"], docs, otherDocs)).toBeUndefined()
     expect(heldFor(["guide.md"], docs, otherDocs)).toBeUndefined()
-    expect(heldFor(["/guide.md"], docs, otherDocs)).toBe("touches docs/guide.md, like running t-1")
-    expect(heldFor(["src/*.md"], docs, otherDocs)).toBe("touches docs/guide.md, like running t-1")
+    expect(heldFor(["/guide.md"], docs, otherDocs)).toBe("after t-1: both touch docs/guide.md")
+    expect(heldFor(["src/*.md"], docs, otherDocs)).toBe("after t-1: both touch docs/guide.md")
 
     const repo = repoFiles(tracked, [], [], ["docs/*.md", "FEATURES.md"])
     expect(repo.shared("docs/guide.md")).toBe(true)
@@ -121,7 +121,7 @@ describe("a shared file", () => {
     const apart = (file: string) => !repo.shared(file)
     expect(overlapHold(map, new Map([["t-1", folder]]), undefined, apart)).toBeUndefined()
     expect(overlapHold(loop, new Map([["t-1", folder]]), undefined, apart)?.text).toBe(
-      "touches test/loop.test.ts, like running t-1",
+      "after t-1: both touch test/loop.test.ts",
     )
   })
 
@@ -212,7 +212,7 @@ describe("the scheduler", () => {
   test("holds the second back when the file isn't shared", async () => {
     const [started, lines] = await twoFills(seeds, [])
     expect(started).toEqual(["t-1"])
-    expect(lines).toContain("  skipping t-2: touches test/FEATURES.md, like running t-1")
+    expect(lines).toContain("  skipping t-2: after t-1: both touch test/FEATURES.md")
   })
 })
 

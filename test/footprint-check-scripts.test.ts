@@ -164,7 +164,7 @@ describe("a ticket naming what the merge check runs", () => {
     const running = new Map([["t-1", says("scripts/check-own.ts reads it.")]])
     expect(overlapHold(says("Nothing else."), running)).toBeUndefined()
     expect(overlapHold(says("Change scripts/check-own.ts."), running)?.text).toBe(
-      "touches scripts/check-own.ts, like running t-1",
+      "after t-1: both touch scripts/check-own.ts",
     )
   })
 

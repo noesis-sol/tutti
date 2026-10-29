@@ -189,7 +189,7 @@ describe("the run's footprints", () => {
     expectPhases(ran, { "t-1": "Done", "t-2": "Done" })
     expectLog(ran, [
       /t-1 dispatching/,
-      /^ {2}skipping t-2: touches src\/a\.ts, like running t-1$/,
+      /^ {2}skipping t-2: after t-1: both touch src\/a\.ts$/,
       /^ {2}t-1 settled/,
       /t-2 dispatching/,
     ])
@@ -265,7 +265,7 @@ describe("the run's footprints", () => {
     expectLog(ran, [
       /^ {2}RESUMED: t-1's question \S+ is answered/,
       /^ {2}t-2 closed \(.*\); merged into main/,
-      /^ {2}skipping t-3: touches src\/a\.ts, like running t-1$/,
+      /^ {2}skipping t-3: after t-1: both touch src\/a\.ts$/,
       /^ {2}t-1 settled/,
       /t-3 dispatching/,
     ])

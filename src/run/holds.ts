@@ -17,6 +17,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Dependency, type Issue, type TicketId } from "../services/Beads.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
+import { afterMerging, afterOverlap, afterSubtickets } from "./after.ts"
 import type { EventStream } from "./eventstream.ts"
 import type { Footprint } from "./footprint.ts"
 import type { State } from "./ledger.ts"
@@ -65,29 +66,37 @@ export const unmerged = (state: State): ReadonlyArray<TicketId> =>
     .map((entry) => entry.ticket)
 
 /**
- * The tickets that wait for their subtickets: the parents of `open`, the tickets bd lists as not
- * closed (and those left unmerged), and of the run's tickets that may be closed and not merged
- * (`parentOf` gives theirs).
+ * The tickets that wait for their subtickets, with the subtickets each waits for: the parents of
+ * `open`, the tickets bd lists as not closed (and those left unmerged), and of the run's tickets
+ * that may be closed and not merged (`parentOf` gives theirs).
  */
 export const parentsWaiting = (
-  open: ReadonlyArray<Pick<Issue, "parent">>,
+  open: ReadonlyArray<Pick<Issue, "id" | "parent">>,
   state: State,
   parentOf: ReadonlyMap<TicketId, TicketId | null>,
-): ReadonlySet<TicketId> => {
-  const parents = new Set<TicketId>()
-  for (const issue of open) if (issue.parent !== undefined) parents.add(issue.parent)
+): ReadonlyMap<TicketId, ReadonlyArray<TicketId>> => {
+  const parents = new Map<TicketId, Array<TicketId>>()
+  const add = (parent: TicketId, id: TicketId) => {
+    const subs = parents.get(parent)
+    if (subs === undefined) parents.set(parent, [id])
+    else if (!subs.includes(id)) subs.push(id)
+  }
+  for (const issue of open) if (issue.parent !== undefined) add(issue.parent, issue.id)
   for (const id of unmerged(state)) {
     const parent = parentOf.get(id)
-    if (parent !== undefined && parent !== null) parents.add(parent)
+    if (parent !== undefined && parent !== null) add(parent, id)
   }
+  // In ID order, numbers by their value (p.2 before p.10): the reason is the same at each read.
+  for (const subs of parents.values())
+    subs.sort((a, b) => a.localeCompare(b, "en", { numeric: true }))
   return parents
 }
 
-/** The hold of a parent whose subtickets aren't all closed and merged. */
-export const parentHold: Held = {
+/** The hold of a parent whose subtickets `subs` aren't all closed and merged. */
+export const parentHold = (subs: ReadonlyArray<TicketId>): Held => ({
   why: "parent",
-  text: "its subtickets are not all closed and merged",
-}
+  text: afterSubtickets(subs),
+})
 
 /**
  * Whether the run knows nothing of the linked ticket that says it hasn't merged, though bd shows it
@@ -142,8 +151,8 @@ export const mergeHold = (
     if (why === undefined) continue
     const text =
       "running" in why
-        ? `waiting for ${link.id} to merge`
-        : `${link.id} closed but not merged (${why.closed})`
+        ? afterMerging([link.id])
+        : `${afterMerging([link.id])}: closed but not merged (${why.closed})`
     return { why: "merge", text }
   }
   for (const link of issue.dependencies) {
@@ -152,8 +161,8 @@ export const mergeHold = (
     if (why === undefined) continue
     const text =
       "running" in why
-        ? `filed by ${link.id}'s worker; waiting for it to merge`
-        : `filed by ${link.id}'s worker; ${link.id} closed but not merged (${why.closed})`
+        ? `${afterMerging([link.id])}: filed by its worker`
+        : `${afterMerging([link.id])}: filed by its worker, closed but not merged (${why.closed})`
     return { why: "merge", text }
   }
   return undefined
@@ -182,7 +191,7 @@ export const overlapHold = (
 ): Held | undefined => {
   for (const id of [...running.keys()].sort()) {
     const what = shared(fp, running.get(id) as Footprint, mentions, apart)
-    if (what !== "") return { why: "overlap", text: `touches ${what}, like running ${id}` }
+    if (what !== "") return { why: "overlap", text: afterOverlap(id, what) }
   }
   return undefined
 }

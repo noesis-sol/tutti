@@ -21,7 +21,7 @@ const row = (label: string, held: string | null): QueueRow => ({
 
 const queue: ReadonlyArray<QueueRow> = [
   row("t-1", null),
-  row("t-2", "touches scripts/check.sh, like running t-9"),
+  row("t-2", "after t-9: both touch scripts/check.sh"),
   row("t-3", "t-1 not merged yet"),
   row("t-4", "t-2 not merged yet"),
   row("t-5", "t-3 not merged yet"),
@@ -54,8 +54,10 @@ describe("Up next's quiet parts", () => {
       const { styles } = theme
       const lines = upNextLines(queue, totals, theme, 50, 8)
       expect(segmentOf(lines, "ready")?.look).toBe(styles.quiet)
-      expect(segmentOf(lines, "touches scripts/check.sh, like running")?.look).toBe(styles.quiet)
-      expect(segmentOf(lines, "t-9")?.look).toBe(styles.quiet)
+      expect(segmentOf(lines, "› ")?.look).toBe(styles.quiet)
+      expect(segmentOf(lines, "after ")?.look).toBe(styles.quiet)
+      // The ticket it waits for in the live role (tutti-zv69).
+      expect(segmentOf(lines, "t-9")?.look).toBe(theme.look("live"))
       expect(segmentOf(lines, "t-1 not merged yet")?.look).toBe(styles.quiet)
       expect(segmentOf(lines, "+2 more")?.look).toBe(styles.quiet)
       expect(segmentOf(lines, "t-1")?.look).toBeNull()

@@ -652,18 +652,19 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
 - **A finished ticket frees its slot as it goes to merge.** The next ready ticket starts while it waits
   for its turn, is rebased and checked, or has its worker resolve or fix its branch. Until it merges
   it still holds back what it did while it ran: the tickets it blocks, its follow-ups, those
-  overlapping its footprint (`skipping <id>: touches src/a.ts, like running <other>`) and a solo
+  overlapping its footprint (`skipping <id>: after <other>: both touch src/a.ts`) and a solo
   ticket. Up to `concurrent` tickets merge or wait to merge without a slot; beyond that a finished
   ticket keeps its slot until a merge ends.
 - **Parents run last.** A ticket with subtickets not all closed and merged waits for them:
-  `<id> waits: its subtickets are not all closed and merged`. tutti closes an epic itself once a run
+  `<id> waits: after its subtickets: <sub>, <sub>, then +N`, again as each merges. tutti closes an epic itself once a run
   merges the last of its subtickets: `closed epic <id>: all 3 subtickets are merged`.
 - **Blockers must merge, not only close.** `bd ready` counts a closed blocker as done, but its code
   isn't on the base until it merges, so a ticket waits for that:
-  `<id> waits: <blocker> closed but not merged (…)`. A blocker closed where the run didn't see it
+  `<id> waits: after <blocker> merges` while its worker is at it, and
+  `<id> waits: after <blocker> merges: closed but not merged (…)` once it is closed. A blocker closed where the run didn't see it
   close (by hand, by another tool, under an earlier tutti) hasn't merged while `tutti/<blocker>` has
   commits the base lacks and the base doesn't hold its changes:
-  `<id> waits: <blocker> closed but not merged (tutti/<blocker> is not on <base>)`, warned of once
+  `<id> waits: after <blocker> merges: closed but not merged (tutti/<blocker> is not on <base>)`, warned of once
   with `CLOSED_UNMERGED`, which says how to clear it. Merge the branch, or delete it if its work isn't
   wanted, and the tickets it blocks start at the next poll. Where git can't tell, they wait, saying
   so (`git can't tell whether tutti/<blocker> is on <base>: …`), until git answers. Such a blocker
@@ -672,7 +673,7 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
   Nothing to run box counts the tickets it blocks among those waiting for their blockers to merge.
 - **A follow-up waits for the ticket it was filed from.** A ticket filed `discovered-from` another
   was written against that ticket's code, so it waits until that one merges too:
-  `<id> waits: filed by <source>'s worker; waiting for it to merge`.
+  `<id> waits: after <source> merges: filed by its worker`.
 - **Workers start set up.** With a setup command (see [The checks](setup.md#the-checks)), it runs in a
   ticket's new worktree before its worker starts. One that fails starts no worker (`SETUP_FAILED`):
   the ticket goes back in the queue until a ticket merges or a probe passes, counted apart in **In
@@ -781,7 +782,7 @@ only when one of them is to change it: its `files` metadata lists it, or, withou
 its text names it, a document (`.md`, `.txt`) only in a sentence asking to change it ("Update
 docs/guide.md", not "per CLAUDE.md"); or its worktree has changed it.
 A ticket that overlaps a running one is skipped, not waited for:
-`skipping <id>: touches merge.ts, like running <other>`. When two running workers change the same
+`skipping <id>: after <other>: both touch merge.ts`. When two running workers change the same
 file anyway, a shared file among them, the log warns: `LIKELY_CONFLICT: <a> and <b> both edit <file>; the second to merge may
 conflict`. `"queue": { "footprint": false }` in the settings turns all of this off.
 

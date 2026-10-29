@@ -224,7 +224,7 @@ export const sharedFile = (
 }
 
 /**
- * What two footprints share, for the log's `skipping <id>: touches <what>, like running <other>`:
+ * What two footprints share, for the log's `skipping <id>: after <other>: both touch <what>`:
  * an area label, a function (Loop.merge and merge meet, Loop.merge and Git.merge don't), or a file
  * or folder for which keep holds (see sharedFile); "" when nothing. mentions places their functions
  * in files.

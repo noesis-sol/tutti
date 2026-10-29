@@ -110,9 +110,13 @@ describe("a fill's waiting tickets' links", () => {
     )
     expect(started).toEqual(["r-1", "t-3", "t-5"])
     expect(phases).toEqual(["HeldBack:merge", "HeldBack:merge", "HeldBack:merge"])
-    expect(lines).toContain("  t-1 waits: filed by r-1's worker; waiting for it to merge")
-    expect(lines).toContain("  t-2 waits: u-1 closed but not merged (labelled unmerged)")
-    expect(lines).toContain("  t-4 waits: g-1 closed but not merged (tutti/g-1 is not on main)")
+    expect(lines).toContain("  t-1 waits: after r-1 merges: filed by its worker")
+    expect(lines).toContain(
+      "  t-2 waits: after u-1 merges: closed but not merged (labelled unmerged)",
+    )
+    expect(lines).toContain(
+      "  t-4 waits: after g-1 merges: closed but not merged (tutti/g-1 is not on main)",
+    )
     // The label came with the unmerged list, so git isn't asked about u-1; nor about r-1, open.
     expect([...new Set(asked)].sort()).toEqual(["c-1", "g-1", "x-9"])
     // bd's open list and its unmerged list, each once, and nothing else.

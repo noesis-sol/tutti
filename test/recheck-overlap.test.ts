@@ -84,7 +84,7 @@ test("a ticket past its work without a slot holds back one overlapping it", asyn
     took: false,
     started: [],
     t2: "HeldBack:overlap",
-    skipping: ["  skipping t-2: touches src/a.ts, like running r"],
+    skipping: ["  skipping t-2: after r: both touch src/a.ts"],
   })
 })
 
@@ -93,6 +93,6 @@ test("a ticket checked once more in a slot holds back one overlapping it", async
     took: true,
     started: [],
     t2: "HeldBack:overlap",
-    skipping: ["  skipping t-2: touches src/a.ts, like running r"],
+    skipping: ["  skipping t-2: after r: both touch src/a.ts"],
   })
 })

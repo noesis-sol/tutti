@@ -174,7 +174,7 @@ describe("the run's predictor", () => {
     expectPhases(ran, { "t-1": "Done", "t-2": "Done", "t-3": "Done" })
     expectLog(ran, [
       /^ {2}t-3 footprint predicted: src\/a\.ts$/,
-      /^ {2}skipping t-3: touches src\/a\.ts, like running t-1$/,
+      /^ {2}skipping t-3: after t-1: both touch src\/a\.ts$/,
       /^ {2}t-1 settled/,
       /t-3 dispatching/,
     ])

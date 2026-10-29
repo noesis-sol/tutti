@@ -222,13 +222,13 @@ describe("a ticket past its work", () => {
     })
     expect(dispatches(ran)).toEqual(["x 0m", "b 0m", "a 0m", "c 1m", "d 2m", "e 11m", "o 16m"])
     expect(ran.log.filter((text) => text.startsWith("  skipping"))).toEqual([
-      "  skipping o: touches src/a.ts, like running a",
+      "  skipping o: after a: both touch src/a.ts",
     ])
     // x takes no slot as it merges, so a may dispatch before or after it closes.
     expectLog(ran, [closedLine("x"), closedLine("b")])
     expectLog(ran, [
       "[3] a dispatching: a",
-      "  skipping o: touches src/a.ts, like running a",
+      "  skipping o: after a: both touch src/a.ts",
       "[4] c dispatching: c",
       "[5] d dispatching: d",
       closedLine("b"),
@@ -307,7 +307,7 @@ describe("a ticket past its work", () => {
     expect(dispatches(ran)).toEqual(["n 0m", "o 10m"])
     expectLog(ran, [
       "  c, carried over from the last run, is closed, so it waits to merge",
-      "  skipping o: touches src/a.ts, like running c",
+      "  skipping o: after c: both touch src/a.ts",
       "[1] n dispatching: n",
       closedLine("c"),
       "[2] o dispatching: o",

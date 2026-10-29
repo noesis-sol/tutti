@@ -426,7 +426,7 @@ describe("the scheduler", () => {
     ])
     expect(started).toEqual(["A", "C"])
     expect(lines).toContain(`  A footprint: ${dispatchGo.join(", ")}, internal/dispatch/*.go`)
-    expect(lines).toContain("  skipping B: touches internal/dispatch/cart.go, like running A")
+    expect(lines).toContain("  skipping B: after A: both touch internal/dispatch/cart.go")
   })
 
   test("keeps two tickets listing globs in a new folder that can match one file apart", async () => {
@@ -437,7 +437,7 @@ describe("the scheduler", () => {
       { id: "D", priority: 4, metadata: { files: ["pages/[id].tsx"] } },
     ])
     expect(started).toEqual(["A", "D"])
-    expect(lines).toContain("  skipping B: touches web/src/cart.ts, like running A")
-    expect(lines).toContain("  skipping C: touches web/**/*.ts, like running A")
+    expect(lines).toContain("  skipping B: after A: both touch web/src/cart.ts")
+    expect(lines).toContain("  skipping C: after A: both touch web/**/*.ts")
   })
 })

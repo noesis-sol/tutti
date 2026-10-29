@@ -3,17 +3,19 @@
 // under the totals strip's In queue cell (tutti-ebra), its label on the `Tickets` label's line and
 // its rounded frame beside the table's. While nothing needs you it shows Up next: the tickets
 // waiting in the queue, those only a free slot holds back first (`ready`), then each held back or
-// waiting with why, as the log says it (`touches scripts/check.sh, like running t-1`), wrapped
-// under its ID; `+N more` for those that don't fit. While something needs you (tutti-07nj) it shows
+// waiting with why, as the log says it (`› after t-1: both touch scripts/check.sh`, tutti-zv69), the
+// tickets it waits for in the live role, wrapped under its text; `+N more` for those that don't fit. While something needs you (tutti-07nj) it shows
 // that instead, one at a time: an Asked ticket's question, its title, which ticket waits on it, as
 // much of its description as fits and its options, the recommended one first, to answer in place;
 // or a Blocked ticket, why, and what clears it. The dashboard's keys and clicks act on it
 // (Dashboard.tsx); a click target names an option by its index, or one of panelTargets.
 // A narrower pane has no panel, and the table its whole width, as before.
+import { afterParts } from "../run/after.ts"
 import type { Need, QueueRow, Totals } from "../run/runView.ts"
 import { type Border, boxed, cut, fit, padded, type Segments, seg, wrap } from "./line.tsx"
+import { marks } from "./marks.ts"
 import { queueDivider } from "./Totals.tsx"
-import type { Theme } from "./theme.ts"
+import type { Style, Theme } from "./theme.ts"
 
 /** The narrowest pane with a panel. */
 export const panelPane = 130
@@ -40,6 +42,18 @@ export const tableWidth = (width: number, panel: number): number =>
 const readyWord = "ready"
 
 /**
+ * The look of the tickets a held ticket waits for: the live role, bold where the scheme leaves it
+ * the terminal's default colour, as every role is under NO_COLOR, so that they stand out still.
+ */
+export const waitedForLook = (theme: Theme): Style =>
+  theme.look(
+    "live",
+    theme.noColor || theme.scheme.colours.live[theme.appearance]._tag === "Default"
+      ? "bold"
+      : "regular",
+  )
+
+/**
  * Up next's lines, `width` wide, `lines` tall with its label: the label, `Up next · 4 held back`,
  * then the queue in its frame, blank rows filling it.
  */
@@ -64,17 +78,24 @@ export const upNextLines = (
     Math.max(readyWord.length, ...queue.map((each) => Bun.stringWidth(each.label))),
     Math.max(Math.floor(inner / 3), 1),
   )
-  const whyWidth = Math.max(inner - idWidth - 2, 1)
+  // A reason starts `› ` past the ID and its gap, and wraps under its text.
+  const lead = `${marks.waitsFor} `
+  const whyWidth = Math.max(inner - idWidth - 2 - lead.length, 1)
+  const waitedFor = waitedForLook(theme)
   const entries = queue.map((each): ReadonlyArray<Segments> => {
     const id = padded(
       [seg(fit(each.label, idWidth), each.held === null ? null : styles.heldBack)],
       idWidth,
     )
     if (each.held === null) return [[...id, seg("  "), seg(readyWord, styles.quiet)]]
-    const why = wrap([seg(each.held, styles.quiet)], whyWidth)
+    const reason = afterParts(each.held).map((part) =>
+      seg(part.text, part.id ? waitedFor : styles.quiet),
+    )
+    const why = wrap(reason, whyWidth)
     return why.map((part, i) => [
-      ...(i === 0 ? id : [seg(" ".repeat(idWidth))]),
-      seg("  "),
+      ...(i === 0
+        ? [...id, seg("  "), seg(lead, styles.quiet)]
+        : [seg(" ".repeat(idWidth + 2 + lead.length))]),
       ...(part as Segments),
     ])
   })

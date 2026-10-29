@@ -996,7 +996,7 @@ export const make = (
           | {
               readonly labelled: ReadonlyArray<Issue>
               readonly left: ReadonlyArray<Issue>
-              readonly parents: ReadonlySet<TicketId>
+              readonly parents: ReadonlyMap<TicketId, ReadonlyArray<TicketId>>
             }
           | undefined
         const holding = Effect.gen(function* () {
@@ -1133,7 +1133,8 @@ export const make = (
           Effect.gen(function* () {
             let held: Held | undefined
             const { left, parents } = yield* holding
-            if (parents.has(issue.id)) held = parentHold
+            const subs = parents.get(issue.id)
+            if (subs !== undefined) held = parentHold(subs)
             else if (
               waitsOnLinks(issue) &&
               (left.length > 0 || pending(state) || closed !== undefined)

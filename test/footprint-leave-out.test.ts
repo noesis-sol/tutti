@@ -471,7 +471,7 @@ describe("the scheduler", () => {
 
     const [held, heldLines] = await twoFills(seeds, { "t-2": ["src/a.ts"] })
     expect(held).toEqual(["t-1"])
-    expect(heldLines).toContain("  skipping t-2: touches src/a.ts, like running t-1")
+    expect(heldLines).toContain("  skipping t-2: after t-1: both touch src/a.ts")
   })
 
   test("runs two tickets adding to a changelog merged by union side by side", async () => {

@@ -185,7 +185,7 @@ describe("a parent", () => {
       }),
     )
     const waits = lines.filter((text) => text.includes("waits:"))
-    expect(waits).toEqual(["  p waits: its subtickets are not all closed and merged"])
+    expect(waits).toEqual(["  p waits: after its subtickets: p.1"])
     const held = all.flatMap((record) =>
       record.kind === "phase" && record.ticket === "p" ? [`${record.to}:${record.cause}`] : [],
     )
@@ -230,8 +230,8 @@ describe("a blocker", () => {
       [["b-1", "t-2"], ["Working"]],
     ])
     expect(lines.filter((text) => text.includes("waits:"))).toEqual([
-      "  t-2 waits: waiting for b-1 to merge",
-      "  t-2 waits: b-1 closed but not merged (waiting to merge)",
+      "  t-2 waits: after b-1 merges",
+      "  t-2 waits: after b-1 merges: closed but not merged (waiting to merge)",
     ])
   })
 })
@@ -267,7 +267,7 @@ describe("a follow-up", () => {
       ],
       [["s-1", "f-2", "f-1"], ["Working"]],
     ])
-    expect(lines).toContain("  f-1 waits: filed by s-1's worker; waiting for it to merge")
+    expect(lines).toContain("  f-1 waits: after s-1 merges: filed by its worker")
   })
 
   test("waits for a source left unmerged by an earlier run, with nothing else running", async () => {
@@ -286,7 +286,7 @@ describe("a follow-up", () => {
     expect(started).toEqual([])
     expect(held).toEqual(["HeldBack:merge"])
     expect(lines).toContain(
-      "  f-1 waits: filed by s-1's worker; s-1 closed but not merged (labelled unmerged)",
+      "  f-1 waits: after s-1 merges: filed by its worker, closed but not merged (labelled unmerged)",
     )
   })
 })
@@ -475,7 +475,7 @@ describe("a footprint overlapping a running ticket's", () => {
       [["t-1", "t-3", "t-2"], ["Working"]],
     ])
     expect(lines.filter((text) => text.includes("skipping"))).toEqual([
-      "  skipping t-2: touches src/a.ts, like running t-1",
+      "  skipping t-2: after t-1: both touch src/a.ts",
     ])
   })
 
@@ -517,7 +517,7 @@ describe("a footprint overlapping a running ticket's", () => {
     )
     // t-1 is dispatched in the same fill: its worktree's changes are read as it runs.
     expect(free).toEqual([["t-1"], ["HeldBack:overlap"]])
-    expect(freeLines).toContain("  skipping t-2: touches src/c.ts, like running t-1")
+    expect(freeLines).toContain("  skipping t-2: after t-1: both touch src/c.ts")
   })
 
   test("a solo ticket is never skipped for an overlap: it waits for every running ticket", async () => {

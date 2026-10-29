@@ -170,8 +170,23 @@ cell, about two fifths of the pane, at least 44 columns. Beside it the strip's f
 keep a fifth each, so that the bar doesn't move as verdicts arrive: Set aside's triage note is cut
 to ` · ◆ n`, then left out, where it would widen its cell. While nothing needs you it shows **Up
 next**: the tickets waiting in the queue, those only a free slot holds back first (`ready`), then
-each held back or waiting with why, as the log says it (`touches scripts/check.sh, like running
-tutti-gr4z.7`), and `+N more` for those that don't fit.
+each held back or waiting with why, as the log says it, after a `›`, and `+N more` for those that
+don't fit. Each reason starts `after` and names the ticket or tickets it waits for, in the live
+colour, the rest of it in the quiet grey, and wraps under its text:
+
+```
+Up next · 3 held back
+tutti-g1wf    ready
+tutti-twdw  › after tutti-scod: both touch test/init.test.ts
+tutti-07nj  › after tutti-h2o9 merges
+tutti-fdv1  › after tutti-kkb.28 (solo)
+```
+
+A ticket overlapping a running one's files waits `after <id>: both touch <files>`; one waiting for
+a blocker or the ticket it was filed from to merge, `after <id> merges` (`after <a>, <b> merge` for
+several); one behind a solo ticket, `after <id> (solo)`; an epic, `after its subtickets: <id>,
+<id>, then +N`. Under `NO_COLOR`, or with a scheme that leaves `live` to the terminal's colour, the
+IDs are bold, so they still stand out from the reason.
 
 While something needs you it shows that instead, one at a time, `Needs you · 1 of 2` above it: a
 question an Asked ticket waits on, with its title, the ticket waiting on it, as much of its

@@ -4,10 +4,11 @@
 // waiting with why, as the log says it, and `+N more` for those that don't fit. A narrower pane has
 // none.
 import { describe, expect, test } from "bun:test"
+import { RGBA, TextAttributes } from "@opentui/core"
 import { Effect, Queue } from "effect"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
-import { Finished, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -20,6 +21,10 @@ import { type Frame, withRender } from "./render.ts"
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
+
+/** The last segment drawn as `text` in Up next's lines: a reason's, past the IDs. */
+const segmentOf = (lines: ReturnType<typeof upNextLines>, text: string) =>
+  lines.flat().findLast((segment) => segment.text === text)
 
 const began = new Date(2026, 9, 27, 13, 0, 0).getTime()
 
@@ -70,8 +75,8 @@ const status: Status = {
   began,
   concurrency: 4,
   holdTexts: {
-    waits: { "tutti-07nj": "tutti-h2o9 not merged yet" },
-    skips: { "tutti-gr4z.9": "touches scripts/check.sh, like running tutti-gr4z.7" },
+    waits: { "tutti-07nj": "after tutti-h2o9 merges" },
+    skips: { "tutti-gr4z.9": "after tutti-gr4z.7: both touch scripts/check.sh" },
   },
   solo: { ticket: "tutti-kkb.28", running: true },
 }
@@ -180,11 +185,99 @@ describe("the panel beside the tickets table", () => {
       "│ 2 In queue · 3 held back                                   │",
       "│ tutti-gr4z.11  ready                                       │",
       "│ tutti-h2o9     ready                                       │",
-      "│ tutti-gr4z.9   touches scripts/check.sh, like running      │",
-      "│                tutti-gr4z.7                                │",
-      "│ tutti-07nj     tutti-h2o9 not merged yet                   │",
-      "│ tutti-fdv1     waits for solo tutti-kkb.28, running        │",
+      "│ tutti-gr4z.9   › after tutti-gr4z.7: both touch            │",
+      "│                  scripts/check.sh                          │",
+      "│ tutti-07nj     › after tutti-h2o9 merges                   │",
+      "│ tutti-fdv1     › after tutti-kkb.28 (solo)                 │",
     ])
+  })
+
+  test("Up next: the tickets a reason waits for in the live role, the rest quiet", () => {
+    for (const appearance of ["dark", "light"] as const) {
+      const shown = themeOf(appearance)
+      const lines = upNextLines(viewOf().queue, viewOf().totals, shown, 62, 12)
+      const live = shown.look("live")
+      expect(live.fg).toEqual(RGBA.fromHex(appearance === "dark" ? "#22D3EE" : "#0E7490"))
+      expect(live.attributes & TextAttributes.BOLD).toBe(0)
+      for (const id of ["tutti-gr4z.7", "tutti-h2o9", "tutti-kkb.28"]) {
+        expect([id, segmentOf(lines, id)?.look]).toEqual([id, live])
+      }
+      for (const text of ["› ", "after ", ": both touch", " merges", " (solo)"]) {
+        expect([text, segmentOf(lines, text)?.look]).toEqual([text, shown.styles.quiet])
+      }
+    }
+  })
+
+  test("Up next: under NO_COLOR, or a scheme leaving live to the default, the IDs are bold", () => {
+    const plain = makeTheme(
+      {
+        ...orchestra,
+        colours: {
+          ...orchestra.colours,
+          live: { light: { _tag: "Default" }, dark: { _tag: "Default" } },
+        },
+      },
+      { appearance: "dark", depth: "truecolor", noColor: false },
+    )
+    for (const shown of [
+      makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true }),
+      plain,
+    ]) {
+      const lines = upNextLines(viewOf().queue, viewOf().totals, shown, 62, 12)
+      const look = segmentOf(lines, "tutti-h2o9")?.look
+      expect(look).toBe(shown.look("live", "bold"))
+      expect((look?.attributes ?? 0) & TextAttributes.BOLD).toBe(TextAttributes.BOLD)
+      expect((segmentOf(lines, " merges")?.look?.attributes ?? 0) & TextAttributes.BOLD).toBe(0)
+    }
+  })
+
+  test("Up next: a ticket waiting for its blockers, and a parent for its subtickets", () => {
+    const list = [
+      entry(
+        "tutti-07nj",
+        "Needs you in the panel",
+        TicketPhase.Waiting({
+          for: WaitFor.Blockers({ ids: ["tutti-a" as TicketId, "tutti-b" as TicketId] }),
+        }),
+        null,
+      ),
+      entry("tutti-kkb", "Spec runs", TicketPhase.HeldBack({ why: "parent" }), null),
+    ]
+    const view = project({
+      ledger: {
+        tickets: new Map(list.map((each) => [each.ticket, each])),
+        rows: 0,
+        windDown: null,
+        bugs: [],
+      },
+      workers: new Map(),
+      requests: [],
+      status: {
+        ...status,
+        holdTexts: {
+          waits: { "tutti-kkb": "after its subtickets: tutti-kkb.1, tutti-kkb.2, then +3" },
+          skips: {},
+        },
+      },
+      actions: new Map(),
+    })
+    const lines = upNextLines(view.queue, view.totals, theme, 76, 6)
+    expect(
+      lines.slice(2, 4).map((line) =>
+        line
+          .map((each) => each.text)
+          .join("")
+          .replace(/^│ | *│$/g, "")
+          .trimEnd(),
+      ),
+    ).toEqual([
+      "tutti-07nj  › after tutti-a, tutti-b merge",
+      "tutti-kkb   › after its subtickets: tutti-kkb.1, tutti-kkb.2, then +3",
+    ])
+    for (const id of ["tutti-a", "tutti-b", "tutti-kkb.1", "tutti-kkb.2"]) {
+      expect([id, segmentOf(lines, id)?.look]).toEqual([id, theme.look("live")])
+    }
+    expect(segmentOf(lines, ", then +3")?.look).toBe(theme.styles.quiet)
   })
 
   test("Up next says how many don't fit", () => {

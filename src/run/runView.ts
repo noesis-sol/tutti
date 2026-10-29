@@ -29,6 +29,7 @@ import { shortHash } from "../services/Git.ts"
 import type { Motion, Shown, Tone } from "../ui/marks.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+import { afterMerging, afterSolo } from "./after.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import type { FullCheckRun } from "./fullcheck.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
@@ -482,7 +483,7 @@ export interface QueueRow {
   /** Its ID as drawn, sanitised (§ 7.10). */
   readonly label: string
   readonly title: string
-  /** Why it waits, as the log says it: `touches src/a.ts, like running t-1`; null for none. */
+  /** Why it waits, as the log says it: `after t-1: both touch src/a.ts`; null for none. */
   readonly held: string | null
 }
 
@@ -930,15 +931,15 @@ const heldText = (ticket: TicketId, phase: TicketPhase, status: Status): string 
         case "parent":
           return waits[ticket] ?? "its subtickets are not all closed and merged"
         case "solo":
-          return status.solo === null
-            ? "waits for a solo ticket"
-            : `waits for solo ${status.solo.ticket}, ${status.solo.running ? "running" : "next"}`
+          return status.solo === null ? "waits for a solo ticket" : afterSolo(status.solo.ticket)
       }
       return null
     case "Waiting":
       switch (phase.for._tag) {
         case "Blockers":
-          return `waits for ${phase.for.ids.join(", ")} to merge`
+          return phase.for.ids.length === 0
+            ? "waits for a ticket to merge"
+            : afterMerging(phase.for.ids)
         case "Setup":
           return "its setup failed: waits for a ticket to merge, or the probe"
         case "Probe":

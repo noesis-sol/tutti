@@ -62,12 +62,12 @@ describe("this repository's shared files", () => {
   test("two tickets sharing a source file still are", () => {
     const mine = "Change src/run/holds.ts and update .orchestra/specs/tutti-spec.md."
     const running = "Change src/run/holds.ts and update docs/parity.md."
-    expect(heldFor(mine, running)).toBe("touches src/run/holds.ts, like running t-1")
+    expect(heldFor(mine, running)).toBe("after t-1: both touch src/run/holds.ts")
   })
 
   test("a doc in a folder under docs/ still is", () => {
     const mine = "Change src/run/schedule.ts and update docs/spikes/01-sdk-session.md."
     const running = "Change src/run/holds.ts and update docs/spikes/01-sdk-session.md."
-    expect(heldFor(mine, running)).toBe("touches docs/spikes/01-sdk-session.md, like running t-1")
+    expect(heldFor(mine, running)).toBe("after t-1: both touch docs/spikes/01-sdk-session.md")
   })
 })

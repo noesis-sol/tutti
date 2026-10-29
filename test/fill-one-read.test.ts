@@ -132,7 +132,7 @@ describe("the waiting tickets' links", () => {
     // The source's label came with the list of the tickets labelled unmerged.
     expect(phases).toEqual(["HeldBack:merge"])
     expect(lines).toContain(
-      "  t-1 waits: filed by u-1's worker; u-1 closed but not merged (labelled unmerged)",
+      "  t-1 waits: after u-1 merges: filed by its worker, closed but not merged (labelled unmerged)",
     )
     expect(shows(calls)).toEqual([])
     expect(byId(calls)).toEqual([])

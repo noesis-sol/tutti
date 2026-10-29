@@ -32,6 +32,7 @@ const shared: ReadonlyArray<ReadonlyArray<Mark>> = [
   ["review", "caution"],
   ["idle", "kept"],
   ["latest", "selected"],
+  ["said", "waitsFor"],
 ]
 
 describe("the marks", () => {

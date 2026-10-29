@@ -341,7 +341,7 @@ describe("a predicted footprint", () => {
     const [started, held, lines] = result
     expect(started).toEqual(["t-1"])
     expect(held).toBe("HeldBack:overlap")
-    expect(lines).toContain("  skipping t-2: touches src/a.ts, like running t-1")
+    expect(lines).toContain("  skipping t-2: after t-1: both touch src/a.ts")
   })
 
   test("holds back a queued ticket predicted to touch a running ticket's file", async () => {
@@ -365,7 +365,7 @@ describe("a predicted footprint", () => {
     const [started, held, lines] = result
     expect(started).toEqual(["t-1"])
     expect(held).toBe("HeldBack:overlap")
-    expect(lines).toContain("  skipping t-2: touches src/a.ts, like running t-1")
+    expect(lines).toContain("  skipping t-2: after t-1: both touch src/a.ts")
   })
 
   test("comes too late for tickets already running: LIKELY_CONFLICT when both edit it", async () => {

@@ -273,7 +273,7 @@ describe("the scheduler's footprints", () => {
         Effect.provide(Layer.mergeAll(memoryGit({ dir, files: sources }), BunServices.layer)),
       ),
     )
-    expect(held?.text).toBe("touches refreshBranch, like running t-1")
+    expect(held?.text).toBe("after t-1: both touch refreshBranch")
     expect(kept).toBeUndefined()
   })
 })
