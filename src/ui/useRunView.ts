@@ -23,6 +23,7 @@ import type { QuestionNews } from "../run/questionNews.ts"
 import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
+import type { FormShown } from "./InitForm.tsx"
 import type { InterviewValue } from "./InterviewView.tsx"
 import type { UrlOpener } from "./openUrl.ts"
 import { frameInterval, spinnerFrames } from "./spinner.ts"
@@ -105,6 +106,8 @@ export interface ShellValue {
   readonly questions?: External<ReadonlyArray<QuestionNews>>
   /** The question talked through from the dashboard, drawn in place of the screen; none when left out. */
   readonly talk?: External<TalkShown | null>
+  /** init's form drawn in place of the screen: a spec run's checks gate's; none when left out. */
+  readonly form?: External<FormShown | null>
 }
 
 /** A question's talk as the dashboard draws it (§ 4.11): its Interview view's shell and value. */
@@ -180,6 +183,11 @@ export const useClock = (): (() => number) => useShell().now ?? Date.now
 export const useScreen = (): Screen => useExternal(useShell().screen)
 
 const noTalk = external<TalkShown | null>(null)
+
+const noForm = external<FormShown | null>(null)
+
+/** init's form the dashboard draws in place of its screen, or null. */
+export const useShownForm = (): FormShown | null => useExternal(useShell().form ?? noForm)
 
 /** The talk the dashboard draws in place of its screen, or null. */
 export const useTalk = (): TalkShown | null => useExternal(useShell().talk ?? noTalk)

@@ -40,6 +40,13 @@ export const checksHeading: FormHeading = {
   about: " Sets this project's checks: the runners in scripts/ and their settings.",
 }
 
+/** A spec run's checks gate's (src/run/checksGate.ts), drawn in place of the run's dashboard. */
+export const gateHeading: FormHeading = {
+  command: "checks gate",
+  about:
+    " The spec's environment ticket merged: the checks every merge of the tree relies on, before the rest of it starts.",
+}
+
 /** How long the scout has looked, as its spinner says it: m:ss. */
 export const scoutClock = (millis: number): string => {
   const seconds = Math.max(0, Math.floor(millis / 1000))

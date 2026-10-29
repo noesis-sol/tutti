@@ -15,6 +15,7 @@ import { interviewWorker } from "../agent/interview.ts"
 import { type LatestAction, Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import type { TicketId } from "../services/Beads.ts"
+import type { FormShown } from "../ui/InitForm.tsx"
 import { type Commands, makeCommands } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
 import type { InterviewInputs } from "./interview.ts"
@@ -53,6 +54,11 @@ export interface ScreenInputs {
    * alone: the Interview view has none.
    */
   readonly talk?: SubscriptionRef.SubscriptionRef<InterviewInputs | null>
+  /**
+   * init's form, shown in place of the screen while it asks: a spec run's checks gate's (checksGate.ts,
+   * gateForm.ts), or null. The dashboard's alone.
+   */
+  readonly form?: SubscriptionRef.SubscriptionRef<FormShown | null>
 }
 
 /** A dashboard: shows `inputs` until the scope closes. */
@@ -173,6 +179,7 @@ export const show = (
       filings: yield* SubscriptionRef.make<ReadonlyArray<TicketFiling>>([]),
       questions: yield* SubscriptionRef.make<ReadonlyArray<QuestionNews>>([]),
       talk: yield* SubscriptionRef.make<InterviewInputs | null>(null),
+      form: yield* SubscriptionRef.make<FormShown | null>(null),
     }
     yield* dashboard(inputs)
     return inputs

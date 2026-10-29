@@ -87,6 +87,8 @@ import type { Transcripts } from "../agent/Transcripts.ts"
 import type { UsageLimits } from "../agent/UsageLimits.ts"
 import type { UsageProbe } from "../agent/UsageProbe.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
+import { scoutSearch } from "../init/checks.ts"
+import { liveMachine } from "../init/steps.ts"
 import { section } from "../organs/evidence.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
@@ -121,6 +123,7 @@ import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { removeLeftFullChecks } from "./fullcheck.ts"
+import { makeGateAsk, noScout } from "./gateForm.ts"
 import {
   changeStops,
   exitCodeOf,
@@ -569,6 +572,23 @@ const runFrom = (
         }),
       )
       .pipe(Effect.provideContext(requiresContext))
+    // With the dashboard, the gate asks in init's form in place of it (gateForm.ts): tutti checks'
+    // step, scouting with the run's organs where it has them.
+    const gateAsk =
+      options.gateAsk ??
+      (screen?.form === undefined || config.specPath === null
+        ? undefined
+        : yield* makeGateAsk({
+            slot: screen.form,
+            base,
+            version: options.version,
+            setUps,
+            scout: Option.isSome(organs)
+              ? (repo: string) =>
+                  scoutSearch(repo).pipe(Effect.provideService(Organs, organs.value))
+              : noScout,
+            machine: yield* liveMachine,
+          }))
     // A spec run's checks gate (checksGate.ts): once its environment ticket has merged, the checks
     // on the base are checked before anything else of the tree starts or resumes; a hold stops the
     // run. The dashboard shows it as the full check's phase.
@@ -577,7 +597,7 @@ const runFrom = (
       setup: Effect.map(setUps.now, (setup) => setup.command),
       stopped: (stop) => stopped(stop),
       show: showOn(status, "fullCheck"),
-      ...(options.gateAsk === undefined ? {} : { ask: options.gateAsk }),
+      ...(gateAsk === undefined ? {} : { ask: gateAsk }),
     })
     const beforeStart = Effect.andThen(requiresChecked, checksGate.before)
 

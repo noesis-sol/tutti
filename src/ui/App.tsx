@@ -8,7 +8,9 @@
 // interviewScreen() is the Interview view's (src/run/interview.ts), mounted the same way, with the
 // description and what file_feature has filed beside it. A question talked through from the
 // dashboard (src/run/answerTalk.ts) is put in the screen's talk slot: the dashboard bridges it as
-// interviewScreen does its inputs, and App draws its Interview view in place of the screen.
+// interviewScreen does its inputs, and App draws its Interview view in place of the screen. init's
+// form, a spec run's checks gate asking (src/run/gateForm.ts), is put in its form slot, and App
+// draws it in place of the screen too.
 import { createRoot } from "@opentui/react"
 import { Effect, Exit, Scope, Stream, SubscriptionRef } from "effect"
 import type { ReactNode } from "react"
@@ -17,6 +19,7 @@ import type { Dashboard as RunDashboard, ScreenInputs } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
 import { Dashboard } from "./Dashboard.tsx"
 import { FilingDeskProvider } from "./filingDesk.tsx"
+import { ShownInitForm } from "./InitForm.tsx"
 import { Input } from "./Input.tsx"
 import { InterviewContext, type InterviewValue, InterviewView } from "./InterviewView.tsx"
 import type { UrlOpener } from "./openUrl.ts"
@@ -31,15 +34,25 @@ import {
   ShellContext,
   type ShellValue,
   type TalkShown,
+  useClock,
   useScreen,
+  useShownForm,
   useTalk,
+  useTheme,
 } from "./useRunView.ts"
 import { WorkerView } from "./WorkerView.tsx"
 
-/** The screen the run shows now, or the question talked through from the dashboard. */
+/**
+ * The screen the run shows now, or in its place init's form while a spec run's checks gate asks
+ * (src/run/gateForm.ts), or the question talked through from the dashboard.
+ */
 export const App = () => {
   const screen = useScreen()
   const talk = useTalk()
+  const form = useShownForm()
+  const theme = useTheme()
+  const clock = useClock()
+  if (form !== null) return <ShownInitForm shown={form} theme={theme} clock={clock} />
   if (talk !== null) {
     return (
       <ShellContext.Provider value={talk.shell}>
@@ -104,6 +117,7 @@ const shellValue = (
       handBacks: yield* bridge(inputs.handBacks),
       filings: yield* bridge(inputs.filings),
       questions: yield* bridge(inputs.questions),
+      ...(inputs.form === undefined ? {} : { form: yield* bridge(inputs.form) }),
       ...(desktop.clipboard === undefined ? {} : { clipboard: desktop.clipboard }),
       ...(desktop.urlOpener === undefined ? {} : { urlOpener: desktop.urlOpener }),
     } satisfies ShellValue

@@ -776,6 +776,74 @@ export const screenFields = (screen: Settable<InitScreen>, clock: () => number):
   }
 }
 
+/** init's form drawn in place of a run's screen (§ 4.14's checks gate): its screen and title. */
+export interface FormShown {
+  readonly screen: Settable<InitScreen>
+  /** The repository its title names. */
+  readonly repo: string
+  readonly heading: FormHeading
+}
+
+/**
+ * init's form on a screen of its own, for whatever draws it: the screen, and the form over it.
+ * `clock` turns the spinners and times the scout. Ctrl+C while init works fails `cancels` until init
+ * catches stops, and stops init from then on.
+ */
+export const makeInitForm = (
+  clock: () => number = Date.now,
+): { readonly screen: Settable<InitScreen>; readonly form: InitForm; readonly fields: Fields } => {
+  const cancelled = Deferred.makeUnsafe<never, FormCancelled>()
+  // Set once init catches stops, for good: from then on Ctrl+C stops it, even in a key handler
+  // drawn before it did.
+  let caught = false
+  const cancel = () => {
+    if (caught) screen.get().stop?.()
+    else Deferred.doneUnsafe(cancelled, Effect.fail(new FormCancelled()))
+  }
+  const screen = external<InitScreen>({ ...emptyScreen, cancel })
+  const fields = screenFields(screen, clock)
+  const form: InitForm = {
+    ...initForm(fields),
+    cancels: Deferred.await(cancelled),
+    catchStops: (stop) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          caught = true
+          const { cancel: _, ...rest } = screen.get()
+          screen.set({ ...rest, stop })
+        }),
+        () =>
+          Effect.sync(() => {
+            const { stop: _, ...rest } = screen.get()
+            screen.set(rest)
+          }),
+      ),
+  }
+  return { screen, form, fields }
+}
+
+/** The form `shown` in place of a run's screen, its spinners turning on `clock`. */
+export const ShownInitForm = ({
+  shown,
+  theme,
+  clock,
+}: {
+  readonly shown: FormShown
+  readonly theme: Theme
+  readonly clock: () => number
+}) => (
+  <>
+    <InputGuards />
+    <LiveInitView
+      theme={theme}
+      repo={shown.repo}
+      screen={shown.screen}
+      clock={clock}
+      heading={shown.heading}
+    />
+  </>
+)
+
 /**
  * init's form in `shell`'s renderer, for the repository `repo`, for the rest of the scope: shown
  * at once, init working until its first question, and unmounted when the scope closes. `clock`
@@ -791,15 +859,7 @@ export const openInitForm = (
 ): Effect.Effect<InitForm, never, Scope.Scope> =>
   Effect.acquireRelease(
     Effect.sync(() => {
-      const cancelled = Deferred.makeUnsafe<never, FormCancelled>()
-      // Set once init catches stops, for good: from then on Ctrl+C stops it, even in a key handler
-      // drawn before it did.
-      let caught = false
-      const cancel = () => {
-        if (caught) screen.get().stop?.()
-        else Deferred.doneUnsafe(cancelled, Effect.fail(new FormCancelled()))
-      }
-      const screen = external<InitScreen>({ ...emptyScreen, cancel })
+      const { screen, form } = makeInitForm(clock)
       const root = createRoot(shell.renderer)
       root.render(
         <Themed appearance={shell.appearance} themeOf={themeOf}>
@@ -817,23 +877,6 @@ export const openInitForm = (
           )}
         </Themed>,
       )
-      const form: InitForm = {
-        ...initForm(screenFields(screen, clock)),
-        cancels: Deferred.await(cancelled),
-        catchStops: (stop) =>
-          Effect.acquireRelease(
-            Effect.sync(() => {
-              caught = true
-              const { cancel: _, ...rest } = screen.get()
-              screen.set({ ...rest, stop })
-            }),
-            () =>
-              Effect.sync(() => {
-                const { stop: _, ...rest } = screen.get()
-                screen.set(rest)
-              }),
-          ),
-      }
       return { root, form }
     }),
     ({ root }) => Effect.sync(() => root.unmount()),
