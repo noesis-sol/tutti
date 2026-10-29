@@ -630,8 +630,8 @@ const writeRunner = (
  * is there is kept, as is one that differs from what the plan writes unless it replaces it. A
  * missing check-fast.sh calls an existing scripts/check.sh as its suite. check-full.sh is `exit 0`
  * only where the check-fast.sh there afterwards runs nothing either: one init keeps runs first, and
- * a check-full.sh there that runs nothing is written again to run it, as the full check would
- * otherwise check nothing once check-fast.sh is given its suites.
+ * where the plan gives check-fast.sh suites, a check-full.sh there that runs nothing is written again
+ * to run it, as the full check would otherwise check nothing once check-fast.sh checks something.
  */
 export const writeRunners = (
   repo: string,
@@ -668,7 +668,10 @@ export const writeRunners = (
         ? plan.full
         : Option.isNone(fullThere)
           ? { suites: [], replace: false }
-          : !fastEmpty && runsNothing(fullThere.value)
+          : plan.fast.suites !== null &&
+              plan.fast.later !== true &&
+              !fastEmpty &&
+              runsNothing(fullThere.value)
             ? { suites: [], replace: true }
             : plan.full
     const full = yield* writeRunner(repo, {

@@ -576,6 +576,42 @@ const tuttiChecks = async (cwd: string, args: ReadonlyArray<string> = []) => {
   return { code, stdout, stderr }
 }
 
+describe("a check-full.sh that runs nothing", () => {
+  test("is kept by init run again without check flags, check-fast.sh checking something", async () => {
+    const project = newProject()
+    await setUp(project)
+    summaryOf((await runChecks(project, { flags: { checkFast: "make test" } })).exit)
+    // orchestra's check-full.sh, the project's choice.
+    writeFileSync(join(project.repo, "scripts/check-full.sh"), "#!/bin/sh\nexit 0\n", {
+      mode: 0o755,
+    })
+    const exit = await Effect.runPromiseExit(
+      init({
+        repo: project.repo,
+        commonDir: project.commonDir,
+        branch: "main",
+        version: "0.1.0",
+        flags: { force: false, concurrent: 2 },
+        form: null,
+        scout: Effect.fail("there is no scout in init here"),
+        machine: machine(project),
+        configure: Effect.succeed(TestAppConfig.appConfig({}, project.repo)),
+        account: TestAccount.layer(),
+        claudeConfig: join(project.home, ".claude.json"),
+      }).pipe(
+        Effect.provide(services(project)),
+        Effect.provide(TestBeads.layer([])),
+        Effect.provide(BunServices.layer),
+      ),
+    )
+    const summary = summaryOf(exit)
+    expect(read(project, "scripts/check-full.sh")).toBe("#!/bin/sh\nexit 0\n")
+    expect(summary.steps.map(stepLine)).toContain(
+      "• check-full  scripts/check-full.sh is there; left as it is",
+    )
+  })
+})
+
 describe("tutti checks' title", () => {
   test("names checks, and what it sets, where init's names init", () => {
     const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })

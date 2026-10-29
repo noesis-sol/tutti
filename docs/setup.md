@@ -254,8 +254,8 @@ would ask it; not the ticket prefix or the verifier. It writes the runners, the 
 skill where test work needs it, and the checks' settings (`checks.fast`, `checks.full`,
 `checks.setup`) together, so that a failure or `Esc` leaves the project as it was; files the test
 work `init` would; and ends with `init`'s summary: what changed, and the files to commit. A
-`scripts/check-full.sh` that runs nothing is written again to run `scripts/check-fast.sh` once that
-checks something, so the full check isn't left checking nothing.
+`scripts/check-full.sh` that runs nothing is written again to run `scripts/check-fast.sh` where the
+checks chosen give that something to check, so the full check isn't left checking nothing.
 
 `--check-fast`, `--check-full`, `--check-fast-timeout`, `--check-full-timeout` and `--setup` answer
 as `init`'s do, and `--no-mouse` too. Without a terminal it asks nothing and takes the flags; with
