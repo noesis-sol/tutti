@@ -2,7 +2,7 @@
 // machine. The memory each worker's processes take (its Claude Code, the leader of a process group of
 // its own, § 3.2, and everything in that group or below it) and what tutti itself runs besides (its
 // merge check above all), from one process listing; and the kernel's memory pressure, swapping and
-// CPU load, on macOS (sysctl and vm_stat) and Linux (/proc). On macOS memory used against the total
+// 1-minute load average, on macOS (sysctl and vm_stat) and Linux (/proc). On macOS memory used against the total
 // says little, as the kernel keeps spare memory full of cache and compressed pages: the pressure
 // level and the swap rate do. The dashboard shows a reading on its load line, each figure in the
 // colour of its own level (src/ui/LoadLine.tsx), and each worker's memory on its line in Current.
@@ -18,9 +18,9 @@ import { exec, TimeLimit } from "../services/exec.ts"
 export const unknownMemory = -1
 
 // The thresholds that colour the line's figures (levelsOf): tune them here.
-/** The 1-minute load average per core past which the CPU turns amber. */
+/** The 1-minute load average per core past which the load turns amber. */
 export const busyLoad = 1.5
-/** The load per core past which, held for overLoadFor, the CPU turns red. */
+/** The load per core past which, held for overLoadFor, the load turns red. */
 export const overLoad = 3
 export const overLoadFor = 60_000
 /** The pages swapped in and out a minute at which swapping is under way, and shows, in amber. */
@@ -305,8 +305,8 @@ export const levelsOf = (
 
 /**
  * Whether `levels` have the machine pressed hard enough to slow a worker's tests several times over,
- * as orchestra 0.9.0 has it: the kernel's memory pressure red, swapping under way, or the CPU red. A
- * CPU in amber alone doesn't: a run's workers keep it there. A hand-back's time limit leaves out
+ * as orchestra 0.9.0 has it: the kernel's memory pressure red, swapping under way, or the load red. A
+ * load in amber alone doesn't: a run's workers keep it there. A hand-back's time limit leaves out
  * the time it is (handback.ts's clock).
  */
 export const pressing = (levels: Levels): boolean =>

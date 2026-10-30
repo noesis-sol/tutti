@@ -1,13 +1,14 @@
 // The dashboard's load line (orchestra 0.8.5, § 7.2), under the title line, a blank line between,
 // says whether the workers are overloading the machine:
 //
-//   ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · CPU 9.8/10 cores
+//   ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · load 9.8/10 cores
 //
 // the workers at work out of their slots, the memory their processes take and what tutti runs
 // besides (its merge check above all, named `full check` while the end-of-run full check runs), the
 // kernel's memory pressure (and on Linux the memory available), swapping while it is under way, and
-// the 1-minute load average against the cores (src/run/load.ts). The pressure, the swapping and the CPU are each in the colour of their own
-// level, `done`, `notice` or `needsYou` bold; the memory, which has no threshold, is uncoloured. Before the
+// the 1-minute load average against the cores (src/run/load.ts), named load, not CPU: on macOS it
+// counts every runnable thread, and ran at 198 on 10 cores while the processes used 6.3 of them. The
+// pressure, the swapping and the load are each in the colour of their own level, `done`, `notice` or `needsYou` bold; the memory, which has no threshold, is uncoloured. Before the
 // run has read the machine's load the line has the workers alone.
 import { type Level, swappingPerMinute } from "../run/load.ts"
 import type { LoadView, Totals } from "../run/runView.ts"
@@ -70,13 +71,13 @@ const pressurePart = (load: LoadView): string => {
 const swappingPart = (load: LoadView): string =>
   load.swapping < swappingPerMinute ? "" : `swapping ${Math.round(load.swapping)} pages/min`
 
-/** `CPU 9.8/10 cores`; "" when unknown. */
-const cpuPart = (load: LoadView): string =>
-  load.load1 < 0 || load.cores <= 0 ? "" : `CPU ${load.load1.toFixed(1)}/${load.cores} cores`
+/** The 1-minute load average against the cores, `load 9.8/10 cores`; "" when unknown. */
+const loadPart = (load: LoadView): string =>
+  load.load1 < 0 || load.cores <= 0 ? "" : `load ${load.load1.toFixed(1)}/${load.cores} cores`
 
 /**
  * The load line `width` wide. A pane too narrow for it all drops the memory's breakdown, then the
- * memory, keeping the workers, the pressure and the CPU, and then cuts it.
+ * memory, keeping the workers, the pressure and the load, and then cuts it.
  */
 export const loadSegments = (
   totals: Totals,
@@ -101,7 +102,7 @@ export const loadSegments = (
       },
       kept(pressurePart(load), levelLook(levels.pressure, theme)),
       kept(swappingPart(load), levelLook(levels.swapping, theme)),
-      kept(cpuPart(load), levelLook(levels.cpu, theme)),
+      kept(loadPart(load), levelLook(levels.cpu, theme)),
     ],
     width,
     [seg(" · ", theme.styles.dim)],

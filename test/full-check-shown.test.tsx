@@ -86,7 +86,7 @@ const drawn = async (view: RunView, now: number): Promise<ReadonlyArray<string>>
     themeOf,
     now: () => now,
   }
-  const frame = await renderFrame(<Root value={value} />, { width: 100, height: 30 })
+  const frame = await renderFrame(<Root value={value} />, { width: 110, height: 30 })
   return frame.chars.split("\n").map((each) => each.trimEnd())
 }
 
@@ -113,7 +113,7 @@ describe("Current's box with no worker in it", () => {
     )
     expect(lines.join("\n")).not.toContain("picking the next ticket…")
     expect(lines[3]).toBe(
-      " ▶ 0 of 2 workers · memory 4.2 GB (workers 0.0, full check 4.2) · pressure normal · CPU 9.7/10 cores",
+      " ▶ 0 of 2 workers · memory 4.2 GB (workers 0.0, full check 4.2) · pressure normal · load 9.7/10 cores",
     )
   })
 

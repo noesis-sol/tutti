@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The dashboard's load line names the 1-minute load average `load`, not `CPU`: `load 9.8/10 cores`, in the same colours by load per core (§ 7.2; `src/ui/LoadLine.tsx`'s `loadPart`; tutti-dj0w). It said `CPU 238.6/10 cores` in Fabrica's run, read as tutti using 24 times the machine, while the processes used 6.3 of the 10 cores: on macOS the load average counts every thread running or waiting to run. `test/load-line.test.tsx` covers it.
+
 ## [0.6.1] - 2026-10-30
 
 - A worker that defers its ticket after three verifier rounds, its last fix committed but unverified, gets one more round in the same run, before triage (§ 4.11, § 5 item 6; `src/agent/hooks.ts`' `verifierEvent`, `src/agent/AgentHost.ts`' `verifierRounds`, `src/run/lastRound.ts`, `src/run/work.ts`, the worker prompt's Verify section, template version 10; tutti-19v9): in Fabrica's spec run two tickets were deferred so, their fixes passing their checks but never verified, and held six tickets for the rest of the run. tutti sees each round through the verifier's hooks, its start with the commit the worker gave it and its end; when the worker defers after three, with commits on its branch beyond the one the last round checked, it tells it `tutti: your last fix, <hash>, hasn't been verified: run the verifier once more on it, with the earlier rounds' findings. Close the ticket if it passes; defer it if it fails.`, and the log says `<id> deferred after three verifier rounds with its last fix unverified: one more round`. A pass closes it for the merge queue; a ticket deferred so again goes to triage, as does one deferred with no commit since the last round or before a third. `test/verifier-last-round.test.ts` covers it.

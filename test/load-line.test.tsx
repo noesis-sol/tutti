@@ -89,30 +89,30 @@ describe("the load line", () => {
     inStyle(none, "▶ 0", "dim")
   })
 
-  test("macOS, nothing pressed: the memory uncoloured, the pressure and the CPU green", () => {
+  test("macOS, nothing pressed: the memory uncoloured, the pressure and the load green", () => {
     const segments = loadSegments(totals, macOS, theme, 120)
     expect(text(segments)).toBe(
-      " ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · CPU 9.8/10 cores",
+      " ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · load 9.8/10 cores",
     )
     expect(segmentOf(segments, "memory").look).toBeNull()
     inStyle(segments, "pressure normal", "done")
-    inStyle(segments, "CPU", "done")
+    inStyle(segments, "load 9.8/10 cores", "done")
     inStyle(segments, "▶ 4", "picked")
   })
 
-  test("only the CPU amber past 1.5 times the cores, the pressure still green", () => {
+  test("only the load amber past 1.5 times the cores, the pressure still green", () => {
     const busy = { ...macOS, load1: 16, levels: { ...green, cpu: "amber" as const } }
     const segments = loadSegments(totals, busy, theme, 120)
-    inStyle(segments, "CPU 16.0/10 cores", "deferred")
+    inStyle(segments, "load 16.0/10 cores", "deferred")
     inStyle(segments, "pressure normal", "done")
   })
 
-  test("the CPU red past 3 times the cores for a minute", () => {
+  test("the load red past 3 times the cores for a minute", () => {
     const over = { ...macOS, load1: 31, levels: { ...green, cpu: "red" as const } }
-    inStyle(loadSegments(totals, over, theme, 120), "CPU 31.0/10 cores", "stop")
+    inStyle(loadSegments(totals, over, theme, 120), "load 31.0/10 cores", "stop")
   })
 
-  test("the pressure red at warn, the CPU still green", () => {
+  test("the pressure red at warn, the load still green", () => {
     const warn = {
       ...macOS,
       pressure: "warn" as const,
@@ -120,7 +120,7 @@ describe("the load line", () => {
     }
     const segments = loadSegments(totals, warn, theme, 120)
     inStyle(segments, "pressure warn", "stop")
-    inStyle(segments, "CPU", "done")
+    inStyle(segments, "load 9.8/10 cores", "done")
   })
 
   test("swapping, amber, only while it is under way", () => {
@@ -129,14 +129,14 @@ describe("the load line", () => {
     )
     const swapping = { ...macOS, swapping: 840.4, levels: { ...green, swapping: "amber" as const } }
     const segments = loadSegments(totals, swapping, theme, 140)
-    expect(text(segments)).toContain(" · pressure normal · swapping 840 pages/min · CPU")
+    expect(text(segments)).toContain(" · pressure normal · swapping 840 pages/min · load")
     inStyle(segments, "swapping 840 pages/min", "deferred")
   })
 
   test("Linux: the memory available beside the pressure", () => {
     const linux = { ...macOS, check: 0, available: 1.2 * gb, cores: 8, load1: 3.1 }
     expect(text(loadSegments(totals, linux, theme, 120))).toBe(
-      " ▶ 4 of 4 workers · memory 4.8 GB · pressure normal (1.2 GB available) · CPU 3.1/8 cores",
+      " ▶ 4 of 4 workers · memory 4.8 GB · pressure normal (1.2 GB available) · load 3.1/8 cores",
     )
   })
 
@@ -156,10 +156,10 @@ describe("the load line", () => {
 
   test("a narrow pane drops the breakdown, then the memory, then cuts the line", () => {
     expect(text(loadSegments(totals, macOS, theme, 80))).toBe(
-      " ▶ 4 of 4 workers · memory 6.2 GB · pressure normal · CPU 9.8/10 cores",
+      " ▶ 4 of 4 workers · memory 6.2 GB · pressure normal · load 9.8/10 cores",
     )
     expect(text(loadSegments(totals, macOS, theme, 60))).toBe(
-      " ▶ 4 of 4 workers · pressure normal · CPU 9.8/10 cores",
+      " ▶ 4 of 4 workers · pressure normal · load 9.8/10 cores",
     )
     const cut = text(loadSegments(totals, macOS, theme, 40))
     expect(cut.endsWith("…")).toBe(true)
@@ -304,7 +304,7 @@ describe("Current", () => {
     expect(lines[1]).toStartWith(" Tutti  0.1.0")
     expect(lines[2]).toBe("")
     expect(lines[3]).toBe(
-      " ▶ 2 of 2 workers · memory 2.6 GB (workers 1.2, merge check 1.4) · pressure normal · CPU 9.8/10 cores",
+      " ▶ 2 of 2 workers · memory 2.6 GB (workers 1.2, merge check 1.4) · pressure normal · load 9.8/10 cores",
     )
     expect(lines.join("\n")).not.toContain("│ Workers")
     expect(lines.some((each) => each.includes("tut-1  editing  42s  1.2 GB"))).toBe(true)

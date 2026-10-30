@@ -12,7 +12,7 @@ terminal shows what it showed before, followed by the run's summary.
 ```
  Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2    usage 85% of the five-hour limit · resets 14:05
 
- ▶ 3 of 3 workers · memory 4.1 GB (workers 3.2, merge check 0.9) · pressure normal · CPU 9.8/10 cores
+ ▶ 3 of 3 workers · memory 4.1 GB (workers 3.2, merge check 0.9) · pressure normal · load 9.8/10 cores
 ╭───────────────┬───────────────┬───────────────┬────────────────────────╮
 │ ✓ 2 Completed │ ↷ 1 Set aside │ 1 Needs you   │ 9 of 16 In queue       │
 ╰───────────────┴───────────────┴───────────────┴────────────────────────╯
@@ -83,7 +83,7 @@ Under the title line, a blank line between, a line says whether the workers are 
 machine, read every 5 seconds:
 
 ```
- ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · CPU 9.8/10 cores
+ ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · load 9.8/10 cores
 ```
 
 - **Workers**: workers at work out of how many may run (`-c`).
@@ -95,9 +95,11 @@ machine, read every 5 seconds:
   available on Linux. On macOS memory used against the total says little, as the kernel keeps spare
   memory full of cache and compressed pages; the pressure level and the swap rate do.
 - **Swapping**, `swapping 840 pages/min`, while the machine swaps 600 pages a minute or more.
-- **CPU**: the 1-minute load average against the cores.
+- **Load**: the 1-minute load average against the cores. It is the kernel's count of threads
+  running or waiting to run, not the CPU in use: on macOS it can stand at 20 times the cores while
+  the processes use under the cores.
 
-Each figure is in the colour of its own signal: the CPU amber once the load passes 1.5 times the
+Each figure is in the colour of its own signal: the load amber once it passes 1.5 times the
 cores and red once it has stayed past 3 times the cores for a minute; the pressure red at `warn` or
 worse; swapping amber. The memory, which has no threshold, is uncoloured. On macOS tutti reads
 `sysctl` and `vm_stat`, on Linux `/proc` (the pressure stall information where the kernel has it,
@@ -105,7 +107,7 @@ else the share of memory available), and `ps` on both. A pane too narrow for the
 memory's breakdown, then the memory; a pane too short for a line for each worker drops the blank line
 above it first.
 
-The time the pressure is red, the machine swaps or the CPU is red is left out of a hand-back's time
+The time the pressure is red, the machine swaps or the load is red is left out of a hand-back's time
 limit (see [Hand-backs](workers.md#hand-backs)). The run reads the machine's load only while the
 dashboard shows; with plain output, the hold at `--machine-workers` alone counts.
 

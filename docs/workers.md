@@ -358,7 +358,7 @@ message to carry on, rather than its ticket being set aside; the wait doesn't co
 
 Nor does the time the machine is loaded while the worker isn't at the limit, up to 20 minutes more:
 while the run holds at `--machine-workers`, or the dashboard's load line has the memory pressure or
-the CPU red, or the machine swapping (see [The load line](dashboard.md#the-load-line)), a worker's
+the load red, or the machine swapping (see [The load line](dashboard.md#the-load-line)), a worker's
 tests run several times slower. The line ending a hand-back past its limit says how much more it was
 given: `after 20m (and 5m more for the machine's load)`.
 
