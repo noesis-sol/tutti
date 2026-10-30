@@ -110,7 +110,6 @@ describe("flags", () => {
       "refine",
       "spec-timeout",
       "spec-effort",
-      "yes",
       "ticket-limit",
       "limit",
       "worker-effort",
@@ -339,7 +338,6 @@ describe("precedence", () => {
       tickets: false,
       ticket: null,
       feature: null,
-      yes: false,
       limit: null,
       plain: false,
       prompt: join(repo, ".tutti", "worker-prompt.md"),
@@ -394,8 +392,8 @@ describe("precedence", () => {
     })
     expect(fromFlags.usageLimitWait).toEqual(minutes(90))
 
-    const feature = configOf({ env: { TUTTI_FEATURE: " dark mode " }, flags: { yes: "true" } })
-    expect(feature).toMatchObject({ feature: "dark mode", yes: true })
+    const feature = configOf({ env: { TUTTI_FEATURE: " dark mode " } })
+    expect(feature).toMatchObject({ feature: "dark mode" })
   })
 
   test("an empty variable is unset", () => {
@@ -488,15 +486,14 @@ describe("problems", () => {
     expect(problemsOf({ flags: { feature: "dark mode", tickets: "true" } })).toEqual([
       "--feature can't be combined with --tickets: one runs a new feature, the other the current tickets.",
     ])
-    expect(problemsOf({ flags: { yes: "true" } })).toEqual(["--yes only applies with --feature."])
     expect(problemsOf({ flags: { feature: "" } })).toEqual([
       `--feature needs the request: --feature "<what to build>".`,
     ])
     // A standing choice in a variable is no problem on a run it doesn't apply to.
-    expect(
-      configOf({ env: { TUTTI_TICKETS: "1", TUTTI_YES: "1" }, flags: { feature: "x" } }),
-    ).toMatchObject({ feature: "x", tickets: true, yes: true })
-    expect(configOf({ env: { TUTTI_YES: "1" } }).yes).toBe(true)
+    expect(configOf({ env: { TUTTI_TICKETS: "1" }, flags: { feature: "x" } })).toMatchObject({
+      feature: "x",
+      tickets: true,
+    })
   })
 
   test("the worktrees must be outside the repository", () => {

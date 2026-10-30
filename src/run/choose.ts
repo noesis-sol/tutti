@@ -190,4 +190,11 @@ export const cancelled: Effect.Effect<number> = Effect.as(
  * interview is a view in the renderer, which the terminal can't show.
  */
 export const interviewUnavailable =
-  "tutti: the feature interview needs tutti's full screen, which this terminal can't show; nothing was filed or changed. tutti --feature \"<request>\" plans the feature without it."
+  "tutti: the feature interview needs tutti's full screen, which this terminal can't show; nothing was filed or changed. tutti --spec <file> runs a request written to a file without you."
+
+/**
+ * What a --feature run says on stderr, exit 2, where the terminal can't show the Interview view
+ * (--plain, or no terminal): nothing is filed.
+ */
+export const featureUnavailable =
+  "tutti: --feature talks the feature through with you and needs a terminal that shows tutti's full screen; nothing was filed. tutti --spec <file> runs a request written to a file without you."

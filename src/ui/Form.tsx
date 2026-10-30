@@ -1,5 +1,5 @@
-// The forms drawn in the command's renderer (§ 7.1, § 7.11): the start question and the plan
-// confirmation, in the form roles, as `huh`'s Charm theme draws its fields. The focused field has
+// The forms drawn in the command's renderer (§ 7.1, § 7.11): the start question and the open
+// questions, in the form roles, as `huh`'s Charm theme draws its fields. The focused field has
 // a bar on its left (`┃`, formFrame); the others keep its width, blank.
 //
 // ask() shows a form in the renderer until it is answered or cancelled, then unmounts it, leaving

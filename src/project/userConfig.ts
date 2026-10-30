@@ -23,6 +23,16 @@ export const UserConfig = Schema.Struct({
    * project's.
    */
   keep_awake: Schema.NullOr(Schema.Boolean).pipe(withDefault(null)),
+  /**
+   * Only the organs' keys gone with their organs (settings.ts's retiredOrganKeys), read whatever
+   * they are and ignored; the published schema leaves it out.
+   */
+  organs: Schema.optionalKey(
+    Schema.Struct({
+      screen: Schema.optionalKey(Schema.Unknown),
+      plan: Schema.optionalKey(Schema.Unknown),
+    }),
+  ),
 })
 
 export type UserConfig = typeof UserConfig.Type

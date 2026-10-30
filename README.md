@@ -122,7 +122,7 @@ How a run goes:
 | `-c N` (`--concurrent`) | tickets at the same time, for this run |
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets |
-| `--feature "<request>"` | plan a request as an epic and its tickets, and run them |
+| `--feature "<request>"` | talk a request through with you, as New feature does, and run the epic and tickets it files |
 | `--spec <file\|url>` | break a spec, a file or one at an `https://` URL, down into tickets under a root epic, and run them; again, carry on or update them |
 | `--ticket-limit 2h` | hold the run if a worker is still going this long after its ticket started |
 | `--limit N` | the most tickets this run starts (no limit by default) |

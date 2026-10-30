@@ -22,8 +22,8 @@ fast-forwarded into the branch the main checkout is on; its worktree and branch 
 Anything else is set aside for review, and the loop moves on or stops. It never pushes.
 
 Two words, kept apart: **workers** do tickets, one session and worktree each; **organs** are
-tutti's one-shot advisers (triage, the predictor, the reviewer that writes the run report, the
-screen and plan for `--feature`), each a model call with no tools and no MCP servers. Organs never
+tutti's one-shot advisers (triage, the predictor, the reviewer that writes the run report, and the
+scout for `tutti init`), each a model call with no tools and no MCP servers. Organs never
 change a ticket or the code.
 
 Workers live inside tutti's process: there are no tabs, panes or windows to read. What a worker
@@ -167,11 +167,10 @@ A run with nothing to run (nothing ready, or only tickets held back, and no sess
 prints a box, `✓ All done` or `○ Nothing ready to run` with what holds each ticket and the command
 that frees it, and exits 0 without a report. Tell the user what it says.
 
-`--feature "<request>"` has the screen and plan organs turn a request into an epic and its tickets,
-then runs them. Without a terminal it can't ask whether to file the plan: it prints the plan, says
-`tutti has no terminal to ask on: nothing was filed. Pass --yes to file the plan without asking.`
-and exits 2. Show the user that plan, and pass `--yes` only once they approve it. The interview
-(**New feature** at the start question) needs the dashboard: leave it to a user at the keyboard.
+`--feature "<request>"`, like **New feature** at the start question, talks the feature through with
+the user in tutti's interview, which needs the dashboard: leave it to a user at the keyboard. Without
+a terminal it files nothing and exits 2, saying `--feature talks the feature through with you and
+needs a terminal`; `--yes` is gone, and given, it is a setup problem (exit 2).
 
 `--spec <file>` (or an `https://` URL, fetched and committed as a copy) builds what a spec
 describes, unattended: tutti commits it, breaks it down into

@@ -5,7 +5,7 @@
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Schema } from "effect"
-import { retiredSettings, Settings } from "../src/project/settings.ts"
+import { retiredOrganKeys, retiredSettings, Settings } from "../src/project/settings.ts"
 import { UserConfig } from "../src/project/userConfig.ts"
 import { EventRecord } from "../src/run/events.ts"
 import { ColourScheme } from "../src/ui/theme.ts"
@@ -27,12 +27,28 @@ const jsonSchema = (schema: Schema.Top, name: string, strict: boolean): Record<s
   }
 }
 
-/** The settings' schema without the keys they no longer read, so that an editor flags them. */
-const withoutRetired = (schema: Record<string, unknown>): Record<string, unknown> => {
+/** `schema` without the properties `keys` names. */
+const without = (
+  schema: Record<string, unknown>,
+  keys: ReadonlyArray<string>,
+): Record<string, unknown> => {
   const properties = { ...(schema.properties as Record<string, unknown>) }
-  for (const key of Object.keys(retiredSettings)) delete properties[key]
+  for (const key of keys) delete properties[key]
   return { ...schema, properties }
 }
+
+/** `schema`'s organs without the keys gone with their organs. */
+const withoutRetiredOrgans = (schema: Record<string, unknown>): Record<string, unknown> => {
+  const properties = schema.properties as Record<string, Record<string, unknown>>
+  const organs = properties.organs
+  return organs === undefined
+    ? schema
+    : { ...schema, properties: { ...properties, organs: without(organs, retiredOrganKeys) } }
+}
+
+/** The settings' schema without the keys they no longer read, so that an editor flags them. */
+const withoutRetired = (schema: Record<string, unknown>): Record<string, unknown> =>
+  withoutRetiredOrgans(without(schema, Object.keys(retiredSettings)))
 
 /**
  * Each published schema, by its file's name in schema/. The settings, the user config and colour
@@ -40,7 +56,8 @@ const withoutRetired = (schema: Record<string, unknown>): Record<string, unknown
  */
 export const schemas = {
   "settings.json": () => withoutRetired(jsonSchema(Settings, "settings.json", true)),
-  "user-config.json": () => jsonSchema(UserConfig, "user-config.json", true),
+  // The user config reads organs only for the keys gone with their organs.
+  "user-config.json": () => without(jsonSchema(UserConfig, "user-config.json", true), ["organs"]),
   "events.json": () => jsonSchema(EventRecord, "events.json", false),
   "colour-scheme.json": () => jsonSchema(ColourScheme, "colour-scheme.json", true),
 } as const

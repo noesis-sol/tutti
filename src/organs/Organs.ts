@@ -1,6 +1,6 @@
-// Organs (§ 3.3, § 6): the one-shot advisers, triage, the predictor, the reviewer, the screen, the
-// plan and the scout, written against effect/ai's LanguageModel. An organ is a name, a prompt (from
-// prompts/), the Schema of its answer, an effort and a time limit, both as orchestra sets them.
+// Organs (§ 3.3, § 6): the one-shot advisers, triage, the predictor, the reviewer and the scout,
+// written against effect/ai's LanguageModel. An organ is a name, a prompt (from prompts/), the
+// Schema of its answer, an effort and a time limit, both as orchestra sets them.
 // `--organ-model` and `--organ-effort`, or the settings' organs.model and organs.effort, override
 // every organ's model and effort; AppConfig has them resolved.
 //
@@ -24,7 +24,7 @@ import { limitOf, OrganCall, type OrganReads, subtypeOf } from "./AgentSdkLangua
 import { evidenceId, fromTheRun, type InputPart, renderInput, systemPrompt } from "./evidence.ts"
 
 /** The organs, by the names their log lines and costs carry. */
-export const organNames = ["triage", "predictor", "reviewer", "screen", "plan", "scout"] as const
+export const organNames = ["triage", "predictor", "reviewer", "scout"] as const
 export type OrganName = (typeof organNames)[number]
 
 /** Each organ's effort and time limit, as orchestra sets them (§ 6.1). */
@@ -34,8 +34,6 @@ export const organDefaults: {
   triage: { effort: "low", timeLimit: Duration.minutes(3) },
   predictor: { effort: "low", timeLimit: Duration.minutes(2) },
   reviewer: { effort: "medium", timeLimit: Duration.minutes(5) },
-  screen: { effort: "low", timeLimit: Duration.minutes(2) },
-  plan: { effort: "high", timeLimit: Duration.minutes(10) },
   scout: { effort: "medium", timeLimit: Duration.minutes(5) },
 }
 
@@ -60,14 +58,12 @@ export interface OrganSpec<A> {
   /** Its own prompt, from prompts/<name>.md; the evidence rule is added after it. */
   readonly prompt: string
   readonly answer: Answer<A>
-  /** Where its evidence comes from, as the evidence rule says: `fromTheRun` by default. */
-  readonly evidenceSource?: string
 }
 
 /** The organ `name`, with its effort and time limit as orchestra sets them. */
 export const make = <A>(name: OrganName, spec: OrganSpec<A>): Organ<A> => ({
   name,
-  system: systemPrompt(spec.prompt, spec.evidenceSource ?? fromTheRun),
+  system: systemPrompt(spec.prompt, fromTheRun),
   answer: spec.answer,
   ...organDefaults[name],
 })

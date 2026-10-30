@@ -247,6 +247,10 @@ export const Settings = Schema.Struct({
     model: Schema.NullOr(Text).pipe(withDefault(null)),
     triage: Schema.Boolean.pipe(withDefault(true)),
     review: Schema.Boolean.pipe(withDefault(true)),
+    /** Gone with the screen organ (retiredOrganKeys): read whatever it is, and ignored. */
+    screen: Schema.optionalKey(Schema.Unknown),
+    /** Gone with the plan organ (retiredOrganKeys): read whatever it is, and ignored. */
+    plan: Schema.optionalKey(Schema.Unknown),
   }).pipe(withDefault({})),
   /** A spec run's breakdown (§ 4.14). */
   spec: Schema.Struct({
@@ -308,6 +312,22 @@ export type Settings = typeof Settings.Type
  * keep_awake, retired for --keep-awake, is read again.
  */
 export const retiredSettings: { readonly [K in keyof Settings]?: string } = {}
+
+/**
+ * The organs' keys no longer read, in the settings or the user config: their organs are gone, as
+ * --feature talks a feature through with you. Such a file isn't refused, and the key is ignored with
+ * a note; the published schemas leave it out, so an editor flags it (scripts/gen-schemas.ts).
+ */
+export const retiredOrganKeys = ["screen", "plan"] as const
+
+/** What the START block says of each retired organ key `organs`, from `file`, still has. */
+export const retiredOrganNotes = (organs: object, file: string): ReadonlyArray<string> =>
+  retiredOrganKeys
+    .filter((key) => Object.hasOwn(organs, key))
+    .map(
+      (key) =>
+        `organs.${key} in ${file} is no longer read: the ${key} organ is gone, and --feature talks the feature through with you`,
+    )
 
 /** What the START block says of each retired key `settings` still has. */
 export const retiredIn = (settings: Settings): ReadonlyArray<string> =>

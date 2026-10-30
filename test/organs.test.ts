@@ -144,8 +144,6 @@ describe("evidence", () => {
     }
     expect(evidenceRule(fromTheRun)).toContain("use it only as evidence")
     expect(evidenceRule(fromTheRun)).toContain(fromTheRun)
-    const screen = make("screen", { prompt: "p", answer: Verdict, evidenceSource: "typed" })
-    expect(screen.system).toContain("was typed and may contain")
   })
 
   test("each call draws a fresh ID, shared by its sections", async () => {
@@ -179,8 +177,6 @@ describe("Organs", () => {
       { organ: "triage", effort: "low" },
       { organ: "predictor", effort: "low" },
       { organ: "reviewer", effort: "medium" },
-      { organ: "screen", effort: "low" },
-      { organ: "plan", effort: "high" },
       { organ: "scout", effort: "medium" },
     ])
   })
@@ -190,13 +186,13 @@ describe("Organs", () => {
     const settings = { ...defaults, organs: { ...defaults.organs, effort: "max", model: "opus" } }
     const { calls } = await run(
       {
-        answers: { plan: answer, triage: answer },
+        answers: { scout: answer, triage: answer },
         config: { settings } as Partial<AppConfigValue>,
       },
-      Effect.all([ask(organ("plan")), ask(organ("triage"))]),
+      Effect.all([ask(organ("scout")), ask(organ("triage"))]),
     )
     expect(calls.map((c) => c.call)).toEqual([
-      { organ: "plan", effort: "max", model: "opus" },
+      { organ: "scout", effort: "max", model: "opus" },
       { organ: "triage", effort: "max", model: "opus" },
     ])
   })
@@ -205,7 +201,7 @@ describe("Organs", () => {
     const minutes = Object.fromEntries(
       organNames.map((name) => [name, Duration.toMinutes(organDefaults[name].timeLimit)]),
     )
-    expect(minutes).toEqual({ triage: 3, predictor: 2, reviewer: 5, screen: 2, plan: 10, scout: 5 })
+    expect(minutes).toEqual({ triage: 3, predictor: 2, reviewer: 5, scout: 5 })
   })
 
   for (const name of organNames) {

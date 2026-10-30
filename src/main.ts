@@ -7,10 +7,12 @@
 // (src/ui/renderer.ts), the log goes to its file alone, and once the renderer is gone the run's
 // summary, closing and scope lines are printed in the theme of the renderer's appearance, then the
 // report with its organ lines, then the end record (src/run/run.ts's finish). New feature, at the
-// start question, opens the Interview view in that renderer (src/run/interview.ts); once its epic
-// is filed, the run goes on, scoped to the epic, into the dashboard, with nothing asked. Otherwise the run is plain (§ 7.6): the start question as
-// lines, log lines on stdout, with a line saying why when the terminal couldn't show a dashboard,
-// the log's summary lines, then the report.
+// start question, and --feature "<request>" open the Interview view in that renderer
+// (src/run/interview.ts); once its epic is filed, the run goes on, scoped to the epic, into the
+// dashboard, with nothing asked. --feature without a terminal for it ends with exit 2, nothing
+// filed. Otherwise the run is plain (§ 7.6): the start question as lines, log lines on stdout,
+// with a line saying why when the terminal couldn't show a dashboard, the log's summary lines,
+// then the report.
 // Signals (§ 7.4, src/run/quit.ts): SIGUSR1 winds the run down, SIGUSR2 too, their handlers in place
 // before the lock names tutti's PID; SIGTSTP is ignored with a log line (D18); while the run goes,
 // SIGINT, SIGTERM and SIGHUP quit it (§ 4.8), the third ending tutti at once, and before and after
@@ -71,6 +73,7 @@ import {
   askLines,
   askThenBegin,
   cancelled,
+  featureUnavailable,
   interviewUnavailable,
   specAsk,
   takeSpec,
@@ -79,10 +82,11 @@ import {
 import { startBranches } from "./run/closedBranches.ts"
 import type { DrainRequest } from "./run/drain.ts"
 import { EventStream } from "./run/eventstream.ts"
-import { type FeatureIO, inRenderer, planAndFile, scopedTo } from "./run/feature.ts"
+import { scopedTo } from "./run/feature.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { type GettingReady, gettingReady, readySteps } from "./run/gettingReady.ts"
 import { exitCodes } from "./run/holds.ts"
+import { inRenderer } from "./run/inRenderer.ts"
 import { type InterviewScreen, interview, interviewEnding } from "./run/interview.ts"
 import { type KeepAwakePlan, keepAwake, keepAwakePlan, lidNote } from "./run/keepAwake.ts"
 import { Load, liveLoad } from "./run/load.ts"
@@ -145,10 +149,9 @@ import { liveClipboard } from "./ui/clipboard.ts"
 import { askOpenQuestion } from "./ui/OpenQuestion.tsx"
 import { showOrgans } from "./ui/OrganScreen.tsx"
 import { liveUrlOpener } from "./ui/openUrl.ts"
-import { askPlan } from "./ui/PlanConfirmation.tsx"
-import { confirm, openQuestion, planConfirmation, streamInput } from "./ui/plain/forms.ts"
+import { confirm, openQuestion, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
-import { closeLimit, open as openRenderer, type RendererFailed, type Shell } from "./ui/renderer.ts"
+import { closeLimit, open as openRenderer, type Shell } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
 import {
   type Appearance,
@@ -467,6 +470,13 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const failed = checked.failure
       return yield* cannot(failed instanceof StartupFailed ? failed.message : String(failed))
     }
+    // --feature talks the feature through in the Interview view, which only the renderer shows.
+    if (
+      checked.success.config.feature !== null &&
+      outputMode(terminal, checked.success.config.plain)._tag === "Plain"
+    ) {
+      return yield* cannot(featureUnavailable)
+    }
     yield* ready.step(readySteps.starting)
     // Keeping the machine awake (src/run/keepAwake.ts): the command started as the run begins, or
     // the warning the START block gives where there is none.
@@ -692,35 +702,6 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         return exitCodes.ok
       })
 
-      // --feature: the screen and the plan, the plan confirmed and filed, then the run scoped to
-      // its epic. The organ lines go to `out` and the errors to `error`; `confirm` asks, in the
-      // plan's theme. The exit code when it stopped the run.
-      const planFeature = <E>(io: {
-        readonly out: Out
-        readonly error: FeatureIO<E>["error"]
-        readonly confirm: (theme: Theme) => FeatureIO<E>["confirm"]
-      }) =>
-        Effect.gen(function* () {
-          if (config.feature === null) return undefined
-          // Its own organ lines follow the getting-ready line: one spinner at a time.
-          yield* ready.end
-          const theme = yield* printedThemeOf(io.out)
-          const featured = yield* planAndFile(
-            { request: config.feature, repo: config.repo, yes: config.yes },
-            {
-              printer: makePrinter(io.out, theme),
-              theme,
-              error: io.error,
-              confirm: io.confirm(theme),
-            },
-          )
-          if (featured._tag === "Stopped") {
-            yield* Effect.flatMap(endRecord(featured.exitCode), events.emit)
-            return featured.exitCode
-          }
-          scope = featured.epic
-          return undefined
-        })
       // The run's quits: SIGINT, SIGTERM and SIGHUP while it goes (§ 4.8), and a spec's breakdown
       // failing after the early start.
       const quits = yield* Queue.unbounded<QuitRequest>()
@@ -890,26 +871,6 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           if (chosenStopped !== undefined) return chosenStopped
           yield* begin(Work.Tickets())
         }
-        // The plan confirmation, a line at a time.
-        const stopped = yield* planFeature<never>({
-          out: stdout,
-          error,
-          confirm: (theme) =>
-            canAsk
-              ? Option.some((plan, question) =>
-                  Effect.scoped(
-                    Effect.flatMap(streamInput(process.stdin), (input) =>
-                      planConfirmation(
-                        { input, write: (text) => process.stdout.write(text), theme },
-                        plan,
-                        question,
-                      ),
-                    ),
-                  ),
-                )
-              : Option.none(),
-        })
-        if (stopped !== undefined) return stopped
         if (yield* nothingReported) return exitCodes.ok
         yield* ready.end
         const ran = yield* listening(
@@ -946,9 +907,9 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         yield* begin(Work.Tickets())
         if (config.feature === null && (yield* nothingReported)) return exitCodes.ok
       }
-      // The renderer, from the start question or --feature's plan confirmation through the
-      // dashboard, destroyed once the run's scope and then its own have closed. What follows it goes
-      // to the main screen, after what --feature said while it was open.
+      // The renderer, from the start question or --feature's interview through the dashboard,
+      // destroyed once the run's scope and then its own have closed. What follows it goes to the
+      // main screen, after what was said while it was open.
       const shown = yield* Effect.scoped(
         Effect.gen(function* () {
           const opened = yield* Effect.scope
@@ -960,7 +921,6 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             out: stdout,
             error,
             open: ready.end.pipe(Effect.andThen(open)),
-            ask: (shell, plan, question) => askPlan(shell, themeOf, plan, question),
           })
           // Added before the renderer opens, so it runs once the renderer has closed.
           yield* Effect.addFinalizer(() => screen.release)
@@ -1008,20 +968,36 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             const nothing = yield* nothingYet
             if (nothing !== null) return nothing
           }
-          if (config.feature !== null) {
-            // The organ lines on the main screen, the confirmation in the renderer.
-            const stopped = yield* planFeature<RendererFailed>({
-              out: screen.out,
-              error: screen.error,
-              confirm: () => (canAsk ? Option.some(screen.confirm) : Option.none()),
-            })
-            if (stopped !== undefined) return { _tag: "Stopped", exitCode: stopped } as const
-            const nothing = yield* nothingYet
-            if (nothing !== null) return nothing
-          }
           const shell = yield* screen.shell
           const clipboard = yield* liveClipboard(shell.renderer, tty.overSsh)
           const desktop = { clipboard, urlOpener: yield* liveUrlOpener(clipboard, tty.overSsh) }
+          /**
+           * The interview of the feature `description` describes, in this renderer, `chosen` the
+           * lines saying what was chosen at the start question; once its epic is filed and checked,
+           * the run scoped to it, with nothing asked (undefined). What it says is held for the main
+           * screen until the renderer is gone.
+           */
+          const interviewed = (description: string, chosen: ReadonlyArray<string>) =>
+            Effect.gen(function* () {
+              const printer = makePrinter(screen.out, themeOf(shell.appearance.get()))
+              const outcome = yield* interview(description, {
+                screen: interviewScreen(shell, themeOf, desktop),
+                say: printer.print,
+                error: screen.error,
+              })
+              if (outcome._tag !== "Run") {
+                return { _tag: "Interviewed", chosen, ending: interviewEnding(outcome) } as const
+              }
+              scope = outcome.epic
+              return undefined
+            })
+          if (config.feature !== null) {
+            // --feature: the interview, as New feature's, the request its first message.
+            const ended = yield* interviewed(config.feature, [])
+            if (ended !== undefined) return ended
+            const nothing = yield* nothingYet
+            if (nothing !== null) return nothing
+          }
           if (refining) {
             // The refinement in the Interview view, in this renderer; then the run.
             const specStopped = yield* startSpec({
@@ -1081,18 +1057,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               yield* begin(Work.Tickets())
             }
             if (work._tag === "Feature") {
-              // The interview, in this renderer; once its epic is filed and checked, the run, with
-              // nothing asked. What it says is held for the main screen until the renderer is gone.
-              const printer = makePrinter(screen.out, themeOf(shell.appearance.get()))
-              const outcome = yield* interview(work.description, {
-                screen: interviewScreen(shell, themeOf, desktop),
-                say: printer.print,
-                error: screen.error,
-              })
-              if (outcome._tag !== "Run") {
-                return { _tag: "Interviewed", work, ending: interviewEnding(outcome) } as const
-              }
-              scope = outcome.epic
+              const ended = yield* interviewed(work.description, chosenLines(work))
+              if (ended !== undefined) return ended
             }
             const nothing = yield* nothingYet
             if (nothing !== null) return nothing
@@ -1139,7 +1105,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         case "Stopped":
           return ended.exitCode
         case "Interviewed": {
-          yield* Console.log(chosenLines(ended.work).join("\n"))
+          if (ended.chosen.length > 0) yield* Console.log(ended.chosen.join("\n"))
           const said = ended.ending
           if (said.out.length > 0) yield* Console.log(said.out.join("\n"))
           if (said.error.length > 0) yield* Console.error(said.error.join("\n"))

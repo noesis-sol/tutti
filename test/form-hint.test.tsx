@@ -6,9 +6,11 @@ import type { RGBA } from "@opentui/core"
 import { formHintSegments } from "../src/ui/Form.tsx"
 import { scoutCommands } from "../src/ui/InitForm.tsx"
 import { hintOf } from "../src/ui/keyCommands.ts"
-import { PlanConfirmation } from "../src/ui/PlanConfirmation.tsx"
+import { TicketCount } from "../src/ui/questions.ts"
+import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra, type Role } from "../src/ui/theme.ts"
 import { withRender } from "./render.ts"
+import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -68,24 +70,24 @@ describe("a form's hint", () => {
     ])
   })
 
-  test.each(variants)("under the plan confirmation, %s", async (appearance) => {
+  test.each(variants)("under the start question, %s", async (appearance) => {
     const theme = themeOf(appearance)
     const node = (
-      <PlanConfirmation
+      <StartQuestion
+        spec={noSpecAsk}
         theme={theme}
-        plan={{ epic: { title: "Undo stack", description: "" }, tickets: [], notes: [] }}
-        question={"Start the run on tut-1 (0 tickets)?"}
+        count={TicketCount.Ready({ n: 3 })}
         answer={() => {}}
         cancel={() => {}}
       />
     )
     await withRender(node, { width: 100, height: 16 }, async (rendered) => {
       const frame = await rendered.capture()
-      expect(frame.chars).toContain("y yes · n or Enter no · ↑↓ scroll · Esc cancel")
+      expect(frame.chars).toContain("↑↓ choose · Enter confirm · Esc cancel")
       const spans = frame.spans.lines.flatMap((line) => line.spans)
       const colourOf = (text: string) => ints(spans.find((span) => span.text === text)?.fg)
-      expect(colourOf("n or Enter")).toEqual(rgbOf(bubbles[appearance].formHelpKey))
-      expect(colourOf(" scroll")).toEqual(rgbOf(bubbles[appearance].formHelpDesc))
+      expect(colourOf("Enter")).toEqual(rgbOf(bubbles[appearance].formHelpKey))
+      expect(colourOf(" confirm")).toEqual(rgbOf(bubbles[appearance].formHelpDesc))
       expect(colourOf(" · ")).toEqual(rgbOf(bubbles[appearance].formHelpSeparator))
     })
   })

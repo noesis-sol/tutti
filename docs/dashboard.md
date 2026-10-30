@@ -465,8 +465,8 @@ the dashboard, [`tutti answer`](workers.md#answering-questions-with-tutti-answer
 
 Cards, buttons, `← Dashboard`, **Release** and the composer take single clicks; every click has a
 key but one: a click on a ticket's ID in the tickets table copies it, its cell saying `✓ copied`,
-or a toast `couldn't copy` when that fails. So do the forms' buttons, options and lines to type in: the start question's, the plan
-confirmation's `[y/N]`, the answer form's, and `tutti init`'s. The wheel scrolls the transcript under the pointer.
+or a toast `couldn't copy` when that fails. So do the forms' buttons, options and lines to type in: the start question's, the answer
+form's, and `tutti init`'s. The wheel scrolls the transcript under the pointer.
 
 Dragging selects text, which is copied when you let go, with a toast (`copied`, or
 `couldn't copy`): with `pbcopy` on macOS, `wl-copy` or `xclip` on Linux where one is installed, and

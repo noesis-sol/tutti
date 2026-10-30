@@ -1,6 +1,6 @@
-// The forms' click targets (D9, § 7.3): in init's form, the start question, the plan confirmation and
-// the answer form, a click on a button, an option or a line to type in does what its key does; with
-// the mouse left to the terminal (--no-mouse), the forms take keys only.
+// The forms' click targets (D9, § 7.3): in init's form, the start question and the answer form, a
+// click on a button, an option or a line to type in does what its key does; with the mouse left to
+// the terminal (--no-mouse), the forms take keys only.
 
 import { describe, expect, test } from "bun:test"
 import type { InputRenderable } from "@opentui/core"
@@ -19,8 +19,7 @@ import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { type Asking, emptyScreen, InitView } from "../src/ui/InitForm.tsx"
 import { escapeHold, InputGuards } from "../src/ui/keys.ts"
-import { PlanConfirmation } from "../src/ui/PlanConfirmation.tsx"
-import { type Plan, TicketCount, Work } from "../src/ui/questions.ts"
+import { TicketCount, Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptState } from "../src/ui/transcriptItems.ts"
@@ -194,27 +193,6 @@ describe("the start question takes clicks", () => {
       await click(rendered, "Current tickets")
     })
     expect(all).toEqual([Work.Tickets()])
-  })
-})
-
-const plan: Plan = {
-  epic: { title: "Checkout", description: "Pay for the basket." },
-  tickets: [],
-  notes: [],
-}
-
-describe("the plan confirmation takes clicks", () => {
-  test("y in [y/N] says yes, N no", async () => {
-    const { all, say } = said()
-    const node = (
-      <PlanConfirmation theme={dark} plan={plan} question="Run it?" answer={say} cancel={never} />
-    )
-    await withRender(node, size, async (rendered) => {
-      expect((await rendered.capture()).chars).toContain("Run it? [y/N]")
-      await click(rendered, "[y/N]", 3)
-      await click(rendered, "[y/N]", 1)
-    })
-    expect(all).toEqual([false, true])
   })
 })
 

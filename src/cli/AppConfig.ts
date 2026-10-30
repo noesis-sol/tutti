@@ -22,7 +22,7 @@ import {
 } from "node:path"
 import { Config, Context, Duration, Effect, Exit, Layer, Option, Result, Schema } from "effect"
 import { type ConfigFileInvalid, type ConfigProblem, decodeConfig } from "../project/configFile.ts"
-import { readSettings, Settings, settingsFile } from "../project/settings.ts"
+import { readSettings, retiredOrganNotes, Settings, settingsFile } from "../project/settings.ts"
 import { readUserConfig, UserConfig, userConfigShown } from "../project/userConfig.ts"
 import {
   defaultMachineWorkers,
@@ -94,10 +94,8 @@ export interface AppConfigValue {
   readonly tickets: boolean
   /** The ticket the run is scoped to (--ticket), or null for the whole backlog. */
   readonly ticket: TicketId | null
-  /** The feature request to plan (--feature), or null. */
+  /** The feature request to talk through in the Interview view (--feature), or null. */
   readonly feature: string | null
-  /** File a --feature plan without asking (--yes). */
-  readonly yes: boolean
   /**
    * The spec to build (--spec, TUTTI_SPEC), as given: a path from the folder tutti was started in,
    * which the startup checks read (src/run/spec.ts's readSpec); null for none.
@@ -151,8 +149,10 @@ export interface AppConfigValue {
    */
   readonly keepAwakeOffBy: string | null
   /**
-   * What the START block says of each retired flag given (src/cli/flags.ts's retiredFlags), once
-   * each, naming the flag, or its variable where the flag isn't given: none is read.
+   * What the START block says of each retired flag given (src/cli/flags.ts's retiredFlags) but a
+   * refused one, which is a problem, once each, naming the flag, or its variable where the flag
+   * isn't given: none is read. Then each retired organ key the settings or the user config still
+   * has (src/project/settings.ts's retiredOrganKeys), naming its file.
    */
   readonly retiredNotes: ReadonlyArray<string>
   /**
@@ -288,7 +288,6 @@ export const resolveAll = (
   const forceOvernight = pick("forceOvernight", false)
   // An overnight run never asks what to work on: the current tickets, as --tickets runs them.
   const tickets = pick("tickets", false) || overnight
-  const yes = pick("yes", false)
   if (overnight && feature !== null) {
     problems.push(
       "--overnight can't be combined with --feature: an overnight run works on the current tickets, or --ticket's.",
@@ -306,9 +305,6 @@ export const resolveAll = (
     problems.push(
       "--feature can't be combined with --tickets: one runs a new feature, the other the current tickets.",
     )
-  }
-  if (feature === null && flagGiven("yes") && yes) {
-    problems.push("--yes only applies with --feature.")
   }
   const spec = pick("spec", null)
   const refine = pick("refine", false)
@@ -334,7 +330,8 @@ export const resolveAll = (
         `${from} can't be combined with --overnight: an overnight run works on the current tickets, or --ticket's.`,
       )
     }
-  } else if (refine) {
+  } else if (refine && feature === null) {
+    // --feature talks the feature through with you already: --refine changes nothing there.
     problems.push("--refine only applies with --spec.")
   }
   const limit = pick("limit", null)
@@ -395,16 +392,24 @@ export const resolveAll = (
     : user.keep_awake !== null
       ? (sources.userFile ?? defaultUserFile)
       : settingsFile
-  const retiredNotes = (
-    Object.entries(retiredFlags) as Array<[RetiredFlagName, RetiredFlag]>
-  ).flatMap(([key, flag]) => {
+  // A refused one stops the run, saying so as a problem.
+  const retiredNotes: Array<string> = []
+  for (const [key, flag] of Object.entries(retiredFlags) as Array<[RetiredFlagName, RetiredFlag]>) {
     const given = flagGiven(key)
       ? `--${flag.name}`
       : Option.isSome(variable(flag.variable))
         ? flag.variable
         : null
-    return given === null ? [] : [`${given} is no longer read: ${flag.instead}`]
-  })
+    if (given === null) continue
+    const said = `${given} is no longer read: ${flag.instead}`
+    if (flag.refused) problems.push(`${said}.`)
+    else retiredNotes.push(said)
+  }
+  // The organs' keys that went with their organs, read and ignored.
+  retiredNotes.push(
+    ...retiredOrganNotes(settings.organs, settingsFile),
+    ...retiredOrganNotes(user.organs ?? {}, sources.userFile ?? defaultUserFile),
+  )
 
   const appearance = Option.match(variable(appearanceVariable), {
     onNone: () => user.appearance,
@@ -452,7 +457,6 @@ export const resolveAll = (
     tickets,
     ticket,
     feature,
-    yes,
     spec,
     specFrom: flagGiven("spec") ? "--spec" : runFlags.spec.variable,
     refine,

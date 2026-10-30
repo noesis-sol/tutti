@@ -1,18 +1,10 @@
-// The start question and the plan confirmation in the renderer (§ 5 item 3, § 7.1): the choices,
-// cancelling, the description's new lines, the plan's lines, and the form roles they are drawn in.
+// The start question in the renderer (§ 5 item 3, § 7.1): the choices, cancelling, the
+// description's new lines, and the form roles it is drawn in.
 import { describe, expect, test } from "bun:test"
 import { createTestRenderer } from "@opentui/core/testing"
 import { Effect, Exit, Fiber } from "effect"
 import { act } from "react"
-import { PlanConfirmation } from "../src/ui/PlanConfirmation.tsx"
-import {
-  FormCancelled,
-  type Plan,
-  planLines,
-  TicketCount,
-  ticketsOption,
-  type Work,
-} from "../src/ui/questions.ts"
+import { FormCancelled, TicketCount, ticketsOption, type Work } from "../src/ui/questions.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { askStart, descriptionKeys, StartQuestion } from "../src/ui/StartQuestion.tsx"
 import {
@@ -286,97 +278,6 @@ describe("askStart", () => {
       expect(await idleFrame(setup)).not.toContain("What should this run work on?")
     } finally {
       setup.renderer.destroy()
-    }
-  })
-})
-
-const plan: Plan = {
-  epic: { title: "Undo stack", description: "Record property edits\nin groups." },
-  tickets: [
-    {
-      key: "undo",
-      type: "feature",
-      priority: 1,
-      title: "Add an undo stack",
-      files: ["src/history/undo.ts"],
-      after: [],
-    },
-    {
-      key: "keys",
-      type: "task",
-      priority: 2,
-      title: "Bind Ctrl+Z",
-      files: ["src/keys.ts", "src/app.ts"],
-      after: ["undo"],
-    },
-  ],
-  notes: ["linked keys after undo"],
-}
-
-describe("the plan confirmation in the renderer", () => {
-  const confirmation = (question = "Start the run on tut-1 (2 tickets)?") => {
-    const said = recorder<boolean>()
-    const node = <PlanConfirmation theme={dark} plan={plan} question={question} {...said.props} />
-    return { said, node }
-  }
-
-  test("shows the epic and its tickets with type, priority, files and after:, then [y/N]", async () => {
-    const { node } = confirmation()
-    await withRender(node, size, async (rendered) => {
-      const frame = await rendered.capture()
-      expect(frame.chars).toContain("Epic: Undo stack")
-      expect(frame.chars).toContain("  Record property edits")
-      expect(frame.chars).toContain("2 tickets:")
-      expect(frame.chars).toContain("  undo  feature P1  Add an undo stack")
-      expect(frame.chars).toContain("  keys  task    P2  Bind Ctrl+Z")
-      expect(frame.chars).toContain("        files: src/keys.ts, src/app.ts")
-      expect(frame.chars).toContain("        after: undo")
-      expect(frame.chars).toContain("Checking the plan:")
-      expect(frame.chars).toContain("Start the run on tut-1 (2 tickets)? [y/N]")
-      expect(colourOf(frame, "Start the run on")).toEqual(hex("fieldTitle"))
-      expect(colourOf(frame, "[y/N]")).toEqual(hex("description"))
-    })
-  })
-
-  test.each([
-    ["y", true],
-    ["n", false],
-    ["Enter", false],
-  ])("%s answers %p", async (key, expected) => {
-    const { said, node } = confirmation()
-    await withRender(node, size, async (rendered) => {
-      await press(rendered, (setup) =>
-        key === "Enter" ? setup.mockInput.pressEnter() : setup.mockInput.pressKey(key),
-      )
-    })
-    expect(said.answers).toEqual([expected])
-  })
-
-  test("Esc cancels", async () => {
-    const { said, node } = confirmation()
-    await withRender(node, size, async (rendered) => {
-      await press(rendered, pressEscape)
-    })
-    expect(said.cancelled()).toBe(1)
-    expect(said.answers).toEqual([])
-  })
-})
-
-describe("the plan's lines", () => {
-  test("are sanitised and each on one line", () => {
-    const hostile: Plan = {
-      epic: { title: "a\nb\x1b]52;c;aGk=\x07", description: "" },
-      tickets: [
-        { key: "k\u202e", type: "task", priority: 2, title: "t\x1b[2J", files: [], after: [] },
-      ],
-      notes: [],
-    }
-    const text = planLines(hostile, dark).map((line) => line.map((s) => s.text).join(""))
-    expect(text[0]).toBe("Epic: a b")
-    for (const line of text) {
-      expect(line).not.toContain("\x1b")
-      expect(line).not.toContain("\u202e")
-      expect(line).not.toContain("\n")
     }
   })
 })

@@ -1,7 +1,7 @@
 // The guards in front of the forms ask() shows (§ 7.3, OpenTUI #1661): taking the mouse, the start
-// question and the plan confirmation have the run's input guards, so a mouse report split between
-// two reads neither cancels them as a lone Esc nor types its rest into the description; and a
-// renderer has one set of guards, however many roots on it ask for them.
+// question has the run's input guards, so a mouse report split between two reads neither cancels
+// it as a lone Esc nor types its rest into the description; and a renderer has one set of guards,
+// however many roots on it ask for them.
 import { describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing"
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
@@ -9,8 +9,7 @@ import { createRoot } from "@opentui/react"
 import { Effect, Exit, Fiber } from "effect"
 import { act } from "react"
 import { escapeHold, guardInput, InputGuards } from "../src/ui/keys.ts"
-import { askPlan } from "../src/ui/PlanConfirmation.tsx"
-import { type Plan, TicketCount, type Work } from "../src/ui/questions.ts"
+import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { askStart } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -80,21 +79,6 @@ const describing = async (setup: TestRendererSetup) => {
   await input(setup, () => setup.mockInput.pressEnter())
 }
 
-const plan: Plan = {
-  epic: { title: "Undo stack", description: "Record property edits." },
-  tickets: [
-    {
-      key: "undo",
-      type: "feature",
-      priority: 1,
-      title: "Add an undo stack",
-      files: ["src/history/undo.ts"],
-      after: [],
-    },
-  ],
-  notes: [],
-}
-
 describe("the forms ask() shows, taking the mouse", () => {
   test("a mouse report split after its Esc doesn't cancel the start question", async () => {
     const { setup, shell } = await shellOf()
@@ -125,21 +109,6 @@ describe("the forms ask() shows, taking the mouse", () => {
         _tag: "Feature",
         description: "x",
       } as Work)
-    } finally {
-      setup.renderer.destroy()
-    }
-  })
-
-  test("a mouse report split after its Esc doesn't cancel the plan confirmation", async () => {
-    const { setup, shell } = await shellOf()
-    try {
-      const fiber = await forked(askPlan(shell, themeOf, plan, "Start the run? [y/N]"))
-      await input(setup, () => setup.renderOnce())
-      await split(setup, "\x1b", "[<35;10;5M")
-      expect(fiber.pollUnsafe()).toBeUndefined()
-      await input(setup, () => setup.mockInput.pressKey("y"))
-      const exit = await Effect.runPromise(Fiber.await(fiber))
-      expect(Exit.isSuccess(exit) && exit.value).toBe(true)
     } finally {
       setup.renderer.destroy()
     }

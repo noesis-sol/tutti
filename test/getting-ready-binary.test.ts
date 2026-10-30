@@ -3,7 +3,7 @@
 // a fake Claude Code (test/fixtures/fake-claude/claude.ts, behind --claude). On each path of the
 // run's start the line is drawn while the checks go and is erased, with nothing left, before the
 // first thing else is written: the renderer taking the screen, the Nothing to run box, a plain
-// run's log lines, why the run can't start, and --feature's first organ line.
+// run's log lines, why the run can't start, and the Interview view --feature opens.
 import { afterEach, describe, expect, setDefaultTimeout } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -163,11 +163,12 @@ describe("the getting-ready line on a terminal", () => {
     expect(visible(rest)).toMatch(/^tutti cannot start:/)
   })
 
-  slow.test("is erased before --feature's first organ line: one spinner at a time", async () => {
-    // The fake gives the screening no answer: its line spins, or ends at once with its outcome.
-    const rest = afterTheLine(
-      await onTerminal(["--feature", "Add a greeting", "--yes"], "screen the request"),
-    )
-    expect(visible(rest)).toMatch(/^(⣾ Screening the request|◆ Request not screened)/)
-  })
+  slow.test(
+    "is erased before the renderer takes the screen for --feature's interview",
+    async () => {
+      const rest = afterTheLine(await onTerminal(["--feature", "Add a greeting"], altScreen))
+      expect(rest).toContain(altScreen)
+      expect(visible(rest.slice(0, rest.indexOf(altScreen))).trim()).toBe("")
+    },
+  )
 })

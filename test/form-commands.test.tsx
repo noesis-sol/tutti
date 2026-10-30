@@ -1,6 +1,6 @@
-// The forms' keys as commands (§ 7.3, tutti-1und): init's form, the start question and the plan
-// confirmation each draw their hint from the list of commands they bind, on a keymap of their own,
-// without the run's input layers; a key whose command isn't there now goes on to the focused field.
+// The forms' keys as commands (§ 7.3, tutti-1und): init's form and the start question each draw
+// their hint from the list of commands they bind, on a keymap of their own, without the run's input
+// layers; a key whose command isn't there now goes on to the focused field.
 import { describe, expect, test } from "bun:test"
 import type { InputRenderable } from "@opentui/core"
 import { useRef, useState } from "react"
@@ -15,8 +15,7 @@ import {
   textCommands,
 } from "../src/ui/InitForm.tsx"
 import { type Command, hintOf, useFormCommands } from "../src/ui/keyCommands.ts"
-import { PlanConfirmation, planCommands } from "../src/ui/PlanConfirmation.tsx"
-import { type Plan, TicketCount, Work } from "../src/ui/questions.ts"
+import { TicketCount, Work } from "../src/ui/questions.ts"
 import {
   type StartActions,
   StartQuestion,
@@ -233,26 +232,5 @@ describe("the start question", () => {
       await rendered.input((setup) => setup.mockInput.pressEnter())
     })
     expect(all).toEqual([Work.Feature({ description: "jk" })])
-  })
-})
-
-describe("the plan confirmation", () => {
-  const plan: Plan = {
-    epic: { title: "Checkout", description: "Pay for the basket." },
-    tickets: [],
-    notes: [],
-  }
-
-  test("draws the hint its commands give, and Enter says no", async () => {
-    const { all, say } = said()
-    const answers = { answer: say, cancel: nothing }
-    const hint = drawn(planCommands(answers))
-    expect(hint).toBe("y yes · n or Enter no · ↑↓ scroll · Esc cancel")
-    const node = <PlanConfirmation theme={dark} plan={plan} question="Start?" {...answers} />
-    await withRender(node, size, async (rendered) => {
-      expect(lineWith(await rendered.capture(), "y yes")).toBe(hint)
-      await rendered.input((setup) => setup.mockInput.pressEnter())
-    })
-    expect(all).toEqual([false])
   })
 })

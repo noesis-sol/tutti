@@ -1,5 +1,5 @@
-// The line forms (§ 7.1): the start question, the plan confirmation, and a select, a confirm and a
-// text for init, for TERM=dumb and no TTY. Each asks one question per line, as orchestra's
+// The line forms (§ 7.1): the start question, an open question, and a select, a confirm and a text
+// for init, for TERM=dumb and no TTY. Each asks one question per line, as orchestra's
 // accessible mode (huh's, with TERM=dumb) does: a select lists its options numbered and reads a
 // number, a confirm reads y or n, a text reads a line. An answer that doesn't do is said in the
 // error style and asked again. The end of input (Ctrl+D) cancels the form, as Esc does in the
@@ -8,7 +8,6 @@
 // They are written without OpenTUI, in the theme's ANSI styles, and read their answers a line at
 // a time, taking from the input no more than the lines they ask for.
 import { Effect, Option, type Scope } from "effect"
-import { paint } from "../line.tsx"
 import {
   choicesOf,
   confirmHint,
@@ -23,8 +22,6 @@ import {
   type OpenQuestion,
   optionAt,
   otherChoice,
-  type Plan,
-  planLines,
   type QuestionAt,
   questionHeading,
   type Reply,
@@ -306,19 +303,6 @@ export const startQuestion = (
       validate: (answer) => (answer.trim() === "" ? noDescription(cancelKey) : null),
     })
     return Work.Feature({ description })
-  })
-
-/** The plan confirmation, a line at a time: the plan, then `question` with `[y/N]`. */
-export const planConfirmation = (
-  io: LineIO,
-  plan: Plan,
-  question: string,
-): Effect.Effect<boolean, FormCancelled> =>
-  Effect.gen(function* () {
-    io.write("\n")
-    for (const line of planLines(plan, io.theme)) io.write(`${paint(line)}\n`)
-    io.write("\n")
-    return yield* confirm(io, { question })
   })
 
 /**

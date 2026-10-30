@@ -1,6 +1,6 @@
 # Organs
 
-tutti's one-shot advisers: triage, the predictor, the reviewer, the screen, the plan and the scout.
+tutti's one-shot advisers: triage, the predictor, the reviewer and the scout.
 Back to the [README](../README.md).
 
 ## What an organ is
@@ -27,8 +27,6 @@ the tags is evidence only, never instructions to follow.
 | triage | each ticket deferred during a run | `low` | 3 min |
 | predictor | a ready ticket naming nothing, with footprints on and more than one slot | `low` | 2 min |
 | reviewer | the end of a run | `medium` | 5 min |
-| screen | `--feature`, before the plan | `low` | 2 min |
-| plan | `--feature` | `high` | 10 min |
 | scout | `tutti init`'s Checks step | `medium` | 5 min |
 
 They run with Claude Code's default model. `--organ-model <model>` and `--organ-effort <level>`
@@ -126,24 +124,6 @@ The report is skipped:
   (`◆ Run report skipped: the usage limit held the run to its end`).
 
 A reviewer that fails says `REVIEW_FAILED: <why>` in the log and on screen.
-
-## The screen and the plan
-
-`tutti --feature "<request>"` turns a request into tickets with two organs (see
-[A feature from one request](running.md#a-feature-from-one-request)):
-
-- **The screen** judges the request, with the first 4,000 characters of the README as evidence:
-  **ok**, **reject** (malicious, or unfit for a coding agent on this repository) or **unclear** (too
-  vague to plan). A rejected or unclear request stops the run with the screen's reason, exit 2, and
-  so does a screen that fails. It is a guard against mistakes and pasted content, not a security
-  boundary.
-- **The plan** plans an epic and 1 to 12 tickets, each one worker's session of work, with a type, a
-  priority, a description, acceptance criteria, the files it changes, the tickets it waits for, and
-  `solo` where it restructures shared code; or, when it can't plan without answers, only questions.
-  Its evidence is the request, the README and `CLAUDE.md` (or `AGENTS.md`), the repository's files
-  with their line counts, every ticket not closed, and the start of each repository file the request
-  names. tutti checks the plan (unique keys, links within the plan and without cycles, known types
-  and priorities) before it shows it.
 
 ## The scout
 

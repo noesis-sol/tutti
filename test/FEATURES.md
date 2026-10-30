@@ -127,7 +127,7 @@ below are the coverage report's uncovered lines at 368899e.
 
 ## A run's start: startup checks, the lock, the start question
 
-- **Reached by**: a bare `tutti` (and `--ticket`, `--feature`, `--yes`, `--plain`).
+- **Reached by**: a bare `tutti` (and `--ticket`, `--feature`, `--plain`; `--yes`, refused).
 - **Tests**: `startup.test.ts` (with the START block's note that keeping awake is off, and of a
   retired flag given), `startup-ticket-scope.test.ts`, `run-lock.test.ts`,
   `untrusted-checkout.test.ts`, `start.test.ts`, `run-start-question.test.ts`,
@@ -229,7 +229,8 @@ below are the coverage report's uncovered lines at 368899e.
 ## The feature interview
 
 - **Reached by**: `tutti --feature "<request>"`, or New feature at the start question.
-- **Tests**: `interview.test.ts`, `feature.test.ts`, `feature-renderer.test.ts`,
+- **Tests**: `interview.test.ts`, `feature.test.ts`, `feature-binary.test.ts` (`--feature` on a
+  terminal, without one, and `--yes`), `feature-retired.test.ts`, `in-renderer.test.ts`,
   `ui-interview.test.tsx`, `ui-interview-narrow.test.tsx`, `ui-interview-keys.test.tsx` (the
   view's keys and mouse: PgUp/PgDn and loading older items, ↑↓, Tab and the arrows in a request's
   card, Enter, the number keys, g and G, a click on an entry).

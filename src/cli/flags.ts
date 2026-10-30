@@ -188,7 +188,8 @@ export const runFlags = {
   }),
   feature: runFlag("feature", text('the request: --feature "<what to build>"'), {
     metavar: "request",
-    description: "plan this feature request as an epic and its tickets, then run them",
+    description:
+      "talk this feature request through with you, as New feature does, then run the epic and tickets it files",
   }),
   spec: runFlag("spec", text("a file or an https:// URL"), {
     metavar: "file|url",
@@ -207,10 +208,6 @@ export const runFlags = {
   specEffort: runFlag("spec-effort", oneOf(efforts), {
     metavar: "level",
     description: `the effort a spec's breakdown runs at: ${efforts.join(", ")} (default: .tutti/settings.json, else high)`,
-  }),
-  yes: runFlag("yes", onOff, {
-    onOff: true,
-    description: "with --feature, file the plan without asking",
   }),
   ticketLimit: runFlag("ticket-limit", timeOrNone, {
     metavar: "time",
@@ -306,22 +303,28 @@ export const runFlags = {
 
 export type RunFlagName = keyof typeof runFlags
 
-/** A flag tutti no longer reads: still taken, with any value, so that scripts and habits don't break. */
+/**
+ * A flag tutti no longer reads: still taken, with any value, so that scripts and habits don't break,
+ * or, `refused`, so that a run given it stops saying why rather than doing something else.
+ */
 export interface RetiredFlag {
   /** The flag's name, without its dashes. */
   readonly name: string
   /** Its environment variable, also no longer read. */
   readonly variable: string
-  /** What the START block says after `--name is no longer read: `. */
+  /** What the START block, or the problem, says after `--name is no longer read: `. */
   readonly instead: string
+  /** Whether a run given it, or its variable, stops at the startup checks (exit 2). */
+  readonly refused: boolean
   /** The flag for effect/cli: hidden from --help, its text, if given. */
   readonly flag: Flag.Flag<Option.Option<string>>
 }
 
-const retiredFlag = (name: string, instead: string): RetiredFlag => ({
+const retiredFlag = (name: string, instead: string, refused = false): RetiredFlag => ({
   name,
   variable: variableOf(name),
   instead,
+  refused,
   flag: Flag.optional(Flag.String(name).pipe(Flag.withOptionalValue("true"), Flag.withHidden)),
 })
 
@@ -331,6 +334,12 @@ export const retiredFlags = {
   keepAwake: retiredFlag(
     "keep-awake",
     "tutti keeps the machine awake unless keep_awake is false in .tutti/settings.json or ~/.config/tutti/config.json",
+  ),
+  // There is no unattended feature run: --feature talks it through in the Interview view.
+  yes: retiredFlag(
+    "yes",
+    "--feature always talks the feature through with you; tutti --spec <file> runs a request written to a file unattended",
+    true,
   ),
 } as const
 

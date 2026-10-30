@@ -105,7 +105,7 @@ work on:
   `tutti cannot run that spec:`, then the problem, which says `(chosen at the start)` where
   `--spec`'s say `(--spec)`.
 - **New feature** asks you to describe a feature, then talks it through with you
-  ([below](#talked-through)).
+  ([below](#a-feature-from-one-request)).
 
 `Esc` or `Ctrl+C` at any step exits with code 130, nothing changed. Asked as lines (`TERM=dumb`, or
 fewer than 256 colours), the question reads the spec's path or URL as a line, with the same checks,
@@ -154,8 +154,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `--overnight-free-disk <GB>` | the free disk `--overnight` wants where the worktrees go; `0` doesn't check (default: 20) |
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
-| `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |
-| `--yes` | with `--feature`, file the plan without asking |
+| `--feature "<request>"` | talk a request through with you, as New feature does, then run the epic and tickets it files ([below](#a-feature-from-one-request)) |
 | `--spec <file\|url>` | build what a spec describes, a file or one at an `https://` URL: commit it, break it down into tickets under a root epic, and run them; run again, carry on or update them ([below](#a-whole-app-from-a-spec)) |
 | `--refine` | with `--spec`, break the spec down with you ([below](#refined-with-you)) |
 | `--spec-timeout 90m`, `--spec-effort <level>` | how long a spec's breakdown may take, and its effort (default: the settings', else 60m and `high`) |
@@ -457,47 +456,40 @@ with each ticket not done and why.
 
 ### A feature from one request
 
-A feature goes from a request to a finished run in one of two ways. Either way it is filed in Beads as
-an epic and its tickets (each with a description, acceptance criteria, a type, a priority, its `files`
-metadata, `blocks` links between them, and `solo` where planned), and run as `--ticket <epic>` would
-run it.
-
-#### Talked through
-
-Pick **New feature** at the start question and describe the feature (`Alt+Enter` or `Ctrl+J` for a
-new line). tutti opens the **interview**: a chat, in tutti's screen, with the Claude session that
-breaks a [spec](#a-whole-app-from-a-spec) down, in its feature mode, in the main checkout. It asks
-you about the feature in rounds, numbered questions each with its recommended answer, until you
-share an understanding, then sums up the epic and its tickets and files them once you agree. You
-answer in the composer (`i`), or pick an option where a question is a choice.
-
-The session reads the repository and the open tickets, and can't change anything: its only tools are
-read-only, and it files the feature through the breakdown's tools, which check the tree before
-filing. Once it has filed and its turn is over, the view goes, tutti checks the tree (warning of
-tickets without files or acceptance criteria, and of a cycle of blocks links), says
-`filed <epic>: N tickets, starting the run`, and runs it: nothing asks.
-
-`Esc` (outside the composer) or **← Back** asks `End the interview? Nothing has been filed.`; left
-once it has filed, it says `Filed epic <id> with N tickets; nothing was run. Run it with: tutti --ticket <id>`. The
-interview needs tutti's full screen: where the start question is asked as lines (`TERM=dumb`, fewer
-than 256 colours), choosing it says so and exits 0, and `tutti --feature` plans the feature instead.
-
-#### Planned by the organs
-
 ```
 tutti --feature "Add a --json flag to the list command"
 ```
 
-For scripts and agents. The [screen organ](organs.md#the-screen-and-the-plan) judges the request: one
-it rejects or finds unclear stops with its reason (exit 2). The plan organ plans it, or stops with its
-questions (exit 2): run it again with the answers in the request. tutti shows the plan, the epic then
-each ticket with its type, priority, files and the tickets it waits for, and asks
-`File these N tickets and start the run? [y/N]`. `--yes` files it without asking; without a terminal
-to ask on and without `--yes`, nothing is filed (exit 2). Nothing is filed before you confirm, and
-`Ctrl+C` stops with nothing filed (exit 130).
+Pick **New feature** at the start question and describe the feature (`Alt+Enter` or `Ctrl+J` for a
+new line), or give it as `--feature "<request>"`. tutti opens the **interview**: a chat, in tutti's
+screen, with the Claude session that breaks a [spec](#a-whole-app-from-a-spec) down, in its feature
+mode, in the main checkout, the request its first message. It asks you about the feature in rounds,
+numbered questions each with its recommended answer, until you share an understanding, then sums up
+the epic and its tickets and files them once you agree. You answer in the composer (`i`), or pick an
+option where a question is a choice.
 
-`--feature` can't be combined with `--ticket` or `--tickets`, nor run with `--limit 0`, which would
-file the plan and start none of it.
+The session reads the repository and the open tickets, and can't change anything: its only tools are
+read-only, and it files the feature through the breakdown's tools, which check the tree before
+filing. It is filed in Beads as an epic and its tickets (each with a description, acceptance
+criteria, a type, a priority, its `files` metadata, `blocks` links between them, and `solo` where
+needed). Once it has filed and its turn is over, the view goes, tutti checks the tree (warning of
+tickets without files or acceptance criteria, and of a cycle of blocks links), says
+`filed <epic>: N tickets, starting the run`, and runs it as `--ticket <epic>` would: nothing asks.
+
+`Esc` (outside the composer) or **← Back** asks `End the interview? Nothing has been filed.`; left
+once it has filed, it says `Filed epic <id> with N tickets; nothing was run. Run it with: tutti --ticket <id>`.
+
+The interview needs tutti's full screen. Where the start question is asked as lines (`TERM=dumb`,
+fewer than 256 colours), choosing New feature says so and exits 0. `--feature` without a terminal
+that shows it (`--plain`, or stdin or stdout not a terminal) ends with exit 2, nothing filed. There
+is no unattended feature run: write the request to a file and run it with
+[`tutti --spec <file>`](#a-whole-app-from-a-spec), which breaks it down without you. `--yes` (and
+`TUTTI_YES`), which filed `--feature`'s plan without asking, is gone: given, it is a setup problem
+(exit 2) saying so.
+
+`--feature` can't be combined with `--ticket`, `--tickets` or `--spec`, nor run with `--limit 0`,
+which would file the epic and start none of it. `--refine` with it is taken and changes nothing: the
+feature is talked through with you already.
 
 ### A whole app from a spec
 
@@ -602,7 +594,7 @@ filed.
 #### Refined with you
 
 `--refine` (or `TUTTI_REFINE=1`) is for a spec with decisions still open. The same session talks it
-through with you in tutti's [interview](#talked-through) view: it takes the spec as mostly settled,
+through with you in tutti's [interview](#a-feature-from-one-request) view: it takes the spec as mostly settled,
 asks only where it leaves a decision open that changes what gets built, sums up what it will file and
 files nothing until you agree, with the decisions under `Decisions` in the root epic. Once it has
 filed the tree, the view goes and the run starts. `Esc` asks `End the breakdown? Nothing has been

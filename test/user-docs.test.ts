@@ -138,7 +138,9 @@ describe("the docs", () => {
     expect(Exit.isSuccess(decodeConfig(UserConfig, "config.json", example))).toBe(true)
     const schema = JSON.parse(read("schema/user-config.json")) as JsonSchema
     expect([...keysOf(example)].sort()).toEqual([...schemaKeys(schema)].sort())
-    expect(Object.keys(example).sort()).toEqual(Object.keys(UserConfig.fields).sort())
+    // organs holds only keys gone with their organs (settings.ts's retiredOrganKeys).
+    const fields = Object.keys(UserConfig.fields).filter((key) => key !== "organs")
+    expect(Object.keys(example).sort()).toEqual(fields.sort())
   })
 
   test("docs/events.md names every kind of record", () => {

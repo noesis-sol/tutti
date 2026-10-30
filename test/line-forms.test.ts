@@ -1,21 +1,18 @@
-// The line forms (§ 7.1): the start question, the plan confirmation and the generic select,
-// confirm and text, asked one question per line for TERM=dumb and no TTY. The end of input
-// (Ctrl+D) cancels, as Esc does in the renderer.
+// The line forms (§ 7.1): the start question and the generic select, confirm and text, asked one
+// question per line for TERM=dumb and no TTY. The end of input (Ctrl+D) cancels, as Esc does in the
+// renderer.
 import { describe, expect, test } from "bun:test"
 import { PassThrough } from "node:stream"
 import { Effect, Exit, Option } from "effect"
-import fc from "fast-check"
-import { paint } from "../src/ui/line.tsx"
 import {
   confirm,
   type LineIO,
-  planConfirmation,
   select,
   startQuestion,
   streamInput,
   text,
 } from "../src/ui/plain/forms.ts"
-import { fileQuestion, type Plan, planLines, TicketCount, type Work } from "../src/ui/questions.ts"
+import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
@@ -189,81 +186,6 @@ describe("the start question as lines", () => {
   test("says why there is nothing to run", async () => {
     const { output } = await ask("1\n", TicketCount.NoneReady({ open: 2 }))
     expect(output).toContain("1. Current tickets: none ready (2 open)\n")
-  })
-})
-
-const plan: Plan = {
-  epic: { title: "Undo stack", description: "Record edits." },
-  tickets: [
-    { key: "undo", type: "feature", priority: 1, title: "Add it", files: ["a.ts"], after: [] },
-    { key: "keys", type: "task", priority: 2, title: "Bind it", files: [], after: ["undo"] },
-  ],
-  notes: [],
-}
-
-describe("the plan confirmation as lines", () => {
-  test("prints the plan, then asks", async () => {
-    const { exit, output } = await answer("y\n", (io) =>
-      planConfirmation(io, plan, fileQuestion(plan)),
-    )
-    expect(value(exit)).toBe(true)
-    expect(output).toBe(
-      [
-        "",
-        "Epic: Undo stack",
-        "  Record edits.",
-        "",
-        "2 tickets:",
-        "  undo  feature P1  Add it",
-        "        files: a.ts",
-        "  keys  task    P2  Bind it",
-        "        after: undo",
-        "",
-        "File these 2 tickets and start the run? [y/N] ",
-        "",
-      ].join("\n"),
-    )
-  })
-
-  test("Enter says no; the end of input cancels", async () => {
-    const no = await answer("\n", (io) => planConfirmation(io, plan, fileQuestion(plan)))
-    expect(value(no.exit)).toBe(false)
-    const ended = await answer("", (io) => planConfirmation(io, plan, fileQuestion(plan)))
-    expect(cancelled(ended.exit)).toBe(true)
-  })
-
-  test("a plan's text never reaches the terminal as what it would act on", () => {
-    const words = fc.string({ unit: "binary", maxLength: 40 })
-    fc.assert(
-      fc.property(
-        words,
-        words,
-        fc.array(fc.record({ key: words, type: words, title: words, file: words }), {
-          maxLength: 3,
-        }),
-        (title, description, tickets) => {
-          const lines = planLines(
-            {
-              epic: { title, description },
-              tickets: tickets.map((t) => ({
-                key: t.key,
-                type: t.type,
-                priority: 2,
-                title: t.title,
-                files: [t.file],
-                after: [t.key],
-              })),
-              notes: [description],
-            },
-            plainTheme,
-          ).map((line) => unstyled(paint(line)))
-          for (const line of lines) {
-            // biome-ignore lint/suspicious/noControlCharactersInRegex: what must not be there
-            expect(line).not.toMatch(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/)
-          }
-        },
-      ),
-    )
   })
 })
 
