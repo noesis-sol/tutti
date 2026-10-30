@@ -7,8 +7,9 @@
 // its session is closed, and it is retired as after a merge (merge.ts's retire): its worktree and
 // branch removed (removeMerged, as byHand says), its `unmerged` label removed, and the epics above it
 // closed; the tickets it blocks start, and the end line and the report count it closed rather than
-// set aside. One left `unmerged` by an earlier run loses its label. A ticket being merged, handed
-// back, or blocked on a conflict whose hand-back waits for its steered worker, is left to its merge.
+// set aside. One left `unmerged` by an earlier run loses its label and the record that run left of
+// it in state.json (unmerged.ts's forgetLeft). A ticket being merged, handed back, or blocked on a
+// conflict whose hand-back waits for its steered worker, is left to its merge.
 //
 // byHand and removedText are also the cleanup of a carried-over ticket dropped as merged by hand
 // (carry.ts).
@@ -32,7 +33,7 @@ import { Move } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
 import { info } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
-import { mergedSince, namedCommit as named, unlabel } from "./unmerged.ts"
+import { forgetLeft, mergedSince, namedCommit as named, unlabel } from "./unmerged.ts"
 
 /**
  * What removeMerged did with the worktree and branch of a ticket merged by hand, as its line goes
@@ -165,6 +166,7 @@ export const mergedByHand = (
       const merged = (yield* mergedSince(issue, options)).merged
       if (merged === undefined) continue
       const label = unlabelled(yield* unlabel(issue.id))
+      yield* forgetLeft(issue.id)
       const text = detail`${issue.id}, left unmerged by an earlier run, is on ${base} now (${named(merged)}): merged by hand${label}`
       yield* info(text, issue.id)
       found.push(issue.id)

@@ -13,7 +13,8 @@
 // merged is handed back, for carry-over to bring back ToMerge. git that can't tell keeps the label.
 // One merged has its record in state.json forgotten too, as a merged ticket's is, unless carry-over
 // takes the record up (suspended, or left by a crash), which forgets it as it drops the ticket: else
-// the phase the run that left it saved, Blocked or Review, would stay there for good.
+// the phase the run that left it saved, Blocked or Review, would stay there for good. A run that
+// finds one merged by hand while it goes on forgets it so too (handMerged.ts).
 import { Effect, Result } from "effect"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { type Commit, Git, isHash, shortHash } from "../services/Git.ts"
@@ -173,7 +174,7 @@ export const unlabel = (id: TicketId) =>
  * run left with its phase (Blocked, Review), which no run takes up. A record carry-over takes up,
  * suspended or with no phase (left by a crash), is left to it. One that can't be written is kept.
  */
-const forgetLeft = (id: TicketId) =>
+export const forgetLeft = (id: TicketId) =>
   Effect.gen(function* () {
     const store = yield* Store
     const record = yield* store.ticket(id)

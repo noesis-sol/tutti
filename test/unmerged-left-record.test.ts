@@ -1,12 +1,15 @@
 // A ticket an earlier run left Blocked or set aside, closed and labelled `unmerged`, and merged by
 // hand since: its record in state.json is forgotten as the run starts, as a merged ticket's is
-// (unmerged.ts's loadUnmerged), unless carry-over takes the record up (tutti-7f8c).
+// (unmerged.ts's loadUnmerged), or as the run finds it merged while it goes on (handMerged.ts),
+// unless carry-over takes the record up (tutti-7f8c).
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Exit, Fiber } from "effect"
+import { Ledger } from "../src/run/ledger.ts"
+import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { run } from "../src/run/run.ts"
 import { unmergedLabel } from "../src/run/scope.ts"
 import { forkKey, loadUnmerged } from "../src/run/unmerged.ts"
@@ -155,5 +158,23 @@ describe("a ticket left Blocked, merged by hand since", () => {
     expect(
       ran.log.some((text) => /^ {2}a, left unmerged by an earlier run, is on main now/.test(text)),
     ).toBe(true)
+  })
+
+  test("merged by hand while a run goes on: its record is forgotten as its label is removed", async () => {
+    const ran = await scenario(
+      { backlog: [closed("a")], state: stateOf({ a: left("a") }) },
+      Effect.gen(function* () {
+        const queue = yield* makeQueue(options)
+        const path = yield* leftUnmerged("a" as TicketId)
+        yield* queue.mergedByHand
+        yield* mergedByHand("a" as TicketId, path)
+        const found = yield* queue.mergedByHand
+        return { found, tickets: (yield* (yield* Store).state).tickets }
+      }).pipe(Effect.provide(Ledger.layer)),
+    )
+    const { found, tickets } = resultOf(ran)
+    expect(found).toEqual(["a"])
+    expect(tickets).toEqual({})
+    expect(ran.issues.find((issue) => issue.id === "a")?.labels).toEqual([])
   })
 })
