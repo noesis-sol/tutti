@@ -196,7 +196,8 @@ const cellWidths = (
 /**
  * The totals' lines: the strip, or the one line when `oneLine` (a pane too small for the dashboard,
  * which has no load line, so the line says the workers) or the pane is too narrow for the strip;
- * `besidePanel`, the strip's bar before In queue over the panel's left border.
+ * `besidePanel`, the strip's bar before In queue over the gap between the tickets table and the
+ * panel.
  */
 export const totalsLines = (
   t: TotalsView,
