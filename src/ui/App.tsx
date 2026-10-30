@@ -6,7 +6,7 @@
 // and the hand-backs waiting for their notices, and mounts the tree into the renderer until the
 // run's scope closes.
 // interviewScreen() is the Interview view's (src/run/interview.ts), mounted the same way, with the
-// description and what file_feature has filed beside it. A question talked through from the
+// description and whether the session has filed something beside it. A question talked through from the
 // dashboard (src/run/answerTalk.ts) is put in the screen's talk slot: the dashboard bridges it as
 // interviewScreen does its inputs, and App draws its Interview view in place of the screen. init's
 // form, a spec run's checks gate asking (src/run/gateForm.ts), is put in its form slot, and App

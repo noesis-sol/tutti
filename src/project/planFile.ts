@@ -1,7 +1,6 @@
-// A feature's plan (§ 4.10, § 6): an epic and its child tickets, each with its title, description,
+// A feature's plan (§ 6): an epic and its child tickets, each with its title, description,
 // acceptance criteria, type, priority, files, the tickets it waits for and whether it is solo. The
-// plan organ answers with one for --feature (organs/plan.ts), and the interview's file_feature tool
-// takes one; both are checked and filed here.
+// plan organ answers with one for --feature (organs/plan.ts), checked and filed here.
 //
 // validatePlan checks a plan as orchestra v0.7.7 checks its plan organ's: unique keys, blocked_by
 // naming tickets of the plan and no cycles, 1 to maxPlanned tickets (or none, with the questions

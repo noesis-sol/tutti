@@ -12,8 +12,8 @@
 // by path. A file is read only when it resolves inside the checkout, so a symbolic link can't lead
 // out of it. The request goes last, after the evidence: Claude reads long inputs best that way.
 //
-// Its answer is checked by validatePlan (project/planFile.ts), which the interview's file_feature
-// tool shares: a plan that fails it is OrganFailed with the reasons. Showing, confirming and filing
+// Its answer is checked by validatePlan (project/planFile.ts): a plan that fails it is OrganFailed
+// with the reasons. Showing, confirming and filing
 // the plan are run/feature.ts's.
 import { posix } from "node:path"
 import { Effect, FileSystem, Option, Result, Schema } from "effect"
