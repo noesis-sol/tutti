@@ -2487,6 +2487,9 @@
         "reason": {
           "type": "string"
         },
+        "summary": {
+          "type": "string"
+        },
         "text": {
           "type": "string"
         }

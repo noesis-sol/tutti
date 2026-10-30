@@ -36,7 +36,7 @@ const deny = (message: SDKPermissionDeniedMessage, input?: Readonly<Record<strin
       yield* (yield* Attention).denial("fab-1" as TicketId, message, input)
       const records = yield* (yield* Captured).records
       return {
-        lines: (yield* (yield* Log).lines).map((line) => line.text),
+        lines: (yield* (yield* Log).lines).map((line): string => line.text),
         events: records.filter((r): r is EventRecord & typeof Denied.Type => r.kind === "denied"),
       }
     }).pipe(
