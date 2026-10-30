@@ -222,8 +222,8 @@ export const parseMerges = (output: string): ReadonlyArray<BranchMerge> =>
 /**
  * How a rebase replays the branch: `linear`, its commits in a line, as git rebases by default;
  * `merges`, its merges recreated by git (--rebase-merges); `replaying`, its merges recreated, those
- * git's own merge of their parents wouldn't make (a `git subtree add`, a merge whose conflicts were
- * resolved, one amended) by replaying what each changed on its first parent (`rebaseMergesScript`).
+ * whose other parents share no history with the base (a `git subtree add`'s squashed commit) by
+ * replaying what each changed on its first parent (`rebaseMergesScript`), the rest by git.
  */
 export type RebaseHow = "linear" | "merges" | "replaying"
 
@@ -237,9 +237,9 @@ export interface Rebased {
  * (its sequence editor) and `sh <script> merge …` (an exec line of its todo). git rebase
  * --rebase-merges recreates a merge by merging its parents again, which loses what the merge itself
  * changed: the subtree `git subtree add` reads in under its prefix (its squashed commit's files land
- * at the root, conflicting with the repository's own), a conflict's resolution. So the editor
- * rewrites each `merge -C <merge> <label>…` line of the merges TUTTI_REBASE_REPLAY names, a space
- * between them, into a
+ * at the root, conflicting with the repository's own). So the editor rewrites each
+ * `merge -C <merge> <label>…` line of the merges TUTTI_REBASE_REPLAY names, a space between them,
+ * those whose other parents the rebase leaves as they are, sharing no history with the base, into a
  * pick of a commit holding the merge's tree on its first parent, which replays its change as any
  * pick does, stopping on conflicts its worker resolves with git add and git rebase --continue; then
  * an exec that makes HEAD the merge again, its tree with the merge's message, author and other
@@ -428,17 +428,7 @@ export const gitOps = {
       ...revisions([`${onto}..HEAD`], []),
     ],
   },
-  /** What git's own merge of these commits gives: its tree first, exit 1 on conflicts. */
-  remerge: {
-    op: "merge-tree",
-    kind: "read",
-    args: (a: string, b: string): ReadonlyArray<string> => [
-      "merge-tree",
-      "--write-tree",
-      "--no-messages",
-      ...revisions([a, b]),
-    ],
-  },
+
   /** The files a stopped rebase left conflicted. */
   conflicted: {
     op: "diff --diff-filter=U",
@@ -1060,27 +1050,31 @@ export class Git extends Context.Service<
             Effect.ignore,
           )
 
-        // Whether git's own merge of the merge's parents gives its tree: a merge of two whose
-        // merge-tree is clean and the same. One of three or more is replayed whatever it holds.
-        const remade = (worktree: string, merge: BranchMerge) =>
+        // Whether none of the merge's other parents shares history with `onto`, as a subtree's
+        // squashed commit doesn't: the rebase leaves them as they are, so the merge's change on its
+        // first parent, replayed, still holds all they hold. One that does, a merge of the base
+        // into the branch, is git's to recreate: the rebase may give it a parent the replayed
+        // change knows nothing of, as `onto` for the base merged in, and its tree would lack it.
+        const apart = (worktree: string, onto: string, merge: BranchMerge) =>
           Effect.gen(function* () {
-            const [first, second, ...more] = merge.parents
-            if (first === undefined || second === undefined || more.length > 0) return false
-            const { output } = yield* gitRead(gitCall(gitOps.remerge, first, second), worktree)
-            return (
-              output.exitCode === 0 && (output.stdout.split("\n")[0] ?? "").trim() === merge.tree
-            )
+            for (const parent of merge.parents.slice(1)) {
+              const call = gitCall(gitOps.mergeBase, onto, parent)
+              const { shown, output } = yield* gitRead(call, worktree)
+              if (output.exitCode === 0) return false
+              if (output.exitCode !== 1) return yield* failed(call, shown, output)
+            }
+            return true
           })
 
-        // How to rebase the branch: in a line without merges; with them, recreated by git where its
-        // own merge gives each, replayed otherwise, the script written down for its editor and execs.
+        // How to rebase the branch: in a line without merges; with them, recreated by git, those
+        // apart from the base replayed, the script written down for its editor and execs.
         const rebaseCall = (worktree: string, onto: string) =>
           Effect.gen(function* () {
             const merges = parseMerges(yield* read(gitCall(gitOps.branchMerges, onto), worktree))
             if (merges.length === 0) return gitCall(gitOps.rebase, onto, "linear")
             const replayed: Array<Sha> = []
             for (const merge of merges) {
-              if (!(yield* remade(worktree, merge))) replayed.push(merge.hash)
+              if (yield* apart(worktree, onto, merge)) replayed.push(merge.hash)
             }
             if (replayed.length === 0) return gitCall(gitOps.rebase, onto, "merges")
             const call = gitCall(gitOps.rebase, onto, "replaying")

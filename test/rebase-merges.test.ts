@@ -16,8 +16,9 @@ import { backlog, expectLog, scenario } from "./harness.ts"
 // new base rather than flattened: a `git subtree add --squash` branch, whose squashed commit holds
 // the subtree's own files at its root, would otherwise replay them at the repository's root and
 // conflict in every file both have (Fabrica's fab-mgi.3.34). git recreates a merge by merging its
-// parents again, which loses what the merge changed itself, so a merge git's own merge wouldn't
-// make is replayed instead: its change on its first parent, as a pick, made a merge again after.
+// parents again, which loses what the merge changed itself (the subtree under its prefix), so a
+// merge whose other parents share no history with the base is replayed instead: its change on its
+// first parent, as a pick, made a merge again after. The rest are git's to recreate.
 
 const layer = Git.layer().pipe(
   Layer.provideMerge(GitWriter.layer),
@@ -143,7 +144,7 @@ slow.describe("real git", () => {
     const merge = repo.head("tutti/a~1")
     expect(parents(repo, merge)).toEqual([main, squash])
     expect(repo.git(["log", "-1", "--format=%an <%ae> %s", merge])).toBe(
-      "tutti test <test@tutti.invalid> Merge commit '" + squash + "' as 'vendor/lib'\n",
+      `tutti test <test@tutti.invalid> Merge commit '${squash}' as 'vendor/lib'\n`,
     )
     expect(show(repo, "tutti/a", "package.json")).toBe('{ "name": "app" }\n')
     expect(show(repo, "tutti/a", ".gitignore")).toBe("node_modules/\n")
@@ -201,7 +202,7 @@ slow.describe("real git", () => {
     expect(show(repo, "tutti/a", "a.txt")).toBe("a\n")
   })
 
-  test("a merge whose conflict was resolved keeps its resolution", async () => {
+  test("a merge of a branch sharing the base's history is git's to recreate: its conflict stops again", async () => {
     const repo = makeRepo()
     repo.commit("Shared", { "f.txt": "one\n" })
     const side = repo.worktree("side")
@@ -214,10 +215,37 @@ slow.describe("real git", () => {
 
     const exit = await rebase(worktree, main)
 
-    expect(exit).toEqual(Exit.succeed({ merges: true }))
+    expect(Exit.isFailure(exit) && JSON.stringify(exit.cause)).toContain("RebaseConflict")
+    repo.write({ "f.txt": "both\n" }, worktree)
+    repo.git(["add", "--all"], worktree)
+    repo.git(["-c", "core.editor=true", "rebase", "--continue"], worktree)
     expect(parents(repo, "tutti/a")).toHaveLength(2)
     expect(show(repo, "tutti/a", "f.txt")).toBe("both\n")
     expect(show(repo, "tutti/a", "main.txt")).toBe("main\n")
+  })
+
+  test("the base merged into the branch, a conflict resolved, then moved on: nothing of the base is lost", async () => {
+    const repo = makeRepo()
+    repo.commit("Shared", { "f.txt": "one\n" })
+    const worktree = repo.worktree("tutti/a", "main")
+    repo.commit("a: Own (a)", { "f.txt": "a\n" }, worktree)
+    repo.commit("Main 1", { "f.txt": "main\n" })
+    expect(() => repo.git(["merge", "--quiet", "main"], worktree)).toThrow()
+    repo.commit("Merge main", { "f.txt": "both\n" }, worktree)
+    repo.commit("a: More (a)", { "b.txt": "b\n" }, worktree)
+    const main = repo.commit("Main 2", { "m2.txt": "m2\n" })
+
+    const exit = await rebase(worktree, main)
+
+    // git merges the branch with the base again, and its conflict goes back to the worker.
+    expect(Exit.isFailure(exit) && JSON.stringify(exit.cause)).toContain("RebaseConflict")
+    repo.write({ "f.txt": "both\n" }, worktree)
+    repo.git(["add", "--all"], worktree)
+    repo.git(["-c", "core.editor=true", "rebase", "--continue"], worktree)
+    expect(repo.git(["merge-base", "--is-ancestor", main, "tutti/a"])).toBe("")
+    expect(show(repo, "tutti/a", "m2.txt")).toBe("m2\n")
+    expect(show(repo, "tutti/a", "f.txt")).toBe("both\n")
+    expect(show(repo, "tutti/a", "b.txt")).toBe("b\n")
   })
 
   test("a branch without merges rebases in a line, as before", async () => {
