@@ -480,7 +480,7 @@ Tools the user's settings allow never reach `canUseTool`.
 **Denials** arrive as `permission_denied` messages, with `decision_reason_type` `classifier`, `safetyCheck`, `mode` or `rule`, and `decision_reason`. Another type is logged with its name as given; one without a type is recorded as `unknown` and logged `by Claude Code`, and one without a `decision_reason` gives the `message` the worker was told as its reason. The message names the call's `tool_use_id` but not its input, which tutti takes from the worker's assistant message that made the call.
 
 - Each is logged (`DENIED: <id>'s worker: Bash(rm -rf build), by the classifier: <reason>`; `by the safety check`, `by the permission mode`, `by a rule`).
-- It goes into the event stream (`denied`) and is tallied per ticket, by type, for triage and the reviewer.
+- It goes into the event stream (`denied`), with the call's one-line summary as the log line names it (`summary`: a Bash call's command, an Edit's or Write's path) when its input is known, and is tallied per ticket, by type, for triage and the reviewer.
 - The card's latest-action line shows it for 10 seconds.
 
 A safety-check denial is shown as a classifier denial is, not as something more prominent: there is nothing to answer, the worker's turn goes on with the refusal, and the worker prompt (§4.11) tells it to overwrite instead or name the file by its literal absolute path. What it adds is in the record: triage reads it as a sign the worker may be stuck on a removal, and the reviewer's **Needs you** names the tickets it happened to, with the command, since no rule can allow it.

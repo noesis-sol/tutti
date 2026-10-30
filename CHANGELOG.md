@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The dashboard's load line names the 1-minute load average `load`, not `CPU`: `load 9.8/10 cores`, in the same colours by load per core (§ 7.2; `src/ui/LoadLine.tsx`'s `loadPart`; tutti-dj0w). It said `CPU 238.6/10 cores` in Fabrica's run, read as tutti using 24 times the machine, while the processes used 6.3 of the 10 cores: on macOS the load average counts every thread running or waiting to run. `test/load-line.test.tsx` covers it.
+- A tool call Claude Code denied without asking is named in its `denied` event, not only in its DENIED line: the event's new `summary` is the call in one line, as the line gives it, a Bash call's command, an Edit's or Write's path, another tool's input in short, sanitised and cut after 120 characters (§ 4.5; `src/run/events.ts`' `Denied`, `src/agent/Attention.ts`' `denial`; tutti-zz93). In Fabrica's run two denied Bash calls were recorded as `{"kind":"denied","tool":"Bash","reason_type":"classifier",…}` with no word of the command, which took searching the worker's messages to find. A call whose input never came still has no `summary`. `test/denied-summary.test.ts` covers it.
 
 ## [0.6.1] - 2026-10-30
 

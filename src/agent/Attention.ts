@@ -487,7 +487,7 @@ export class Attention extends Context.Service<
     openFor(ticket: TicketId): Stream.Stream<ReadonlyArray<AttentionRequest>>
     /**
      * Records a call Claude Code denied the ticket's worker without asking: its `permission_denied`,
-     * and the call's input when the worker's messages gave it.
+     * and the call's input when the worker's messages gave it, summarized in the log line and event.
      */
     denial(
       ticket: TicketId,
@@ -940,10 +940,18 @@ export const make = (
             [by]: (Object.hasOwn(tally.deniedBy, by) ? (tally.deniedBy[by] ?? 0) : 0) + 1,
           },
         }))
-        const what = input === undefined ? tool : `${tool}(${summarize(message.tool_name, input)})`
+        const summary = input === undefined ? undefined : summarize(message.tool_name, input)
+        const what = summary === undefined ? tool : `${tool}(${summary})`
         yield* logs.writeWith(
           [log.denied({ id: ticket, what, by, reason })],
-          events.emit({ kind: "denied", ticket, tool, reason_type: by, reason }),
+          events.emit({
+            kind: "denied",
+            ticket,
+            tool,
+            reason_type: by,
+            reason,
+            ...(summary === undefined ? {} : { summary }),
+          }),
         )
       })
 

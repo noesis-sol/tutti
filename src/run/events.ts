@@ -582,6 +582,11 @@ export const Denied = Schema.Struct({
   /** The SDK's `decision_reason_type`: `classifier`, `safetyCheck`, `mode`, `rule`, or another. */
   reason_type: Schema.String,
   reason: Schema.String,
+  /**
+   * What was denied, when the worker's messages gave the call's input: one line, as Attention's
+   * summarize makes it, a Bash call's command, an Edit's or Write's path.
+   */
+  summary: optional(Schema.String),
   text: optional(Schema.String),
 })
 
