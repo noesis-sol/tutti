@@ -211,7 +211,8 @@ takes its ticket back. A narrower pane has no panel.
 An Asked row says the question its ticket waits on, rather than the ticket's title, in any pane. Past
 the last card, `Tab` goes on to the panel, or, where there is none, to the totals' **Needs you**, then
 to each `? for you` row in the table, the one it is on drawn highlighted. `Enter` on a `? for you`
-row, or a click on it, opens `Shift+A`'s box at its question.
+row, or a click on it, opens `Shift+A`'s box at its question. A click opens a row, or **Needs you**
+below, and leaves the highlight where it was; `Tab`, then `Enter`, moves it there, then opens it.
 
 Where there is no panel, `Enter` on **Needs you**, or a click on it, opens a list of what needs you,
 a line each, as the panel shows them one at a time: `? <question> <title>` for each question an Asked

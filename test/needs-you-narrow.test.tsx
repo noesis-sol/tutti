@@ -171,6 +171,16 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<"tab" | "enter" | "esc
 const focused = (lines: ReadonlyArray<Segments>, text: string): boolean =>
   lines.flat().some((each) => each.text.includes(text) && each.look === theme.form.focusedButton)
 
+/** Whether `text` is drawn in `frame` on the focus's fill, as the highlight draws it. */
+const lit = (frame: Frame, text: string): boolean =>
+  frame.spans.lines.some((line) =>
+    line.spans.some(
+      (span) =>
+        span.text.includes(text) &&
+        Bun.deepEquals(span.bg.toInts(), theme.form.focusedButton.bg?.toInts()),
+    ),
+  )
+
 describe("an Asked row", () => {
   test("says its question's title once the look has read it, its ticket's until then", () => {
     const row = (view: RunView) => view.rows.find((each) => each.ticket === "t-1")
@@ -226,6 +236,83 @@ describe("an Asked row", () => {
         expect(box.chars).toContain("Open question 2 of 2 · q-1")
       },
     )
+  })
+})
+
+// A click opens what it opens and leaves the highlight where it was; Tab, then Enter, moves the
+// highlight there, then opens it (tutti-2bd4).
+describe("a click on Needs you, or on an Asked row", () => {
+  /** Opens the list of what needs you with a click on Needs you, then closes it. */
+  const clickNeeds = async (rendered: Rendered, commands: Commands) => {
+    const frame = await rendered.capture()
+    const { x, y } = placeOf(frame, "Needs you")
+    await rendered.input((setup) => setup.mockMouse.click(x + 1, y))
+    await until(rendered, has(listReadingText))
+    expect(await readUuid(rendered, commands)).not.toBe("")
+    await press(rendered, "escape")
+    return until(rendered, (now) => !now.chars.includes(listReadingText))
+  }
+  /** Opens the questions box with a click on t-1's row, then closes it. */
+  const clickRow = async (
+    rendered: Rendered,
+    commands: Commands,
+    news: Settable<ReadonlyArray<QuestionNews>>,
+  ) => {
+    const frame = await rendered.capture()
+    const { x, y } = placeOf(frame, "Which flag name?")
+    await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+    const uuid = await readUuid(rendered, commands)
+    await rendered.input(() => news.set([QuestionNews.Read({ uuid, questions: [licence, flag] })]))
+    await until(rendered, has("Open question 2 of 2 · q-1"))
+    await press(rendered, "escape")
+    return until(rendered, (now) => !now.chars.includes("Open question"))
+  }
+
+  test("a click on Needs you opens the list, and leaves it unhighlighted once it closes", async () => {
+    await scene(viewOf([asked, blocked]), Screen.Dashboard(), async ({ commands, rendered }) => {
+      await until(rendered, has("Which flag name?"))
+      const after = await clickNeeds(rendered, commands)
+      expect(lit(after, "Needs you")).toBe(false)
+      expect(lit(after, "Which flag name?")).toBe(false)
+    })
+  })
+
+  test("a click on Needs you leaves the highlight on the Asked row it was on", async () => {
+    await scene(viewOf([asked, blocked]), Screen.Dashboard(), async ({ commands, rendered }) => {
+      await until(rendered, has("Which flag name?"))
+      await press(rendered, "tab", "tab")
+      expect(lit(await rendered.capture(), "Which flag name?")).toBe(true)
+      const after = await clickNeeds(rendered, commands)
+      expect(lit(after, "Needs you")).toBe(false)
+      expect(lit(after, "Which flag name?")).toBe(true)
+    })
+  })
+
+  test("a click on an Asked row leaves the highlight on Needs you, where it was", async () => {
+    await scene(
+      viewOf([asked, blocked]),
+      Screen.Dashboard(),
+      async ({ news, commands, rendered }) => {
+        await until(rendered, has("Which flag name?"))
+        await press(rendered, "tab")
+        expect(lit(await rendered.capture(), "Needs you")).toBe(true)
+        const after = await clickRow(rendered, commands, news)
+        expect(lit(after, "Which flag name?")).toBe(false)
+        expect(lit(after, "Needs you")).toBe(true)
+      },
+    )
+  })
+
+  test("Tab, then Enter, on Needs you highlights it, and it stays so once the list closes", async () => {
+    await scene(viewOf([asked, blocked]), Screen.Dashboard(), async ({ commands, rendered }) => {
+      await until(rendered, has("Which flag name?"))
+      await press(rendered, "tab", "enter")
+      await until(rendered, has(listReadingText))
+      expect(await readUuid(rendered, commands)).not.toBe("")
+      await press(rendered, "escape")
+      const after = await until(rendered, (now) => !now.chars.includes(listReadingText))
+      expect(lit(after, "Needs you")).toBe(true)
+    })
   })
 })
 

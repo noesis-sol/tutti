@@ -721,8 +721,8 @@ export const Dashboard = () => {
   }
   // The list of what needs you, where there is no panel.
   const openNeeds = () => box.set(Box.Needs({ at: 0, answered: [] }))
-  // A click on an Asked row, or on Needs you: the highlight goes to it, and it opens. A click on a
-  // row's ID copies it, and leaves the highlight where it is.
+  // A click on an Asked row, or on Needs you, opens it and leaves the highlight where it is, as a
+  // click on a row's ID copies it (tutti-2bd4): Tab, then Enter, highlights it, then opens it.
   const pressTable = (target: number) => {
     if (target >= idTarget) {
       const row = laid.rows[target - idTarget]
@@ -731,16 +731,10 @@ export const Dashboard = () => {
     }
     if (target < rowTarget) return pressPanel(target)
     const row = laid.rows[target - rowTarget]
-    if (row === undefined) return
-    setOnPanel(() => false)
-    setSpot(() => ({ row: row.ticket }))
-    openRow(row.ticket)
+    if (row !== undefined) openRow(row.ticket)
   }
   const pressTotals = (target: number) => {
-    if (target !== needsTarget || laid.panel > 0) return
-    setOnPanel(() => false)
-    setSpot(() => "needs")
-    openNeeds()
+    if (target === needsTarget && laid.panel === 0) openNeeds()
   }
   // The questions box at the panel's question: to read it all, or to type your own answer.
   const readQuestion = () => {
