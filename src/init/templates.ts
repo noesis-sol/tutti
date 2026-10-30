@@ -127,6 +127,12 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     what: "a decision only the maintainer can make about another ticket is a question blocking that ticket, never left in the final message",
     marker: "Your final message carries nothing for the maintainer",
   },
+  {
+    version: 10,
+    section: verifyHeading,
+    what: "a fix committed after the third round before deferring gets one more round from the run",
+    marker: "the run takes the ticket back once",
+  },
 ]
 
 /** The changes to the verifier's template, verifier.md. */

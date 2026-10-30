@@ -955,6 +955,8 @@ export const layer = (
         begun: workers.begun,
         state: workers.state,
         answered: workers.answered,
+        verifierRounds: workers.verifierRounds,
+        lastRound: workers.lastRound,
         workers: workers.workers,
         compactions: workers.compactions,
         contexts: workers.contexts,

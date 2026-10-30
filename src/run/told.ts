@@ -15,6 +15,14 @@ export const nudgeText = (id: TicketId): string =>
   `tutti: your ticket ${id} is still in progress. Continue; if something blocks you, ask or ` +
   "defer as your instructions say."
 
+/**
+ * What a worker that deferred its ticket after three verifier rounds, with its last fix `commit`
+ * unverified, is told (lastRound.ts).
+ */
+export const lastRoundText = (commit: string): string =>
+  `tutti: your last fix, ${commit}, hasn't been verified: run the verifier once more on it, with ` +
+  "the earlier rounds' findings. Close the ticket if it passes; defer it if it fails."
+
 /** What a worker whose question is answered (asked.ts) is told as its session is resumed. */
 export const answeredText = (a: {
   readonly id: TicketId

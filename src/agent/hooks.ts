@@ -10,6 +10,11 @@
 // `subagent_type` is the verifier it returns `updatedInput`, the call's input with
 // `run_in_background: false`, and {} for any other. It sets no permissionDecision, so canUseTool
 // and auto mode decide the call as before. It too returns at once and never fails.
+//
+// The verifier's Agent call shows a verifier round too (verifierEvent): its PreToolUse the round's
+// start, with the commits its prompt names, and its PostToolUse or PostToolUseFailure its end. The
+// host keeps each worker's rounds as it folds the activity (AgentHost.ts), so that a ticket deferred
+// after three rounds with its last fix unverified gets one more (src/run/lastRound.ts).
 import type {
   HookCallback,
   HookCallbackMatcher,
@@ -18,7 +23,7 @@ import type {
   HookJSONOutput,
   PreCompactHookInput,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Effect, FiberSet, Predicate } from "effect"
+import { Cause, Data, Effect, FiberSet, Predicate } from "effect"
 import type { TicketId } from "../services/Beads.ts"
 import type { SessionFibers } from "./callbacks.ts"
 
@@ -54,6 +59,81 @@ export const foregroundVerifier = (input: HookInput): HookJSONOutput => {
   } catch {
     // Nothing a hook does may fail its tool call.
     return {}
+  }
+}
+
+/**
+ * A verifier round as the worker's hooks show it (§ 4.11): its Agent call `call` began, its prompt
+ * naming `commits`, the hashes in it, one of them the commit the worker gave it; or the call ended,
+ * done or failed.
+ */
+export type VerifierEvent = Data.TaggedEnum<{
+  Began: { readonly call: string; readonly commits: ReadonlyArray<string> }
+  Ended: { readonly call: string }
+}>
+
+export const VerifierEvent = Data.taggedEnum<VerifierEvent>()
+
+/** The words in `text` that may be commit hashes, abbreviated or whole, each once, in order. */
+export const hashesIn = (text: string): ReadonlyArray<string> => [
+  ...new Set(text.match(/(?<![0-9A-Za-z])[0-9a-f]{7,64}(?![0-9A-Za-z])/g) ?? []),
+]
+
+/**
+ * The verifier round `input` shows: a PreToolUse of an Agent call to the verifier begins one, its
+ * PostToolUse or PostToolUseFailure ends it; undefined for anything else, or input it can't read.
+ */
+export const verifierEvent = (input: HookInput): VerifierEvent | undefined => {
+  try {
+    if (
+      input.hook_event_name !== "PreToolUse" &&
+      input.hook_event_name !== "PostToolUse" &&
+      input.hook_event_name !== "PostToolUseFailure"
+    ) {
+      return undefined
+    }
+    const toolInput = input.tool_input
+    if (input.tool_name !== "Agent" || !Predicate.isObject(toolInput)) return undefined
+    if (toolInput.subagent_type !== verifierAgent) return undefined
+    const call = input.tool_use_id
+    if (input.hook_event_name !== "PreToolUse") return VerifierEvent.Ended({ call })
+    const prompt = typeof toolInput.prompt === "string" ? toolInput.prompt : ""
+    return VerifierEvent.Began({ call, commits: hashesIn(prompt) })
+  } catch {
+    return undefined
+  }
+}
+
+/** A verifier round: its Agent call, the hashes its prompt names, and whether it has ended. */
+export interface VerifierRound {
+  readonly call: string
+  readonly commits: ReadonlyArray<string>
+  readonly ended: boolean
+}
+
+/**
+ * A worker's verifier rounds in this run, across its sessions, oldest first; `lastRound` once tutti
+ * has given it one more (src/run/lastRound.ts).
+ */
+export interface VerifierRounds {
+  readonly rounds: ReadonlyArray<VerifierRound>
+  readonly lastRound: boolean
+}
+
+export const noRounds: VerifierRounds = { rounds: [], lastRound: false }
+
+/** `rounds` with `event` in it: a round begun added, one ended marked so. */
+export const roundStep = (rounds: VerifierRounds, event: VerifierEvent): VerifierRounds => {
+  if (event._tag === "Began") {
+    if (rounds.rounds.some((round) => round.call === event.call)) return rounds
+    const round = { call: event.call, commits: event.commits, ended: false }
+    return { ...rounds, rounds: [...rounds.rounds, round] }
+  }
+  return {
+    ...rounds,
+    rounds: rounds.rounds.map((round) =>
+      round.call === event.call ? { ...round, ended: true } : round,
+    ),
   }
 }
 

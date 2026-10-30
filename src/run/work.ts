@@ -8,7 +8,9 @@
 //   branch: Review, `warn` with `aside`
 // - a question it filed that blocks it: Asked (asked.ts takes it from there)
 // - deferred by its worker: Deferred, and handed to triage (triage.ts) unless its worker reached the
-//   usage limit in its attempt; so is a ticket tutti defers for a worker that left it unfinished
+//   usage limit in its attempt; so is a ticket tutti defers for a worker that left it unfinished.
+//   Deferred after three verifier rounds with its last fix unverified, its worker is first given
+//   one more round, once (lastRound.ts), and settled again
 // - stopped with nothing done, having linked a blocker that hasn't merged: Waiting (WAITS_FOR_MERGE),
 //   its worktree and branch removed; back to Queued once the blocker merges (§ 5 item 9)
 // - stopped with nothing done, having linked a blocker that merged after its worktree was cut:
@@ -36,6 +38,7 @@ import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
 import type { EventStream } from "./eventstream.ts"
 import { exitCodes, type StopReason, timeLimit } from "./holds.ts"
+import { lastRound } from "./lastRound.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import type { MergeQueue } from "./mergequeue.ts"
@@ -464,10 +467,14 @@ export const follow = (
             : (_, limit) => Deferred.succeed(stuck, limitStuck(limit)),
           overnight === undefined,
         ).pipe(Effect.forkScoped({ startImmediately: true }))
-        const settled = yield* Effect.raceFirst(
+        const settling = Effect.raceFirst(
           settle(worker, options.base, options.closedBranches),
           Effect.map(Deferred.await(stuck), (stuck) => Settled.Stuck({ stuck })),
         )
+        let settled = yield* settling
+        // Deferred after three verifier rounds with its last fix unverified: one more round, once
+        // in the run, before triage (lastRound.ts).
+        if (yield* lastRound(worker, settled, options.base)) settled = yield* settling
         return [settled, yield* Ref.get(limited)] as const
       }),
     )

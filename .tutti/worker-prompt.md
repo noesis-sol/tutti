@@ -113,4 +113,6 @@ When you are finished, say DONE and stop.
   ROUND), don't go round again to settle it: note both rounds' findings on the ticket and ask the
   maintainer which holds, as a question, as under Close.
 - After three rounds that still end in FAIL, note its findings on the ticket. Close the ticket only
-  when you judge them outside the ticket's requirements; otherwise defer it, as under Close.
+  when you judge them outside the ticket's requirements; otherwise defer it, as under Close. A fix
+  you committed after the last round isn't lost: the run takes the ticket back once, for one more
+  round on it.

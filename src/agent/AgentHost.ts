@@ -13,7 +13,8 @@
 // messages, so Attention can log the denial as `Bash(rm -rf build)`, record it and tally it. The
 // account's rate-limit events, and which workers are UsageLimited, go to UsageLimits, for the
 // usage-limit hold (§ 4.12). Each compaction a worker's PreCompact hook reports goes on one stream
-// for the run to count and log (§ 4.2).
+// for the run to count and log (§ 4.2). Each worker's verifier rounds, which its hooks show (hooks.ts), are
+// kept beside its state, for a ticket deferred with its last fix unverified (src/run/lastRound.ts).
 //
 // The caller draws each new session's ID, and saves it once the session has begun (§ 4.8). A
 // resumed session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so
@@ -50,6 +51,7 @@ import { Spending } from "../run/spending.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Attention } from "./Attention.ts"
 import type { ContextUsage } from "./contextUsage.ts"
+import { noRounds, roundStep, type VerifierRounds, verifierEvent } from "./hooks.ts"
 import { type Call, type Reading, read } from "./reading.ts"
 import type { SessionKind } from "./sessionKind.ts"
 import { Transcripts } from "./Transcripts.ts"
@@ -245,6 +247,13 @@ export class AgentHost extends Context.Service<
      */
     answered(ticket: TicketId, uuid: MessageUuid): Effect.Effect<void>
     /**
+     * The worker's verifier rounds (§ 4.11), as its sessions' hooks showed them, from its first
+     * start until it is ended; none for a worker the host doesn't know.
+     */
+    verifierRounds(ticket: TicketId): Effect.Effect<VerifierRounds>
+    /** Notes that tutti has given the worker its last verifier round (src/run/lastRound.ts). */
+    lastRound(ticket: TicketId): Effect.Effect<void>
+    /**
      * The tickets of the workers the host knows, from each one's first start until it is ended:
      * now, then on each change.
      */
@@ -277,6 +286,8 @@ export interface WorkerEntry {
   readonly ended: Deferred.Deferred<void>
   /** The inputs of its last `callsKept` tool calls, its subagents' too, by tool use ID. */
   readonly calls: Map<string, Readonly<Record<string, unknown>>>
+  /** Its verifier rounds, as its sessions' hooks showed them (§ 4.11). */
+  readonly rounds: Ref.Ref<VerifierRounds>
 }
 
 /** How many pages of a transcript are read back for a resumed session's last result. */
@@ -353,6 +364,8 @@ export interface Workers {
   readonly begun: (ticket: TicketId) => Stream.Stream<boolean, AgentGone>
   readonly state: (ticket: TicketId) => Stream.Stream<WorkerState, AgentGone>
   readonly answered: (ticket: TicketId, uuid: string) => Effect.Effect<void>
+  readonly verifierRounds: (ticket: TicketId) => Effect.Effect<VerifierRounds>
+  readonly lastRound: (ticket: TicketId) => Effect.Effect<void>
   /** The tickets of the workers it knows: now, then on each change. */
   readonly workers: Stream.Stream<ReadonlySet<TicketId>>
 }
@@ -388,6 +401,10 @@ export const makeWorkers = (
     const fold = (entry: WorkerEntry, event: WorkerEvent): Effect.Effect<void> =>
       Effect.gen(function* () {
         if (event.session !== (yield* Ref.get(entry.session))) return
+        if (event._tag === "Hook") {
+          const round = verifierEvent(event.input)
+          if (round !== undefined) yield* Ref.update(entry.rounds, (all) => roundStep(all, round))
+        }
         const now = yield* Clock.currentTimeMillis
         const before = yield* SubscriptionRef.get(entry.worker)
         const next = yield* SubscriptionRef.updateAndGet(entry.worker, (w) => step(w, event, now))
@@ -452,6 +469,7 @@ export const makeWorkers = (
           state: yield* SubscriptionRef.make<WorkerState>(WorkerState.Starting()),
           ended: yield* Deferred.make<void>(),
           calls: new Map(),
+          rounds: yield* Ref.make(noRounds),
         }
         // Counts its open requests into its state, until it is ended; it has counted the requests
         // open now before the entry is handed out, so none is missed.
@@ -623,6 +641,17 @@ export const makeWorkers = (
               Stream.takeUntil((w) => w.end !== null || !w.outstanding.includes(uuid)),
             ),
           ).pipe(Stream.runDrain)
+        }),
+      verifierRounds: (ticket) =>
+        Effect.suspend(() => {
+          const found = known.get(ticket)
+          return found === undefined ? Effect.succeed(noRounds) : Ref.get(found.rounds)
+        }),
+      lastRound: (ticket) =>
+        Effect.suspend(() => {
+          const found = known.get(ticket)
+          if (found === undefined) return Effect.void
+          return Ref.update(found.rounds, (all) => ({ ...all, lastRound: true }))
         }),
       workers: SubscriptionRef.changes(knownTickets),
     }
