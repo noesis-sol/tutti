@@ -11,9 +11,13 @@
 // branch kept) and a commit on the base the branch doesn't have names it, or its branch is gone
 // and a commit on the base since the fork names it. The label is then removed. One that hasn't
 // merged is handed back, for carry-over to bring back ToMerge. git that can't tell keeps the label.
+// One merged has its record in state.json forgotten too, as a merged ticket's is, unless carry-over
+// takes the record up (suspended, or left by a crash), which forgets it as it drops the ticket: else
+// the phase the run that left it saved, Blocked or Review, would stay there for good.
 import { Effect, Result } from "effect"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { type Commit, Git, isHash, shortHash } from "../services/Git.ts"
+import { Store } from "../services/Store.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
@@ -165,14 +169,32 @@ export const unlabel = (id: TicketId) =>
   })
 
 /**
+ * Forgets the ticket's record in state.json, merged by hand since the run that saved it: one that
+ * run left with its phase (Blocked, Review), which no run takes up. A record carry-over takes up,
+ * suspended or with no phase (left by a crash), is left to it. One that can't be written is kept.
+ */
+const forgetLeft = (id: TicketId) =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    const record = yield* store.ticket(id)
+    if (record === undefined || record.suspended !== undefined || record.phase === undefined) return
+    yield* Effect.ignore(store.remove(id))
+  })
+
+/**
  * The tickets earlier runs left labelled `unmerged` (closed, by tutti or orchestra), each checked
- * as the run starts and before it dispatches: one merged since by hand loses its label; the others
- * are handed back, for carry-over to bring back ToMerge, while the label holds the tickets they
- * block. bd failing to list them fails, for the run to stop on.
+ * as the run starts and before it dispatches: one merged since by hand loses its label and its
+ * record in state.json (forgetLeft); the others are handed back, for carry-over to bring back
+ * ToMerge, while the label holds the tickets they block. bd failing to list them fails, for the run
+ * to stop on.
  */
 export const loadUnmerged = (
   options: MergeTarget,
-): Effect.Effect<ReadonlyArray<LeftUnmerged>, BeadsError, Git | Beads | Log | EventStream> =>
+): Effect.Effect<
+  ReadonlyArray<LeftUnmerged>,
+  BeadsError,
+  Git | Beads | Store | Log | EventStream
+> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const { base } = options
@@ -185,6 +207,7 @@ export const loadUnmerged = (
         const text = detail`${id}, left unmerged by an earlier run, is on ${base} now (${namedCommit(found.merged)}); its '${unmergedLabel}' label is removed`
         yield* info(text, id)
         yield* unlabel(id)
+        yield* forgetLeft(id)
         continue
       }
       const branch = found.branch ?? branchOf(id)
