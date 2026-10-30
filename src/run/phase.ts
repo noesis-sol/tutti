@@ -140,6 +140,11 @@ export type Move = Data.TaggedEnum<{
   FiledQuestion: { readonly question: string }
   /** Its worker stopped with nothing done, having linked a blocker that hasn't merged. */
   WaitsForMerge: { readonly blockers: ReadonlyArray<TicketId> }
+  /**
+   * Its worker stopped with nothing done, having linked blockers that merged after its worktree was
+   * cut: back in the queue at once, to start again from the base's head.
+   */
+  MergedSinceCut: { readonly blockers: ReadonlyArray<TicketId> }
   /** The setup failed in its worktree before its worker could start (SETUP_FAILED). */
   SetupFailed: Empty
   /** Its worker's first system/init showed a setup problem, which stopped the run (SETUP_PROBLEM). */
@@ -308,6 +313,13 @@ export const transitions: ReadonlyArray<Transition> = [
     to: "Waiting",
     recorded: { kinds: ["waits"] },
     next: (_, { blockers }) => TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: blockers }) }),
+  }),
+  row({
+    from: "Working",
+    when: "MergedSinceCut",
+    to: "Queued",
+    recorded: { kinds: ["queue"] },
+    next: () => TicketPhase.Queued(),
   }),
   row({
     from: "Working",

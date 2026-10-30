@@ -79,6 +79,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Move, TicketPha
     Move.WaitsForMerge({ blockers: ["tut-b1" as TicketId] }),
     Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1" as TicketId] }) }),
   ],
+  [
+    "Working → Queued",
+    Working(),
+    Move.MergedSinceCut({ blockers: ["tut-b1" as TicketId] }),
+    Queued(),
+  ],
   ["Working → Waiting{setup}", Working(), Move.SetupFailed(), Waiting({ for: WaitFor.Setup() })],
   [
     "Working → Waiting{setup problem}",
@@ -310,6 +316,7 @@ const moveOf: { readonly [C in MoveTag]: Extract<Move, { readonly _tag: C }> } =
   NoChange: Move.NoChange(),
   FiledQuestion: Move.FiledQuestion({ question: "tut-q1" }),
   WaitsForMerge: Move.WaitsForMerge({ blockers: ["tut-b1" as TicketId] }),
+  MergedSinceCut: Move.MergedSinceCut({ blockers: ["tut-b1" as TicketId] }),
   SetupFailed: Move.SetupFailed(),
   SetupProblem: Move.SetupProblem(),
   Defer: Move.Defer({ why: "x" }),
@@ -457,6 +464,7 @@ const moveArb: fc.Arbitrary<Move> = fc.oneof(
   text.map((question) => Move.FiledQuestion({ question })),
   text.map((question) => Move.StillAsked({ question })),
   fc.array(text.map((id) => id as TicketId)).map((blockers) => Move.WaitsForMerge({ blockers })),
+  fc.array(text.map((id) => id as TicketId)).map((blockers) => Move.MergedSinceCut({ blockers })),
   text.map((why) => Move.Defer({ why })),
   fc.oneof(fc.constant("CHECKS_FAILED"), text).map((why) => Move.Aside({ why })),
   fc.constantFrom("PAUSED", "TICKET_LIMIT" as const).map((why) => Move.StopRun({ why })),

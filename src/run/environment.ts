@@ -190,7 +190,7 @@ export const settlingOf = (input: {
     if (settled._tag === "Setup") return "uncounted"
     if (settled._tag !== "Read") return "other"
     const { reading, state } = settled
-    if (reading._tag === "WaitsForMerge") return "uncounted"
+    if (reading._tag === "WaitsForMerge" || reading._tag === "MergedSinceCut") return "uncounted"
     if (reading._tag !== "Unfinished" || reading.status !== "open") return "other"
     const window = (yield* AppConfig).settings.environment_hold.window
     const at = settledAt(state, yield* Clock.currentTimeMillis)

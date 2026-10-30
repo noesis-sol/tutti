@@ -28,7 +28,14 @@ import {
   type Status,
   type TicketId,
 } from "../services/Beads.ts"
-import { type Commit, Git, type GitError, gitWhy, type StatusEntry } from "../services/Git.ts"
+import {
+  type Commit,
+  Git,
+  type GitError,
+  gitWhy,
+  type Sha,
+  type StatusEntry,
+} from "../services/Git.ts"
 import { allChangeEntries, allChanges } from "../services/gitStatus.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import { retrying } from "./again.ts"
@@ -154,6 +161,15 @@ export type Reading = Data.TaggedEnum<{
   Asked: { readonly question: Issue }
   /** Its worker stopped with nothing done, having linked `blockers`, which haven't merged. */
   WaitsForMerge: { readonly blockers: ReadonlyArray<TicketId>; readonly status: Status }
+  /**
+   * Its worker stopped with nothing done, having linked `blockers`, which merged after its worktree
+   * was cut from `cut`: back in the queue at once.
+   */
+  MergedSinceCut: {
+    readonly blockers: ReadonlyArray<TicketId>
+    readonly cut: Sha
+    readonly status: Status
+  }
   /** Its worker deferred it; `nothingDone` as nothingDone says. */
   Deferred: { readonly nothingDone: boolean }
   /** Still in progress, with no question and no deferral. */
@@ -303,6 +319,12 @@ export const read = (
       if (blockers.length > 0) {
         known = yield* leftNothing(id, path, base)
         if (known) return Reading.WaitsForMerge({ blockers, status })
+      } else {
+        const since = yield* sinceCut(issue, state, path)
+        if (since !== undefined) {
+          known = yield* leftNothing(id, path, base)
+          if (known) return Reading.MergedSinceCut({ ...since, status })
+        }
       }
     }
     if (status === "closed") return yield* readClosed(worker, base)
@@ -315,6 +337,48 @@ export const read = (
     }
     return Reading.Unfinished({ status, nothingDone: empty })
   })
+
+/**
+ * The blockers of `issue` the run merged that the worktree at `path` doesn't hold, and `cut`, its
+ * HEAD: as a worker that left nothing has it, the commit its worktree was cut from. They merged
+ * after it was cut. A blocker the run didn't merge, or merged before the cut, isn't one of them;
+ * none, undefined. A worktree git can't read has none, with git's error logged.
+ */
+export const sinceCut = (
+  issue: Issue,
+  state: State,
+  path: string,
+): Effect.Effect<
+  { readonly blockers: ReadonlyArray<TicketId>; readonly cut: Sha } | undefined,
+  never,
+  Git | Log
+> => {
+  const merged = issue.dependencies.flatMap((dependency) => {
+    const phase = state.tickets.get(dependency.id)?.phase
+    return dependency.type === "blocks" && phase?._tag === "Done" && phase.outcome._tag === "Merged"
+      ? [{ id: dependency.id, commit: phase.outcome.commit }]
+      : []
+  })
+  if (merged.length === 0) return Effect.succeed(undefined)
+  const found = Effect.gen(function* () {
+    const git = yield* Git
+    const cut = yield* git.revParse(path, "HEAD")
+    const blockers: Array<TicketId> = []
+    for (const { id, commit } of merged) {
+      if ((yield* git.log(path, cut, commit)).length > 0) blockers.push(id)
+    }
+    return blockers.length === 0 ? undefined : { blockers, cut }
+  })
+  return Effect.catch(found, (error) =>
+    Effect.gen(function* () {
+      const logs = yield* Log
+      yield* logs.write(
+        detail`${issue.id}: git can't tell whether ${merged.map((each) => each.id).join(", ")} merged after its worktree ${path} was cut: ${gitWhy(error)}; read as merged before`,
+      )
+      return undefined
+    }),
+  )
+}
 
 /**
  * Whether the worker at `path` left nothing of its own: its branch has no commits beyond `base`

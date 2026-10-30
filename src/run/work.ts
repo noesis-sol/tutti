@@ -11,6 +11,8 @@
 //   usage limit in its attempt; so is a ticket tutti defers for a worker that left it unfinished
 // - stopped with nothing done, having linked a blocker that hasn't merged: Waiting (WAITS_FOR_MERGE),
 //   its worktree and branch removed; back to Queued once the blocker merges (§ 5 item 9)
+// - stopped with nothing done, having linked a blocker that merged after its worktree was cut:
+//   Queued at once, its worktree and branch removed, to start again from the base's head
 // - still in progress after the nudges and the idle grace: Stopped, and the run holds with PAUSED
 // - left in any other status: set aside, deferred for review
 // - its worker gone and its session not resumed: Review (WORKER_GONE), dropped (sessions.ts)
@@ -183,6 +185,49 @@ const waitsForMerge = (
     })
   })
 
+/**
+ * Stopped with nothing done, having linked `blockers` that merged after its worktree was cut from
+ * `cut`: back in the queue at once (reopened, if it was left in progress), its empty worktree and
+ * branch removed, so that it starts again from the base's head.
+ */
+const mergedSinceCut = (
+  ticket: StartTicket,
+  worker: StartedWorker,
+  blockers: ReadonlyArray<TicketId>,
+  cut: string,
+  status: Status,
+) =>
+  Effect.gen(function* () {
+    const beads = yield* Beads
+    const ledger = yield* Ledger
+    const { id } = ticket
+    const list = named(blockers)
+    if (status !== "open") {
+      const reopened = yield* Effect.result(beads.update(id, { status: "open" }))
+      if (Result.isFailure(reopened)) {
+        const text = ticketLine(
+          Tag.reopenFailed,
+        )`${id} stays ${status}, so it won't be back in the queue now that ${list} merged: ${beadsWhy(reopened.failure)}; reopen it with: bd update ${id} --status open`
+        yield* warn(text, id)
+      }
+    }
+    yield* Effect.ignore(
+      beads.update(id, {
+        appendNotes: `tutti: its worktree was cut from ${shortHash(cut)}, before ${list} merged; back in the queue to start again from the base's head.`,
+      }),
+    )
+    const left = yield* removeWorktree(worker, false)
+    const queued =
+      [...(yield* ledger.current).tickets.values()].filter((each) => each.phase._tag === "Queued")
+        .length + 1
+    yield* ledger.transition(id, Move.MergedSinceCut({ blockers }), {
+      beside: [{ kind: "queue", queued }],
+      lines: [
+        detail`${id} back in the queue: ${list} merged after its worktree was cut from ${shortHash(cut)}; ${left}`,
+      ],
+    })
+  })
+
 /** Still in progress after the nudges and the grace: Stopped, and the run holds with PAUSED. */
 const paused = (worker: StartedWorker, gone: string | null) =>
   Effect.gen(function* () {
@@ -334,6 +379,9 @@ export const conclude = (
         break
       case "WaitsForMerge":
         yield* waitsForMerge(ticket, worker, reading.blockers, reading.status)
+        break
+      case "MergedSinceCut":
+        yield* mergedSinceCut(ticket, worker, reading.blockers, reading.cut, reading.status)
         break
       case "Deferred": {
         const left = reading.nothingDone ? nothingLeft : line`worktree ${path} left open`
