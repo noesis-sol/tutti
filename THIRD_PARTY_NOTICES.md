@@ -5,12 +5,12 @@ are listed in `package.json`, each with its own license.
 
 ## mattpocock/skills
 
-The instructions for the feature interview (`src/project/templates/interview-prompt.md`), which
-tutti takes from orchestra v0.7.7 and adapts to its own tools, adapt the "grilling" skill,
-`skills/productivity/grilling/SKILL.md` of [mattpocock/skills](https://github.com/mattpocock/skills):
-the design tree, the rounds of the frontier with numbered questions and recommended answers, facts
-looked up rather than asked, and the shared understanding the user confirms. The file carries this
-notice too.
+The feature mode of the breakdown's instructions (`src/project/templates/spec-prompt.md`), in which
+New feature talks a feature through and which tutti takes from orchestra and adapts to its own
+tools, adapts the "grilling" skill, `skills/productivity/grilling/SKILL.md` of
+[mattpocock/skills](https://github.com/mattpocock/skills): the design tree, the rounds of the
+frontier with numbered questions and recommended answers, facts looked up rather than asked, and
+the shared understanding the user confirms. The file carries this notice too.
 
 ```
 MIT License

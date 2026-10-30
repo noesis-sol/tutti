@@ -63,7 +63,7 @@ describe("a new spec", () => {
     // The session: headless, its first message naming the spec and its version.
     const started = ran.sent.find((s) => s._tag === "Started")
     const kind = started?._tag === "Started" ? started.session.kind : undefined
-    expect(kind?._tag === "Interview" ? kind.breakdown?.headless : undefined).toBe(true)
+    expect(kind?._tag === "Interview" ? kind.headless : undefined).toBe(true)
     const message = ran.sent.find((s) => s._tag === "Message")
     const first = String(message?._tag === "Message" ? message.message.message.content : "")
     expect(first).toStartWith(

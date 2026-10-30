@@ -93,26 +93,25 @@ export interface Session {
   readonly kind?: SessionKind
 }
 
-/** What an interview's session is given beside the workers' options (§ 4.10). */
+/**
+ * What a session of the Interview kind is given beside the workers' options (§ 4.10, § 4.14): a
+ * feature's or a spec's breakdown, or a question's talk.
+ */
 export interface InterviewSetup {
-  /** The interview's instructions, appended to the claude_code preset. */
+  /** Its instructions, appended to the claude_code preset. */
   readonly prompt: string
-  /** tutti's in-process MCP server, with tickets_list, ticket_show and file_feature. */
+  /** tutti's in-process MCP server, with its own tools. */
   readonly server: McpSdkServerConfigWithInstance
-  /**
-   * A spec's breakdown (§ 4.14) on the same footing: its built-in tools in place of the
-   * interview's, its own tools (qualified) allowed without asking in place of the interview's,
-   * `dontAsk` with nobody there (headless), and its effort.
-   */
-  readonly breakdown?: {
-    readonly builtins: ReadonlyArray<string>
-    readonly allowed: ReadonlyArray<string>
-    readonly headless: boolean
-    readonly effort: (typeof efforts)[number] | null
-    /** The tools on `server`, for what reads the session's kind: the scripted host's tests. */
-    // biome-ignore lint/suspicious/noExplicitAny: createSdkMcpServer's own type, for tools of any shape
-    readonly tools: ReadonlyArray<SdkMcpToolDefinition<any>>
-  }
+  /** Its built-in tools: the whole set. */
+  readonly builtins: ReadonlyArray<string>
+  /** Its own tools (qualified), allowed without asking. */
+  readonly allowed: ReadonlyArray<string>
+  /** Nobody is there: `dontAsk`. */
+  readonly headless: boolean
+  readonly effort: (typeof efforts)[number] | null
+  /** The tools on `server`, for what reads the session's kind: the scripted host's tests. */
+  // biome-ignore lint/suspicious/noExplicitAny: createSdkMcpServer's own type, for tools of any shape
+  readonly tools: ReadonlyArray<SdkMcpToolDefinition<any>>
 }
 
 /**

@@ -35,7 +35,6 @@ import {
   startBreakdown,
 } from "../agent/breakdown.ts"
 import { type BreakdownState, filedAny } from "../agent/breakdownTools.ts"
-import { Filing } from "../agent/interviewTools.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { dollars } from "../organs/OrganCost.ts"
@@ -457,7 +456,6 @@ const breakDown = (
             const shown = yield* inInterviewView(
               {
                 description: `Break the spec ${spec.path} down into Beads tickets`,
-                filing: yield* SubscriptionRef.make<Filing>(Filing.None()),
                 filed,
                 leaveQuestion: "End the breakdown?",
                 send: breakdown.send,

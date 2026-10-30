@@ -1,18 +1,25 @@
-// A spec's breakdown (§ 4.14), the session side: an SDK session in the main checkout, which AgentHost
-// knows as breakdownWorker (headless) or interviewWorker (--refine, in the Interview view), with the
-// breakdown's instructions (templates/spec-prompt.md, orchestra's adapted) appended to the
-// claude_code preset, its tools enforced (Read, Grep, Glob and Agent, with AskUserQuestion when the
-// user is there; `dontAsk` when nobody is) and tutti's own server (breakdownTools.ts) its one MCP
-// server, as the feature interview's session has.
+// A breakdown (§ 4.10, § 4.14), the session side: an SDK session in the main checkout that files a
+// tree of Beads issues under one root epic. A spec's, headless, which AgentHost knows as
+// breakdownWorker, or with the user in the Interview view (--refine); or a feature's, typed at the
+// start question (New feature), always with the user, in its feature mode. One with the user is
+// known as interviewWorker (inView.ts). Its instructions are the breakdown's
+// (templates/spec-prompt.md, orchestra's adapted) appended to the claude_code preset, in the mode
+// it is in; its tools are enforced (Read, Grep, Glob and Agent, with AskUserQuestion when the user
+// is there; `dontAsk` when nobody is) and tutti's own server (breakdownTools.ts) is its one MCP
+// server.
 //
-// Its first message names the spec, its SHA-256 and commit, and for a headless one its time limit;
-// a breakdown carried on lists what the earlier one filed, and an update names the root epic and the
-// version of the spec its tree was filed for, the change being in .tutti/run/spec-update.md.
+// A spec's first message names the spec, its SHA-256 and commit, and for a headless one its time
+// limit; a breakdown carried on lists what the earlier one filed, and an update names the root epic
+// and the version of the spec its tree was filed for, the change being in .tutti/run/spec-update.md.
+// A feature's is the description typed at the start question, saved to .tutti/run/feature-request.md
+// and pasted between pasted_content tags carrying a fresh ID (inView.ts), as orchestra sends it.
+// tutti composed it, so it goes client_composed (§ 4.1), as written, an `@path` in the description
+// not expanded; what you type in the composer after it goes as yours.
 //
 // It ends once file_breakdown has filed the tree (or said there is none) and the session's turn is
 // over: tutti closes the session. A headless session whose turn ends without that is told once to
-// hand the tree over, then given up on; one past its time limit is closed. With --refine the turn
-// ending is the user's turn, and leaving the view ends it.
+// hand the tree over, then given up on; one past its time limit is closed. With the user there the
+// turn ending is the user's turn, and leaving the view ends it.
 //
 // A turn that ends on the account's usage limit waits for the reset, as a worker's does (§ 4.12):
 // its time limit paused, it is told to carry on at the reset plus liftAfter (or, its reset passed,
@@ -28,6 +35,7 @@ import {
   Latch,
   Option,
   Ref,
+  Result,
   type Scope,
   Stream,
   SubscriptionRef,
@@ -43,6 +51,7 @@ import type { CheckedTree, FiledTree } from "../run/specTree.ts"
 import { liftAfter, retryEvery } from "../run/usageLimit.ts"
 import type { Beads, Issue, TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
+import { runFolder, writeRunFile } from "../services/Worktrees.ts"
 import { loginRefusedText } from "./Account.ts"
 import { type AgentGone, AgentHost, AgentStartFailed, type MessageUuid } from "./AgentHost.ts"
 import {
@@ -52,7 +61,7 @@ import {
   qualifiedBreakdownTools,
 } from "./breakdownTools.ts"
 import { sessionFibers } from "./callbacks.ts"
-import { interviewWorker } from "./interview.ts"
+import { interviewWorker, leadAndPasted } from "./inView.ts"
 import { SessionKind } from "./sessionKind.ts"
 import type { WorkerState } from "./WorkerState.ts"
 
@@ -101,6 +110,26 @@ export const renderPrompt = (text: string, flags: Readonly<Record<string, boolea
 /** A breakdown's instructions: refined with the user or headless, an update or not. */
 export const breakdownPrompt = (mode: { readonly refine: boolean; readonly update: boolean }) =>
   renderPrompt(template, mode)
+
+/** A feature's breakdown's instructions: its feature mode, always with the user, never an update. */
+export const featurePrompt: string = renderPrompt(template, {
+  refine: true,
+  update: false,
+  feature: true,
+})
+
+/** A feature's description, under the main checkout's .tutti/run/. */
+export const featureRequestName = "feature-request.md"
+
+/** Where a feature's description is saved, relative to the main checkout. */
+export const featureRequestFile = `${runFolder}/${featureRequestName}`
+
+/** What opens a feature's first message, before the description. */
+export const featureLead = "Here is the feature I'd like to talk through:"
+
+/** A feature's first message: featureLead, then `description` pasted under a fresh ID. */
+export const featureMessage = (description: string): Effect.Effect<string> =>
+  leadAndPasted(featureLead, description)
 
 /** What a breakdown starts from: a new tree, one an earlier breakdown didn't finish, or an update. */
 export type BreakdownMode = Data.TaggedEnum<{
@@ -199,6 +228,10 @@ export const handOverNudge =
 export const breakdownResetText =
   "tutti: the account's usage limit has reset. Carry on with the spec's breakdown where you left off."
 
+/** What a feature's breakdown that waited for the account's usage limit is told once it has reset. */
+export const featureResetText =
+  "tutti: the account's usage limit has reset. Carry on with the feature's breakdown where you left off."
+
 /**
  * When a breakdown at the usage limit at `now`, its reset `resetsAt`, is told to carry on: the
  * reset plus liftAfter, or retryEvery from now for a reset that has passed. Why it is given up on
@@ -253,9 +286,6 @@ export const startBreakdown = (
 > =>
   Effect.gen(function* () {
     const config = yield* AppConfig
-    const host = yield* AgentHost
-    const log = yield* Log
-    const worker = start.refine ? interviewWorker : breakdownWorker
     const update = start.mode._tag === "Update"
     const tools = yield* makeBreakdownTools({
       repo: config.repo,
@@ -264,27 +294,106 @@ export const startBreakdown = (
       update,
       fibers: yield* sessionFibers,
     })
+    return yield* openBreakdown({
+      tools,
+      refine: start.refine,
+      prompt: breakdownPrompt({ refine: start.refine, update }),
+      first: breakdownMessage(start),
+      resetText: breakdownResetText,
+      timeLimit: start.timeLimit,
+      effort: start.effort,
+    })
+  })
+
+/** What a feature's breakdown is started with. */
+export interface FeatureStart {
+  /** The description typed at the start question. */
+  readonly description: string
+  readonly effort: BreakdownStart["effort"]
+}
+
+/**
+ * Starts the breakdown of the feature `start.description` describes, in its feature mode, with the
+ * user in the Interview view: saves the description to .tutti/run/feature-request.md, starts the
+ * session in the main checkout and sends it the first message. A description that can't be saved
+ * fails the start, as a session that doesn't start does. Its tools' calls are fibers of the
+ * caller's scope, which outlasts the session.
+ */
+export const startFeature = (
+  start: FeatureStart,
+): Effect.Effect<
+  Breakdown,
+  AgentStartFailed,
+  AgentHost | AppConfig | Beads | Git | Log | Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const config = yield* AppConfig
+    const saved = yield* Effect.result(
+      writeRunFile(config.repo, featureRequestName, `${start.description.replace(/\n+$/, "")}\n`),
+    )
+    if (Result.isFailure(saved)) {
+      return yield* new AgentStartFailed({
+        ticket: interviewWorker,
+        reason: `${featureRequestFile} could not be written: ${saved.failure.message}`,
+      })
+    }
+    const tools = yield* makeBreakdownTools({
+      repo: config.repo,
+      spec: null,
+      root: null,
+      update: false,
+      fibers: yield* sessionFibers,
+    })
+    return yield* openBreakdown({
+      tools,
+      refine: true,
+      prompt: featurePrompt,
+      first: yield* featureMessage(start.description),
+      resetText: featureResetText,
+      timeLimit: Duration.infinity,
+      effort: start.effort,
+    })
+  })
+
+/**
+ * Opens a breakdown's session with `tools`, in the main checkout, and sends it `first`: with the
+ * user there (`refine`) or headless, within `timeLimit`; `resetText` is what it is told once the
+ * account's usage limit has reset.
+ */
+const openBreakdown = (setup: {
+  readonly tools: BreakdownTools
+  readonly refine: boolean
+  readonly prompt: string
+  readonly first: string
+  readonly resetText: string
+  readonly timeLimit: Duration.Duration
+  readonly effort: BreakdownStart["effort"]
+}): Effect.Effect<Breakdown, AgentStartFailed, AgentHost | AppConfig | Log | Scope.Scope> =>
+  Effect.gen(function* () {
+    const config = yield* AppConfig
+    const host = yield* AgentHost
+    const log = yield* Log
+    const { tools } = setup
+    const worker = setup.refine ? interviewWorker : breakdownWorker
     const sessionId = randomUUID()
     yield* host.start(worker, {
       sessionId,
       cwd: config.repo,
       kind: SessionKind.Interview({
-        prompt: breakdownPrompt({ refine: start.refine, update }),
+        prompt: setup.prompt,
         server: tools.server,
-        breakdown: {
-          builtins: breakdownBuiltins(start.refine),
-          allowed: qualifiedBreakdownTools,
-          headless: !start.refine,
-          effort: start.effort,
-          tools: tools.tools,
-        },
+        builtins: breakdownBuiltins(setup.refine),
+        allowed: qualifiedBreakdownTools,
+        headless: !setup.refine,
+        effort: setup.effort,
+        tools: tools.tools,
       }),
     })
     const send = (text: string) =>
       host
         .send(worker, { text, from: "clientComposed" })
         .pipe(Effect.mapError((gone) => new AgentStartFailed({ ticket: worker, reason: gone.why })))
-    yield* send(breakdownMessage(start))
+    yield* send(setup.first)
 
     const left = yield* Ref.make(false)
     const nudged = yield* Ref.make(false)
@@ -294,7 +403,7 @@ export const startBreakdown = (
     // The time limit: when it runs out, moved on by each wait for the reset, during which the
     // latch is closed.
     const deadline = yield* Ref.make(
-      (yield* Clock.currentTimeMillis) + Duration.toMillis(start.timeLimit),
+      (yield* Clock.currentTimeMillis) + Duration.toMillis(setup.timeLimit),
     )
     const running = yield* Latch.make(true)
     /** Ends once the time limit has run out, the waits for the usage limit left out. */
@@ -311,7 +420,7 @@ export const startBreakdown = (
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
         yield* running.close
-        const paused = start.refine ? "" : ", its time limit paused"
+        const paused = setup.refine ? "" : ", its time limit paused"
         yield* log.write(
           resetsAt > now
             ? tagged(
@@ -326,7 +435,7 @@ export const startBreakdown = (
         yield* Ref.update(deadline, (d) => d + (resumed - now))
         yield* Ref.set(limit, "told")
         yield* running.open
-        const sent = yield* Effect.result(send(breakdownResetText))
+        const sent = yield* Effect.result(send(setup.resetText))
         if (sent._tag === "Success") {
           yield* log.write(tagged(Tag.spec)`the usage limit has reset; the breakdown carries on`)
         }
@@ -376,8 +485,19 @@ export const startBreakdown = (
           return Option.none()
         }
         if (state._tag === "LoginRefused") {
-          // No turn goes on until the login is renewed (§ 4.13).
+          // No turn goes on until the login is renewed (§ 4.13): a tree filed before it is filed
+          // all the same (tutti-1flm).
           yield* host.end(worker)
+          if (filed.answer._tag === "Filed" && filed.root !== null) {
+            return Option.some(
+              BreakdownEnd.Filed({
+                root: filed.root,
+                tree: filed.answer.tree,
+                filed: filed.answer.filed,
+                state: filed,
+              }),
+            )
+          }
           return Option.some(
             BreakdownEnd.Failed({ why: loginRefusedText(state.error), state: filed }),
           )
@@ -409,7 +529,7 @@ export const startBreakdown = (
             return Option.none()
           case "None":
             // With the user there, it is their turn.
-            if (start.refine) return Option.none()
+            if (setup.refine) return Option.none()
             if (!(yield* Ref.get(nudged)) && state._tag === "Idle") {
               yield* Ref.set(nudged, true)
               const sent = yield* Effect.result(send(handOverNudge))
@@ -442,13 +562,13 @@ export const startBreakdown = (
       yield* host.end(worker)
       const state = yield* SubscriptionRef.get(tools.state)
       return BreakdownEnd.Failed({
-        why: `it ran past its time limit of ${formatDuration(start.timeLimit)}`,
+        why: `it ran past its time limit of ${formatDuration(setup.timeLimit)}`,
         state,
       })
     })
     // The watch is interrupted as the time limit runs out, before the session is closed.
     const ended = (
-      start.refine
+      setup.refine
         ? watched
         : Effect.raceFirst(
             Effect.map(watched, (end) => Option.some<BreakdownEnd>(end)),

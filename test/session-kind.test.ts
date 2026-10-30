@@ -2,9 +2,10 @@
 // and the MCP servers each kind is given, the one rule both of AgentHost's layers read.
 import { describe, expect, test } from "bun:test"
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk"
-import { serverName } from "../src/agent/interviewTools.ts"
 import { type ChosenServers, noServers } from "../src/agent/mcp.ts"
+import { interviewBuiltins } from "../src/agent/options.ts"
 import { kindOf, SessionKind, serversOf } from "../src/agent/sessionKind.ts"
+import { serverName } from "../src/agent/ticketTools.ts"
 
 const workers: ChosenServers = {
   servers: [{ name: "docs", scope: "project", definition: { command: "docs-server" } }],
@@ -12,7 +13,15 @@ const workers: ChosenServers = {
   note: null,
 }
 
-const setup = { prompt: "Talk it through.", server: createSdkMcpServer({ name: serverName }) }
+const setup = {
+  prompt: "Talk it through.",
+  server: createSdkMcpServer({ name: serverName }),
+  builtins: interviewBuiltins,
+  allowed: [],
+  headless: false,
+  effort: null,
+  tools: [],
+}
 
 describe("kindOf", () => {
   test("a session that doesn't say is a worker's", () => {
@@ -32,7 +41,7 @@ describe("serversOf", () => {
     expect(serversOf(SessionKind.Probe(), workers)).toBe(noServers)
   })
 
-  test("the interview gets tutti's own server alone, and Chrome as workers have it", () => {
+  test("a session of the Interview kind gets tutti's own server alone, and Chrome as workers have it", () => {
     const given = serversOf(SessionKind.Interview(setup), workers)
     expect(given.servers).toEqual([{ name: serverName, scope: "sdk", definition: setup.server }])
     expect(given.chrome).toBe(true)

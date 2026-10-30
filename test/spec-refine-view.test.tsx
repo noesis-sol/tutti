@@ -4,8 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Queue } from "effect"
-import { interviewWorker } from "../src/agent/interview.ts"
-import { Filing } from "../src/agent/interviewTools.ts"
+import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
@@ -80,7 +79,6 @@ const scene = async (
     <InterviewContext.Provider
       value={{
         description,
-        filing: external(Filing.None()),
         filed,
         leaveQuestion: "End the breakdown?",
       }}

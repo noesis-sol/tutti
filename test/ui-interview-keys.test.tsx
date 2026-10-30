@@ -8,8 +8,7 @@ import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit, Queue, Scope } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
-import { interviewWorker } from "../src/agent/interview.ts"
-import { Filing } from "../src/agent/interviewTools.ts"
+import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, Transcripts, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
@@ -201,7 +200,7 @@ const render = (
     transcripts: feed,
   }
   return withRender(
-    <InterviewContext.Provider value={{ description, filing: external(Filing.None()) }}>
+    <InterviewContext.Provider value={{ description, filed: external(false) }}>
       <Root value={shell} />
     </InterviewContext.Provider>,
     size,

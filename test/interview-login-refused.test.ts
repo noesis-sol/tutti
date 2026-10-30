@@ -1,19 +1,22 @@
-// An interview or a question's talk whose turn is refused for Claude's login (§ 4.13) once the plan
-// is filed or the answer given: its worker is LoginRefused, not Failed, and never settles, so the
-// interview ends as filed and the talk with its answer, as they did on a failed turn, rather than
-// wait until the user leaves.
+// A feature's breakdown or a question's talk whose turn is refused for Claude's login (§ 4.13) once
+// the tree is filed or the answer given: its worker is LoginRefused, not Failed, and never settles,
+// so the breakdown ends as filed and the talk with its answer, as they did on a failed turn, rather
+// than wait until the user leaves or end as failed.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Deferred, Effect, Layer, type Scope } from "effect"
+import { Deferred, Effect, Layer, type Scope, SubscriptionRef } from "effect"
 import type { AgentHost } from "../src/agent/AgentHost.ts"
 import { type AnswerTalk, startAnswerTalk, TalkEnd } from "../src/agent/answerTalk.ts"
+import { startFeature } from "../src/agent/breakdown.ts"
+import type { BreakdownTools } from "../src/agent/breakdownTools.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
-import { interviewWorker, startInterview, turnOver } from "../src/agent/interview.ts"
-import { type InterviewTools, serverName } from "../src/agent/interviewTools.ts"
+import { interviewWorker, turnOver } from "../src/agent/inView.ts"
+import { serverName } from "../src/agent/ticketTools.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import type { AppConfig } from "../src/cli/AppConfig.ts"
+import type { Log } from "../src/run/log.ts"
 import type { Beads, TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
 import {
@@ -64,7 +67,11 @@ const scenario = <T, A, E>(
   script: (ready: Deferred.Deferred<T>) => Script,
   effect: (
     ready: Deferred.Deferred<T>,
-  ) => Effect.Effect<A, E, AgentHost | Recording | Backlog | Beads | AppConfig | Git | Scope.Scope>,
+  ) => Effect.Effect<
+    A,
+    E,
+    AgentHost | Recording | Backlog | Beads | AppConfig | Git | Log | Scope.Scope
+  >,
 ) => {
   const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-interview-login-")))
   return Effect.runPromise(
@@ -95,7 +102,7 @@ const scenario = <T, A, E>(
 
 /** Calls the session's tool `name` with `input`, as the session would. */
 const call = (
-  tools: InterviewTools | AnswerTalk["tools"],
+  tools: BreakdownTools | AnswerTalk["tools"],
   name: string,
   input: Record<string, unknown>,
 ) => {
@@ -104,22 +111,30 @@ const call = (
   return Effect.promise(() => found.handler(input as never, {}))
 }
 
-const ticket = (key: string, title: string) => ({
-  key,
-  title,
-  description: "Why and what.",
-  acceptance: "The tests pass.",
-  type: "task",
+const root = {
+  title: "A --json flag for list",
+  description: "list prints JSON with --json.",
   priority: 2,
-  files: [],
-  blocked_by: [],
-  solo: false,
-})
-
-const proposal = {
-  epic: { title: "A --json flag for list", description: "list prints JSON with --json." },
-  tickets: [ticket("t1", "JSON output for list")],
 }
+
+/** file_breakdown's input once file_root has filed `epic`. */
+const tree = (epic: string) => ({
+  root: epic,
+  issues: [
+    {
+      key: "json",
+      parent: "",
+      type: "task",
+      priority: 2,
+      title: "JSON output for list",
+      description: "Why and what.",
+      acceptance: "The tests pass.",
+      labels: [],
+      files: ["README.md"],
+      waits_for: [],
+    },
+  ],
+})
 
 describe("a turn refused for the login", () => {
   test("is over, as an idle or a failed one is", () => {
@@ -128,36 +143,43 @@ describe("a turn refused for the login", () => {
     expect(turnOver(WorkerState.Starting())).toBe(false)
   })
 
-  test("after the plan is filed ends the interview as filed", async () => {
-    const value = await scenario<InterviewTools, unknown, unknown>(
+  test("after the tree is filed ends a feature's breakdown as filed", async () => {
+    const value = await scenario<BreakdownTools, unknown, unknown>(
       (ready) => [
         [
           wait,
           sessionInit,
           sessionState("running"),
           ...tool(
-            "mcp__tutti__file_feature",
-            proposal,
-            Effect.flatMap(Deferred.await(ready), (tools) =>
-              Effect.asVoid(call(tools, "file_feature", proposal)),
-            ),
+            "mcp__tutti__file_breakdown",
+            {},
+            Effect.gen(function* () {
+              const tools = yield* Deferred.await(ready)
+              yield* call(tools, "file_root", root)
+              const epic = (yield* SubscriptionRef.get(tools.state)).root ?? ""
+              yield* call(tools, "file_breakdown", tree(epic))
+            }),
           ),
           ...refusedEnd,
         ],
       ],
       (ready) =>
         Effect.gen(function* () {
-          const interview = yield* startInterview("Add a --json flag to list.\n")
-          yield* Deferred.succeed(ready, interview.tools)
-          const ended = yield* interview.ended
+          const breakdown = yield* startFeature({
+            description: "Add a --json flag to list.\n",
+            effort: null,
+          })
+          yield* Deferred.succeed(ready, breakdown.tools)
+          const ended = yield* breakdown.ended
           const recording = yield* Recording
-          return { ended, last: (yield* recording.sentTo(interviewWorker)).at(-1)?._tag }
+          return {
+            ended: ended._tag,
+            tickets: ended.state.tickets,
+            last: (yield* recording.sentTo(interviewWorker)).at(-1)?._tag,
+          }
         }),
     )
-    expect(value).toEqual({
-      ended: expect.objectContaining({ _tag: "Filed", tickets: 1 }),
-      last: "Ended",
-    })
+    expect(value).toEqual({ ended: "Filed", tickets: 1, last: "Ended" })
   })
 
   test("after the answer is given ends the talk with it", async () => {

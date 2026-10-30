@@ -7,7 +7,6 @@ import { formHintSegments } from "../src/ui/Form.tsx"
 import { scoutCommands } from "../src/ui/InitForm.tsx"
 import { hintOf } from "../src/ui/keyCommands.ts"
 import { PlanConfirmation } from "../src/ui/PlanConfirmation.tsx"
-import { startOnQuestion } from "../src/ui/questions.ts"
 import { type Appearance, makeTheme, orchestra, type Role } from "../src/ui/theme.ts"
 import { withRender } from "./render.ts"
 
@@ -75,7 +74,7 @@ describe("a form's hint", () => {
       <PlanConfirmation
         theme={theme}
         plan={{ epic: { title: "Undo stack", description: "" }, tickets: [], notes: [] }}
-        question={startOnQuestion("tut-1", 0)}
+        question={"Start the run on tut-1 (0 tickets)?"}
         answer={() => {}}
         cancel={() => {}}
       />

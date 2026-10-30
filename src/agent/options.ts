@@ -48,10 +48,10 @@ import { Attention } from "./Attention.ts"
 import type { SessionSpec } from "./ClaudeCode.ts"
 import type { SessionFibers } from "./callbacks.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
-import { qualifiedToolNames, serverName } from "./interviewTools.ts"
 import { type ChosenServers, chromeArgs, hasOwn, mcpServers } from "./mcp.ts"
 import { qualifiedRequiresTool, requiresServerName } from "./requiresTools.ts"
 import { Transcripts } from "./Transcripts.ts"
+import { serverName } from "./ticketTools.ts"
 import { deniedTools } from "./unusedTools.ts"
 
 /** How a worker's session starts: a new one with the ID tutti drew, or a saved one resumed. */
@@ -266,7 +266,10 @@ export const probeOptions = (input: ProbeOptionsInput): SessionSpec => ({
   settings: { disableAllHooks: true },
 })
 
-/** The built-in tools an interview's session has (§ 4.10): the whole set, so there's nothing to deny. */
+/**
+ * The built-in tools of a session with the user there, in the Interview view (§ 4.10): the whole
+ * set, so there's nothing to deny.
+ */
 export const interviewBuiltins: ReadonlyArray<string> = [
   "Read",
   "Grep",
@@ -282,7 +285,7 @@ export const interviewBuiltins: ReadonlyArray<string> = [
  */
 export const allowTools = (
   names: ReadonlyArray<string>,
-  reason = "one of tutti's own interview tools",
+  reason = "one of tutti's own tools",
 ): HookCallbackMatcher => ({
   matcher: names.join("|"),
   hooks: [
@@ -296,31 +299,28 @@ export const allowTools = (
   ],
 })
 
-/** The interview's PreToolUse hook that allows its three tools without asking. */
-export const allowOwnTools: HookCallbackMatcher = allowTools(qualifiedToolNames)
-
-/** What an interview's options are made from. */
+/** What the options of a session of the Interview kind are made from. */
 export interface InterviewOptionsInput {
   readonly config: Pick<AppConfigValue, "repo" | "settings">
   readonly setup: InterviewSetup
-  /** Whether workers.mcp_servers chose Claude in Chrome: the interview gets it as workers do. */
+  /** Whether workers.mcp_servers chose Claude in Chrome: the session gets it as workers do. */
   readonly chrome: boolean
-  /** The interview's callbacks, as a worker's (workerCallbacks): AskUserQuestion goes to Attention. */
+  /** The session's callbacks, as a worker's (workerCallbacks): AskUserQuestion goes to Attention. */
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
 }
 
 /**
- * The feature interview's SDK options (§ 4.10): the workers' shared options, in the main checkout,
- * its settings loaded. Its tools are enforced: interviewBuiltins is the whole built-in set (a
- * subagent inherits it), and tutti's in-process server is its one MCP server, its three tools
- * allowed without asking (allowOwnTools), and Chrome when the project chose it. The interview's instructions are appended to the claude_code preset.
+ * The SDK options of a session of the Interview kind (§ 4.10, § 4.14): a feature's or a spec's
+ * breakdown, or a question's talk. The workers' shared options, in the main checkout, its settings
+ * loaded. Its tools are enforced: its built-in tools are the whole set (a subagent inherits it),
+ * and tutti's in-process server is its one MCP server, its own tools allowed without asking
+ * (allowTools), and Chrome when the project chose it. Its instructions are appended to the
+ * claude_code preset.
  */
 export const interviewOptions = (input: InterviewOptionsInput): SessionSpec => {
-  const { callbacks } = input
-  const breakdown = input.setup.breakdown
-  // The workers' denied tools are theirs: the interview's are its whole set, and it always has
-  // AskUserQuestion.
+  const { callbacks, setup } = input
+  // The workers' denied tools are theirs: the session's are its whole set.
   const { disallowedTools: _, ...shared } = sharedOptions({
     config: input.config,
     chrome: input.chrome,
@@ -329,28 +329,25 @@ export const interviewOptions = (input: InterviewOptionsInput): SessionSpec => {
   return {
     ...shared,
     cwd: input.config.repo,
-    tools: [...(breakdown?.builtins ?? interviewBuiltins)],
+    tools: [...setup.builtins],
     // A headless breakdown has nobody to ask: what isn't allowed already is denied.
-    ...(breakdown?.headless === true ? { permissionMode: "dontAsk" as const } : {}),
-    ...(breakdown === undefined || breakdown.effort === null ? {} : { effort: breakdown.effort }),
+    ...(setup.headless ? { permissionMode: "dontAsk" as const } : {}),
+    ...(setup.effort === null ? {} : { effort: setup.effort }),
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      append: input.setup.prompt,
+      append: setup.prompt,
       snapshot: true,
     },
     ...(input.session._tag === "New"
       ? { sessionId: input.session.sessionId }
       : { resume: input.session.sessionId }),
-    mcpServers: { [serverName]: input.setup.server },
+    mcpServers: { [serverName]: setup.server },
     canUseTool: callbacks.canUseTool,
     onElicitation: callbacks.onElicitation,
     hooks: {
       ...callbacks.hooks,
-      PreToolUse: [
-        ...(callbacks.hooks.PreToolUse ?? []),
-        breakdown === undefined ? allowOwnTools : allowTools(breakdown.allowed),
-      ],
+      PreToolUse: [...(callbacks.hooks.PreToolUse ?? []), allowTools(setup.allowed)],
     },
     forwardSubagentText: true,
     includePartialMessages: true,

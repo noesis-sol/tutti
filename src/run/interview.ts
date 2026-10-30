@@ -1,33 +1,46 @@
 // The interview's side of the run (§ 4.10, § 5 item 3, § 7.1): New feature at the start question
 // talks the feature through in the Interview view, in the command's one renderer, and the run then
 // goes on as the interview ends. The view is the screen's (ui/InterviewView.tsx, mounted by the
-// InterviewScreen main gives); this drives it: it starts the session (agent/interview.ts), shows
-// the view one card's RunView (the session's state and its open requests) and the session's
-// transcript, and does what the view's commands ask: an answer to a request goes to Attention, a
-// message from the composer to the session, and leaving, which the view has asked about first
-// (`End the interview? Nothing has been filed.`, unless file_feature filed something), ends it, as
-// Ctrl+C's quit box does.
+// InterviewScreen main gives); this drives it: it starts the breakdown's session in its feature mode
+// (agent/breakdown.ts's startFeature), shows the view one card's RunView (the session's state and
+// its open requests) and the session's transcript, and does what the view's commands ask: an answer
+// to a request goes to Attention, a message from the composer to the session, and leaving, which
+// the view has asked about first (`End the interview? Nothing has been filed.`, unless the session
+// filed something), ends it, as Ctrl+C's quit box does.
 //
-// Once file_feature has filed the epic and the turn has ended, the session is closed, the view goes,
-// and the plan confirmation asks `Start the run on <epic> (N tickets)? [y/N]`: y runs the epic, as
-// --ticket <epic> would; n, or Esc, leaves it filed and says how to run it. Otherwise the interview
-// ends without a run, and interviewEnding says what was filed, if anything, and the exit code.
-import { Clock, Data, Effect, Queue, Ref, type Scope, Stream, SubscriptionRef } from "effect"
+// Once the breakdown has filed the epic and its tickets and the turn has ended, the session is
+// closed, the view goes, and the tree is checked as a spec's is (src/run/spec.ts's checkFiled): a
+// root that isn't an epic stops the run; open tickets without files or acceptance criteria, and a
+// cycle of blocks links among them, are warnings. Then `filed <epic>: N tickets, starting the run`,
+// and the run goes on, scoped to the epic, as --ticket <epic> would: nothing asks. Otherwise the
+// interview ends without a run, and interviewEnding says what was filed, if anything, and the exit
+// code.
+import {
+  Clock,
+  Data,
+  Effect,
+  Queue,
+  Ref,
+  Result,
+  type Scope,
+  Stream,
+  SubscriptionRef,
+} from "effect"
 import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { Attention, type AttentionRequest } from "../agent/Attention.ts"
-import { filedPlan, interviewWorker, startInterview } from "../agent/interview.ts"
-import type { Filing } from "../agent/interviewTools.ts"
+import { startFeature } from "../agent/breakdown.ts"
+import { type Answer, type BreakdownState, filedAny } from "../agent/breakdownTools.ts"
+import { interviewWorker } from "../agent/inView.ts"
 import { Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
-import type { AppConfig } from "../cli/AppConfig.ts"
-import { filingFailedLines } from "../project/planFile.ts"
-import type { Beads, TicketId } from "../services/Beads.ts"
+import { AppConfig } from "../cli/AppConfig.ts"
+import { type Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
-import { FormCancelled, type Plan } from "../ui/questions.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { makeCommands, type UiCommand } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
 import { exitCodes } from "./holds.ts"
+import { Log, line } from "./log.ts"
 import { TicketPhase } from "./phase.ts"
 import type { QuestionNews } from "./questionNews.ts"
 import {
@@ -39,15 +52,14 @@ import {
   statusTone,
 } from "./runView.ts"
 import { Screen, type ScreenInputs } from "./screen.ts"
+import { checkFiled } from "./spec.ts"
 
 /** What the run hands the Interview view: a dashboard's inputs, the description, the filing. */
 export interface InterviewInputs extends ScreenInputs {
   /** The description typed at the start question. */
   readonly description: string
-  /** What file_feature has filed: leaving asks first only while nothing is. */
-  readonly filing: SubscriptionRef.SubscriptionRef<Filing>
-  /** Whether something is filed, where `filing` doesn't say: a spec's refinement. */
-  readonly filed?: SubscriptionRef.SubscriptionRef<boolean>
+  /** Whether the session has filed something: leaving asks first only while nothing is. */
+  readonly filed: SubscriptionRef.SubscriptionRef<boolean>
   /** What leaving asks while nothing is filed, in place of the interview's question. */
   readonly leaveQuestion?: string
   /** What leaving says under its question, in place of the interview's. */
@@ -61,14 +73,17 @@ export type InterviewScreen = (inputs: InterviewInputs) => Effect.Effect<void, n
 
 /** How the interview ended. */
 export type InterviewOutcome = Data.TaggedEnum<{
-  /** The epic was filed and you said y: the run goes on, scoped to it. */
+  /** The epic and its tickets were filed and checked: the run goes on, scoped to the epic. */
   Run: { readonly epic: TicketId; readonly tickets: number }
-  /** The epic was filed and you said n, or Esc: it stays filed, and nothing runs. */
-  Declined: { readonly epic: TicketId; readonly tickets: number }
-  /** You left the view (`quit`: by Ctrl+C's quit box); `filing` says what was filed by then. */
-  Left: { readonly filing: Filing; readonly quit: boolean }
-  /** The session ended by itself, before the epic was filed. */
-  Ended: { readonly why: string; readonly filing: Filing }
+  /**
+   * The epic and its tickets were filed, but the run won't take them: why, and the exit code (2
+   * for a tree it refuses, 4 for one bd couldn't read).
+   */
+  Refused: { readonly epic: TicketId; readonly why: string; readonly exitCode: number }
+  /** You left the view (`quit`: by Ctrl+C's quit box); `state` says what was filed by then. */
+  Left: { readonly state: BreakdownState; readonly quit: boolean }
+  /** The session ended by itself, before the tree was filed. */
+  Ended: { readonly why: string; readonly state: BreakdownState }
   /** The session couldn't start. */
   NotStarted: { readonly why: string }
 }>
@@ -133,14 +148,12 @@ export const interviewView = (card: Card): RunView => ({
 /** How the Interview view was left: not at all, by Esc or ← Back, or by Ctrl+C's quit box. */
 export type Left = "no" | "left" | "quit"
 
-/** A session the Interview view shows: the feature interview's, a spec's refinement, a question's talk. */
+/** A session the Interview view shows: a feature's or a spec's breakdown, a question's talk. */
 export interface InView<A> {
   /** The description typed at the start question, or what the session is for, in its header. */
   readonly description: string
-  /** What file_feature has filed (an interview's), or nothing (a refinement's). */
-  readonly filing: SubscriptionRef.SubscriptionRef<Filing>
-  /** Whether the session has filed something, where `filing` doesn't say. */
-  readonly filed?: SubscriptionRef.SubscriptionRef<boolean>
+  /** Whether the session has filed something (a question's talk: given its answer). */
+  readonly filed: SubscriptionRef.SubscriptionRef<boolean>
   /** What leaving asks while nothing is filed, in place of the interview's question. */
   readonly leaveQuestion?: string
   /** What leaving says under its question, in place of the interview's. */
@@ -242,8 +255,7 @@ export const inInterviewView = <A>(
           filings: yield* SubscriptionRef.make<ReadonlyArray<TicketFiling>>([]),
           questions: yield* SubscriptionRef.make<ReadonlyArray<QuestionNews>>([]),
           description,
-          filing: session.filing,
-          ...(session.filed === undefined ? {} : { filed: session.filed }),
+          filed: session.filed,
           ...(session.leaveQuestion === undefined ? {} : { leaveQuestion: session.leaveQuestion }),
           ...(session.leaveAbout === undefined ? {} : { leaveAbout: session.leaveAbout }),
           ...(session.name === undefined ? {} : { name: session.name }),
@@ -254,51 +266,83 @@ export const inInterviewView = <A>(
     return { ended, left: yield* Ref.get(left) }
   })
 
+/** What the run says once the interview has filed the epic and its tickets. */
+export const startingLine = (epic: TicketId, tickets: number): string =>
+  `filed ${sanitizeLine(epic)}: ${plural(tickets, "ticket")}, starting the run`
+
 /**
- * The interview of the feature `description` describes, shown with `io.screen`; once the epic is
- * filed, `io.confirm` asks whether to run it. How it ended; fails as the confirmation does when it
- * fails other than by being cancelled.
+ * The interview of the feature `description` describes, shown with `io.screen`: the breakdown's
+ * session in its feature mode. Once it has filed the epic and its tickets, the tree is checked, its
+ * warnings said with `io.error`, and `filed <epic>: N tickets, starting the run` with `io.say`, the
+ * log hearing both. How it ended.
  */
-export const interview = <E>(
+export const interview = (
   description: string,
   io: {
     readonly screen: InterviewScreen
-    readonly confirm: (plan: Plan, question: string) => Effect.Effect<boolean, FormCancelled | E>
+    readonly say: (text: string) => Effect.Effect<void>
+    readonly error: (text: string) => Effect.Effect<void>
   },
 ): Effect.Effect<
   InterviewOutcome,
-  Exclude<E, FormCancelled>,
-  AgentHost | AppConfig | Beads | Git | Attention | Transcripts
+  never,
+  AgentHost | AppConfig | Beads | Git | Log | Attention | Transcripts
 > =>
   Effect.gen(function* () {
-    const started = yield* Effect.result(startInterview(description))
+    const started = yield* Effect.result(startFeature({ description, effort: null }))
     if (started._tag === "Failure") {
       return InterviewOutcome.NotStarted({ why: started.failure.reason })
     }
-    const session = started.success
+    const breakdown = started.success
+    // Whether it has filed something, for the view's leaving question.
+    const filed = yield* SubscriptionRef.make(false)
+    yield* SubscriptionRef.changes(breakdown.state).pipe(
+      Stream.runForEach((now) => SubscriptionRef.set(filed, filedAny(now))),
+      Effect.forkScoped,
+    )
     const { ended, left: how } = yield* inInterviewView(
       {
         description,
-        filing: session.filing,
-        send: session.send,
-        leave: session.leave,
-        ended: session.ended,
+        filed,
+        send: breakdown.send,
+        leave: breakdown.leave,
+        ended: breakdown.ended,
       },
       io.screen,
     )
-
-    if (ended._tag === "Filed") {
-      const confirmed = yield* Effect.result(io.confirm(ended.plan, ended.question))
-      const filed = { epic: ended.epic, tickets: ended.tickets }
-      if (confirmed._tag === "Failure") {
-        if (confirmed.failure instanceof FormCancelled) return InterviewOutcome.Declined(filed)
-        return yield* Effect.fail(confirmed.failure as Exclude<E, FormCancelled>)
-      }
-      return confirmed.success ? InterviewOutcome.Run(filed) : InterviewOutcome.Declined(filed)
+    switch (ended._tag) {
+      case "Left":
+        return InterviewOutcome.Left({ state: ended.state, quit: how === "quit" })
+      case "NoTree":
+      case "Failed":
+        return how === "no"
+          ? InterviewOutcome.Ended({ why: ended.why, state: ended.state })
+          : InterviewOutcome.Left({ state: ended.state, quit: how === "quit" })
+      case "Filed":
+        break
     }
-    return how === "no"
-      ? InterviewOutcome.Ended({ why: ended.why, filing: ended.filing })
-      : InterviewOutcome.Left({ filing: ended.filing, quit: how === "quit" })
+    const log = yield* Log
+    const epic = ended.root
+    const checked = yield* Effect.result(
+      checkFiled(epic, null, (yield* AppConfig).settings.concurrent),
+    )
+    if (Result.isFailure(checked)) {
+      const why = `bd couldn't read the tree under it: ${beadsWhy(checked.failure)}`
+      yield* log.write(line`the interview filed ${epic}, but ${why}`)
+      return InterviewOutcome.Refused({ epic, why, exitCode: exitCodes.tool })
+    }
+    const tree = checked.success
+    if (tree.refused !== null) {
+      yield* log.write(line`won't run what the interview filed: ${tree.refused}`)
+      return InterviewOutcome.Refused({ epic, why: tree.refused, exitCode: exitCodes.setup })
+    }
+    for (const warning of tree.warnings) {
+      yield* io.error(`warning: ${warning}`)
+      yield* log.write(line`warning: ${warning}`)
+    }
+    yield* io.say(startingLine(epic, tree.tickets))
+    yield* log.write(line`${startingLine(epic, tree.tickets)}`)
+    return InterviewOutcome.Run({ epic, tickets: tree.tickets })
   }).pipe(
     // The interview's scope, which its tools' calls end with.
     Effect.scoped,
@@ -319,32 +363,40 @@ export const filedLine = (epic: TicketId, tickets: number): string => {
   return `Filed epic ${id} with ${plural(tickets, "ticket")}; nothing was run. Run it with: tutti --ticket ${id}`
 }
 
-/** What file_feature had filed when the interview ended without a run, and the exit code. */
-const filingEnding = (filing: Filing, nothing: InterviewEnding): InterviewEnding => {
-  switch (filing._tag) {
-    case "None":
-      return nothing
+/** What the breakdown had filed when the interview ended without a run, and the exit code. */
+const filedEnding = (state: BreakdownState, nothing: InterviewEnding): InterviewEnding => {
+  if (!filedAny(state) && state.answer._tag !== "Filing") return nothing
+  const answer: Answer = state.answer
+  const root = state.root === null ? "the epic" : sanitizeLine(state.root)
+  switch (answer._tag) {
+    case "Filed":
+      return {
+        out: [filedLine(state.root ?? ("?" as TicketId), state.tickets)],
+        error: [],
+        exitCode: nothing.exitCode === exitCodes.interrupted ? exitCodes.interrupted : exitCodes.ok,
+      }
     case "Filing":
       return {
         out: [],
         error: [
-          "tutti: the interview ended while it was filing the feature; check what was filed with: bd list --type epic",
+          `tutti: the interview ended while it was filing ${root}'s tickets; check what was filed with: bd list --parent ${root}`,
         ],
         exitCode: exitCodes.tool,
       }
-    case "Filed": {
-      const plan = filedPlan(filing.plan, filing.filed)
-      return {
-        out: [filedLine(filing.filed.epic, plan.tickets.length)],
-        error: [],
-        exitCode: nothing.exitCode === exitCodes.interrupted ? exitCodes.interrupted : exitCodes.ok,
-      }
-    }
     case "Stopped":
       return {
         out: [],
-        error: filingFailedLines(filing.failed).map(sanitizeLine),
+        error: [sanitizeLine(answer.stopped.message), `tutti: nothing was run under ${root}.`],
         exitCode: exitCodes.tool,
+      }
+    case "None":
+    case "Problem":
+      return {
+        out: [],
+        error: [
+          `tutti: the interview ended with the epic ${root} filed, but not its tickets; nothing was run. Close it with: bd close ${root}`,
+        ],
+        exitCode: nothing.exitCode === exitCodes.interrupted ? exitCodes.interrupted : exitCodes.ok,
       }
   }
 }
@@ -355,17 +407,25 @@ export type NoRun = Exclude<InterviewOutcome, { readonly _tag: "Run" }>
 /** What the run says when the interview ran nothing, and its exit code. */
 export const interviewEnding = (outcome: NoRun): InterviewEnding => {
   switch (outcome._tag) {
-    case "Declined":
-      return { out: [filedLine(outcome.epic, outcome.tickets)], error: [], exitCode: exitCodes.ok }
+    case "Refused": {
+      const id = sanitizeLine(outcome.epic)
+      return {
+        out: [],
+        error: [
+          `tutti won't run what the interview filed under ${id}: ${sanitizeLine(outcome.why)}`,
+        ],
+        exitCode: outcome.exitCode,
+      }
+    }
     case "Left":
-      return filingEnding(
-        outcome.filing,
+      return filedEnding(
+        outcome.state,
         outcome.quit
           ? { out: [], error: [quitMessage], exitCode: exitCodes.interrupted }
           : { out: [], error: [leftMessage], exitCode: exitCodes.ok },
       )
     case "Ended":
-      return filingEnding(outcome.filing, {
+      return filedEnding(outcome.state, {
         out: [],
         error: [
           `tutti: the interview's session ended: ${sanitizeLine(outcome.why)}; nothing was filed.`,

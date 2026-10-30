@@ -1,7 +1,7 @@
 // How the Agent SDK's callbacks enter Effect (§ 4.1): canUseTool and onElicitation (Attention),
 // the hook callbacks (hooks.ts) and the in-process MCP servers' tool handlers (requiresTools.ts,
-// interviewTools.ts). Each runs its effect as a fiber of a FiberSet in its session's scope
-// (AgentHostLive's make, the interview's for its tools, interview.ts), not as a root fiber: closing
+// breakdownTools.ts, answerTalk.ts). Each runs its effect as a fiber of a FiberSet in its session's
+// scope (AgentHostLive's make, a breakdown's or a talk's for its tools), not as a root fiber: closing
 // the session interrupts what its callbacks still run, a request a person hasn't answered or a tool
 // call under way, as the run's end closes the session.
 //

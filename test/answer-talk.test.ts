@@ -25,9 +25,9 @@ import {
   talkLeftWhy,
 } from "../src/agent/answerTalk.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
-import { interviewWorker, leadAndPasted } from "../src/agent/interview.ts"
-import { serverName } from "../src/agent/interviewTools.ts"
+import { interviewWorker, leadAndPasted } from "../src/agent/inView.ts"
 import { interviewBuiltins } from "../src/agent/options.ts"
+import { serverName } from "../src/agent/ticketTools.ts"
 import type { AppConfig } from "../src/cli/AppConfig.ts"
 import { talkLeaveAbout, talkLeaveQuestion, talkName, talkQuestion } from "../src/run/answerTalk.ts"
 import { UiCommand } from "../src/run/commands.ts"
@@ -298,9 +298,9 @@ describe("startAnswerTalk, with the scripted host", () => {
     expect(kind.prompt).toBe(answerTalkPrompt)
     expect(kind.prompt).not.toContain("<!--")
     expect(kind.server).toBe(talk.tools.server)
-    expect(kind.breakdown?.builtins).toEqual(interviewBuiltins)
-    expect(kind.breakdown?.allowed).toEqual(qualifiedTalkTools)
-    expect(kind.breakdown?.headless).toBe(false)
+    expect(kind.builtins).toEqual(interviewBuiltins)
+    expect(kind.allowed).toEqual(qualifiedTalkTools)
+    expect(kind.headless).toBe(false)
 
     // The question, sent wrapped as the first message, composed by tutti.
     const message = sent.find((s) => s._tag === "Message")
@@ -473,7 +473,7 @@ describe("talkThrough, the dashboard's talk", () => {
     for (;;) {
       const started = (yield* recording.sentTo(interviewWorker)).find((s) => s._tag === "Started")
       const kind = started?._tag === "Started" ? started.session.kind : undefined
-      if (kind?._tag === "Interview" && kind.breakdown !== undefined) return kind.breakdown.tools
+      if (kind?._tag === "Interview") return kind.tools
       yield* Effect.sleep("5 millis")
     }
   })

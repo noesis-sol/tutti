@@ -9,7 +9,6 @@ import {
   FormCancelled,
   type Plan,
   planLines,
-  startOnQuestion,
   TicketCount,
   ticketsOption,
   type Work,
@@ -315,7 +314,7 @@ const plan: Plan = {
 }
 
 describe("the plan confirmation in the renderer", () => {
-  const confirmation = (question = startOnQuestion("tut-1", 2)) => {
+  const confirmation = (question = "Start the run on tut-1 (2 tickets)?") => {
     const said = recorder<boolean>()
     const node = <PlanConfirmation theme={dark} plan={plan} question={question} {...said.props} />
     return { said, node }

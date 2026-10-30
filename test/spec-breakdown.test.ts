@@ -21,9 +21,9 @@ import {
 } from "../src/agent/breakdown.ts"
 import { qualifiedBreakdownTools } from "../src/agent/breakdownTools.ts"
 import type { ToolAnswer } from "../src/agent/callbacks.ts"
-import { interviewWorker } from "../src/agent/interview.ts"
-import { serverName } from "../src/agent/interviewTools.ts"
+import { interviewWorker } from "../src/agent/inView.ts"
 import { interviewOptions, type WorkerCallbacks } from "../src/agent/options.ts"
+import { serverName } from "../src/agent/ticketTools.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { init, result, sessionState, tool, wait } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -100,13 +100,11 @@ describe("the breakdown's options", () => {
       setup: {
         prompt: "instructions",
         server: { type: "sdk", name: serverName } as never,
-        breakdown: {
-          builtins: breakdownBuiltins(!headless),
-          allowed: qualifiedBreakdownTools,
-          headless,
-          effort: "xhigh",
-          tools: [],
-        },
+        builtins: breakdownBuiltins(!headless),
+        allowed: qualifiedBreakdownTools,
+        headless,
+        effort: "xhigh",
+        tools: [],
       },
       chrome: false,
       callbacks,

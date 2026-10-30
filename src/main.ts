@@ -6,9 +6,9 @@
 // the run asks the start question and shows the dashboard in the command's one OpenTUI renderer
 // (src/ui/renderer.ts), the log goes to its file alone, and once the renderer is gone the run's
 // summary, closing and scope lines are printed in the theme of the renderer's appearance, then the
-// report with its organ lines, then the end record (src/run/run.ts's finish). New feature, at the start question, opens the Interview
-// view in that renderer (src/run/interview.ts); once its epic is filed and you say y, the run goes
-// on, scoped to the epic, into the dashboard. Otherwise the run is plain (§ 7.6): the start question as
+// report with its organ lines, then the end record (src/run/run.ts's finish). New feature, at the
+// start question, opens the Interview view in that renderer (src/run/interview.ts); once its epic
+// is filed, the run goes on, scoped to the epic, into the dashboard, with nothing asked. Otherwise the run is plain (§ 7.6): the start question as
 // lines, log lines on stdout, with a line saying why when the terminal couldn't show a dashboard,
 // the log's summary lines, then the report.
 // Signals (§ 7.4, src/run/quit.ts): SIGUSR1 winds the run down, SIGUSR2 too, their handlers in place
@@ -41,7 +41,7 @@ import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
 import { ClaudeCode } from "./agent/ClaudeCode.ts"
 import { BranchEnv, branchEnv, WorkerEnv, workerEnv } from "./agent/env.ts"
-import { interviewWorker } from "./agent/interview.ts"
+import { interviewWorker } from "./agent/inView.ts"
 import { requiresServerFor } from "./agent/requiresTools.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
@@ -1081,10 +1081,13 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               yield* begin(Work.Tickets())
             }
             if (work._tag === "Feature") {
-              // The interview, in this renderer; once its epic is filed and you say y, the run.
+              // The interview, in this renderer; once its epic is filed and checked, the run, with
+              // nothing asked. What it says is held for the main screen until the renderer is gone.
+              const printer = makePrinter(screen.out, themeOf(shell.appearance.get()))
               const outcome = yield* interview(work.description, {
                 screen: interviewScreen(shell, themeOf, desktop),
-                confirm: (plan, question) => askPlan(shell, themeOf, plan, question),
+                say: printer.print,
+                error: screen.error,
               })
               if (outcome._tag !== "Run") {
                 return { _tag: "Interviewed", work, ending: interviewEnding(outcome) } as const

@@ -577,15 +577,16 @@ export const rootNote = (tree: Pick<CheckedTree, "note" | "assumptions">): strin
 }
 
 /**
- * Files `tree` under `root` with bd, every issue with the metadata `spec` (`path`): the issues in
- * their order, each with its links, then the links, the deferred links removed, the updates and
- * the deferrals, then the root epic's note. `filed` hears of each issue filed.
+ * Files `tree` under `root` with bd, every issue with the metadata `spec` (`path`; none for a
+ * feature's tree, `path` null): the issues in their order, each with its links, then the links,
+ * the deferred links removed, the updates and the deferrals, then the root epic's note. `filed`
+ * hears of each issue filed.
  */
 export const fileTree = (
   tree: CheckedTree,
   options: {
     readonly root: TicketId
-    readonly path: string
+    readonly path: string | null
     readonly filed?: (issue: TreeIssue, id: TicketId) => Effect.Effect<void>
   },
 ): Effect.Effect<FiledTree, TreeFilingStopped, Beads> =>
@@ -610,7 +611,7 @@ export const fileTree = (
           blockedBy: issue.waitsFor.map(idOf),
           ...(issue.labels.length === 0 ? {} : { labels: issue.labels }),
           metadata: {
-            [specKey]: options.path,
+            ...(options.path === null ? {} : { [specKey]: options.path }),
             ...(issue.files.length === 0 ? {} : { [MetadataKey.files]: issue.files }),
           },
           checked: true,

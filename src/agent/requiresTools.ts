@@ -44,9 +44,9 @@ import {
   says,
 } from "../run/requires.ts"
 import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "./callbacks.ts"
-import { serverName } from "./interviewTools.ts"
+import { serverName } from "./ticketTools.ts"
 
-/** The worker's server's name, the interview's: its tools are `mcp__tutti__<name>` to Claude Code. */
+/** The worker's server's name, tutti's own: its tools are `mcp__tutti__<name>` to Claude Code. */
 export const requiresServerName = serverName
 
 /** The names of a worker's requires tools. */

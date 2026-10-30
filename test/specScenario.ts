@@ -10,7 +10,7 @@ import { Deferred, Duration, Effect, Layer, Option } from "effect"
 import { breakdownWorker } from "../src/agent/breakdown.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import type { ToolAnswer } from "../src/agent/callbacks.ts"
-import { serverName } from "../src/agent/interviewTools.ts"
+import { serverName } from "../src/agent/ticketTools.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
 import type { Spec } from "../src/run/spec.ts"
 import type { SpecOutcome } from "../src/run/specRun.ts"
@@ -67,10 +67,10 @@ export const call = (
     const sent = yield* (yield* Deferred.await(recording)).sentTo(breakdownWorker)
     const started = sent.find((s) => s._tag === "Started")
     const kind = started?._tag === "Started" ? started.session.kind : undefined
-    if (kind?._tag !== "Interview" || kind.breakdown === undefined) {
+    if (kind?._tag !== "Interview") {
       throw new Error("no breakdown session started")
     }
-    const found = kind.breakdown.tools.find((t) => t.name === name)
+    const found = kind.tools.find((t) => t.name === name)
     if (found === undefined) throw new Error(`no tool ${name}`)
     answers.push(yield* Effect.promise(() => found.handler(input as never, {})))
   })

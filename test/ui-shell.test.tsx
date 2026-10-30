@@ -7,7 +7,6 @@ import { createTestRenderer } from "@opentui/core/testing"
 import { testRender } from "@opentui/react/test-utils"
 import { Effect, Exit, Option, Queue, Scope, Stream, SubscriptionRef } from "effect"
 import { act, type ReactNode, useEffect } from "react"
-import { Filing } from "../src/agent/interviewTools.ts"
 import { makeCommands, UiCommand } from "../src/run/commands.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
@@ -176,7 +175,7 @@ describe("the bridge", () => {
   test("the screen routes by view", async () => {
     const { view } = await bridged()
     const screen = external<Screen>(Screen.Dashboard())
-    const interview = { description: "A feature", filing: external<Filing>(Filing.None()) }
+    const interview = { description: "A feature", filed: external(false) }
     const setup = await draw(
       <InterviewContext.Provider value={interview}>
         <Root value={shellValue(view, { screen })} />

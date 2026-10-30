@@ -25,6 +25,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { Data, Effect, FileSystem, Option, Result } from "effect"
 import { compareIds, existingLinks } from "../plan/plan.ts"
 import { narrowWarning, shapeOf } from "../plan/shape.ts"
+import { planCycle } from "../project/planFile.ts"
 import { Beads, type BeadsError, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, type GitError, type Sha } from "../services/Git.ts"
 import { runFolder } from "../services/Worktrees.ts"
@@ -492,16 +493,18 @@ export const treeCount = (epics: number, tickets: number): string =>
   `${plural(epics, "epic")}, ${plural(tickets, "ticket")}`
 
 /**
- * The tree of the spec at `path` under `root`, as bd has it: refused when the root epic isn't an
- * epic, or carries another spec's metadata; otherwise counted, with warnings for the issues under
- * it without the spec's metadata, whose workers aren't told of the spec, those of the spec outside
- * it, which the run leaves out, open tickets without files metadata, whose files tutti then
- * guesses, or without acceptance criteria, and a tree whose blocks links keep a run of `concurrent`
- * tickets at a time narrow (narrowWarning).
+ * The tree of the spec at `path` under `root`, as bd has it, or of a feature's breakdown, `path`
+ * null: refused when the root epic isn't an epic, or carries another spec's metadata; otherwise
+ * counted, with warnings for the issues under it without the spec's metadata, whose workers aren't
+ * told of the spec, those of the spec outside it, which the run leaves out (neither for a
+ * feature's), open tickets without files metadata, whose files tutti then guesses, or without
+ * acceptance criteria, a cycle of blocks links among the open tickets, none of which can then
+ * start, and a tree whose blocks links keep a run of `concurrent` tickets at a time narrow
+ * (narrowWarning).
  */
 export const checkFiled = (
   root: TicketId,
-  path: string,
+  path: string | null,
   concurrent: number,
 ): Effect.Effect<Filed, BeadsError, Beads> =>
   Effect.gen(function* () {
@@ -517,7 +520,7 @@ export const checkFiled = (
       }
     }
     const its = metadataText(top, SpecMetadata.spec)
-    if (its !== null && its !== path) {
+    if (path !== null && its !== null && its !== path) {
       return {
         epics: 0,
         tickets: 0,
@@ -541,7 +544,7 @@ export const checkFiled = (
       }
       epics = next
     }
-    const spec = yield* specIssues(path)
+    const spec = path === null ? [] : yield* specIssues(path)
     const warnings: Array<string> = []
     const named = (issues: ReadonlyArray<Issue>) =>
       [...issues]
@@ -555,7 +558,8 @@ export const checkFiled = (
         `${plural(outside.length, "issue")} of the spec ${path} ${outside.length === 1 ? "is" : "are"} outside ${id}, and the run leaves ${outside.length === 1 ? "it" : "them"} out: ${named(outside)}`,
       )
     }
-    const bare = under.filter((issue) => metadataText(issue, SpecMetadata.spec) !== path)
+    const bare =
+      path === null ? [] : under.filter((issue) => metadataText(issue, SpecMetadata.spec) !== path)
     if (bare.length > 0) {
       warnings.push(
         `${plural(bare.length, "issue")} under ${id} ${bare.length === 1 ? "doesn't" : "don't"} carry the spec's metadata, so ${bare.length === 1 ? "its worker isn't" : "their workers aren't"} told of the spec: ${named(bare)}`,
@@ -572,6 +576,20 @@ export const checkFiled = (
     if (noAcceptance.length > 0) {
       warnings.push(
         `${plural(noAcceptance.length, "open ticket")} under ${id} ${noAcceptance.length === 1 ? "has" : "have"} no acceptance criteria: ${named(noAcceptance)}`,
+      )
+    }
+    const openIds = new Set<string>(open.map((issue) => issue.id))
+    const cycle = planCycle(
+      open.map((issue) => ({
+        key: issue.id,
+        blockedBy: issue.dependencies
+          .filter((d) => d.type === "blocks" && openIds.has(d.id))
+          .map((d) => d.id),
+      })),
+    )
+    if (cycle !== undefined) {
+      warnings.push(
+        `the blocks links among the open tickets under ${id} make a cycle, so none of them can start: ${cycle.map(sanitizeLine).join(" → ")}`,
       )
     }
     const narrow = narrowWarning(shapeOf(root, under, existingLinks(under)), concurrent)

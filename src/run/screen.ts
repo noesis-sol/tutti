@@ -11,7 +11,7 @@
 import { Data, Duration, Effect, Option, type Scope, Stream, SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
-import { interviewWorker } from "../agent/interview.ts"
+import { interviewWorker } from "../agent/inView.ts"
 import { type LatestAction, Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import type { TicketId } from "../services/Beads.ts"

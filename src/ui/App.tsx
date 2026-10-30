@@ -128,8 +128,7 @@ const interviewValueOf = (inputs: InterviewInputs) =>
   Effect.gen(function* () {
     return {
       description: inputs.description,
-      filing: yield* bridge(inputs.filing),
-      ...(inputs.filed === undefined ? {} : { filed: yield* bridge(inputs.filed) }),
+      filed: yield* bridge(inputs.filed),
       ...(inputs.leaveQuestion === undefined ? {} : { leaveQuestion: inputs.leaveQuestion }),
       ...(inputs.leaveAbout === undefined ? {} : { leaveAbout: inputs.leaveAbout }),
       ...(inputs.name === undefined ? {} : { name: inputs.name }),

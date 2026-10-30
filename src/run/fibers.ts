@@ -7,7 +7,7 @@
 // needs no set, as that scope interrupts it as it closes, and RunFibers.left doesn't see it: a
 // ticket's watchers while its worker settles (work.ts's watchLimit and timeLimit, settle.ts's
 // undeferAtLimit), the view's projection (runView.ts), the screen's followers (screen.ts), the
-// interview's (interview.ts), the keep-awake command (keepAwake.ts) and the SIGTSTP log (quit.ts).
+// interview's (src/run/interview.ts), the keep-awake command (keepAwake.ts) and the SIGTSTP log (quit.ts).
 // So does a session's own FiberSet, in the session's scope, that the SDK's callbacks run in
 // (src/agent/callbacks.ts). The trash's deletions (trash.ts) are in a set of its layer's, as long as
 // tutti's rather than the run's, on purpose: a merged worktree's files may still be going as it ends.

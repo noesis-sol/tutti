@@ -21,6 +21,7 @@ import {
   resolveServers,
 } from "../src/agent/mcp.ts"
 import {
+  interviewBuiltins,
   interviewOptions,
   probeOptions,
   type WorkerCallbacks,
@@ -58,7 +59,15 @@ const worker = (servers: ChosenServers) =>
 const interview = (chrome: boolean) =>
   interviewOptions({
     config,
-    setup: { prompt: "Talk it through.", server: createSdkMcpServer({ name: "tutti" }) },
+    setup: {
+      prompt: "Talk it through.",
+      server: createSdkMcpServer({ name: "tutti" }),
+      builtins: interviewBuiltins,
+      allowed: [],
+      headless: false,
+      effort: null,
+      tools: [],
+    },
     chrome,
     callbacks,
     session: { _tag: "New", sessionId: "s" },

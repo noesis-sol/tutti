@@ -1,14 +1,15 @@
 // A question's talk, the session side (§ 4.11, tutti-i0sz): Talk it through, in the answer form,
 // talks one question ticket through with Claude in an SDK session in the main checkout before it is
 // answered, as orchestra's answer talk does when the maintainer asks. AgentHost knows the session as
-// interviewWorker, as it knows a spec's refinement, for the Interview view shows it. Its
-// instructions are templates/answer-talk-prompt.md (orchestra's answer-prompt.md, adapted to one
-// question), appended to the claude_code preset; its built-in tools are the interview's, read-only,
-// and its one MCP server is tutti's own, with tickets_list and ticket_show (interviewTools.ts) and
-// give_answer, which hands tutti the answer the maintainer settled on.
+// interviewWorker (inView.ts), as it knows a breakdown with the user, for the Interview view shows
+// it. Its instructions are templates/answer-talk-prompt.md (orchestra's answer-prompt.md, adapted
+// to one question), appended to the claude_code preset; its built-in tools are a breakdown's with
+// the user there, read-only, and its one MCP server is tutti's own, with tickets_list and
+// ticket_show (ticketTools.ts) and give_answer, which hands tutti the answer the maintainer settled
+// on.
 //
-// The first message brings the question in, between pasted_content tags carrying a fresh ID, as the
-// interview's description is (a worker wrote it): its ID, title and description, its options from
+// The first message brings the question in, between pasted_content tags carrying a fresh ID, as a
+// feature's description is (a worker wrote it): its ID, title and description, its options from
 // the metadata, the recommended one first, or a note that the session drafts them, the open tickets
 // it blocks with their description, design and notes, and the tickets it was asked from.
 //
@@ -43,10 +44,10 @@ import {
   toolHandler,
   toolRefusal,
 } from "./callbacks.ts"
-import { interviewWorker, leadAndPasted, turnOver } from "./interview.ts"
-import { readTools, serverName } from "./interviewTools.ts"
+import { interviewWorker, leadAndPasted, turnOver } from "./inView.ts"
 import { interviewBuiltins } from "./options.ts"
 import { SessionKind } from "./sessionKind.ts"
+import { readTools, serverName } from "./ticketTools.ts"
 
 /** The talk's instructions, appended to the claude_code preset; its leading comment left out. */
 export const answerTalkPrompt: string = template.replace(/^<!--[\s\S]*?-->\n/, "")
@@ -272,13 +273,11 @@ export const startAnswerTalk = (
       kind: SessionKind.Interview({
         prompt: answerTalkPrompt,
         server: tools.server,
-        breakdown: {
-          builtins: interviewBuiltins,
-          allowed: qualifiedTalkTools,
-          headless: false,
-          effort: null,
-          tools: tools.tools,
-        },
+        builtins: interviewBuiltins,
+        allowed: qualifiedTalkTools,
+        headless: false,
+        effort: null,
+        tools: tools.tools,
       }),
     })
     const first = yield* leadAndPasted(talkLead, text)

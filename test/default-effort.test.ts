@@ -3,6 +3,7 @@ import type { McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-
 import { Exit, Option, Result } from "effect"
 import fc from "fast-check"
 import {
+  interviewBuiltins,
   interviewOptions,
   probeOptions,
   type WorkerCallbacks,
@@ -31,7 +32,7 @@ const callbacks: WorkerCallbacks = {
 
 const server = { type: "sdk", name: "tutti", instance: {} } as McpSdkServerConfigWithInstance
 
-/** The effort of a worker's, the probe's and the interview's options under `config`. */
+/** The effort of a worker's, the probe's and a feature's breakdown's options under `config`. */
 const effortsOf = (config: AppConfigValue) => {
   const shared = { config }
   const session = { _tag: "New", sessionId: "s" } as const
@@ -49,7 +50,15 @@ const effortsOf = (config: AppConfigValue) => {
     probe: probeOptions(shared).effort,
     interview: interviewOptions({
       ...shared,
-      setup: { prompt: "Talk it through.", server },
+      setup: {
+        prompt: "Talk it through.",
+        server,
+        builtins: interviewBuiltins,
+        allowed: [],
+        headless: false,
+        effort: null,
+        tools: [],
+      },
       chrome: false,
       callbacks,
       session,
@@ -76,7 +85,7 @@ describe("workers.effort's default", () => {
     expect(defaultSettings.workers.effort).toBe("high")
   })
 
-  test("workers, the login probe and the feature interview start at high by default", () => {
+  test("workers, the login probe and a feature's breakdown start at high by default", () => {
     expect(effortsOf(appConfig())).toEqual({ worker: "high", probe: "high", interview: "high" })
   })
 

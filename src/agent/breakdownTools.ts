@@ -1,11 +1,11 @@
-// A spec breakdown's own tools (§ 4.14), on an in-process MCP server named `tutti`, the one MCP server
-// the breakdown's session is given, as the feature interview's (interviewTools.ts):
+// A breakdown's own tools (§ 4.10, § 4.14), a spec's or a feature's, on tutti's in-process MCP
+// server (ticketTools.ts), the one MCP server the breakdown's session is given:
 //
-// - tickets_list and ticket_show read the project's tickets, as the interview's do;
+// - tickets_list and ticket_show read the project's tickets (ticketTools.ts);
 // - file_root files the root epic and, where the spec needs one, the environment ticket under it,
-//   P0 and solo, each with the spec's metadata: once they are filed the run can start on that ticket
-//   while the session works out the rest (orchestra-qd9e.1). A root epic filed already, by an
-//   earlier breakdown, refuses it;
+//   P0 and solo, each with the spec's metadata (a feature's carry none): once they are filed the run
+//   can start on that ticket while the session works out the rest (orchestra-qd9e.1). A root epic
+//   filed already, by an earlier breakdown or an earlier call, refuses it;
 // - file_breakdown takes the rest of the tree in one call (src/run/specTree.ts), checks it against
 //   bd's issues and the repository's files, refusing it with every reason and filing nothing, or
 //   files it and answers with each issue's ID; an update's changes to the open tickets go in the
@@ -36,7 +36,7 @@ import {
 import { Beads, beadsWhy, type Issue, MetadataKey, type TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "./callbacks.ts"
-import { readTools, serverName } from "./interviewTools.ts"
+import { readTools, serverName } from "./ticketTools.ts"
 
 /** The names of a breakdown's own tools. */
 export const breakdownToolNames = [
@@ -99,8 +99,12 @@ const priority = z
 
 /** file_root's input, as the model gives it. */
 const rootShape = {
-  title: z.string().describe("The root epic's title: what the spec builds, at most 60 characters"),
-  description: z.string().describe("The spec summed up: what it builds, its parts, its epics"),
+  title: z
+    .string()
+    .describe("The root epic's title: what the spec or feature builds, at most 60 characters"),
+  description: z
+    .string()
+    .describe("The spec summed up, or the feature's description and the decisions settled"),
   priority: priority.describe("Its most urgent ticket's priority, 0 (critical) to 4 (backlog)"),
   environment: z
     .object({
@@ -110,7 +114,7 @@ const rootShape = {
       files: z.array(z.string()).describe("The repository paths it changes, new ones included"),
     })
     .optional()
-    .describe("The environment setup ticket, where the spec needs one: filed P0 and solo"),
+    .describe("The environment setup ticket, where one is needed: filed P0 and solo"),
 }
 
 const issueShape = z.object({
@@ -121,7 +125,9 @@ const issueShape = z.object({
   type: z.enum(treeTypes),
   priority,
   title: z.string().describe("A plain summary, at most 60 characters"),
-  description: z.string().describe("The context, citing the spec's sections by heading"),
+  description: z
+    .string()
+    .describe("The context, citing the spec's sections by heading or the root epic's decisions"),
   acceptance: z.string().describe("What must be true when it is done; empty for an epic"),
   labels: z.array(z.string()).describe("solo, spike, …"),
   files: z.array(z.string()).describe("The repository paths it changes; none for an epic"),
@@ -186,13 +192,14 @@ export const filedTreeText = (tree: CheckedTree, filed: FiledTree): string =>
   ].join("\n")
 
 /**
- * The breakdown's tools for `spec`, committed in the main checkout `repo`: `root` is the root epic
- * an earlier breakdown filed, if any, and `update` says whether this one updates its tree. Their
- * handlers run in the breakdown's `fibers`, with the Beads and Git they were made with.
+ * The breakdown's tools for `spec`, committed in the main checkout `repo`, or for a feature, `spec`
+ * null: `root` is the root epic an earlier breakdown filed, if any, and `update` says whether this
+ * one updates its tree. Their handlers run in the breakdown's `fibers`, with the Beads and Git they
+ * were made with.
  */
 export const makeBreakdownTools = (options: {
   readonly repo: string
-  readonly spec: Pick<Spec, "path">
+  readonly spec: Pick<Spec, "path"> | null
   readonly root: TicketId | null
   readonly update: boolean
   readonly fibers: SessionFibers
@@ -208,7 +215,9 @@ export const makeBreakdownTools = (options: {
       answer: Answer.None(),
     })
     const run = yield* toolHandler<Beads | Git>(options.fibers)
-    const path = options.spec.path
+    const path = options.spec?.path ?? null
+    /** The metadata `spec` of each issue filed: none for a feature's. */
+    const specMetadata = path === null ? {} : { [SpecMetadata.spec]: path }
     const counted = (epics: number, tickets: number) =>
       SubscriptionRef.update(state, (s) => ({
         ...s,
@@ -221,7 +230,7 @@ export const makeBreakdownTools = (options: {
 
     const fileRoot = tool(
       "file_root",
-      "Files the spec's root epic and, where the spec needs one, the environment setup ticket under it (P0, solo), each with the spec's metadata. Answers with their IDs. Call it once, before file_breakdown; not when the root epic is filed already.",
+      "Files the root epic and, where it needs one, the environment setup ticket under it (P0, solo). Answers with their IDs. Call it once, before file_breakdown; not when the root epic is filed already.",
       rootShape,
       (args, extra) =>
         run(
@@ -244,7 +253,7 @@ export const makeBreakdownTools = (options: {
                 description: args.description.trim(),
                 type: "epic",
                 priority: args.priority,
-                metadata: { [SpecMetadata.spec]: path },
+                ...(path === null ? {} : { metadata: specMetadata }),
               })
               .pipe(Effect.result)
             if (Result.isFailure(root)) {
@@ -272,7 +281,7 @@ export const makeBreakdownTools = (options: {
                 parent: rootId,
                 labels: [soloLabel],
                 metadata: {
-                  [SpecMetadata.spec]: path,
+                  ...specMetadata,
                   ...((files.files[0] ?? []).length === 0
                     ? {}
                     : { [MetadataKey.files]: files.files[0] }),
@@ -302,10 +311,14 @@ export const makeBreakdownTools = (options: {
         ),
     )
 
-    /** The issues the answer may name: the spec's, and the open tickets, by ID. */
+    /**
+     * The issues the answer may name: the spec's (a feature's: those under its root epic), and the
+     * open tickets, by ID.
+     */
     const knownIssues = (root: TicketId) =>
       Effect.gen(function* () {
-        const spec = yield* specIssues(path)
+        const spec =
+          path === null ? yield* beads.list({ all: true, parent: root }) : yield* specIssues(path)
         const open = yield* beads.list()
         const ids = new Set<string>(spec.map((issue) => issue.id))
         const known = new Map<string, KnownIssue>()
@@ -326,7 +339,7 @@ export const makeBreakdownTools = (options: {
 
     const fileBreakdown = tool(
       "file_breakdown",
-      "Files the rest of the spec's tree under the root epic, in one call: its child epics and tickets, and for an update the changes to the open tickets. tutti checks it first, refusing it with every reason and filing nothing; then files it and answers with each issue's ID. Call it once, last.",
+      "Files the rest of the tree under the root epic, in one call: its child epics and tickets, and for an update the changes to the open tickets. tutti checks it first, refusing it with every reason and filing nothing; then files it and answers with each issue's ID. Call it once, last.",
       breakdownShape,
       (args, extra) => run(fileOnce(args), extra),
     )

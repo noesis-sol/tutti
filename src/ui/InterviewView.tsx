@@ -1,5 +1,5 @@
-// The Interview view (§ 4.10, § 7.1, § 7.3): the chat with the feature interview's session, in
-// the command's one renderer, built from the worker view's components. Its chrome: `← Back`, then
+// The Interview view (§ 4.10, § 7.1, § 7.3): the chat with a feature's breakdown, in its feature
+// mode (the interview), in the command's one renderer, built from the worker view's components. Its chrome: `← Back`, then
 // the interview's mark, status and elapsed time, and the description's first line, wrapped in a
 // narrow pane as the worker view's header is, over a rule.
 // Under it, the session's transcript as the worker view draws it (Claude's text as Markdown, each
@@ -8,7 +8,7 @@
 // where you type your answers: Enter sends, Alt+Enter or Ctrl+J starts a new line.
 //
 // Leaving (`Esc` outside the composer, or a click on `← Back`) asks `End the interview? Nothing has
-// been filed.`: `y` ends it, `n` or `Esc` stays. Once file_feature has filed something, leaving
+// been filed.`: `y` ends it, `n` or `Esc` stays. Once the session has filed something, leaving
 // asks nothing. Leaving sends CloseWorker, which run/interview.ts takes as the interview's end.
 // A spec's refinement and a question's talk (run/answerTalk.ts) are shown the same way, with their
 // own name in the head and their own leaving question.
@@ -22,8 +22,7 @@
 import { useTerminalDimensions } from "@opentui/react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { MessageUuid } from "../agent/AgentHost.ts"
-import { interviewWorker } from "../agent/interview.ts"
-import { type Filing, filedSomething } from "../agent/interviewTools.ts"
+import { interviewWorker } from "../agent/inView.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
 import { cardMark, elapsed, statusLook } from "./Card.tsx"
@@ -55,9 +54,8 @@ import { TranscriptPane, TranscriptSection } from "./worker/Story.tsx"
 /** What the Interview view reads besides the shell: the description, and what has been filed. */
 export interface InterviewValue {
   readonly description: string
-  readonly filing: External<Filing>
-  /** Whether something is filed, where `filing` doesn't say: a spec's refinement (§ 4.14). */
-  readonly filed?: External<boolean>
+  /** Whether the session has filed something (a question's talk: given its answer). */
+  readonly filed: External<boolean>
   /** What leaving asks while nothing is filed, in place of the interview's (leaveQuestion). */
   readonly leaveQuestion?: string
   /** What leaving says under its question, in place of the interview's (leaveAbout). */
@@ -241,7 +239,7 @@ export const InterviewView = () => {
 
   // Leaving asks first while nothing has been filed.
   const leave = () => {
-    if (interview.filed?.get() ?? filedSomething(interview.filing.get())) {
+    if (interview.filed.get()) {
       command(UiCommand.CloseWorker())
       return
     }

@@ -176,10 +176,6 @@ export const fileQuestion = (plan: Plan): string =>
     ? "File this ticket and start the run?"
     : `File these ${plan.tickets.length} tickets and start the run?`
 
-/** The question after an interview filed the epic `epic` with `tickets` tickets. */
-export const startOnQuestion = (epic: string, tickets: number): string =>
-  `Start the run on ${sanitizeLine(epic)} (${plural(tickets, "ticket")})?`
-
 /** The confirmation's answers: y or yes; n, no or nothing. */
 export const confirmHint = "[y/N]"
 

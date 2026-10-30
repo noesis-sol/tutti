@@ -11,7 +11,6 @@ import { Effect, type Scope, SubscriptionRef } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import type { Attention } from "../agent/Attention.ts"
 import { startAnswerTalk, TalkEnd } from "../agent/answerTalk.ts"
-import { Filing } from "../agent/interviewTools.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import type { AppConfig } from "../cli/AppConfig.ts"
 import type { Beads } from "../services/Beads.ts"
@@ -44,7 +43,6 @@ export const talkQuestion = (
     const { ended } = yield* inInterviewView(
       {
         description: `${question.id}: ${question.title}`,
-        filing: yield* SubscriptionRef.make<Filing>(Filing.None()),
         filed: talk.tools.given,
         name: talkName,
         leaveQuestion: talkLeaveQuestion,

@@ -11,7 +11,6 @@
 
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { Filing } from "../src/agent/interviewTools.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
@@ -170,7 +169,7 @@ const scene = (
 ) =>
   withRender(
     <InterviewContext.Provider
-      value={{ description: "Add a --json flag.", filing: external(Filing.None()) }}
+      value={{ description: "Add a --json flag.", filed: external(false) }}
     >
       <Root
         value={{

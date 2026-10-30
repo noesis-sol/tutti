@@ -1,7 +1,7 @@
-// The Interview view (§ 4.10, § 7.1): the chat with the interview's session, built from the worker
-// view's components; leaving it, which asks first unless file_feature filed something; and the
-// interview's side of the run: its commands reaching the session, the plan confirmation once the
-// epic is filed, the run on y, and what an interview that runs nothing says.
+// The Interview view (§ 4.10, § 7.1): the chat with a feature's breakdown, built from the worker
+// view's components; leaving it, which asks first unless the session filed something; and the
+// interview's side of the run: its commands reaching the session, the tree checked once the epic is
+// filed, the run started on it with nothing asked, and what an interview that runs nothing says.
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
@@ -14,12 +14,10 @@ import fc from "fast-check"
 import { act } from "react"
 import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
-import { interviewWorker } from "../src/agent/interview.ts"
-import { Filing } from "../src/agent/interviewTools.ts"
+import { Answer, type BreakdownState, type BreakdownTools } from "../src/agent/breakdownTools.ts"
+import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import type { FeaturePlan, FiledPlan } from "../src/project/planFile.ts"
-import { FilingFailed } from "../src/project/planFile.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { exitCodes } from "../src/run/holds.ts"
 import {
@@ -33,9 +31,11 @@ import {
   interviewView,
   leftMessage,
   quitMessage,
+  startingLine,
 } from "../src/run/interview.ts"
 import type { RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import { TreeFilingStopped } from "../src/run/specTree.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import {
   assistantText,
@@ -52,7 +52,7 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
-import { layer as beadsLayer } from "../src/testing/Beads.ts"
+import { Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as memoryGit } from "../src/testing/Git.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
@@ -60,8 +60,6 @@ import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { interviewScreen, Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { InterviewContext, leaveAbout, leaveQuestion } from "../src/ui/InterviewView.tsx"
-import { askPlan } from "../src/ui/PlanConfirmation.tsx"
-import { FormCancelled, type Plan } from "../src/ui/questions.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
@@ -190,15 +188,15 @@ const scene = async (
   body: (at: {
     readonly view: Settable<RunView>
     readonly commands: Commands
-    readonly filing: Settable<Filing>
+    readonly filed: Settable<boolean>
     readonly rendered: Rendered
   }) => Promise<void>,
-  options: { readonly requests?: ReadonlyArray<AttentionRequest>; readonly filing?: Filing } = {},
+  options: { readonly requests?: ReadonlyArray<AttentionRequest>; readonly filed?: boolean } = {},
 ) => {
   clock.reset()
   const view = external(viewOf(options.requests))
   const commands = Effect.runSync(makeCommands)
-  const filing = external<Filing>(options.filing ?? Filing.None())
+  const filed = external(options.filed ?? false)
   const value: ShellValue = {
     view,
     screen: external<Screen>(Screen.Interview()),
@@ -209,11 +207,11 @@ const scene = async (
     transcripts: fixedFeed(items),
   }
   await withRender(
-    <InterviewContext.Provider value={{ description, filing: filing as External<Filing> }}>
+    <InterviewContext.Provider value={{ description, filed: filed as External<boolean> }}>
       <Root value={value} />
     </InterviewContext.Provider>,
     { width: 80, height: 24 },
-    (rendered) => body({ view, commands, filing, rendered }),
+    (rendered) => body({ view, commands, filed, rendered }),
   )
 }
 
@@ -306,10 +304,10 @@ describe("the Interview view", () => {
     })
   })
 
-  test("once file_feature filed something, leaving asks nothing", async () => {
-    await scene(chat, async ({ commands, filing, rendered }) => {
+  test("once the session filed something, leaving asks nothing", async () => {
+    await scene(chat, async ({ commands, filed, rendered }) => {
       await until(rendered, has("Should `--json` replace"))
-      filing.set(Filing.Filed({ plan, filed }))
+      filed.set(true)
       await press(rendered, "escape")
       expect((await rendered.capture()).chars).not.toContain(leaveQuestion)
       expect(taken(commands)).toEqual([UiCommand.CloseWorker()])
@@ -319,44 +317,59 @@ describe("the Interview view", () => {
 
 // The interview's side of the run, with the scripted host.
 
-/** The plan file_feature filed: an epic and two tickets. */
-const plan: FeaturePlan = {
-  epic: { title: "A --json flag for list", description: "list prints JSON with --json." },
-  tickets: [
-    {
-      key: "t1",
-      title: "JSON output for list",
-      type: "feature",
-      priority: 2,
-      description: "Why and what.",
-      acceptance: "The tests pass.",
-      files: ["src/list.ts"],
-      blockedBy: [],
-      solo: false,
-    },
-    {
-      key: "t2",
-      title: "Document --json",
-      type: "task",
-      priority: 1,
-      description: "Why and what.",
-      acceptance: "The tests pass.",
-      files: [],
-      blockedBy: ["t1"],
-      solo: true,
-    },
-  ],
-  questions: [],
-  notes: [],
+/** The breakdown's own tools, on the session the interview started. */
+const toolsOfSession = Effect.gen(function* () {
+  const recording = yield* Recording
+  for (;;) {
+    const started = (yield* recording.sentTo(interviewWorker)).find((s) => s._tag === "Started")
+    const kind = started?._tag === "Started" ? started.session.kind : undefined
+    if (kind?._tag === "Interview") return kind
+    yield* Effect.sleep("5 millis")
+  }
+})
+
+/** Calls the breakdown's tool `name` with `input`, as the session would. */
+const call = (
+  tools: Pick<BreakdownTools, "tools">,
+  name: string,
+  input: Record<string, unknown>,
+) => {
+  const found = tools.tools.find((t) => t.name === name)
+  if (found === undefined) throw new Error(`no tool ${name}`)
+  return Effect.promise(() => found.handler(input as never, {}))
 }
 
-const filed: FiledPlan = {
-  epic: "bd-7" as TicketId,
-  tickets: new Map([
-    ["t1", "bd-7.1" as TicketId],
-    ["t2", "bd-7.2" as TicketId],
-  ]),
-}
+const ticket = (fields: Record<string, unknown>) => ({
+  parent: "",
+  type: "task",
+  priority: 2,
+  description: "Why and what.",
+  acceptance: "The tests pass.",
+  labels: [],
+  files: ["README.md"],
+  waits_for: [],
+  ...fields,
+})
+
+/** Files the feature's epic and two tickets side by side with the tools, as the session would. */
+const fileFeature = (
+  tools: Pick<BreakdownTools, "tools">,
+  issues: ReadonlyArray<Record<string, unknown>> = [
+    ticket({ key: "json", title: "JSON output for list" }),
+    ticket({ key: "docs", title: "Document --json" }),
+  ],
+) =>
+  Effect.gen(function* () {
+    const root = yield* call(tools, "file_root", {
+      title: "A --json flag for list",
+      description: "list prints JSON with --json.",
+      priority: 1,
+    })
+    const epic = /Filed the root epic (\S+)\./.exec(
+      root.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
+    )?.[1]
+    yield* call(tools, "file_breakdown", { root: epic ?? "", issues })
+  })
 
 /** The uuid the composer drew for your answer. */
 const sentUuid = "5d1f6a3e-2222-4c8e-9a51-6f0d1f0b2a02" as MessageUuid
@@ -384,14 +397,14 @@ const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-ui-interview
 
 /**
  * Runs the interview of `description` with the scripted host playing `script`; `drive` acts in the
- * view's place once it is shown, and `answer` answers the confirmation.
+ * view's place once it is shown. What it said, line by line.
  */
 const scenario = <A,>(
   script: Script,
-  drive: (inputs: InterviewInputs) => Effect.Effect<A>,
-  answer: Effect.Effect<boolean, FormCancelled> = Effect.succeed(true),
+  drive: (inputs: InterviewInputs) => Effect.Effect<A, never, Recording>,
 ) => {
-  const asked: Array<{ plan: Plan; question: string }> = []
+  const said: Array<string> = []
+  const errors: Array<string> = []
   return Effect.runPromise(
     Effect.gen(function* () {
       const shown = yield* Deferred.make<InterviewInputs>()
@@ -399,18 +412,16 @@ const scenario = <A,>(
       const fiber = yield* Effect.forkChild(
         interview(description, {
           screen,
-          confirm: (shownPlan, question) =>
-            Effect.suspend(() => {
-              asked.push({ plan: shownPlan, question })
-              return answer
-            }),
+          say: (text) => Effect.sync(() => void said.push(text)),
+          error: (text) => Effect.sync(() => void errors.push(text)),
         }),
       )
       const drove = yield* Effect.flatMap(Deferred.await(shown), drive)
       const outcome = yield* Fiber.join(fiber)
       const recording = yield* Recording
       const sent = yield* recording.sentTo(interviewWorker)
-      return { outcome, asked, sent, drove }
+      const issues = yield* (yield* Backlog).issues
+      return { outcome, said, errors, sent, drove, issues }
     }).pipe(Effect.provide(layersFor(folder(), script))),
   )
 }
@@ -442,6 +453,34 @@ const filingSession = (filing: Effect.Effect<void>): Script => [
   ],
 ]
 
+/**
+ * A session whose second turn files the feature with `issues` through its own tools, once `find`
+ * has found them on the started session: the view's driver runs it.
+ */
+const filingWith = (issues?: ReadonlyArray<Record<string, unknown>>) => {
+  const found: { tools?: Pick<BreakdownTools, "tools"> } = {}
+  return {
+    script: filingSession(
+      Effect.suspend(() =>
+        found.tools === undefined ? Effect.void : fileFeature(found.tools, issues),
+      ),
+    ),
+    find: Effect.map(toolsOfSession, (tools) => {
+      found.tools = tools
+    }),
+  }
+}
+
+/** Your answer, sent from the composer once it is your turn. */
+const answered = (inputs: InterviewInputs) =>
+  Effect.gen(function* () {
+    yield* viewWhere(inputs, idle)
+    yield* Queue.offer(
+      inputs.commands,
+      UiCommand.SendMessage({ ticket: interviewWorker, text: "Beside it.", uuid: sentUuid }),
+    )
+  })
+
 describe("the interview's side of the run", () => {
   test("the view is shown the interview's card and transcript, at the Interview screen", async () => {
     const { outcome, drove } = await scenario(filingSession(Effect.void), (inputs) =>
@@ -457,71 +496,49 @@ describe("the interview's side of the run", () => {
     expect(drove.view.cards.map((card) => [card.ticket, card.title, card.status])).toEqual([
       [interviewWorker, "Add a --json flag to list.", "your turn"],
     ])
-    expect(outcome).toEqual(InterviewOutcome.Left({ filing: Filing.None(), quit: false }))
+    expect(outcome._tag).toBe("Left")
+    if (outcome._tag !== "Left") return
+    expect(outcome.quit).toBe(false)
+    expect(outcome.state.root).toBeNull()
+    expect(interviewEnding(outcome)).toEqual({ out: [], error: [leftMessage], exitCode: 0 })
   })
 
-  test("your answer reaches the session; once the epic is filed, the confirmation, and y runs it", async () => {
-    let inputsSeen: InterviewInputs | undefined
-    const { outcome, asked, sent } = await scenario(
-      filingSession(
-        Effect.suspend(() =>
-          inputsSeen === undefined
-            ? Effect.void
-            : SubscriptionRef.set(inputsSeen.filing, Filing.Filed({ plan, filed })),
-        ),
-      ),
-      (inputs) =>
-        Effect.gen(function* () {
-          inputsSeen = inputs
-          yield* viewWhere(inputs, idle)
-          yield* Queue.offer(
-            inputs.commands,
-            UiCommand.SendMessage({ ticket: interviewWorker, text: "Beside it.", uuid: sentUuid }),
-          )
-        }),
+  test("your answer reaches the session; once the epic is filed, the run starts with nothing asked", async () => {
+    const filing = filingWith()
+    const { outcome, said, errors, sent, issues } = await scenario(filing.script, (inputs) =>
+      Effect.andThen(filing.find, answered(inputs)),
     )
     const messages = sent.flatMap((each) => (each._tag === "Message" ? [each.message] : []))
     expect(messages.at(-1)?.message.content).toBe("Beside it.")
     expect(messages.at(-1)?.uuid).toBe(sentUuid)
-    expect(asked.map((each) => each.question)).toEqual(["Start the run on bd-7 (2 tickets)?"])
-    expect(asked[0]?.plan.tickets.map((ticket) => [ticket.key, ticket.after])).toEqual([
-      ["bd-7.1", []],
-      ["bd-7.2", ["bd-7.1"]],
-    ])
     expect(sent.some((each) => each._tag === "Ended" || each._tag === "Closed")).toBe(true)
-    expect(outcome).toEqual(InterviewOutcome.Run({ epic: "bd-7" as TicketId, tickets: 2 }))
+    const epic = issues[0]?.id ?? ("?" as TicketId)
+    expect(issues.map((issue) => [issue.type, issue.parent])).toEqual([
+      ["epic", undefined],
+      ["task", epic],
+      ["task", epic],
+    ])
+    expect(outcome).toEqual(InterviewOutcome.Run({ epic, tickets: 2 }))
+    expect(said).toEqual([startingLine(epic, 2)])
+    expect(said[0]).toBe(`filed ${epic}: 2 tickets, starting the run`)
+    expect(errors).toEqual([])
   })
 
-  test("n at the confirmation, or Esc, leaves the epic filed and runs nothing", async () => {
-    for (const answer of [Effect.succeed(false), Effect.fail(new FormCancelled())]) {
-      let inputsSeen: InterviewInputs | undefined
-      const { outcome } = await scenario(
-        filingSession(
-          Effect.suspend(() =>
-            inputsSeen === undefined
-              ? Effect.void
-              : SubscriptionRef.set(inputsSeen.filing, Filing.Filed({ plan, filed })),
-          ),
-        ),
-        (inputs) =>
-          Effect.gen(function* () {
-            inputsSeen = inputs
-            yield* viewWhere(inputs, idle)
-            yield* Queue.offer(
-              inputs.commands,
-              UiCommand.SendMessage({
-                ticket: interviewWorker,
-                text: "Beside it.",
-                uuid: sentUuid,
-              }),
-            )
-          }),
-        answer,
-      )
-      expect(outcome).toEqual(InterviewOutcome.Declined({ epic: "bd-7" as TicketId, tickets: 2 }))
-    }
+  test("the tree is checked once filed: open tickets without files are a warning", async () => {
+    const filing = filingWith([
+      ticket({ key: "json", title: "JSON output for list", files: [] }),
+      ticket({ key: "docs", title: "Document --json" }),
+    ])
+    const { outcome, said, errors, issues } = await scenario(filing.script, (inputs) =>
+      Effect.andThen(filing.find, answered(inputs)),
+    )
+    const epic = issues[0]?.id ?? ("?" as TicketId)
+    expect(outcome).toEqual(InterviewOutcome.Run({ epic, tickets: 2 }))
+    expect(errors).toEqual([
+      `warning: 1 open ticket under ${epic} has no files metadata, so tutti guesses its files: ${issues[1]?.id}`,
+    ])
+    expect(said).toEqual([startingLine(epic, 2)])
   })
-
   test("an AskUserQuestion answered in the view goes to Attention, and the session goes on", async () => {
     const input = {
       questions: [
@@ -562,7 +579,7 @@ describe("the interview's side of the run", () => {
     )
     const answered = sent.flatMap((each) => (each._tag === "Answered" ? [each] : []))
     expect(answered.map((each) => each.result?.behavior)).toEqual(["allow"])
-    expect(outcome).toEqual(InterviewOutcome.Left({ filing: Filing.None(), quit: true }))
+    expect(outcome._tag === "Left" && outcome.quit).toBe(true)
   })
 
   test("a session that can't start runs nothing, and says why", async () => {
@@ -573,7 +590,8 @@ describe("the interview's side of the run", () => {
           Effect.sync(() => {
             shown = true
           }),
-        confirm: () => Effect.succeed(true),
+        say: () => Effect.void,
+        error: () => Effect.void,
       }).pipe(Effect.provide(layersFor(folder(), [[failStart("no login")]]))),
     )
     expect(shown).toBe(false)
@@ -592,50 +610,111 @@ describe("the interview's side of the run", () => {
 const controls = (code: number): boolean => code < 0x20 || (code >= 0x7f && code < 0xa0)
 
 describe("interviewEnding", () => {
-  const failed = new FilingFailed({
-    what: "ticket t2",
-    reason: "bd create failed",
-    mayHaveFiled: false,
-    epic: "bd-7",
-    filed: [{ id: "bd-7" as TicketId, key: null, title: "A --json flag for list" }],
-    unlinked: null,
+  /** What the breakdown had filed: `fields` over nothing. */
+  const state = (fields: Partial<BreakdownState> = {}): BreakdownState => ({
+    root: null,
+    environment: null,
+    epics: 0,
+    tickets: 0,
+    answer: Answer.None(),
+    ...fields,
+  })
+  const filedTree = state({
+    root: "bd-7" as TicketId,
+    epics: 1,
+    tickets: 2,
+    answer: Answer.Filed({
+      tree: {
+        issues: [],
+        updates: [],
+        deferrals: [],
+        links: [],
+        unlinks: [],
+        assumptions: [],
+        note: "",
+        notes: [],
+      },
+      filed: { ids: new Map(), epics: 0, tickets: 2 },
+    }),
   })
 
   test("what each end says, and its exit code", () => {
-    expect(
-      interviewEnding(InterviewOutcome.Declined({ epic: "bd-7" as TicketId, tickets: 2 })),
-    ).toEqual({
-      out: ["Filed epic bd-7 with 2 tickets; nothing was run. Run it with: tutti --ticket bd-7"],
-      error: [],
-      exitCode: exitCodes.ok,
-    })
-    expect(interviewEnding(InterviewOutcome.Left({ filing: Filing.None(), quit: false }))).toEqual({
+    expect(interviewEnding(InterviewOutcome.Left({ state: state(), quit: false }))).toEqual({
       out: [],
       error: [leftMessage],
       exitCode: exitCodes.ok,
     })
-    expect(interviewEnding(InterviewOutcome.Left({ filing: Filing.None(), quit: true }))).toEqual({
+    expect(interviewEnding(InterviewOutcome.Left({ state: state(), quit: true }))).toEqual({
       out: [],
       error: [quitMessage],
       exitCode: exitCodes.interrupted,
     })
+    expect(interviewEnding(InterviewOutcome.Left({ state: filedTree, quit: false }))).toEqual({
+      out: [filedLine("bd-7" as TicketId, 2)],
+      error: [],
+      exitCode: exitCodes.ok,
+    })
+    expect(filedLine("bd-7" as TicketId, 2)).toBe(
+      "Filed epic bd-7 with 2 tickets; nothing was run. Run it with: tutti --ticket bd-7",
+    )
     expect(
       interviewEnding(
-        InterviewOutcome.Left({ filing: Filing.Filed({ plan, filed }), quit: false }),
+        InterviewOutcome.Left({
+          state: state({ root: "bd-7" as TicketId, epics: 1 }),
+          quit: false,
+        }),
       ),
-    ).toEqual({ out: [filedLine("bd-7" as TicketId, 2)], error: [], exitCode: exitCodes.ok })
-    expect(
-      interviewEnding(InterviewOutcome.Ended({ why: "it crashed", filing: Filing.None() })),
     ).toEqual({
+      out: [],
+      error: [
+        "tutti: the interview ended with the epic bd-7 filed, but not its tickets; nothing was run. Close it with: bd close bd-7",
+      ],
+      exitCode: exitCodes.ok,
+    })
+    expect(interviewEnding(InterviewOutcome.Ended({ why: "it crashed", state: state() }))).toEqual({
       out: [],
       error: ["tutti: the interview's session ended: it crashed; nothing was filed."],
       exitCode: exitCodes.tool,
     })
     const stopped = interviewEnding(
-      InterviewOutcome.Left({ filing: Filing.Stopped({ failed }), quit: false }),
+      InterviewOutcome.Left({
+        state: state({
+          root: "bd-7" as TicketId,
+          epics: 1,
+          tickets: 1,
+          answer: Answer.Stopped({
+            stopped: new TreeFilingStopped({
+              what: "issue docs (Document --json)",
+              reason: "bd create failed",
+              filed: 1,
+              total: 2,
+            }),
+          }),
+        }),
+        quit: false,
+      }),
     )
-    expect(stopped.exitCode).toBe(exitCodes.tool)
-    expect(stopped.error[0]).toBe("tutti couldn't file ticket t2: bd create failed")
+    expect(stopped).toEqual({
+      out: [],
+      error: [
+        "tutti filed 1 of its answer's 2 issues, then couldn't file issue docs (Document --json): bd create failed",
+        "tutti: nothing was run under bd-7.",
+      ],
+      exitCode: exitCodes.tool,
+    })
+    expect(
+      interviewEnding(
+        InterviewOutcome.Refused({
+          epic: "bd-7" as TicketId,
+          why: "bd-7 is a task, not an epic",
+          exitCode: exitCodes.setup,
+        }),
+      ),
+    ).toEqual({
+      out: [],
+      error: ["tutti won't run what the interview filed under bd-7: bd-7 is a task, not an epic"],
+      exitCode: exitCodes.setup,
+    })
   })
 
   test("what it says of the session's words and the epic's ID stays on its line, printable", () => {
@@ -645,9 +724,16 @@ describe("interviewEnding", () => {
         fc.string({ minLength: 1 }).map((epic) => epic as TicketId),
         (why, epic) => {
           const lines = [
-            ...interviewEnding(InterviewOutcome.Ended({ why, filing: Filing.None() })).error,
+            ...interviewEnding(InterviewOutcome.Ended({ why, state: state() })).error,
             ...interviewEnding(InterviewOutcome.NotStarted({ why })).error,
-            ...interviewEnding(InterviewOutcome.Declined({ epic, tickets: 1 })).out,
+            ...interviewEnding(InterviewOutcome.Refused({ epic, why, exitCode: 2 })).error,
+            ...interviewEnding(
+              InterviewOutcome.Left({ state: state({ root: epic, epics: 1 }), quit: false }),
+            ).error,
+            ...interviewEnding(
+              InterviewOutcome.Left({ state: { ...filedTree, root: epic }, quit: false }),
+            ).out,
+            startingLine(epic, 1),
           ]
           for (const line of lines) {
             expect([...line].some((ch) => controls(ch.codePointAt(0) ?? 0))).toBe(false)
@@ -672,7 +758,7 @@ describe("interviewEnding", () => {
 describe("the interview in the command's renderer", () => {
   const actEnvironment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 
-  test("the chat, your answer, the filing, then the confirmation: y runs the epic", async () => {
+  test("the chat, your answer, the filing, then the view goes and the run starts", async () => {
     const setup = await createTestRenderer({
       ...rendererConfig,
       width: 80,
@@ -695,31 +781,23 @@ describe("the interview in the command's renderer", () => {
       }
     }
     try {
-      let inputsSeen: InterviewInputs | undefined
+      const filing = filingWith()
+      const said: Array<string> = []
       const shown = interviewScreen(shell, themeOf)
       let fiber: Fiber.Fiber<InterviewOutcome> | undefined
       await act(async () => {
         fiber = Effect.runFork(
-          interview(description, {
-            screen: (inputs) => {
-              inputsSeen = inputs
-              return shown(inputs)
-            },
-            confirm: (filedPlan, question) => askPlan(shell, themeOf, filedPlan, question),
-          }).pipe(
-            Effect.provide(
-              layersFor(
-                folder(),
-                filingSession(
-                  Effect.suspend(() =>
-                    inputsSeen === undefined
-                      ? Effect.void
-                      : SubscriptionRef.set(inputsSeen.filing, Filing.Filed({ plan, filed })),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          Effect.gen(function* () {
+            const running = yield* Effect.forkChild(
+              interview(description, {
+                screen: shown,
+                say: (text) => Effect.sync(() => void said.push(text)),
+                error: () => Effect.void,
+              }),
+            )
+            yield* filing.find
+            return yield* Fiber.join(running)
+          }).pipe(Effect.provide(layersFor(folder(), filing.script))),
         )
       })
       expect(await showing("Beside the table, or instead of it?")).toContain("your turn")
@@ -728,14 +806,14 @@ describe("the interview in the command's renderer", () => {
         await setup.mockInput.typeText("Beside it.")
         setup.mockInput.pressEnter()
       })
-      const confirmation = await showing("Start the run on bd-7 (2 tickets)?")
-      expect(confirmation).toContain("Epic: bd-7 A --json flag for list")
-      expect(confirmation).not.toContain("← Back")
-      await act(async () => {
-        await setup.mockInput.typeText("y")
-      })
       const outcome = await Effect.runPromise(Fiber.join(fiber as Fiber.Fiber<InterviewOutcome>))
-      expect(outcome).toEqual(InterviewOutcome.Run({ epic: "bd-7" as TicketId, tickets: 2 }))
+      expect(outcome._tag).toBe("Run")
+      if (outcome._tag !== "Run") return
+      expect(outcome.tickets).toBe(2)
+      expect(said).toEqual([startingLine(outcome.epic, 2)])
+      const after = await drawnFrame(setup)
+      expect(after).not.toContain("← Back")
+      expect(after).not.toContain("Start the run on")
     } finally {
       setup.renderer.destroy()
     }

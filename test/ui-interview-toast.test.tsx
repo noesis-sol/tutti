@@ -4,8 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
-import { interviewWorker } from "../src/agent/interview.ts"
-import { Filing } from "../src/agent/interviewTools.ts"
+import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { makeCommands } from "../src/run/commands.ts"
@@ -75,7 +74,7 @@ const interviewAt = async (width: number, body: (rendered: Rendered) => Promise<
     transcripts: feed,
   }
   await withRender(
-    <InterviewContext.Provider value={{ description, filing: external(Filing.None()) }}>
+    <InterviewContext.Provider value={{ description, filed: external(false) }}>
       <Root value={shell} />
     </InterviewContext.Provider>,
     { width, height: 20 },

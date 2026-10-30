@@ -465,18 +465,20 @@ run it.
 #### Talked through
 
 Pick **New feature** at the start question and describe the feature (`Alt+Enter` or `Ctrl+J` for a
-new line). tutti opens the **interview**: a chat, in tutti's screen, with a Claude session in the
-main checkout that asks you about the feature in rounds, numbered questions each with its recommended
-answer, until you share an understanding, then proposes the epic and its tickets. You answer in the
-composer (`i`), or pick an option where a question is a choice.
+new line). tutti opens the **interview**: a chat, in tutti's screen, with the Claude session that
+breaks a [spec](#a-whole-app-from-a-spec) down, in its feature mode, in the main checkout. It asks
+you about the feature in rounds, numbered questions each with its recommended answer, until you
+share an understanding, then sums up the epic and its tickets and files them once you agree. You
+answer in the composer (`i`), or pick an option where a question is a choice.
 
 The session reads the repository and the open tickets, and can't change anything: its only tools are
-read-only, and it files the feature through a tool of tutti's, which checks the plan before filing.
-Once it has filed and its turn is over, tutti shows the epic and its tickets and asks
-`Start the run on <epic> (N tickets)? [y/N]`. `y` runs it; otherwise:
-`Filed epic <id> with N tickets; nothing was run. Run it with: tutti --ticket <id>`.
+read-only, and it files the feature through the breakdown's tools, which check the tree before
+filing. Once it has filed and its turn is over, the view goes, tutti checks the tree (warning of
+tickets without files or acceptance criteria, and of a cycle of blocks links), says
+`filed <epic>: N tickets, starting the run`, and runs it: nothing asks.
 
-`Esc` (outside the composer) or **← Back** asks `End the interview? Nothing has been filed.` The
+`Esc` (outside the composer) or **← Back** asks `End the interview? Nothing has been filed.`; left
+once it has filed, it says `Filed epic <id> with N tickets; nothing was run. Run it with: tutti --ticket <id>`. The
 interview needs tutti's full screen: where the start question is asked as lines (`TERM=dumb`, fewer
 than 256 colours), choosing it says so and exits 0, and `tutti --feature` plans the feature instead.
 
@@ -1165,7 +1167,7 @@ same lines, without colour, in the summary at the end of its log.
 
 | Code | Meaning |
 |---|---|
-| 0 | the run ended by itself: nothing left (`READY_EMPTY`), the limit reached (`LIMIT_REACHED`), or wound down as asked (`DRAINED`); also nothing to run, a feature plan declined, or an interview that filed nothing or wasn't run |
+| 0 | the run ended by itself: nothing left (`READY_EMPTY`), the limit reached (`LIMIT_REACHED`), or wound down as asked (`DRAINED`); also nothing to run, a feature plan declined, or an interview left before its epic ran |
 | 2 | a setup problem (all are listed), one a worker's first `system/init` showed (`SETUP_PROBLEM`), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), a spec run's checks gate holding its tree (`CHECKS_HELD`), Claude's login refused in a worker's turn (`LOGIN`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
 | 3 | a worker idle with its ticket in progress (`PAUSED`), a request unanswered (`BLOCKED`), or a worker past its ticket limit (`TICKET_LIMIT`) |
 | 4 | Beads or git failing (`BEADS_FAILED`, `GIT_FAILED`, …), or tutti failing itself (`PANIC`) |
