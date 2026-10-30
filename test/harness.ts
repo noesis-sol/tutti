@@ -36,6 +36,7 @@ import type { Git, GitWriter } from "../src/services/Git.ts"
 import type { Notifier } from "../src/services/Notifier.ts"
 import type { RunLock } from "../src/services/RunLock.ts"
 import type { State, Store } from "../src/services/Store.ts"
+import type { Stray, Strays } from "../src/services/Strays.ts"
 import type { Tty, TtyValue } from "../src/services/Tty.ts"
 import type { Worktrees } from "../src/services/Worktrees.ts"
 import { layer as accountLayer, accountProbe, initialization } from "../src/testing/Account.ts"
@@ -61,6 +62,7 @@ import { Captured as Notices, layer as notifierLayer } from "../src/testing/Noti
 import { type Held, layer as lockLayer } from "../src/testing/RunLock.ts"
 import { layer as spendingLayer } from "../src/testing/Spending.ts"
 import { layer as storeLayer } from "../src/testing/Store.ts"
+import { layer as straysLayer } from "../src/testing/Strays.ts"
 import { type Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { layer as ttyLayer } from "../src/testing/Tty.ts"
 import { type Reported, layer as usageLayer } from "../src/testing/UsageLimits.ts"
@@ -103,6 +105,7 @@ export type Env =
   | Spending
   | RunFibers
   | Trash
+  | Strays
   | TestClock.TestClock
   | BunServices.BunServices
 
@@ -142,6 +145,8 @@ export interface Setup {
   /** Locks other processes hold. */
   readonly locks?: ReadonlyArray<Held>
   readonly worktrees?: WorktreesOptions
+  /** What was left running in a folder the trash stops, by folder: nothing by default. */
+  readonly strays?: Readonly<Record<string, ReadonlyArray<Stray>>>
   /** The terminal: `tty()`'s builder makes one; an 80×24 256-colour TTY by default. */
   readonly tty?: TtyValue
   /** What the usage-limit hold's probes are answered, in order; Allowed once they run out. */
@@ -273,6 +278,7 @@ export const environment = (
         logLayer(),
         eventsLayer(),
         worktreesLayer(setup.worktrees, worktreeCalls),
+        straysLayer(setup.strays),
         lockLayer(setup.locks),
         ttyLayer(setup.tty),
         fibersLayer,

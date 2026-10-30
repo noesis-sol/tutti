@@ -7,6 +7,7 @@ import { dropNothingDone } from "../src/run/aside.ts"
 import { EventStream } from "../src/run/eventstream.ts"
 import { noFigures } from "../src/run/figures.ts"
 import { Log } from "../src/run/log.ts"
+import { Trash } from "../src/run/trash.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { GitFailed } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -25,6 +26,12 @@ const refusing = Layer.succeed(
         }),
       ),
   } as unknown as Worktrees["Service"]),
+)
+
+// Nothing was left running in its worktree.
+const trash = Layer.succeed(
+  Trash,
+  Trash.of({ stopLeft: () => Effect.void } as unknown as Trash["Service"]),
 )
 
 describe("dropNothingDone's CLEANUP_FAILED", () => {
@@ -47,7 +54,9 @@ describe("dropNothingDone's CLEANUP_FAILED", () => {
     )
     await Effect.runPromise(
       dropNothingDone({ id: "t-1" as TicketId, path: "/w/t-1", branch: "tutti/t-1" }).pipe(
-        Effect.provide(Layer.mergeAll(refusing, noting.pipe(Layer.provideMerge(capturedLog())))),
+        Effect.provide(
+          Layer.mergeAll(refusing, trash, noting.pipe(Layer.provideMerge(capturedLog()))),
+        ),
       ),
     )
     expect(seen).toEqual([

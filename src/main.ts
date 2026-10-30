@@ -135,6 +135,7 @@ import { layer as notifierLayer } from "./services/Notifier.ts"
 import { whichOnPath } from "./services/onPath.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
+import { layer as straysLayer } from "./services/Strays.ts"
 import {
   outputMode,
   plainReasonLine,
@@ -256,8 +257,9 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
   )
   return Layer.mergeAll(host, organs).pipe(
     Layer.provideMerge(attention),
-    // Merged worktrees' folders, deleted in the background (trash.ts).
-    Layer.provideMerge(trashLayer),
+    // Merged worktrees' folders, deleted in the background (trash.ts), what was left running in
+    // them stopped first (Strays.ts).
+    Layer.provideMerge(trashLayer.pipe(Layer.provide(straysLayer()))),
     Layer.provideMerge(notifying),
     Layer.provideMerge(second),
     Layer.provideMerge(first),

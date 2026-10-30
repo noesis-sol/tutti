@@ -62,6 +62,7 @@ import {
 } from "./settle.ts"
 import type { SetUps } from "./setup.ts"
 import { type StartError, type StartedWorker, type StartTicket, start } from "./start.ts"
+import { Trash } from "./trash.ts"
 import type { Deferral, Triage } from "./triage.ts"
 
 /** A ticket that stopped the run, and the exit code the run ends with for it (§ 5 item 10). */
@@ -122,6 +123,7 @@ const removeWorktree = (worker: StartedWorker, force: boolean) =>
   Effect.gen(function* () {
     const worktrees = yield* Worktrees
     const { id, path, branch } = worker.worktree
+    yield* (yield* Trash).stopLeft(path, id)
     const removed = yield* Effect.result(worktrees.remove(id, { force }))
     if (Result.isSuccess(removed)) return line`worktree and branch removed`
     return line`but ${Tag.cleanupFailed} for ${path} / ${branch}: ${gitWhy(removed.failure)}`
@@ -572,7 +574,7 @@ export const leaveAside = (
   settled: Settled,
   limited: boolean,
   triage: Triage | undefined,
-): Effect.Effect<void, never, EventStream | Ledger | Log | Worktrees> =>
+): Effect.Effect<void, never, EventStream | Ledger | Log | Trash | Worktrees> =>
   Effect.gen(function* () {
     if (!limited) yield* toTriage(worker, settled, triage)
     // Only the readings conclude sets aside say whether their worker did anything.

@@ -24,6 +24,7 @@ import type { Line, Log } from "./log.ts"
 import * as log from "./log.ts"
 import { Move } from "./phase.ts"
 import { warn } from "./say.ts"
+import { Trash } from "./trash.ts"
 
 /** The ticket set aside: its ID and title, as its records name it. */
 export interface AsideTicket {
@@ -129,9 +130,10 @@ export const dropNothingDone = (worktree: {
   readonly id: TicketId
   readonly path: string
   readonly branch: string
-}): Effect.Effect<void, never, EventStream | Log | Worktrees> =>
+}): Effect.Effect<void, never, EventStream | Log | Trash | Worktrees> =>
   Effect.gen(function* () {
     const { id, path, branch } = worktree
+    yield* (yield* Trash).stopLeft(path, id)
     const removed = yield* Effect.result((yield* Worktrees).remove(id))
     if (Result.isSuccess(removed)) return
     const text = log.detail`${log.Tag.cleanupFailed} for ${path} / ${branch}: ${gitWhy(removed.failure)}`

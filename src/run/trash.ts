@@ -7,9 +7,14 @@
 // in the trash, as what a crashed run left, is deleted as the next run starts (clearLeft). A
 // deletion that fails is a CLEANUP_FAILED warning naming the folder: the merge said its ticket's
 // worktree and branch removed, which git has forgotten, and only the folder's files are left.
+//
+// What a ticket's worker left running in its worktree (Strays.ts) is stopped before its folder is
+// deleted, and before git removes a worktree that isn't set aside (stopLeft): a detail line names
+// them, as tutti's load line counted them against the run.
 import { Context, Effect, FiberSet, Layer, Result } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import type { TicketId } from "../services/Beads.ts"
+import { Strays } from "../services/Strays.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { detail, Log, Tag, ticketLine } from "./log.ts"
@@ -28,16 +33,25 @@ export class Trash extends Context.Service<
      * the background, each folder a detail line once it is gone. It never fails.
      */
     readonly clearLeft: Effect.Effect<void>
+    /**
+     * Stops the processes left running in `path`, `ticket`'s worktree or its folder set aside,
+     * before it is removed (Strays.stop), a detail line naming them. It never fails.
+     */
+    stopLeft(path: string, ticket?: TicketId): Effect.Effect<void>
     /** Waits for the deletions under way to end. */
     readonly settled: Effect.Effect<void>
   }
 >()("tutti/run/Trash") {}
 
-/** The trash over the run's Worktrees, Log and EventStream. The live run and the tests use it. */
-export const layer: Layer.Layer<Trash, never, Worktrees | Log | EventStream> = Layer.effect(
+/** What the trash needs: the run's Worktrees, Strays, Log and EventStream. */
+type TrashEnv = Worktrees | Strays | Log | EventStream
+
+/** The trash over TrashEnv. The live run and the tests use it. */
+export const layer: Layer.Layer<Trash, never, TrashEnv> = Layer.effect(
   Trash,
   Effect.gen(function* () {
     const worktrees = yield* Worktrees
+    const strays = yield* Strays
     const logs = yield* Log
     const says = yield* sayer
     const deletions = yield* FiberSet.make<void, never>()
@@ -52,6 +66,19 @@ export const layer: Layer.Layer<Trash, never, Worktrees | Log | EventStream> = L
         ticket,
       )
 
+    const stopLeft = (path: string, ticket?: TicketId) =>
+      Effect.gen(function* () {
+        const stopped = yield* strays.stop(path)
+        if (stopped.length === 0) return
+        const count = stopped.length === 1 ? "1 process" : `${stopped.length} processes`
+        const commands = stopped.map((stray) => stray.command)
+        yield* logs.write(
+          ticket === undefined
+            ? detail`stopped ${count} left running in ${path}: ${commands}`
+            : detail`${ticket}: stopped ${count} left running in ${path}: ${commands}`,
+        )
+      })
+
     const remove = (path: string, gone: Effect.Effect<void>, ticket?: TicketId) =>
       Effect.suspend(() => {
         if (deleting.has(path)) return Effect.void
@@ -59,10 +86,13 @@ export const layer: Layer.Layer<Trash, never, Worktrees | Log | EventStream> = L
         return Effect.asVoid(
           FiberSet.run(
             deletions,
-            Effect.matchEffect(worktrees.deleteAside(path), {
-              onFailure: (error) => failed(path, error, ticket),
-              onSuccess: () => gone,
-            }).pipe(Effect.ensuring(Effect.sync(() => deleting.delete(path)))),
+            Effect.matchEffect(
+              Effect.andThen(stopLeft(path, ticket), worktrees.deleteAside(path)),
+              {
+                onFailure: (error) => failed(path, error, ticket),
+                onSuccess: () => gone,
+              },
+            ).pipe(Effect.ensuring(Effect.sync(() => deleting.delete(path)))),
           ),
         )
       })
@@ -88,6 +118,7 @@ export const layer: Layer.Layer<Trash, never, Worktrees | Log | EventStream> = L
     return Trash.of({
       delete: (path, ticket) => remove(path, Effect.void, ticket),
       clearLeft,
+      stopLeft,
       settled: FiberSet.awaitEmpty(deletions),
     })
   }),

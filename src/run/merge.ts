@@ -1197,6 +1197,8 @@ export const removeMerged = (
     // Nothing in it git would refuse to delete: its files go in the background.
     const aside =
       Result.isSuccess(status) && (written !== undefined || allChanges(status.success).length === 0)
+    // Set aside, what was left running in it is stopped as the trash deletes it.
+    if (!aside) yield* (yield* Trash).stopLeft(at, id)
     const removed = yield* Effect.result(worktrees.remove(id, { ...removal, aside }))
     if (Result.isFailure(removed)) return failed(removed.failure)
     if (removed.success !== undefined) yield* (yield* Trash).delete(removed.success, id)
