@@ -1,6 +1,8 @@
 // Copying selected text (§ 7.3). A drag selects text with OpenTUI's selection, drawn in the
 // `selection` and `selectionText` roles (§ 7.11); on release the text selected is copied, with a
-// toast: `copied`, or `couldn't copy` when it fails.
+// toast: `copied`, or `couldn't copy` when it fails. A click on a ticket's ID in the tickets table
+// copies the ID (useCopyOnClick, tutti-vkuj), its cell saying `✓ copied` for a moment, and toasts
+// only `couldn't copy`.
 //
 // How it is copied depends on where tutti runs. In a local session it is the desktop's own
 // clipboard: `pbcopy` on macOS, and on Linux `wl-copy` in a Wayland session or `xclip` in an X one,
@@ -17,17 +19,20 @@ import type { CliRenderer, Selection } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { Duration, Effect, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { useContext, useEffect } from "react"
+import { useCallback, useContext, useEffect, useRef, useState } from "react"
 import { installedOnPath } from "../services/onPath.ts"
 import type { Env } from "../services/Tty.ts"
 import type { ToastStore } from "./Toasts.tsx"
-import { ShellContext } from "./useRunView.ts"
+import { ShellContext, useInterval } from "./useRunView.ts"
 
 /** What a copy toasts. */
 export const copiedToast = "copied"
 
 /** What a copy that failed toasts. */
 export const copyFailedToast = "couldn't copy"
+
+/** How long what a click copied is marked copied, in ms (useCopyOnClick). */
+export const copiedLife = 1500
 
 /** How long the desktop's command may take to take the text, before it is stopped. */
 export const copyLimit: Duration.Duration = Duration.seconds(5)
@@ -196,4 +201,58 @@ export const useCopyOnSelect = (toasts: ToastStore): void => {
       renderer.off("selection", onSelection)
     }
   }, [renderer, clipboard, toasts])
+}
+
+/** What a click copies, and what it copied last, marked for `copiedLife` ms (useCopyOnClick). */
+export interface CopyOnClick {
+  /** What was copied, while it is marked copied; null once the mark has gone, or a copy failed. */
+  readonly copied: string | null
+  /** Copies `text`; to be called on the click's release, before OpenTUI ends its selection. */
+  readonly copy: (text: string) => void
+}
+
+/**
+ * Copies what a click names, a ticket's ID in the tickets table (tutti-vkuj), with the shell's
+ * Clipboard: once copied it is `copied` for `copiedLife` ms, on the shell's intervals, a copy again
+ * starting them over, and nothing is toasted; a copy that fails toasts `couldn't copy` in `toasts`,
+ * as a drag's does. The click's selection is cleared, so that a second click soon after selects no
+ * word (OpenTUI's double click) for useCopyOnSelect to copy over it. Nothing without a Clipboard.
+ */
+export const useCopyOnClick = (toasts: ToastStore): CopyOnClick => {
+  const renderer = useRenderer()
+  const clipboard = useContext(ShellContext)?.clipboard
+  const interval = useInterval()
+  const [copied, setCopied] = useState<string | null>(null)
+  const stopMark = useRef<(() => void) | null>(null)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      stopMark.current?.()
+      stopMark.current = null
+    }
+  }, [])
+  const copy = useCallback(
+    (text: string) => {
+      renderer.clearSelection()
+      if (clipboard === undefined) return
+      const done = (ok: boolean) => {
+        if (!mounted.current) return
+        stopMark.current?.()
+        stopMark.current = null
+        setCopied(ok ? text : null)
+        if (!ok) return toasts.show(copyFailedToast, { failure: true })
+        const stop = interval(() => {
+          stop()
+          if (stopMark.current === stop) stopMark.current = null
+          setCopied(null)
+        }, copiedLife)
+        stopMark.current = stop
+      }
+      clipboard.copy(text).then(done, () => done(false))
+    },
+    [renderer, clipboard, interval, toasts],
+  )
+  return { copied, copy }
 }

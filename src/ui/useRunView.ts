@@ -210,6 +210,9 @@ const realInterval: Interval = (run, ms) => {
   return () => clearInterval(timer)
 }
 
+/** The shell's intervals, which a test fires by hand: setInterval's when it has none. */
+export const useInterval = (): Interval => useShell().interval ?? realInterval
+
 /**
  * The time from `clock` every `period` milliseconds while anyone listens: one interval for every
  * listener, started with the first and stopped with the last. A listener joining reads the clock

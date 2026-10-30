@@ -11,7 +11,9 @@
 // many, after which the oldest give way to a `+N earlier tickets` row. Only a resize changes it.
 // The run's summary prints the same table, every row of it and no blank one (print/summary.ts).
 // On the dashboard an Asked row says its question (RunView's note) and is a click target, and the
-// highlight reaches it (TableReach, tutti-fdv1): it opens the questions box at its question.
+// highlight reaches it (TableReach, tutti-fdv1): it opens the questions box at its question. A
+// row's ID cell is a click target of its own, on every row, which copies the ID (tutti-vkuj); for
+// a moment after, it says `✓ copied` in its place.
 import type { Card, Row } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { fit, framed, padded, type Segments, seg, targeting } from "./line.tsx"
@@ -66,11 +68,20 @@ export const shownRows = (rows: ReadonlyArray<Row>, size: TableSize): ReadonlyAr
 
 /**
  * What the dashboard's keys and clicks reach in the table (§ 7.2): the row the highlight is on,
- * drawn in the focus's look, and each row's click target, where it has one (an Asked row's).
+ * drawn in the focus's look, and each row's click target, where it has one (an Asked row's); each
+ * row's ID cell's, which copies its ID, and the row whose ID was just copied.
  */
 export interface TableReach {
   readonly highlighted: TicketId | null
   readonly target: (row: Row) => number | undefined
+  readonly idTarget: (row: Row) => number
+  readonly copied: string | null
+}
+
+/** What an ID cell says once its ID is copied: `✓ copied`, or `✓` where the column is narrower. */
+export const copiedCell = (width: number): string => {
+  const said = `${marks.done} copied`
+  return Bun.stringWidth(said) <= width ? said : marks.done
 }
 
 /** The table's lines with its label, `width` wide, as tall as `size` says. */
@@ -111,7 +122,11 @@ export const ticketsLines = (
         : seg(fit(row.note, aboutWidth), row.faint ? styles.dim : null)
     const drawn: ReadonlyArray<Segments> = [
       [seg(fit(`${marks[row.mark]} ${row.word}`, stateWidth), style)],
-      [seg(fit(row.label, idWidth), style)],
+      [
+        reach?.copied === row.ticket
+          ? seg(copiedCell(idWidth), styles.closed)
+          : seg(fit(row.label, idWidth), style),
+      ],
       [about],
     ]
     // The highlighted row is drawn in the focus's look, which shows without colour (§ 7.11).
@@ -119,13 +134,16 @@ export const ticketsLines = (
       reach?.highlighted === row.ticket
         ? drawn.map((cell) => cell.map((each) => ({ ...each, look: theme.form.focusedButton })))
         : drawn
-    // A click anywhere on a row with a target presses it, its cells padded to their widths.
+    // A click anywhere on a row with a target presses it, but on its ID cell, which copies the ID;
+    // the cells with a target are padded to their widths.
     const target = reach?.target(row)
+    const targets = [target, reach?.idTarget(row), target]
     const widths = [stateWidth, idWidth, aboutWidth]
     cells.push(
-      target === undefined
-        ? focused
-        : focused.map((cell, i) => targeting(padded(cell, widths[i] ?? 0), target)),
+      focused.map((cell, i) => {
+        const each = targets[i]
+        return each === undefined ? cell : targeting(padded(cell, widths[i] ?? 0), each)
+      }),
     )
   }
   while (cells.length < limit) cells.push([[], [], []])

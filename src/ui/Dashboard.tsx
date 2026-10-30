@@ -29,6 +29,8 @@
 // the table, or, where there is none, to the totals' Needs you cell, then to the table's Asked rows,
 // each drawn in the focus's look while the highlight is on it. Enter, or a click, on an Asked row
 // opens the questions box at its question; on Needs you, the list of what needs you (NeedsList.tsx).
+// A click on a row's ID, on every row, copies it (useCopyOnClick, tutti-vkuj): the one click target
+// with no key, as a drag's copy has none.
 //
 // Attention cards (§ 4.5, AttentionCard.tsx): with no card chosen, the card of the oldest open
 // request is highlighted, and its request is the target. Inside a highlighted attention card, `Tab`,
@@ -59,6 +61,7 @@ import {
   layoutOf,
   sectionLines,
 } from "./Card.tsx"
+import { useCopyOnClick } from "./clipboard.ts"
 import { endOfRunLines } from "./EndOfRunBox.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
@@ -119,6 +122,9 @@ export type Spot = { readonly row: TicketId } | "needs" | null
 
 /** The click targets of the table's rows: a row's index among those drawn, past this. */
 export const rowTarget = 1000
+
+/** The click targets of the table's ID cells, which copy the ID: a row's index among those drawn, past this. */
+export const idTarget = 2000
 
 /** The click target of the totals' Needs you. */
 export const needsTarget = 0
@@ -181,7 +187,7 @@ export interface DashboardLayout {
  * Current, or the box, takes the rest. Below the minimum size, the hint and the totals on one line.
  * The hint (dashboardHint, with `highlighted`'s card highlighted) is laid out with `d` and `a`
  * where a request's buttons may be drawn; where they aren't, a hint the shorter for it gives its
- * lines to the blank ones above the foot.
+ * lines to the blank ones above the foot. The ticket `copied` says `✓ copied` in its ID's place.
  */
 export const dashboardLayout = (
   view: RunView,
@@ -191,6 +197,7 @@ export const dashboardLayout = (
   highlighted: string | null = targetOf(view),
   side: SideState = { needs: view.needs, at: { index: 0, focused: false, choice: 0 } },
   spot: Spot = null,
+  copied: string | null = null,
 ): DashboardLayout => {
   // A section's lines: as many as it needs of those left.
   const { take, rest } = allot(height)
@@ -275,6 +282,8 @@ export const dashboardLayout = (
       {
         highlighted: spot !== null && spot !== "needs" ? spot.row : null,
         target: (row) => (asked.has(row.ticket) ? rowTarget + shown.indexOf(row) : undefined),
+        idTarget: (row) => idTarget + shown.indexOf(row),
+        copied,
       },
     )
     if (panel === 0) return lines
@@ -604,6 +613,12 @@ export const Dashboard = () => {
     [command],
   )
 
+  // The view's keys, as bound: a key does nothing while the key help is open, but close it.
+  const input = useInput()
+  const { box } = input
+  // A click on a ticket's ID copies it, its cell saying `✓ copied` for a moment (tutti-vkuj).
+  const { copied, copy } = useCopyOnClick(input.toasts)
+
   // The hint names `d` and `a` for the highlighted card's request: the layout is the highlight's.
   const sideIndex = side.at.index
   const cardLit = !panelFocused && spot === null
@@ -617,6 +632,7 @@ export const Dashboard = () => {
         cardLit ? highlighted : null,
         { needs, at: { index: sideIndex, focused: panelFocused, choice } },
         spot,
+        copied,
       ),
     [
       view,
@@ -630,6 +646,7 @@ export const Dashboard = () => {
       choice,
       cardLit,
       spot,
+      copied,
     ],
   )
   const { small, ending } = laid
@@ -640,9 +657,6 @@ export const Dashboard = () => {
   const buttons = layout._tag === "Cards"
   const answering = useAnswering(buttons ? cards.flatMap((card) => card.requests.slice(0, 1)) : [])
 
-  // The view's keys, as bound: a key does nothing while the key help is open, but close it.
-  const input = useInput()
-  const { box } = input
   // Toasts are drawn above the hint's lines, however many it wraps onto.
   useLinesUnderToasts(input.toasts, laid.hint.length)
   const showHelp = (shown: boolean) => setHelp(() => shown)
@@ -707,8 +721,14 @@ export const Dashboard = () => {
   }
   // The list of what needs you, where there is no panel.
   const openNeeds = () => box.set(Box.Needs({ at: 0, answered: [] }))
-  // A click on an Asked row, or on Needs you: the highlight goes to it, and it opens.
+  // A click on an Asked row, or on Needs you: the highlight goes to it, and it opens. A click on a
+  // row's ID copies it, and leaves the highlight where it is.
   const pressTable = (target: number) => {
+    if (target >= idTarget) {
+      const row = laid.rows[target - idTarget]
+      if (row !== undefined) copy(row.ticket)
+      return
+    }
     if (target < rowTarget) return pressPanel(target)
     const row = laid.rows[target - rowTarget]
     if (row === undefined) return

@@ -162,6 +162,10 @@ kept room for a whole card for each of up to 6 workers, as many as the run may h
 pane gives the cards room before the table. A pane too short for the table and a line a worker
 leaves it out. The summary after the run lists every ticket.
 
+A click on a ticket's ID copies it: the cell says `✓ copied` (`✓` where the column is narrow) for
+a second and a half, then the ID is back. On a `? for you` row, a click anywhere else on the row
+still opens its question. A drag across the ID selects it, as before.
+
 ### The panel beside the table
 
 In a pane at least 130 columns wide, a panel takes the table's right side, at the table's height:
@@ -423,6 +427,7 @@ open its card (`Tab`, then `Enter`).
 | `Ctrl+C` | the quit box | the quit box |
 | `Ctrl+Z` | a toast: tutti can't be suspended | the same |
 | a drag | select text, copied when you let go | the same |
+| a click on a ticket's ID | copy it, in the tickets table | |
 
 **Answering the request you read.** A key or click answers the request on screen when it was
 pressed. For half a second after a request appears or changes, its card ignores input, so a key
@@ -458,7 +463,8 @@ the dashboard, [`tutti answer`](workers.md#answering-questions-with-tutti-answer
 ## The mouse and copying
 
 Cards, buttons, `← Dashboard`, **Release** and the composer take single clicks; every click has a
-key. So do the forms' buttons, options and lines to type in: the start question's, the plan
+key but one: a click on a ticket's ID in the tickets table copies it, its cell saying `✓ copied`,
+or a toast `couldn't copy` when that fails. So do the forms' buttons, options and lines to type in: the start question's, the plan
 confirmation's `[y/N]`, the answer form's, and `tutti init`'s. The wheel scrolls the transcript under the pointer.
 
 Dragging selects text, which is copied when you let go, with a toast (`copied`, or
