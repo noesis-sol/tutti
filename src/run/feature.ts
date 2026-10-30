@@ -4,7 +4,6 @@
 import { Effect } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { oneLine } from "../ui/oneLine.ts"
 
 /**
  * `effect` with AppConfig scoped to `epic`, as --ticket <epic> scopes a run; a spec run's with its
@@ -28,7 +27,15 @@ export const scopedTo =
  * A feature request on one line, its white space collapsed and cut after 200 characters, for the
  * START block, as orchestra's FeatureLine.
  */
-export const featureLine = (request: string): string => oneLine(request, 201)
+export const featureLine = (request: string): string => {
+  const characters = [
+    ...request
+      .split(/\s+/u)
+      .filter((word) => word !== "")
+      .join(" "),
+  ]
+  return characters.length > 200 ? `${characters.slice(0, 200).join("")}…` : characters.join("")
+}
 
 /** The heading of the report's section with the request a feature run's `epic` was talked through from. */
 export const featureRequestHeading = (epic: TicketId | null): string =>

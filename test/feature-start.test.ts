@@ -75,12 +75,19 @@ describe("featureLine", () => {
           .filter((word) => word !== "")
           .join(" ")
         expect(line).not.toMatch(/\s\s|\n|\t/u)
-        if (line === collapsed) return
-        expect(line.endsWith("…")).toBe(true)
-        expect([...line].length).toBeLessThanOrEqual(201)
-        expect(collapsed.startsWith(line.slice(0, -1))).toBe(true)
+        const characters = [...collapsed]
+        expect(line).toBe(
+          characters.length > 200 ? `${characters.slice(0, 200).join("")}…` : collapsed,
+        )
       }),
     )
+  })
+
+  test("keeps 200 characters, cuts 201, and counts a wide character as one", () => {
+    expect(featureLine("a".repeat(200))).toBe("a".repeat(200))
+    expect(featureLine("a".repeat(201))).toBe(`${"a".repeat(200)}…`)
+    expect(featureLine("漢".repeat(150))).toBe("漢".repeat(150))
+    expect(featureLine("漢".repeat(250))).toBe(`${"漢".repeat(200)}…`)
   })
 })
 
