@@ -199,7 +199,9 @@ describe("the account's windows on the title line", () => {
 
   test("a window whose reset has passed is left out", () => {
     expect(text([windows], 120, 3_600_000)).toEndWith("   This week ━━━─────  41%")
-    expect(text([windows], 120, 8 * 86_400_000)).toBe(" Tutti  0.1.0   main · 192h")
+    const began = { ...title, began: 86_400_000 }
+    const segments = titleSegments(began, [windows], 8 * 86_400_000, theme, 120)
+    expect(segments.map((segment) => segment.text).join("")).toBe(" Tutti  0.1.0   main · 168h")
   })
 
   test("names and gauges", () => {

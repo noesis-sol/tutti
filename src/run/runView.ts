@@ -426,7 +426,7 @@ export interface TitleView {
   readonly scope: string | null
   /** A spec run's spec, which the title line names in place of its root epic; none otherwise. */
   readonly spec?: string | null
-  /** When the run began, in epoch milliseconds. */
+  /** When the run began, in epoch milliseconds; 0 until the run's first view, its time `0s`. */
   readonly began: number
   readonly stopping: boolean
   /** What quitting waits for, shown in place of `· stopping`; null when the run isn't quitting. */

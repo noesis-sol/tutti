@@ -210,7 +210,9 @@ function* titleForms(
       : title.scope === null
         ? ""
         : ` · ticket ${title.scope}`
-  const where = `${title.branch === "" ? "" : `${title.branch} · `}${runTime(now - title.began)}${scoped}`
+  // `began` is 0 until the run's first real view: no time since 1970 before it (tutti-0t8p).
+  const time = runTime(title.began === 0 ? 0 : now - title.began)
+  const where = `${title.branch === "" ? "" : `${title.branch} · `}${time}${scoped}`
   const usage = banners.filter((banner) => banner._tag !== "Hold")
   const holds = banners.filter((banner) => banner._tag === "Hold")
   /**

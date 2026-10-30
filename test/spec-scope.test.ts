@@ -65,10 +65,10 @@ describe("the title line and the summaries", () => {
         branch: "build/shop",
         scope: "shop-a1b" as TicketId,
         spec: spec.path,
-        began: 0,
+        began: 1_000,
       },
     })
-    const title = titleSegments(view.title, view.banners, 65_000, theme, 120)
+    const title = titleSegments(view.title, view.banners, 66_000, theme, 120)
       .map((segment) => segment.text)
       .join("")
     expect(title).toContain("build/shop · 1m5s · spec .tutti/specs/shop.md")
