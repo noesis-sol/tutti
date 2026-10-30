@@ -3,7 +3,8 @@
 // too small for the dashboard (below 60×16). `✓ n Completed`, `↷ n Set aside` with ` · ◆ n
 // triaged`, ` · ◆ n` or neither as the pane narrows, `n Needs you`, and `n of N In queue` with
 // ` · N held back`, ` · N setup failed` and ` · held`; zeros are faint. Beside the panel the bar
-// before In queue is over the panel's left border, both at queueDivider (tutti-ebra).
+// before In queue is over the gap between the tickets table and the panel, both at queueDivider
+// (tutti-ebra, tutti-nsw2).
 // The workers are on the load line above the strip (LoadLine.tsx), and on the one line, `▶ n/N`,
 // which is drawn without it.
 // Where there is no panel beside the tickets table, Needs you is a click target, and the highlight
@@ -122,7 +123,8 @@ const fifthOf = (width: number): number => Math.floor(roomOf(width) / 5)
 
 /**
  * The column, from 0, of the bar before In queue in a strip `width` wide whose first three cells
- * are a fifth of it each, as beside the panel (SidePanel.tsx's panelWidth reads it, tutti-ebra).
+ * are a fifth of it each, as beside the panel, over the gap between the tickets table and the panel
+ * (SidePanel.tsx's panelWidth reads it, tutti-ebra, tutti-nsw2).
  */
 export const queueDivider = (width: number): number => 3 * (fifthOf(width) + 3)
 
@@ -134,7 +136,7 @@ export const queueDivider = (width: number): number => 3 * (fifthOf(width) + 3)
  * that they line up while they can. The triage note doesn't set the others' width: Set aside goes
  * past them where it makes the cell wider, so that the queue keeps the room (tutti-iolm).
  * `besidePanel`, the cells are a fifth each whatever they say, so that the bar before In queue stays
- * at queueDivider, over the panel's left border: Set aside's triage note is cut to ` · ◆ n`, then
+ * at queueDivider, over the gap left of the panel: Set aside's triage note is cut to ` · ◆ n`, then
  * left out, where it would widen its cell past the fifth (tutti-ebra).
  */
 export const totalsStrip = (

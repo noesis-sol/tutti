@@ -1,7 +1,8 @@
 // The panel beside the tickets table (§ 7.2, tutti-h2o9): in a pane at least 130 columns wide, the
 // table gives up its right side, which its last column rarely fills, to a panel of the same height,
-// under the totals strip's In queue cell (tutti-ebra), its label on the `Tickets` label's line and
-// its rounded frame beside the table's. While nothing needs you it shows Up next: the tickets
+// under the totals strip's In queue cell, the gap between them under the strip's bar before In queue
+// (tutti-ebra, tutti-nsw2), its label on the `Tickets` label's line and its rounded frame beside the
+// table's. While nothing needs you it shows Up next: the tickets
 // waiting in the queue, those only a free slot holds back first (`ready`), then each held back or
 // waiting with why, as the log says it (`› after t-1: both touch scripts/check.sh`, tutti-zv69), the
 // tickets it waits for in the live role, wrapped under its text; `+N more` for those that don't fit. While something needs you (tutti-07nj) it shows
@@ -27,12 +28,14 @@ const leastWidth = 44
 export const panelGap = 1
 
 /**
- * The panel's width in a pane `width` wide: from the totals strip's bar before In queue to the
- * pane's right edge, so that its left border is under that bar (tutti-ebra), at least 44 columns; 0
- * where the pane is too narrow for one.
+ * The panel's width in a pane `width` wide: from the column right of the totals strip's bar before
+ * In queue to the pane's right edge, so that the gap between the table and the panel is under that
+ * bar, the table's right border left of it and the panel's left border right of it (tutti-nsw2), at
+ * least 44 columns; 0 where the pane is too narrow for one. Where the 44 columns win, the gap is
+ * left of the bar, though from 130 columns the bar leaves the panel 51 or more.
  */
 export const panelWidth = (width: number): number =>
-  width < panelPane ? 0 : Math.max(width - queueDivider(width), leastWidth)
+  width < panelPane ? 0 : Math.max(width - queueDivider(width) - panelGap, leastWidth)
 
 /** The table's width beside a panel `panel` wide, in a pane `width` wide: all of it with none. */
 export const tableWidth = (width: number, panel: number): number =>

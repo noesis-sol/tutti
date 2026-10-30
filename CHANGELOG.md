@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The gap between the tickets table and the panel beside it is under the totals strip's bar before In queue, so the strip's line runs down into it (§ 7.2; `src/ui/SidePanel.tsx`'s `panelWidth`; tutti-nsw2): tutti-ebra put the panel's left border in that bar's column, the one-column gap left of it, so on screen the bar sat one column right of the gap. Now the gap is in the bar's column, blank on every line beside the table, the table's right border left of it and the panel's left border right of it; the panel still reaches the pane's right edge, one column narrower (51 columns at 130, 61 at 155, 99 at 250), its label one column right of In queue's count. The strip doesn't change. `test/side-panel-divider.test.tsx` covers it.
+
 ## [0.6.0] - 2026-10-29
 
 - Up next says which ticket a held one waits for, and that it starts after it: `› after <id>…`, the ticket or tickets waited for in the live role's cyan, bold under `NO_COLOR` or where a scheme leaves `live` to the default, the rest in the quiet grey (§ 7.2; `src/run/after.ts`, `src/run/holds.ts`, `src/run/runView.ts`, `src/ui/SidePanel.tsx`, `src/ui/marks.ts`' `waitsFor`; tutti-zv69). `touches test/init.test.ts, like running tutti-scod` didn't say which ticket goes first. An overlap is `after <id>: both touch <files>`, a blocker or a follow-up's source not merged `after <id> merges` (`after <a>, <b> merge` for several, `: closed but not merged (…)` or `: filed by its worker` after it where that is why), a solo ticket `after <id> (solo)`, an epic `after its subtickets: <id>, <id>, then +N`, said again as each subticket merges. A reason wraps under its text, not the `›`. The log's lines use the same words: `skipping tutti-twdw: after tutti-scod: both touch test/init.test.ts`, `<id> waits: after <id> merges`; the queue record's `why` keeps its kinds. `test/after.test.ts`, `test/side-panel.test.tsx` and the log lines' tests cover it.

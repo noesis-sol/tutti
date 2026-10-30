@@ -1,7 +1,8 @@
-// The panel beside the tickets table lines up with the totals strip (§ 7.2, tutti-ebra): from 130
-// columns its left border is in the column of the strip's bar before In queue, both read from
-// Totals.tsx's queueDivider, and that bar stays put as Set aside's triage note comes in, the note cut
-// to ` · ◆ n`, then left out, rather than widen its cell past its fifth.
+// The panel beside the tickets table lines up with the totals strip (§ 7.2, tutti-ebra, tutti-nsw2):
+// from 130 columns the gap between the table and the panel is in the column of the strip's bar before
+// In queue, the table's right border left of it and the panel's left border right of it, all read
+// from Totals.tsx's queueDivider, and that bar stays put as Set aside's triage note comes in, the
+// note cut to ` · ◆ n`, then left out, rather than widen its cell past its fifth.
 import { describe, expect, test } from "bun:test"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
@@ -65,35 +66,59 @@ const dividerOf = (view: RunView, width: number) => {
   return { line, column: line.lastIndexOf("│", line.indexOf("In queue")) }
 }
 
-/** What is in `column` on the lines beside the tickets table but its label's. */
-const besideAt = (view: RunView, width: number, column: number): ReadonlyArray<string> =>
-  dashboardLayout(view, theme, width, 36)
-    .tickets.slice(1)
-    .map((line) => textOf(line)[column] ?? "")
+/** The lines beside the panel, the tickets table's label's first. */
+const besideLines = (view: RunView, width: number): ReadonlyArray<string> =>
+  dashboardLayout(view, theme, width, 36).tickets.map(textOf)
 
-describe("the panel's left border and the strip's bar before In queue", () => {
+/** What is in `column` on each of `lines` but the first, the labels' line. */
+const columnOf = (lines: ReadonlyArray<string>, column: number): ReadonlyArray<string> =>
+  lines.slice(1).map((line) => line[column] ?? "")
+
+/** A rounded frame's side down `column`: its corners and its bars. */
+const sideOf = (column: ReadonlyArray<string>, top: string, bottom: string) => [
+  top,
+  ...column.slice(1, -1).map(() => "│"),
+  bottom,
+]
+
+describe("the gap between the tickets table and the panel", () => {
   for (const width of [130, 155, 250]) {
     for (const [what, totals] of [
       ["without a triage note", {}],
       ["with a triage note", triaged],
     ] as const) {
-      test(`are in one column at ${width} columns, ${what}`, () => {
+      test(`is under the strip's bar before In queue at ${width} columns, ${what}`, () => {
         const view = viewOf(totals)
         const { column } = dividerOf(view, width)
         expect(column).toBe(queueDivider(width))
-        expect(width - panelWidth(width)).toBe(column)
-        const borders = besideAt(view, width, column)
-        expect(borders.length).toBeGreaterThan(2)
-        expect(borders).toEqual(["╭", ...borders.slice(1, -1).map(() => "│"), "╰"])
+        const lines = besideLines(view, width)
+        expect(lines.length).toBeGreaterThan(3)
+        // Blank on every line beside the table, the labels' line included.
+        expect(lines.map((line) => line[column])).toEqual(lines.map(() => " "))
+        // The table's right border is left of it, the panel's left border right of it.
+        const table = columnOf(lines, column - 1)
+        expect(table).toEqual(sideOf(table, "╮", "╯"))
+        const panel = columnOf(lines, column + 1)
+        expect(panel).toEqual(sideOf(panel, "╭", "╰"))
+        // The panel reaches the pane's right edge.
+        expect(width - panelWidth(width)).toBe(column + 1)
+        const right = columnOf(lines, width - 1)
+        expect(right).toEqual(sideOf(right, "╮", "╯"))
+        for (const line of lines) expect(Bun.stringWidth(line)).toBe(width)
+        // The panel's label is one column right of In queue's count, as Tickets' is over its box.
+        expect(lines[0]?.indexOf("Up next")).toBe(
+          dividerOf(view, width).line.indexOf("2 In queue") + 1,
+        )
       })
     }
   }
 
-  test("the panel is as wide as In queue's cell, to the pane's right edge, and keeps 44", () => {
-    expect([130, 155, 180, 250].map(panelWidth)).toEqual([52, 62, 72, 100])
+  test("leaves the panel In queue's cell to the pane's right edge, less the gap, and keeps 44", () => {
+    expect([130, 155, 180, 250].map(panelWidth)).toEqual([51, 61, 71, 99])
     expect(panelWidth(129)).toBe(0)
     for (let width = 130; width <= 400; width += 1) {
       expect(panelWidth(width)).toBeGreaterThanOrEqual(44)
+      expect(width - panelWidth(width)).toBe(queueDivider(width) + 1)
     }
   })
 })

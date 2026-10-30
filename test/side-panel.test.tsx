@@ -171,24 +171,28 @@ const panelOf = (frame: Frame, from: number): ReadonlyArray<string> =>
 describe("the panel beside the tickets table", () => {
   test("is drawn from 130 columns, not at 129", async () => {
     expect(panelWidth(129)).toBe(0)
-    expect(panelWidth(130)).toBe(52)
-    expect(panelWidth(155)).toBe(62)
-    expect(panelWidth(250)).toBe(100)
+    expect(panelWidth(130)).toBe(51)
+    expect(panelWidth(155)).toBe(61)
+    expect(panelWidth(250)).toBe(99)
     expect((await drawn(129, 36)).chars).not.toContain("Up next")
     expect((await drawn(130, 36)).chars).toContain("Up next")
   })
 
   test("Up next: the ready tickets first, then each held back with why, as the log says it", async () => {
-    const panel = panelOf(await drawn(155, 36), 155 - 62).filter((line) => line.startsWith("│"))
-    // The strip's In queue cell is over the panel, its bars over the panel's (tutti-ebra).
-    expect(panel.slice(0, 7)).toEqual([
+    const frame = await drawn(155, 36)
+    // The strip's In queue cell is over the panel, its bar before In queue over the gap left of the
+    // panel (tutti-ebra, tutti-nsw2).
+    expect(panelOf(frame, 155 - 62)).toContain(
       "│ 2 In queue · 3 held back                                   │",
-      "│ tutti-gr4z.11  ready                                       │",
-      "│ tutti-h2o9     ready                                       │",
-      "│ tutti-gr4z.9   › after tutti-gr4z.7: both touch            │",
-      "│                  scripts/check.sh                          │",
-      "│ tutti-07nj     › after tutti-h2o9 merges                   │",
-      "│ tutti-fdv1     › after tutti-kkb.28 (solo)                 │",
+    )
+    const panel = panelOf(frame, 155 - 61).filter((line) => line.startsWith("│"))
+    expect(panel.slice(0, 6)).toEqual([
+      "│ tutti-gr4z.11  ready                                      │",
+      "│ tutti-h2o9     ready                                      │",
+      "│ tutti-gr4z.9   › after tutti-gr4z.7: both touch           │",
+      "│                  scripts/check.sh                         │",
+      "│ tutti-07nj     › after tutti-h2o9 merges                  │",
+      "│ tutti-fdv1     › after tutti-kkb.28 (solo)                │",
     ])
   })
 

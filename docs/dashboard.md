@@ -165,8 +165,10 @@ leaves it out. The summary after the run lists every ticket.
 ### The panel beside the table
 
 In a pane at least 130 columns wide, a panel takes the table's right side, at the table's height:
-its left border is under the totals strip's bar before In queue, and it is as wide as In queue's
-cell, about two fifths of the pane, at least 44 columns. Beside it the strip's first three cells
+the gap between the table and the panel is under the totals strip's bar before In queue, so that
+the strip's line runs down into it, with the table's right border left of it and the panel's left
+border right of it. The panel reaches the pane's right edge: it is as wide as In queue's cell less
+the gap, about two fifths of the pane, at least 44 columns. Beside it the strip's first three cells
 keep a fifth each, so that the bar doesn't move as verdicts arrive: Set aside's triage note is cut
 to ` · ◆ n`, then left out, where it would widen its cell. While nothing needs you it shows **Up
 next**: the tickets waiting in the queue, those only a free slot holds back first (`ready`), then
