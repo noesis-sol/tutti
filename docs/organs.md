@@ -88,6 +88,11 @@ or `<id> footprint not predicted: <why>`; a fault in tutti while it guesses one 
 `PREDICT_FAILED for <id>: <why>`, and the predictor goes on to the next. Footprints also read
 `predicted_files` a ticket already has, such as those orchestra's predictor left.
 
+It chooses among the repository's tracked files, at most 5,000 of them, but the vendored ones: those
+`.gitattributes` marks `linguist-vendored` and those the settings' `vendored` globs match, a
+subtree of another project's files that would crowd the project's own out of the list and make each
+call cost as much again. A vendored file it answers is not kept.
+
 ## The reviewer and the run report
 
 At the end of a run, once the dashboard has closed and the summary is printed, the reviewer writes

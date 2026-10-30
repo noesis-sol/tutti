@@ -450,6 +450,15 @@
       "additionalProperties": false,
       "default": {}
     },
+    "vendored": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "paths that are no part of the project's own files, as a vendored subtree: globs, a name without a slash matching in any folder",
+      "default": []
+    },
     "merge": {
       "type": "object",
       "properties": {

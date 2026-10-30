@@ -19,6 +19,7 @@ import { branchFootprint, type Footprint, isEmpty, ticketFootprint } from "./foo
 import { isSolo } from "./holds.ts"
 import { causeWhy, detail, type Line, Log, line, Tag } from "./log.ts"
 import type { RepoFiles } from "./repoFiles.ts"
+import { readVendored } from "./vendored.ts"
 
 export interface Predictor {
   /**
@@ -83,10 +84,13 @@ const failure = (error: Exclude<OrganError, { _tag: "OrganSkipped" }>): string =
 
 /**
  * The run's predictor, its queue worked through by a fiber in the run's scope. `repo` is the main
- * checkout, whose files (git ls-files) the predictor chooses from.
+ * checkout, whose files (git ls-files) the predictor chooses from, but the vendored ones
+ * (vendored.ts): those .gitattributes marks linguist-vendored and those the settings' `vendored`
+ * globs match.
  */
 export const make = (options: {
   readonly repo: string
+  readonly vendored?: ReadonlyArray<string>
 }): Effect.Effect<Predictor, never, Organs | Beads | Git | Log | RunFibers | Scope.Scope> =>
   Effect.gen(function* () {
     const beads = yield* Beads
@@ -99,9 +103,11 @@ export const make = (options: {
 
     const predict = (queuedIssue: Issue) =>
       Effect.gen(function* () {
-        const tracked = yield* git
+        const all = yield* git
           .trackedFiles(options.repo)
           .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
+        const vendored = yield* readVendored(options.repo, all, options.vendored ?? [])
+        const tracked = all.filter((f) => !vendored.files.has(f))
         if (tracked.length === 0) return // no files to choose from
         // The ticket as it is now: its text may have changed since bd ready listed it.
         const issue = yield* beads

@@ -148,27 +148,39 @@ const normalize = (path: string) => {
 }
 
 /**
- * The merge attribute a root .gitattributes gives a path, as git check-attr reads it: the last line
- * whose pattern matches says, a pattern without a / matching the path's name, one with a / the path
- * from the root; * and ? match within a name. undefined when no line says.
+ * The value of attribute `name` a root .gitattributes gives a path, as git check-attr reads it: the
+ * last line whose pattern matches says, a pattern without a / matching the path's name, one with a /
+ * the path from the root; * and ? match within a name, ** any number of folders. set for the bare
+ * attribute, unset for -name or !name, else what follows name=; undefined when no line says.
  */
-const mergeAttribute = (attributes: string) => {
+const attributeOf = (attributes: string, name: string) => {
   const rules = attributes.split("\n").flatMap((line) => {
     const [pattern, ...attrs] = line.trim().split(/\s+/)
     if (pattern === undefined || pattern === "" || pattern.startsWith("#")) return []
     let value: string | undefined
     for (const attr of attrs) {
-      if (attr === "merge") value = "set"
-      else if (attr === "-merge" || attr === "!merge") value = "unset"
-      else if (attr.startsWith("merge=")) value = attr.slice("merge=".length)
+      if (attr === name) value = "set"
+      else if (attr === `-${name}` || attr === `!${name}`) value = "unset"
+      else if (attr.startsWith(`${name}=`)) value = attr.slice(name.length + 1)
     }
     if (value === undefined) return []
     const anchored = pattern.includes("/")
     const source = pattern
       .replace(/^\//, "")
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*/g, "[^/]*")
-      .replace(/\?/g, "[^/]")
+      .split("/")
+      .map((part) =>
+        part === "**"
+          ? "**"
+          : part
+              .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+              .replace(/\*/g, "[^/]*")
+              .replace(/\?/g, "[^/]"),
+      )
+      .join("/")
+      .replace(/^\*\*$/, "[^/]*")
+      .replace(/^\*\*\//, "(?:.*/)?")
+      .replace(/\/\*\*$/, "/.*")
+      .replace(/\/\*\*\//g, "/(?:.*/)?")
     return [{ match: new RegExp(anchored ? `^${source}$` : `(^|/)${source}$`), value }]
   })
   return (path: string): string | undefined =>
@@ -1023,8 +1035,23 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             ? Effect.succeed([])
             : operation(gitCall(gitOps.mergedByUnion), dir, (refuse) =>
                 Effect.map(inRepo(refuse, dir), (checkout) => {
-                  const merge = mergeAttribute(checkout.work.get(".gitattributes") ?? "")
+                  const merge = attributeOf(checkout.work.get(".gitattributes") ?? "", "merge")
                   return paths.filter((path) => merge(path) === "union")
+                }),
+              ),
+        vendoredFiles: (dir, paths) =>
+          paths.length === 0
+            ? Effect.succeed([])
+            : operation(gitCall(gitOps.vendoredFiles), dir, (refuse) =>
+                Effect.map(inRepo(refuse, dir), (checkout) => {
+                  const vendored = attributeOf(
+                    checkout.work.get(".gitattributes") ?? "",
+                    "linguist-vendored",
+                  )
+                  return paths.filter((path) => {
+                    const value = vendored(path)
+                    return value === "set" || value === "true"
+                  })
                 }),
               ),
         revParse,

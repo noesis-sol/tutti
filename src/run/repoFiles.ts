@@ -4,6 +4,7 @@
 import { posix } from "node:path"
 import { collapseAny, globMatch, isGlob, nfc, settingsGlobMatch } from "./glob.ts"
 import { eachPathToken, setOf, sourceExtensions } from "./text.ts"
+import { noneVendored, type Vendored, vendoredTest } from "./vendored.ts"
 
 // A name whose brackets, single or double, each close around a name within a part of its path, as
 // in a route of a Next.js or SvelteKit project: pages/[id].tsx, app/[[...slug]]/page.tsx.
@@ -103,6 +104,13 @@ export interface RepoFiles {
    */
   shared(file: string): boolean
   /**
+   * Whether the path, a file, a folder (ending in /) or a glob as written, is vendored (vendored.ts):
+   * a copy of another project's files, which no footprint names. A tracked file .gitattributes or
+   * the settings' `vendored` mark, a path those globs match, and any other in a folder whose tracked
+   * files all are.
+   */
+  vendored(path: string): boolean
+  /**
    * Whether the repository declares a function a footprint names (declared.ts), which only then
    * counts toward overlap: a name (merge) when a source file declares it, Type.method (Loop.merge)
    * when one declares the type and one the method. Every function, the declarations unknown.
@@ -115,7 +123,8 @@ export interface RepoFiles {
  * commands (`scripts/check-fast.sh`, `bun test && sh scripts/lint.sh`) name among them. `union`
  * holds the files git merges by union (`Git.mergedByUnion`), as git lists them; `sharedFiles` the
  * settings' `queue.shared_files`, paths and globs; `declared` the names their source files declare
- * (`readDeclared`), undefined when unknown.
+ * (`readDeclared`), undefined when unknown; `vendored` the tracked files that are vendored and
+ * the settings' globs (`readVendored`).
  */
 export const repoFiles = (
   tracked: ReadonlyArray<string> | undefined,
@@ -123,6 +132,7 @@ export const repoFiles = (
   union: Iterable<string> = [],
   sharedFiles: ReadonlyArray<string> = [],
   declared?: ReadonlySet<string>,
+  vendored: Vendored = noneVendored,
 ): RepoFiles => {
   // The files as git lists them, by their NFC form: two whose names differ only in form are both meant.
   const files = new Map<string, Array<string>>()
@@ -263,6 +273,7 @@ export const repoFiles = (
     unioned: (f) => !f.endsWith("/") && unions.has(f),
     shared: (f) =>
       !f.endsWith("/") && sharedFiles.some((glob) => settingsGlobMatch(nfc(glob), nfc(f))),
+    vendored: vendoredTest(names, vendored),
     declares: (fn) => declared === undefined || fn.split(".").every((part) => declared.has(part)),
   }
 }

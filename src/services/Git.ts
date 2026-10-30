@@ -162,6 +162,19 @@ export const parseUnion = (output: string): ReadonlyArray<string> => {
   return union
 }
 
+/**
+ * Reads `git check-attr -z linguist-vendored`'s output: the paths whose attribute is set or true,
+ * which linguist counts as vendored.
+ */
+export const parseVendored = (output: string): ReadonlyArray<string> => {
+  const fields = output.split("\0")
+  const vendored: Array<string> = []
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    if (fields[i + 2] === "set" || fields[i + 2] === "true") vendored.push(fields[i] ?? "")
+  }
+  return vendored
+}
+
 /** Reads `git worktree list --porcelain -z`: attribute lines ended by NULs, a worktree's last by two. */
 export const parseWorktrees = (output: string): ReadonlyArray<Worktree> => {
   const worktrees: Array<Worktree> = []
@@ -457,6 +470,12 @@ export const gitOps = {
     kind: "read",
     args: (): ReadonlyArray<string> => ["check-attr", "-z", "--stdin", "merge"],
   },
+  // As mergedByUnion: the paths on stdin, a path, the attribute and its value back for each.
+  vendoredFiles: {
+    op: "check-attr linguist-vendored",
+    kind: "read",
+    args: (): ReadonlyArray<string> => ["check-attr", "-z", "--stdin", "linguist-vendored"],
+  },
   // --verify: without it, git prints back a rev it can't find as if it named a commit.
   revParse: {
     op: "rev-parse",
@@ -739,6 +758,14 @@ export class Git extends Context.Service<
       dir: string,
       paths: ReadonlyArray<string>,
     ): Effect.Effect<ReadonlyArray<string>, GitError>
+    /**
+     * git check-attr linguist-vendored: those of `paths` .gitattributes marks vendored
+     * (`linguist-vendored`, or `linguist-vendored=true`), tracked or not, as dir's .gitattributes say.
+     */
+    vendoredFiles(
+      dir: string,
+      paths: ReadonlyArray<string>,
+    ): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git rev-parse --verify: the full hash `rev` names; GitFailed when it names none. */
     revParse(dir: string, rev: string): Effect.Effect<Sha, GitError>
     /**
@@ -985,6 +1012,17 @@ export class Git extends Context.Service<
                     paths.map((path) => `${path}\0`).join(""),
                   ),
                   parseUnion,
+                ),
+          vendoredFiles: (dir, paths) =>
+            paths.length === 0
+              ? Effect.succeed([])
+              : Effect.map(
+                  read(
+                    gitCall(gitOps.vendoredFiles),
+                    dir,
+                    paths.map((path) => `${path}\0`).join(""),
+                  ),
+                  parseVendored,
                 ),
           revParse,
           branchExists,

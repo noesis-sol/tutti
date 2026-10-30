@@ -8,13 +8,15 @@
 // spec the ticket's `spec` metadata cites: nearly every ticket asks for the check to pass, and cites
 // its spec, without changing them. The files git merges by union (`merge=union` in .gitattributes,
 // as tutti init offers for the changelog) are left out always: two tickets' lines in one can't
-// conflict, git keeps both. A ticket with commits on its branch (reopened, carried over) is
-// footprinted from what its branch changes, its files metadata and its area labels
-// (`branchFootprint`). A running ticket's footprint also grows with the files its worktree has
-// changed (§ 5). Two tickets whose footprints overlap don't run side by side; a file both name holds
-// them apart only when one of them is to change it (`sharedFile`), and never when the settings'
-// `queue.shared_files` name it (`RepoFiles.shared`), though it stays in their footprints: their
-// worktrees both changing it still warns LIKELY_CONFLICT, and a rebase conflict in it is handed back.
+// conflict, git keeps both. So are vendored paths (vendored.ts), copies of other projects' files: a
+// ticket naming one, or the predictor answering one, makes only false overlaps. A ticket with
+// commits on its branch (reopened, carried over) is footprinted from what its branch changes, its
+// files metadata and its area labels (`branchFootprint`). A running ticket's footprint also grows
+// with the files its worktree has changed (§ 5). Two tickets whose footprints overlap don't run side
+// by side; a file both name holds them apart only when one of them is to change it (`sharedFile`),
+// and never when the settings' `queue.shared_files` name it (`RepoFiles.shared`), though it stays in
+// their footprints: their worktrees both changing it still warns LIKELY_CONFLICT, and a rebase
+// conflict in it is handed back.
 //
 // The text is read with text.ts's heuristics, the names resolved with repoFiles.ts, the globs
 // matched with glob.ts; whether two footprints overlap is overlap.ts's.
@@ -201,8 +203,9 @@ const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string>
  *   document its text names in no sentence asking to change it (`per CLAUDE.md`, not
  *   `Update docs/guide.md`). A file cited holds no other ticket apart from it (`sharedFile`).
  * - **Left out**: names outside the repository (`../x.ts`, `/etc/passwd`), the files git merges by
- *   union, and the files the check commands name and the spec the `spec` metadata cites, unless
- *   the files metadata lists them.
+ *   union, vendored paths (`repo.vendored`: a subtree of another project's files), whatever names
+ *   or predicts them, and the files the check commands name and the spec the `spec` metadata
+ *   cites, unless the files metadata lists them.
  */
 export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footprint => {
   const text = [ticket.title, ticket.description, ticket.design, ticket.acceptance].join("\n")
@@ -218,9 +221,9 @@ export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footp
   for (const name of ticket.files) {
     const entry = repo.listed(name)
     for (const f of entry.files) files.set(f, true)
-    for (const g of entry.globs) globs.add(g)
+    for (const g of entry.globs) if (!repo.vendored(g)) globs.add(g)
   }
-  for (const f of [...files.keys()]) if (repo.unioned(f)) files.delete(f)
+  for (const f of [...files.keys()]) if (repo.unioned(f) || repo.vendored(f)) files.delete(f)
   const fp: Footprint = {
     ...emptyFootprint,
     files: sorted(files.keys()),
@@ -235,7 +238,7 @@ export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footp
   const predicted = new Set<string>()
   for (const name of ticket.predictedFiles) {
     for (const f of repo.resolve(name, false)) {
-      if (!inPassing(f) && !repo.unioned(f)) predicted.add(f)
+      if (!inPassing(f) && !repo.unioned(f) && !repo.vendored(f)) predicted.add(f)
     }
   }
   return { ...emptyFootprint, files: sorted(predicted), predicted: predicted.size > 0 }
@@ -245,8 +248,9 @@ export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footp
  * The footprint of a ticket whose branch changes `changed` on top of the base (reopened, or
  * carried over): it has done its work there, and its text names what it read and was told as
  * well. Those files and the ones its files metadata lists, all to be changed, and its area labels;
- * not what its text names. The files git merges by union are left out; those the check commands
- * name and its spec are kept: the branch changes them.
+ * not what its text names. The files git merges by union are left out, as are the vendored paths
+ * its metadata lists; those the check commands name and its spec are kept, as are the vendored
+ * files it changes: the branch changes them.
  */
 export const branchFootprint = (
   ticket: Pick<FootprintTicket, "files" | "labels">,
@@ -257,8 +261,8 @@ export const branchFootprint = (
   const globs = new Set<string>()
   for (const name of ticket.files) {
     const entry = repo.listed(name)
-    for (const f of entry.files) files.add(f)
-    for (const g of entry.globs) globs.add(g)
+    for (const f of entry.files) if (!repo.vendored(f)) files.add(f)
+    for (const g of entry.globs) if (!repo.vendored(g)) globs.add(g)
   }
   return {
     ...emptyFootprint,

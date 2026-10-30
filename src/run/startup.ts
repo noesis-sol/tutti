@@ -47,6 +47,7 @@ import { type Line, start, Tag } from "./log.ts"
 import { aboveCapNote, machineWorkersLabel } from "./machine.ts"
 import { readSpec, type Spec } from "./spec.ts"
 import type { LiveFetch, SpecFetch } from "./specSource.ts"
+import { readVendoredNote } from "./vendored.ts"
 
 /** The exit code of a run that can't start: a setup problem. */
 export const exitSetup = 2
@@ -90,6 +91,11 @@ export interface Started {
   readonly organs: OrganProvider
   /** The spec a spec run builds (--spec), read and checked; none for none. */
   readonly spec?: Spec | null
+  /**
+   * The START block's note on the vendored paths, which no footprint names (vendored.ts):
+   * `vendored: repos/** (from .gitattributes)`; none where nothing is vendored.
+   */
+  readonly vendored?: string | null
   /** What the run says once as it starts, but doesn't stop it. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -507,6 +513,7 @@ export const check = <R>(checking: Checking<R>) =>
     // The README's section on what to install where it differs from the requires list: a note,
     // which `tutti requires --readme` takes.
     const readme = yield* readmeStaleLine(repo, settings.requires)
+    const vendored = yield* readVendoredNote(repo, settings.vendored)
     return {
       config: { ...configured.value.value, claude: claude.path },
       base: branch.success,
@@ -515,6 +522,7 @@ export const check = <R>(checking: Checking<R>) =>
       account: account.value.value,
       organs: organs.success,
       spec: spec.success,
+      vendored,
       warnings: [
         ...warnings,
         ...templates,
@@ -552,7 +560,7 @@ export const memoryEstimate = (concurrency: number): string =>
 /**
  * The START block of a run that passed its checks: `START tutti <version> in <repo> on <base>`,
  * its scope, ` · overnight` for an overnight run, its settings, ` · auto-answer` with --auto-answer, then its billing, its permission mode in effect, its MCP servers when it
- * has none, its `concurrent` above the cap on the machine's workers, the memory its workers take, why its colour scheme isn't used (a line per notice), and
+ * has none, its `concurrent` above the cap on the machine's workers, the memory its workers take, its vendored paths, why its colour scheme isn't used (a line per notice), and
  * its warnings.
  */
 export const startBlock = (started: Started, version: string): ReadonlyArray<Line> => {
@@ -603,6 +611,7 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
         ? [aboveCapNote(concurrency, config.machineWorkers)]
         : []),
       `memory: ${memoryEstimate(concurrency)}`,
+      ...(started.vendored === undefined || started.vendored === null ? [] : [started.vendored]),
       ...schemeNotices(config.scheme),
       ...started.warnings,
     ],

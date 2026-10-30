@@ -817,6 +817,11 @@ that share only it run side by side, and the second to merge has its rebase's co
 back to its worker (`merge.resolve_conflicts`). Union merging wouldn't fit such a file: it keeps both
 the old and the new version of a line changed in place. `tutti init` lists the features map the
 create-check-suite skill writes as it files the test work.
+Vendored paths, a subtree of another project's files kept in the repository, are no ticket's: a path
+`.gitattributes` marks `linguist-vendored` (`repos/** linguist-vendored`), or one the settings'
+`vendored` globs match (`["repos/**"]`), is dropped wherever a ticket names it or the predictor
+answers it, so it makes no overlap, and the predictor doesn't list it. The START block names them:
+`vendored: repos/** (from .gitattributes)`.
 The log shows each ticket's footprint as it is dispatched: `<id> footprint: Loop.merge,
 src/run/merge.ts, area:run`, the predicted files marked `(predicted)`, a branch's `(from its
 branch)`, or `nothing named`. Two tickets overlap when they share an area label, a function or a file;

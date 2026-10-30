@@ -110,6 +110,7 @@ describe("settings", () => {
       organs: { effort: null, model: null, triage: true, review: true },
       spec: { timeout: minutes(60), effort: "high" },
       queue: { exclude_types: ["epic"], footprint: true, shared_files: [] },
+      vendored: [],
       merge: {
         resolve_conflicts: true,
         resolve_timeout: minutes(20),
@@ -144,6 +145,7 @@ describe("settings", () => {
     organs: { effort: null, model: null, triage: true, review: true },
     spec: { timeout: minutes(60), effort: "high" },
     queue: { exclude_types: ["epic"], footprint: true, shared_files: [] },
+    vendored: [],
     merge: {
       resolve_conflicts: true,
       resolve_timeout: minutes(20),

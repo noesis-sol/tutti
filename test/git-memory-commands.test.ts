@@ -150,6 +150,11 @@ const calls: ReadonlyArray<{
     call: (git, dir) => git.mergedByUnion(dir, ["CHANGELOG.md"]),
   },
   {
+    op: "check-attr linguist-vendored",
+    command: "git check-attr -z --stdin linguist-vendored",
+    call: (git, dir) => git.vendoredFiles(dir, ["repos/a.ts"]),
+  },
+  {
     op: "rev-parse",
     command: "git rev-parse --verify --quiet --end-of-options main",
     call: (git, dir) => git.revParse(dir, "main"),

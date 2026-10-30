@@ -25,6 +25,7 @@ import {
 import { type Mentions, mentionsIn, readSources, sharedFile, sharedFunc } from "../run/overlap.ts"
 import { type RepoFiles, repoFiles } from "../run/repoFiles.ts"
 import { takes } from "../run/scope.ts"
+import { noneVendored, readVendored } from "../run/vendored.ts"
 import { Beads, type BeadsError, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
@@ -306,7 +307,11 @@ const proposal = (
           const union = yield* git
             .mergedByUnion(repo, files)
             .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
-          const declared = yield* readDeclared(repo, files)
+          const vendored = yield* readVendored(repo, files, settings.vendored)
+          const declared = yield* readDeclared(
+            repo,
+            files.filter((f) => !vendored.files.has(f)),
+          )
           const scripts = yield* checkScriptLines(repo, files, scriptedChecks(settings))
           return repoFiles(
             files,
@@ -314,10 +319,16 @@ const proposal = (
             union,
             settings.queue.shared_files,
             declared,
+            vendored,
           )
         }),
       ),
-      Effect.orElseSucceed(() => repoFiles(undefined, checks, [], settings.queue.shared_files)),
+      Effect.orElseSucceed(() =>
+        repoFiles(undefined, checks, [], settings.queue.shared_files, undefined, {
+          ...noneVendored,
+          globs: settings.vendored,
+        }),
+      ),
     )
     const branches = yield* branchChanges(repo, open)
     const sources = yield* readSources(

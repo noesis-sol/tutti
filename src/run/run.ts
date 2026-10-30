@@ -618,6 +618,7 @@ const runFrom = (
           checkCommands: checkCommands(config.settings),
           scriptedChecks: scriptedChecks(config.settings),
           sharedFiles: config.settings.queue.shared_files,
+          vendored: config.settings.vendored,
           worktree: (ticket) =>
             Effect.map(
               store.ticket(ticket),
@@ -630,7 +631,7 @@ const runFrom = (
     // time in the background, so that a ticket naming nothing doesn't run beside anything.
     const predictor =
       Option.isSome(organs) && footprints !== undefined && config.settings.concurrent > 1
-        ? yield* makePredictor({ repo: config.repo }).pipe(
+        ? yield* makePredictor({ repo: config.repo, vendored: config.settings.vendored }).pipe(
             Effect.provideService(Organs, organs.value),
           )
         : undefined

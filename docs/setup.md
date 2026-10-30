@@ -490,6 +490,7 @@ for a project that sets them all; the table below gives each one's default:
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "spec": { "timeout": "60m", "effort": "high" },
   "queue": { "exclude_types": ["epic"], "footprint": true, "shared_files": ["test/FEATURES.md"] },
+  "vendored": [],
   "merge": {
     "resolve_conflicts": true,
     "resolve_timeout": "20m",
@@ -529,6 +530,7 @@ for a project that sets them all; the table below gives each one's default:
 | `queue.exclude_types` | `["epic"]` | issue types a run never takes; epics never run whatever it says |
 | `queue.footprint` | `true` | keep tickets that touch the same code apart; [Footprints](running.md#footprints) |
 | `queue.shared_files` | `[]` | files whose overlap doesn't hold two tickets apart, paths or globs (a name without a slash matches in any folder), as the features map `init` lists as it files the test work; [Footprints](running.md#footprints) |
+| `vendored` | `[]` | paths that are no part of the project's own files, as globs (a name without a slash matches in any folder): a subtree of another project's, which the predictor doesn't list and no footprint names; `linguist-vendored` in `.gitattributes` counts as well, and `init` writes neither; [Footprints](running.md#footprints) |
 | `merge.resolve_conflicts` | `true` | hand a rebase's conflicts back to the ticket's worker; `--resolve-conflicts` for a run |
 | `merge.resolve_timeout` | `"20m"` | how long the worker has for a hand-back |
 | `merge.check_hand_backs` | `2` | how often a check failing on the rebased branch is handed back; `0` for never |

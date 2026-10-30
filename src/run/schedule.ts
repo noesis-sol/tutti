@@ -89,6 +89,7 @@ import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
 import { type Said as SaidRecord, sayer } from "./say.ts"
 import { ready, unclosedIn, unmergedLabel } from "./scope.ts"
+import { noneVendored, readVendored } from "./vendored.ts"
 
 /** How often bd ready is read while tickets run: tickets become ready mid-run. */
 export const readyPoll: Duration.Duration = Duration.seconds(30)
@@ -146,7 +147,9 @@ export interface Footprints {
  * `base`, each ticket's branch's against `base`, its files' contents, and the names its source
  * files declare (`readDeclared`). git failing leaves names judged by their look, none merged by
  * union, a ticket's changes unknown and every function declared. `sharedFiles`, the
- * settings' `queue.shared_files`, hold no tickets apart (`RepoFiles.shared`). The files the check
+ * settings' `queue.shared_files`, hold no tickets apart (`RepoFiles.shared`); the vendored paths,
+ * .gitattributes' linguist-vendored and the settings' `vendored` globs, are no ticket's
+ * (`RepoFiles.vendored`), nor are their files' declarations read. The files the check
  * commands name are check files, and so are those the lines of `scriptedChecks`' scripts name, the
  * merge check's and the full check's (`checkScriptLines`), read with the files.
  */
@@ -156,12 +159,14 @@ export const footprintsOf = (options: {
   readonly checkCommands: ReadonlyArray<string>
   readonly scriptedChecks?: ReadonlyArray<string>
   readonly sharedFiles?: ReadonlyArray<string>
+  readonly vendored?: ReadonlyArray<string>
   readonly worktree: (ticket: TicketId) => Effect.Effect<string>
 }): Effect.Effect<Footprints, never, Git | FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<Git | FileSystem.FileSystem>()
     const git = yield* Git
     const sharedFiles = options.sharedFiles ?? []
+    const vendoredGlobs = options.vendored ?? []
     // The files but those git merges by union, as dir's .gitattributes say; all when git can't say.
     const withoutUnion = (dir: string, files: ReadonlyArray<string>) =>
       git.mergedByUnion(dir, files).pipe(
@@ -179,13 +184,26 @@ export const footprintsOf = (options: {
       const union = yield* git
         .mergedByUnion(options.repo, files)
         .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
-      const declared = yield* readDeclared(options.repo, files).pipe(Effect.provideContext(context))
+      const vendored = yield* readVendored(options.repo, files, vendoredGlobs).pipe(
+        Effect.provideContext(context),
+      )
+      const declared = yield* readDeclared(
+        options.repo,
+        files.filter((f) => !vendored.files.has(f)),
+      ).pipe(Effect.provideContext(context))
       const scripts = yield* checkScriptLines(
         options.repo,
         files,
         options.scriptedChecks ?? [],
       ).pipe(Effect.provideContext(context))
-      return repoFiles(files, [...options.checkCommands, ...scripts], union, sharedFiles, declared)
+      return repoFiles(
+        files,
+        [...options.checkCommands, ...scripts],
+        union,
+        sharedFiles,
+        declared,
+        vendored,
+      )
     })
     return {
       repo: Effect.gen(function* () {
@@ -198,7 +216,12 @@ export const footprintsOf = (options: {
         if (at !== undefined) yield* Ref.set(listed, { at, files })
         return files
       }).pipe(
-        Effect.orElseSucceed(() => repoFiles(undefined, options.checkCommands, [], sharedFiles)),
+        Effect.orElseSucceed(() =>
+          repoFiles(undefined, options.checkCommands, [], sharedFiles, undefined, {
+            ...noneVendored,
+            globs: vendoredGlobs,
+          }),
+        ),
       ),
       changed: (ticket) =>
         Effect.flatMap(options.worktree(ticket), (path) =>

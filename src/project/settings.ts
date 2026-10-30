@@ -276,6 +276,18 @@ export const Settings = Schema.Struct({
       })
       .pipe(withDefault([])),
   }).pipe(withDefault({})),
+  /**
+   * The paths that are no part of the project's own files, as globs (a name without a slash matches
+   * in any folder): copies of other projects', as a subtree, which the predictor doesn't list and no
+   * footprint names (src/run/vendored.ts). For a project that doesn't mark them `linguist-vendored`
+   * in .gitattributes, which counts as well. None by default.
+   */
+  vendored: Schema.Array(Text)
+    .annotate({
+      description:
+        "paths that are no part of the project's own files, as a vendored subtree: globs, a name without a slash matching in any folder",
+    })
+    .pipe(withDefault([])),
   merge: Schema.Struct({
     /** false sets a finished ticket whose rebase conflicts aside at once. */
     resolve_conflicts: Schema.Boolean.pipe(withDefault(true)),
