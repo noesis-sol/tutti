@@ -41,6 +41,7 @@ import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
+import { featureLine } from "./feature.ts"
 import { keepAwakeNotes } from "./keepAwake.ts"
 import { type Line, start, Tag } from "./log.ts"
 import { aboveCapNote, machineWorkersLabel } from "./machine.ts"
@@ -567,8 +568,8 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
     version,
     repo: config.repo,
     base: started.base,
-    // A --feature run is scoped to the epic it filed, as orchestra's ScopeLabel says; a spec run is
-    // named by its spec, its root epic in a note.
+    // A feature run is scoped to the epic it filed, as orchestra's ScopeLabel says, the request it
+    // was talked through from in a note; a spec run is named by its spec, its root epic in a note.
     ...(spec !== null
       ? { scope: `spec ${spec.path}${spec.url === undefined ? "" : ` from ${spec.url}`}` }
       : config.ticket === null
@@ -589,6 +590,9 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
       ? {}
       : { ends: autoAnswerName(config.autoAnswer, formatDuration(config.autoAnswer)) }),
     notes: [
+      ...(spec !== null || config.ticket === null || config.feature === null
+        ? []
+        : [`feature: epic ${config.ticket}, talked through from: ${featureLine(config.feature)}`]),
       ...(spec === null || config.ticket === null
         ? []
         : [`spec: epic ${config.ticket}, broken down from: ${spec.path}`]),

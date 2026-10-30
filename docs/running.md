@@ -475,6 +475,12 @@ criteria, a type, a priority, its `files` metadata, `blocks` links between them,
 needed). Once it has filed and its turn is over, the view goes, tutti checks the tree (warning of
 tickets without files or acceptance criteria, and of a cycle of blocks links), says
 `filed <epic>: N tickets, starting the run`, and runs it as `--ticket <epic>` would: nothing asks.
+Its `START` line names the epic and the request under it:
+
+```
+START tutti 0.7.0 in /work/shop on main · feature shop-a1b (limit: none, concurrent: 4, …)
+  feature: epic shop-a1b, talked through from: Add a --json flag to the list command
+```
 
 `Esc` (outside the composer) or **← Back** asks `End the interview? Nothing has been filed.`; left
 once it has filed, it says `Filed epic <id> with N tickets; nothing was run. Run it with: tutti --ticket <id>`.

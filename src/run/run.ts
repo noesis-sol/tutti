@@ -121,6 +121,7 @@ import { type DrainRequest, hear } from "./drain.ts"
 import { make as makeEndOfRun } from "./endOfRun.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
+import { featureRequestHeading } from "./feature.ts"
 import { RunFibers } from "./fibers.ts"
 import { removeLeftFullChecks } from "./fullcheck.ts"
 import { makeGateAsk, noScout } from "./gateForm.ts"
@@ -1108,7 +1109,9 @@ const runFrom = (
     if (config.ticket !== null && reviews) {
       sections.push(...(yield* followUpsSection(beads, config.ticket, begun)))
     }
-    if (config.feature !== null) sections.push(section("The feature request", config.feature))
+    if (config.feature !== null) {
+      sections.push(section(featureRequestHeading(config.ticket), config.feature))
+    }
 
     // The report, over the run's services, when it has organs: skipped once the run was quit.
     const reportRun: ReportRun = {

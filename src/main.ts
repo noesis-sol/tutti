@@ -593,6 +593,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
 
       // The run's scope: --ticket's, the epic --feature filed, or a spec's root epic.
       let scope = config.ticket
+      // The request a feature run was talked through from: --feature's, or New feature's.
+      let feature = config.feature
       // The spec: --spec's, or the one chosen at the start question.
       let spec = started.spec ?? null
       yield* ready.step(readySteps.backlog)
@@ -785,7 +787,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const canAsk = tty.stdinIsTty && tty.stdoutIsTty
       const error = (text: string) => Console.error(text)
       const scoped = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-        scope === null ? effect : scopedTo(scope, spec?.path ?? null)(effect)
+        scope === null ? effect : scopedTo(scope, spec?.path ?? null, feature)(effect)
 
       // While the run goes, SIGINT, SIGTERM and SIGHUP quit it (§ 4.8).
       const listening = <A, E, R>(running: Effect.Effect<A, E, R>) =>
@@ -836,7 +838,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       })
       const why = mode._tag === "Plain" ? plainReasonLine(mode.reason, tty.term) : undefined
       const start = () => [
-        ...startBlock({ ...started, config: { ...config, ticket: scope } }, version),
+        ...startBlock({ ...started, config: { ...config, ticket: scope, feature } }, version),
         ...(why === undefined ? [] : [detail`${why}`]),
       ]
 
@@ -989,6 +991,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                 return { _tag: "Interviewed", chosen, ending: interviewEnding(outcome) } as const
               }
               scope = outcome.epic
+              feature = description
               return undefined
             })
           if (config.feature !== null) {
