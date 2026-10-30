@@ -1696,6 +1696,12 @@
         "output": {
           "type": "string"
         },
+        "said": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "train": {
           "type": "boolean",
           "enum": [

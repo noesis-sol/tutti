@@ -295,7 +295,7 @@ export const setUp = (
   options: MergeTarget,
   setUps: SetUps,
   { fork, onto, fix, ahead = false, at, before }: SetUpOf,
-): Effect.Effect<SetUp, never, Checks | Git | Worktrees | Ledger | Log | EventStream> =>
+): Effect.Effect<SetUp, never, AppConfig | Checks | Git | Worktrees | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
     if (command === null) return SetUp.Unneeded()
@@ -356,6 +356,7 @@ export const setUp = (
               },
             },
           ),
+          { keep: { worktree: ticket.worktree, name: setupLogName } },
         )
         return { ran, output: to.outputFile }
       }),
@@ -427,7 +428,7 @@ export const setUpWorktree = (
   worktree: TicketWorktree,
   setUps: SetUps,
   repo: string,
-): Effect.Effect<WorktreeSetUp, never, Checks | Git | Worktrees | Log | EventStream> =>
+): Effect.Effect<WorktreeSetUp, never, AppConfig | Checks | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
     if (command === null) return WorktreeSetUp.Unneeded()
@@ -467,6 +468,7 @@ export const setUpWorktree = (
           "setup",
           id,
           checks.setup({ cwd: path, ...to, before: "fast", command }),
+          { keep: { worktree: path, name: setupLogName } },
         )
         return { ran, output: to.outputFile }
       }),

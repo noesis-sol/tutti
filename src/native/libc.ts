@@ -608,3 +608,34 @@ export const writeFileUnder = (
       s.close(dir)
     }
   })
+
+/**
+ * Removes the file at `relativePath` below `directory` through the symlink guard (§ 9.1): its
+ * folder is opened with openUnder, so a link in its path is refused, and the name is unlinked on
+ * the folder's descriptor (unlinkat), so a link at the name is removed itself, not what it points
+ * to. A name that isn't there counts as removed.
+ */
+export const removeUnder = (
+  directory: string,
+  relativePath: string,
+): Effect.Effect<void, Refusal> =>
+  Effect.suspend(() => {
+    const folder = dirname(relativePath)
+    const name = basename(relativePath)
+    if (name === "" || name === "." || name === ".." || relativePath.endsWith("/")) {
+      return Effect.fail(new PathRefused({ directory, path: relativePath }))
+    }
+    const dir =
+      folder === "."
+        ? rawOpen(directory, O.RDONLY | O.DIRECTORY | O.CLOEXEC, 0)
+        : walk(directory, folder, O.RDONLY | O.DIRECTORY, 0)
+    if (typeof dir !== "number") return Effect.fail(naming(dir, relativePath))
+    try {
+      const unlinked = attempt("unlinkat", relativePath, () => s.unlinkat(dir, cstr(name), 0))
+      return unlinked instanceof LibcError && unlinked.errno !== ENOENT
+        ? Effect.fail(unlinked)
+        : Effect.void
+    } finally {
+      s.close(dir)
+    }
+  })

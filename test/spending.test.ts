@@ -31,7 +31,7 @@ import {
 } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, tool, turn } from "../src/testing/AgentHost.ts"
-import { appConfig } from "../src/testing/AppConfig.ts"
+import { appConfig, layer as appConfigLayer } from "../src/testing/AppConfig.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as spendingLayer } from "../src/testing/Spending.ts"
@@ -485,7 +485,11 @@ describe("a check's record", () => {
       Effect.gen(function* () {
         yield* recorded("fix", "t-1", Effect.andThen(TestClock.adjust(2550), check), { train })
         return (yield* (yield* Captured).records).map(({ v, time, run, ...rest }) => rest)
-      }).pipe(Effect.provide(Layer.mergeAll(eventsLayer(), TestClock.layer()))),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(eventsLayer(), TestClock.layer(), logLayer(), appConfigLayer()),
+        ),
+      ),
     )
   const said = {
     failingLines: [],

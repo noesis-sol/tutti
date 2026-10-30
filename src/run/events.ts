@@ -395,8 +395,13 @@ export const Check = Schema.Struct({
   /** From its start to its end, to a tenth. */
   seconds: Seconds,
   result: Schema.Literals(checkResults),
-  /** Where its whole output is, when it didn't pass. */
+  /**
+   * Where its whole output is, when it didn't pass: a ticket's, beside its transcript
+   * (.tutti/run/workers/<id>/checks/), where it could be kept there.
+   */
   output: optional(Schema.String),
+  /** What its output said of its failure: the lines saying what failed, else its last lines. */
+  said: optional(Schema.Array(Schema.String)),
   /** It ran ahead of its ticket's turn, as the second ticket of the merge train. */
   train: optional(Schema.Literal(true)),
 })

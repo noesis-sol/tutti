@@ -1811,6 +1811,7 @@ The JSON Schema is generated from the Effect Schema (`JsonSchema`) and published
   attention/                       open requests and `tutti answer`'s answers (§4.5)
   workers/<id>/messages.jsonl      tutti's transcript of each worker (§4.4)
   workers/<id>/stderr.log          its Claude Code's stderr
+  workers/<id>/checks/             its failed checks' and setups' output, `<suite>-<n>.log`: its last 10, each its last MiB
   check-full.log                   the last failing full check's output
   feature-request.md               the interview's description
   spec-update.md                   a spec's change and its tree, for the breakdown that updates it (§4.14)
@@ -1864,7 +1865,7 @@ It is `flock(LOCK_EX|LOCK_NB)` on `<git-common-dir>/tutti.lock`, so the system r
 | `suspended` | new: a worker's session was suspended as the run ended | `ticket`, `session`, `why` |
 | `resumed` | new (the log's `RESUMED`) | `ticket`, `session`, `why` (`suspended`, `answered`, `gone`, `hand_back`, `set_aside`) |
 | `turn` | new: a worker's turn ended, from its SDK result | `ticket`, `session`, `subtype`, `is_error`, `cost_usd` and `tokens` (by model: `input`, `output`, `cache_write`, `cache_read`), the turn's share of the session's running totals, `turns` (`num_turns`), `duration_ms`, `api_ms` |
-| `check` | new here, orchestra's: a check or setup ended | `suite` (`merge`, `recheck`, `fix`, `full`, `setup`), `ticket` (none for the full check's), `command`, `seconds`, `result` (`passed`, `failed`, `timed_out`, `not_run`), `output`, `train` |
+| `check` | new here, orchestra's: a check or setup ended | `suite` (`merge`, `recheck`, `fix`, `full`, `setup`), `ticket` (none for the full check's), `command`, `seconds`, `result` (`passed`, `failed`, `timed_out`, `not_run`), `output` (a ticket's kept beside its transcript, `workers/<id>/checks/`, as its worktree goes when it merges or is set aside), `said` (the output's lines saying what failed, else its last lines), `train` |
 | `organ` | new: an organ call ended | `organ`, `ticket`, `outcome` (`answered`, `unpriced`, `no_result`), `cost_usd`, `turns`, `duration_ms`, `session` |
 | `ticket_end` | new: a ticket's part in the run ended, or ended again | `ticket`, `outcome` (`merged`, `no_change`, `set_aside`, `needs_you`, `stopped`, `queued`), `phase`, `why`, `seconds`, `turns`, and what it spent, as below |
 | `closed`, `deferred`, `warn` with `aside` | orchestra's `phases`, `hand_backs`, `carried`, `tokens` added, and `cost_usd`; a `deferred` record's `detail` is `set aside overnight: <stop>` for a ticket an overnight run set aside (§5 item 10) | |
