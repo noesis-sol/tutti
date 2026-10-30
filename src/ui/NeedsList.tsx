@@ -6,7 +6,10 @@
 // between them, Enter or a click opens one: a question in the questions box at it (QuestionsBox.tsx),
 // which opens the list again once it is answered, the next one chosen; a Blocked ticket in a box
 // saying what clears it, Enter there opening its worker view, Esc back to the list at the next one.
-// A list with nothing in it closes with a toast. Esc closes it.
+// A list with nothing in it once the questions are read says Nothing needs you for `emptyLife`, on
+// the toasts' timer, and closes by itself, unless a need comes in meanwhile; Esc, Enter or a click
+// anywhere closes it sooner. A read that failed has its own toast, and the empty list closes at
+// once. Esc closes it.
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
@@ -14,6 +17,7 @@ import { UiCommand } from "../run/commands.ts"
 import type { QuestionNews } from "../run/questionNews.ts"
 import type { Need } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { clickable } from "./click.ts"
 import { type Command, isOn, useCommands } from "./keyCommands.ts"
 import { Box, type NeedsAt, useInput } from "./keys.ts"
 import { boxed, cut, fit, Lines, type Segments, seg } from "./line.tsx"
@@ -25,8 +29,11 @@ import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { useCommand, useQuestionNews, useRunViewPart, useTheme } from "./useRunView.ts"
 
-/** The toast of a list with nothing in it. */
+/** What a list with nothing in it says, faint, in place of its items. */
 export const nothingNeedsYou = "Nothing needs you"
+
+/** How long a list with nothing in it stays open, in ms, before it closes by itself. */
+export const emptyLife = 2000
 
 /** What the list says, faint, under what needs you until the run has read the open questions. */
 export const listReadingText = "reading the open questions…"
@@ -119,14 +126,16 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   const [chosen, setChosen, chosenNow] = useKeyState(() => at)
   const [blocked, setBlocked] = useState<Extract<Need, { _tag: "Blocked" }> | null>(null)
   const index = Math.min(Math.max(chosen, 0), Math.max(items.length - 1, 0))
-  // Nothing in it once the questions are read: a toast says so, and the list closes. A read that
-  // failed has its own toast.
+  // Nothing in it once the questions are read: it says so, and closes after `emptyLife` on the
+  // toasts' timer, which a need coming in stops. A read that failed has its own toast, and the list
+  // closes at once.
   const empty = items.length === 0 && read !== undefined
+  const readTag = read?._tag
   useEffect(() => {
     if (!empty) return
-    box.set(null)
-    if (read?._tag === "Read") toasts.show(nothingNeedsYou)
-  }, [empty, read, box, toasts])
+    if (readTag !== "Read") return box.set(null)
+    return toasts.timer(() => box.set(null), emptyLife)
+  }, [empty, readTag, box, toasts])
 
   const close = () => box.set(null)
   const move = (by: 1 | -1) => {
@@ -167,16 +176,25 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
           },
           { keys: ["escape"], run: back, hint: { keys: "Esc", does: "back" } },
         ]
-      : [
-          { keys: ["down", "tab"], run: () => move(1) },
-          { keys: ["up", "shift+tab"], run: () => move(-1), hint: { keys: "↑↓", does: "choose" } },
-          {
-            keys: ["return", "enter"],
-            run: () => open(Math.min(Math.max(chosenNow(), 0), items.length - 1)),
-            hint: { keys: "Enter", does: "open" },
-          },
-          { keys: ["escape"], run: close, hint: { keys: "Esc", does: "close" } },
-        ]
+      : empty
+        ? [
+            { keys: ["return", "enter"], run: close },
+            { keys: ["escape"], run: close, hint: { keys: "Esc", does: "close" } },
+          ]
+        : [
+            { keys: ["down", "tab"], run: () => move(1) },
+            {
+              keys: ["up", "shift+tab"],
+              run: () => move(-1),
+              hint: { keys: "↑↓", does: "choose" },
+            },
+            {
+              keys: ["return", "enter"],
+              run: () => open(Math.min(Math.max(chosenNow(), 0), items.length - 1)),
+              hint: { keys: "Enter", does: "open" },
+            },
+            { keys: ["escape"], run: close, hint: { keys: "Esc", does: "close" } },
+          ]
   useCommands("box", commands, "Needs")
 
   if (blocked !== null) {
@@ -193,7 +211,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
       />
     )
   }
-  if (empty) return null
+  if (empty && readTag !== "Read") return null
   const outer = Math.max(Math.min(width - 4, modalMaxWidth), 8)
   const inner = outer - 4
   const keys = choiceRows(
@@ -216,6 +234,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
     })),
   )
   if (read === undefined) lines.push([seg(`  ${listReadingText}`, theme.styles.dim)])
+  if (empty) lines.push([seg(`  ${nothingNeedsYou}`, theme.styles.dim)])
   const label: Segments = [seg("Needs you", theme.styles.stop)]
   const counted =
     items.length > room
@@ -230,7 +249,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
     target >= itemTarget ? open(target - itemTarget) : drawn[target]?.run()
   return (
     <>
-      <Backdrop />
+      <Backdrop {...(empty ? { press: close } : {})} />
       <box
         position="absolute"
         zIndex={10}
@@ -241,6 +260,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
         // Opaque, in the terminal's own background: the dashboard doesn't show through its spaces.
         backgroundColor={RGBA.defaultBackground()}
         flexDirection="column"
+        {...(empty ? clickable(close) : {})}
       >
         <Lines lines={rows} press={press} />
       </box>

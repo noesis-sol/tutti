@@ -8,6 +8,7 @@
 // the view under it (tutti-por).
 import { type MouseEvent, RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
+import { clickable } from "./click.ts"
 import { type Command, isOn } from "./keyCommands.ts"
 import {
   boxed,
@@ -24,9 +25,10 @@ import { useTheme } from "./useRunView.ts"
 /**
  * Over the whole screen, under a box (zIndex 10) and over the view: it draws nothing, and every
  * mouse event on it, a click, a drag or a scroll, stops there, so that the view under an open box
- * takes none. Drawn with each box, beside it in the same parent, whose origin is the screen's.
+ * takes none; a click on it runs `press`, where there is one. Drawn with each box, beside it in the
+ * same parent, whose origin is the screen's.
  */
-export const Backdrop = () => {
+export const Backdrop = ({ press }: { readonly press?: () => void }) => {
   const { width, height } = useTerminalDimensions()
   return (
     <box
@@ -37,6 +39,7 @@ export const Backdrop = () => {
       width={width}
       height={height}
       onMouse={(event: MouseEvent) => event.stopPropagation()}
+      {...(press === undefined ? {} : clickable(press))}
     />
   )
 }

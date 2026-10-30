@@ -220,8 +220,10 @@ ticket waits on, `■ <ticket> blocked: <why>` for each Blocked ticket, then, fa
 in the run's scope that no ticket in the run waits on. `↑`/`↓` choose, `Enter` or a click opens one:
 a question in `Shift+A`'s box at it, a Blocked ticket in a box saying what clears it, where `Enter`
 opens its worker view. Once the question is answered, or the box closed, you are back in the list,
-the next one chosen; `Esc` closes it. With nothing in it, the list closes and a toast says
-`Nothing needs you`.
+the next one chosen; `Esc` closes it. With nothing in it once the questions are read, the list
+says `Nothing needs you`, faint, for 2 seconds, then closes by itself; `Esc`, `Enter` or a click
+anywhere closes it sooner, and something that comes to need you meanwhile is listed and keeps it
+open. A list whose questions couldn't be read closes at once, with a toast saying why.
 
 ### The cards
 

@@ -3,8 +3,9 @@
 // its question; the worker view of an Asked ticket has an Answer button doing the same; Enter on
 // the totals' Needs you, or a click on it, opens a list of what needs you, then, faint, the open
 // questions no ticket in the run waits on, each opened from it, coming back to it with the next one
-// chosen; an empty list closes with a toast.
+// chosen; an empty list says Nothing needs you for 2 s, on the toasts' clock, then closes.
 import { describe, expect, test } from "bun:test"
+import { TextAttributes } from "@opentui/core"
 import { Effect, Queue } from "effect"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
@@ -18,9 +19,10 @@ import { Root } from "../src/ui/App.tsx"
 import { answerButton } from "../src/ui/Composer.tsx"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
 import type { Segments } from "../src/ui/line.tsx"
-import { listReadingText, nothingNeedsYou } from "../src/ui/NeedsList.tsx"
+import { emptyLife, listReadingText, nothingNeedsYou } from "../src/ui/NeedsList.tsx"
 import { noneOpenText } from "../src/ui/QuestionsBox.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
+import type { Timer } from "../src/ui/Toasts.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
@@ -126,6 +128,26 @@ const placeOf = (frame: Frame, text: string): { readonly x: number; readonly y: 
   return { x: lines[y]?.indexOf(text) ?? -1, y }
 }
 
+/** A toast Timer that waits for the test: `fire` runs what is waiting, `waits` says for how long. */
+const manualTimer = () => {
+  const waiting: Array<{ readonly run: () => void; readonly ms: number }> = []
+  const timer: Timer = (run, ms) => {
+    const entry = { run, ms }
+    waiting.push(entry)
+    return () => {
+      const at = waiting.indexOf(entry)
+      if (at >= 0) waiting.splice(at, 1)
+    }
+  }
+  return {
+    timer,
+    waits: () => waiting.map((entry) => entry.ms),
+    fire: () => {
+      for (const entry of waiting.splice(0)) entry.run()
+    },
+  }
+}
+
 const scene = async (
   view: RunView,
   screen: Screen,
@@ -135,7 +157,7 @@ const scene = async (
     readonly commands: Commands
     readonly rendered: Rendered
   }) => Promise<void>,
-  width = 100,
+  { width = 100, timer }: { readonly width?: number; readonly timer?: Timer } = {},
 ) => {
   const views = external(view)
   const news = external<ReadonlyArray<QuestionNews>>([])
@@ -151,6 +173,7 @@ const scene = async (
         now: () => began + 67_000,
         questions: news,
       }}
+      input={timer === undefined ? {} : { toastTimer: timer }}
     />,
     { width, height: 30 },
     (rendered) => body({ view: views, news, commands, rendered }),
@@ -445,17 +468,124 @@ describe("the Needs you list, without the panel", () => {
     )
   })
 
-  test("with nothing in it, it closes with a toast", async () => {
-    await scene(viewOf([]), Screen.Dashboard(), async ({ news, commands, rendered }) => {
-      await until(rendered, has("Needs you"))
-      await press(rendered, "tab", "enter")
-      const uuid = await readUuid(rendered, commands)
-      await rendered.input(() => news.set([QuestionNews.Read({ uuid, questions: [] })]))
-      const toast = await until(rendered, has(nothingNeedsYou))
-      expect(toast.chars).toContain(nothingNeedsYou)
-      expect(toast.chars).not.toContain(noneOpenText)
-      expect(toast.chars).not.toContain(listReadingText)
+  /** Opens the list with nothing in it by a click on Needs you, and reads no question open. */
+  const openEmpty = async (
+    rendered: Rendered,
+    commands: Commands,
+    news: Settable<ReadonlyArray<QuestionNews>>,
+  ): Promise<Frame> => {
+    const dashboard = await until(rendered, has("Needs you"))
+    const { x, y } = placeOf(dashboard, "Needs you")
+    await rendered.input((setup) => setup.mockMouse.click(x + 1, y))
+    const uuid = await readUuid(rendered, commands)
+    await rendered.input(() => news.set([QuestionNews.Read({ uuid, questions: [] })]))
+    return until(rendered, has(nothingNeedsYou))
+  }
+
+  test("with nothing in it, it says so for 2 s, then closes, with no toast", async () => {
+    const clock = manualTimer()
+    await scene(
+      viewOf([]),
+      Screen.Dashboard(),
+      async ({ news, commands, rendered }) => {
+        const list = await openEmpty(rendered, commands, news)
+        const lines = list.chars.split("\n")
+        const said = lines.findIndex((line) => line.includes(nothingNeedsYou))
+        // Under its label, faint, in place of the items; its hint Esc close alone.
+        expect(lines[said - 2]).toContain("Needs you")
+        expect(list.chars.split(nothingNeedsYou).length).toBe(2)
+        const span = list.spans.lines[said]?.spans.find((each) =>
+          each.text.includes(nothingNeedsYou),
+        )
+        expect((span?.attributes ?? 0) & TextAttributes.DIM).toBe(TextAttributes.DIM)
+        expect(list.chars).toContain("Esc close")
+        expect(list.chars).not.toContain("↑↓ choose")
+        expect(list.chars).not.toContain("Enter open")
+        expect(list.chars).not.toContain(listReadingText)
+        expect(list.chars).not.toContain(noneOpenText)
+        // The 2 s on the toasts' clock, and no toast waiting beside it.
+        expect(clock.waits()).toEqual([emptyLife])
+        await rendered.input(() => clock.fire())
+        const closed = await until(rendered, (frame) => !frame.chars.includes(nothingNeedsYou))
+        expect(closed.chars).not.toContain(nothingNeedsYou)
+        expect(closed.chars).not.toContain("Esc close")
+        expect(clock.waits()).toEqual([])
+      },
+      { timer: clock.timer },
+    )
+  })
+
+  const sooner: ReadonlyArray<
+    readonly [string, (rendered: Rendered, list: Frame) => Promise<unknown>]
+  > = [
+    ["Esc", (rendered) => press(rendered, "escape")],
+    ["Enter", (rendered) => press(rendered, "enter")],
+    [
+      "a click on it",
+      (rendered, list) => {
+        const { x, y } = placeOf(list, nothingNeedsYou)
+        return rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      },
+    ],
+    ["a click beside it", (rendered) => rendered.input((setup) => setup.mockMouse.click(1, 1))],
+  ]
+  for (const [how, act] of sooner) {
+    test(`with nothing in it, ${how} closes it sooner`, async () => {
+      const clock = manualTimer()
+      await scene(
+        viewOf([]),
+        Screen.Dashboard(),
+        async ({ news, commands, rendered }) => {
+          const list = await openEmpty(rendered, commands, news)
+          await act(rendered, list)
+          const closed = await until(rendered, (frame) => !frame.chars.includes(nothingNeedsYou))
+          expect(closed.chars).not.toContain(nothingNeedsYou)
+          // Its 2 s stopped with it.
+          expect(clock.waits()).toEqual([])
+        },
+        { timer: clock.timer },
+      )
     })
+  }
+
+  test("with nothing in it, a need coming in within the 2 s is listed, and the list stays", async () => {
+    const clock = manualTimer()
+    await scene(
+      viewOf([]),
+      Screen.Dashboard(),
+      async ({ view, news, commands, rendered }) => {
+        await openEmpty(rendered, commands, news)
+        await rendered.input(() => view.set(viewOf([blocked])))
+        const list = await until(rendered, has("> ■ t-2 blocked: MERGE_CONFLICT"))
+        expect(list.chars).not.toContain(nothingNeedsYou)
+        expect(list.chars).toContain("Enter open")
+        expect(clock.waits()).toEqual([])
+        await rendered.input(() => clock.fire())
+        const still = await rendered.capture()
+        expect(still.chars).toContain("> ■ t-2 blocked: MERGE_CONFLICT")
+      },
+      { timer: clock.timer },
+    )
+  })
+
+  test("with nothing in it and the questions not read, it closes at once with the failure's toast", async () => {
+    const clock = manualTimer()
+    await scene(
+      viewOf([]),
+      Screen.Dashboard(),
+      async ({ news, commands, rendered }) => {
+        const dashboard = await until(rendered, has("Needs you"))
+        const { x, y } = placeOf(dashboard, "Needs you")
+        await rendered.input((setup) => setup.mockMouse.click(x + 1, y))
+        const uuid = await readUuid(rendered, commands)
+        await rendered.input(() => news.set([QuestionNews.NotRead({ uuid, why: "bd is gone" })]))
+        const toast = await until(rendered, has("couldn't read the questions: bd is gone"))
+        expect(toast.chars).not.toContain(listReadingText)
+        expect(toast.chars).not.toContain(nothingNeedsYou)
+        expect(toast.chars).not.toContain("Esc close")
+      },
+      { timer: clock.timer },
+    )
   })
 
   test("a click on an item not chosen, then Esc, comes back at the one after it", async () => {
@@ -522,7 +652,7 @@ describe("the Needs you list, without the panel", () => {
         await rendered.capture()
         expect(taken(commands).some((command) => command._tag === "ReadQuestions")).toBe(false)
       },
-      155,
+      { width: 155 },
     )
   })
 })

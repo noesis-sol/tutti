@@ -43,6 +43,8 @@ export interface ToastStore extends External<ReadonlyArray<Toast>> {
    * transcript view's hint and composer with the lines over it up to the rule (tutti-fknd).
    */
   readonly under: Settable<number>
+  /** The timer the toasts are timed by, for what else goes after a while by itself (NeedsList). */
+  readonly timer: Timer
 }
 
 /** An empty ToastStore whose toasts are shown `life` ms each, timed by `timer`. */
@@ -54,6 +56,7 @@ export const makeToasts = (life: number = toastLife, timer: Timer = realTimer): 
     get: store.get,
     subscribe: store.subscribe,
     under: external(1),
+    timer,
     show: (text, options = {}) => {
       const toast: Toast = { id: next++, text, failure: options.failure ?? false }
       store.set([...store.get(), toast].slice(-toastsShown))
