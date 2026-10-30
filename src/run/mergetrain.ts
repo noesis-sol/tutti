@@ -51,7 +51,7 @@ import { branchOf } from "../services/Worktrees.ts"
 import { aheadKey, clearAhead, markAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
 import { gitReads, onBranch, type Restored, restoreBranch } from "./branch.ts"
-import { Checked, checkOnce, clearUnchecked, failedHow } from "./check.ts"
+import { Checked, checkOnce, clearUnchecked, failedHow, outputKept } from "./check.ts"
 import { RunFibers } from "./fibers.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import {
@@ -484,7 +484,7 @@ export const make = (
         if (!ranSetUp) yield* mark(checking)
         const checked =
           setup._tag === "Failed"
-            ? Checked.Failed({ error: setup.error, output: setup.output })
+            ? Checked.Failed({ error: setup.error, output: setup.output, kept: setup.kept })
             : yield* checkOnce(checking.ticket, { suite: "merge", train: true })
         if (checked._tag !== "Failed") {
           const passed = yield* save({ ...checking, step: Step.Passed({ head, setUp: ranSetUp }) })
@@ -497,7 +497,7 @@ export const make = (
           return
         }
         const where =
-          checked.error._tag === "CheckNotRun" ? "" : line` (output is in ${checked.output})`
+          checked.error._tag === "CheckNotRun" ? "" : line` (output is in ${outputKept(checked)})`
         const failed = yield* save({
           ...checking,
           step: Step.Failed({

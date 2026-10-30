@@ -44,7 +44,7 @@ import { Beads, type TicketId } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { attemptAt, leftAt, restoreBranch } from "./branch.ts"
-import { failedHow } from "./check.ts"
+import { type CheckFailure, failedHow, outputKept } from "./check.ts"
 import {
   type Counts,
   carryIfBaseMoved,
@@ -90,8 +90,10 @@ export interface CheckStop {
   readonly at: Sha | undefined
   /** How the check, or the setup before it, failed. */
   readonly error: CheckError
-  /** Where its whole output is. */
+  /** Where its whole output is in the ticket's worktree, for its worker. */
   readonly output: string
+  /** Its copy beside the ticket's transcript, where it was kept (check.ts's CheckFailure). */
+  readonly kept?: string | undefined
   /** The rebase its worker resolved, when the check failed on the resolution. */
   readonly resolved?: HandedRebase
   /** The branch was on top of the base already, as its worker left it, not rebased. */
@@ -348,18 +350,19 @@ export const setAside = (
     const tried = handedBack(tries, not)
     const onTop = stop.onTop === true
     if (stop.resolved !== undefined) {
-      const why = `${failedResolved(stop.resolved, stop.error, stop.output)}, and was ${tried}`
+      const why = `${failedResolved(stop.resolved, stop.error, outputKept(stop))}, and was ${tried}`
       return yield* rejectResolution(stop.resolved, options, why, "Aside")
     }
     yield* Effect.ignore(
       beads.update(id, {
-        appendNotes: line`tutti: ${failedHow(stop.error)} on ${branchOn(branch, base, onTop)} (output is in ${stop.output}); it was ${tried}; so ${id} was set aside for review.`,
+        appendNotes: line`tutti: ${failedHow(stop.error)} on ${branchOn(branch, base, onTop)} (output is in ${outputKept(stop)}); it was ${tried}; so ${id} was set aside for review.`,
       }),
     )
     yield* checksFailed(stop.ticket, options, memory.rechecks, {
       onto: stop.onto,
       error: stop.error,
       output: stop.output,
+      kept: stop.kept,
       tried: `, after it was handed back to its worker to fix ${times(tries.length)} (see its notes)`,
       onTop,
     })
@@ -403,8 +406,7 @@ export const fixPassed = (
   })
 
 /**
- * What came of a check, or the setup before it, that failed (`error`, its output in `output`) on
- * what its worker left after `stop`'s failure was handed back, `left`, `tries` saying what came of
+ * What came of a check, or the setup before it, that failed (`failure`) on what its worker left after `stop`'s failure was handed back, `left`, `tries` saying what came of
  * the hand-backs before it: Aside when its worker committed nothing, or no hand-back is left, the
  * ticket set aside; else Again, the failure on the fix, to be handed back again, its `tried` saying
  * what came of each hand-back so far. `at`: the commit checked, its branch's as the setup started
@@ -413,8 +415,7 @@ export const fixPassed = (
 export const fixFailed = (
   stop: CheckStop,
   left: Left,
-  error: CheckError,
-  output: string,
+  failure: CheckFailure,
   tries: ReadonlyArray<string>,
   options: MergeOptions,
   memory: MergeMemory,
@@ -422,21 +423,23 @@ export const fixFailed = (
 ): Effect.Effect<Data.TaggedEnum.Value<FixEnd, "Aside" | "Again">, never, MergeEnv> =>
   Effect.gen(function* () {
     const { id } = stop.ticket
+    const { error, output, kept } = failure
     const how = failedHow(error)
+    const where = outputKept(failure)
     if (left._tag === "Unchanged") {
       const tried = [
         ...tries,
-        line`its worker committed nothing, and ${how} again (output is in ${output})`,
+        line`its worker committed nothing, and ${how} again (output is in ${where})`,
       ]
-      const again = { ...stop, error, output }
+      const again = { ...stop, error, output, kept }
       yield* setAside(again, options, memory, tried, "its worker found nothing to fix")
       return FixEnd.Aside()
     }
     const tried = [
       ...tries,
-      line`its worker committed ${left.commits}, but ${how} still (output is in ${output})`,
+      line`its worker committed ${left.commits}, but ${how} still (output is in ${where})`,
     ]
-    const next: CheckStop = { ...stop, at, error, output, tried }
+    const next: CheckStop = { ...stop, at, error, output, kept, tried }
     const fix = yield* toFix(next, options, yield* memory.fixes.count(id))
     if (Result.isSuccess(fix)) return FixEnd.Again({ stop: fix.success })
     yield* setAside(next, options, memory, tried, refusalWhy(fix.failure))
@@ -508,16 +511,7 @@ export const fixCheck = (
         yield* fixPassed(stop.ticket, verified)
         return FixEnd.Verified()
       }
-      const after = yield* fixFailed(
-        stop,
-        verified,
-        checked.error,
-        checked.output,
-        tries,
-        options,
-        memory,
-        at,
-      )
+      const after = yield* fixFailed(stop, verified, checked, tries, options, memory, at)
       if (after._tag !== "Again") return after
       if (!(yield* handOverFix(after.stop, options, memory.fixes))) return FixEnd.Aside()
       stop = after.stop
@@ -527,14 +521,13 @@ export const fixCheck = (
 
 /**
  * The resolution of `rebase`'s conflicts verified, but its check, or the setup before it, failing
- * (`error`, its output in `output`): handed back to the worker, Resolving → Fixing{afterResolution},
+ * (`failure`): handed back to the worker, Resolving → Fixing{afterResolution},
  * and the fix set up and checked as fixCheck does; or, when it can't be, the resolution rejected,
  * Blocked, the line saying why.
  */
 export const fixResolution = (
   rebase: HandedRebase,
-  error: CheckError,
-  output: string,
+  failure: CheckFailure,
   at: Sha | undefined,
   options: MergeOptions,
   memory: MergeMemory,
@@ -548,8 +541,9 @@ export const fixResolution = (
       fork: rebase.fork,
       head: rebase.head,
       at,
-      error,
-      output,
+      error: failure.error,
+      output: failure.output,
+      kept: failure.kept,
       resolved: rebase,
       ...(tries.length === 0 ? {} : { tried: tries }),
     }
@@ -557,7 +551,7 @@ export const fixResolution = (
     if (Result.isSuccess(fix) && (yield* handOverFix(fix.success, options, memory.fixes))) {
       return yield* fixCheck(fix.success, options, memory)
     }
-    const why = failedResolved(rebase, error, output)
+    const why = failedResolved(rebase, failure.error, outputKept(failure))
     const said = Result.isSuccess(fix) ? undefined : refusalWhy(fix.failure)
     const tail = said === undefined ? "" : line`; not handed back to its worker: ${said}`
     const before = tries.length === 0 ? "" : `; before that, it was ${handedBack(tries)}`

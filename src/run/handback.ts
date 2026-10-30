@@ -61,7 +61,13 @@ import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { awakeSince } from "../services/Wake.ts"
 import { attemptAt, baseSince, branchHead, leftAt, onBranch, restoreBranch } from "./branch.ts"
-import { type Checked, failedHow, markHandedBack, runMergeCheck } from "./check.ts"
+import {
+  type Checked,
+  type CheckFailure,
+  failedHow,
+  markHandedBack,
+  runMergeCheck,
+} from "./check.ts"
 import type { Carried } from "./checkback.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
@@ -1088,9 +1094,7 @@ export type Resolved = Data.TaggedEnum<{
   Verified: Record<never, never>
   Unchanged: { readonly unchanged: Unchanged }
   Blocked: Record<never, never>
-  CheckFailed: {
-    readonly error: CheckError
-    readonly output: string
+  CheckFailed: CheckFailure & {
     /** The commit checked, its branch's as the setup started; undefined when git couldn't say. */
     readonly at: Sha | undefined
   }
@@ -1189,7 +1193,12 @@ export const resolve = (
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
       const { at, checked } = yield* checkWithFix(stop, fix, options, memory)
       if (checked._tag !== "Failed") return Resolved.Verified()
-      return Resolved.CheckFailed({ error: checked.error, output: checked.output, at })
+      return Resolved.CheckFailed({
+        error: checked.error,
+        output: checked.output,
+        kept: checked.kept,
+        at,
+      })
     }
     yield* rejectResolution(stop, options, why)
     return Resolved.Blocked()

@@ -1811,7 +1811,8 @@ The JSON Schema is generated from the Effect Schema (`JsonSchema`) and published
   attention/                       open requests and `tutti answer`'s answers (§4.5)
   workers/<id>/messages.jsonl      tutti's transcript of each worker (§4.4)
   workers/<id>/stderr.log          its Claude Code's stderr
-  workers/<id>/checks/             its failed checks' and setups' output, `<suite>-<n>.log`: its last 10, each its last MiB
+  workers/<id>/checks/             its failed checks' and setups' output, `<suite>-<n>.log`: its last 10, each its last MiB;
+                                 its notes, the log and the report name the copy, its worker the worktree's file
   check-full.log                   the last failing full check's output
   feature-request.md               the interview's description
   spec-update.md                   a spec's change and its tree, for the breakdown that updates it (§4.14)

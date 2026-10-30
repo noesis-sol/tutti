@@ -51,11 +51,29 @@ export type Checked = Data.TaggedEnum<{
   Passed: { readonly command: string; readonly after?: ReadonlyArray<StatusEntry> }
   /** No check command is set: the rebased code merges unchecked. `after`, as Passed's. */
   Unchecked: { readonly after?: ReadonlyArray<StatusEntry> }
-  /** It failed, timed out or couldn't run; `output` is where its whole output is. */
-  Failed: { readonly error: CheckError; readonly output: string }
+  /** It failed, timed out or couldn't run. */
+  Failed: CheckFailure
 }>
 
 export const Checked = Data.taggedEnum<Checked>()
+
+/**
+ * A ticket's check, or the setup before it, that failed, timed out or couldn't run: `output` is
+ * where its whole output is in the ticket's worktree, for its worker, and `kept` its copy beside
+ * the ticket's transcript (keptChecks.ts), where it could be kept, which outlives the worktree.
+ */
+export interface CheckFailure {
+  readonly error: CheckError
+  readonly output: string
+  readonly kept?: string | undefined
+}
+
+/**
+ * Where a failed check's whole output is for any reader but the ticket's worker (its notes, the
+ * log, the report): its kept copy, else the worktree's file, gone once the worktree is.
+ */
+export const outputKept = (failure: Pick<CheckFailure, "output" | "kept">): string =>
+  failure.kept ?? failure.output
 
 /** Which check a `check` record is of (§ 10). */
 export type CheckSuite = (typeof checkSuites)[number]
@@ -63,12 +81,26 @@ export type CheckSuite = (typeof checkSuites)[number]
 /**
  * Runs `check`, a check or a setup, and writes its `check` record (§ 10) once it ends, `ticket`'s
  * (none for the full check's): what ran, for how long and how it went. A check with no command ran
- * nothing and has none. How it went, as Effect.result gives it. `options.keep`: where the check
- * writes its whole output, the run file `name` in the ticket's `worktree`; where it failed or timed
- * out, its output is kept beside the ticket's transcript first (keptChecks.ts), as the worktree
- * goes when the ticket merges or is set aside, and its record names the copy.
+ * nothing and has none. How it went, as Effect.result gives it.
  */
 export const recorded = <R>(
+  suite: CheckSuite,
+  ticket: string | undefined,
+  check: Effect.Effect<CheckResult, CheckError, R>,
+  options: { readonly train?: boolean } = {},
+): Effect.Effect<
+  Result.Result<CheckResult, CheckError>,
+  never,
+  R | EventStream | AppConfig | Log
+> => Effect.map(recordedKeeping(suite, ticket, check, options), ({ ran }) => ran)
+
+/**
+ * Runs `check` and writes its record as `recorded` does. `options.keep`: where the check writes its
+ * whole output, the run file `name` in the ticket's `worktree`; where it failed or timed out, its
+ * output is kept beside the ticket's transcript first (keptChecks.ts), as the worktree goes when the
+ * ticket merges or is set aside, and its record names the copy, `kept`, given with how it went.
+ */
+export const recordedKeeping = <R>(
   suite: CheckSuite,
   ticket: string | undefined,
   check: Effect.Effect<CheckResult, CheckError, R>,
@@ -77,7 +109,7 @@ export const recorded = <R>(
     readonly keep?: { readonly worktree: string; readonly name: string }
   } = {},
 ): Effect.Effect<
-  Result.Result<CheckResult, CheckError>,
+  { readonly ran: Result.Result<CheckResult, CheckError>; readonly kept: string | undefined },
   never,
   R | EventStream | AppConfig | Log
 > =>
@@ -97,7 +129,7 @@ export const recorded = <R>(
       if (ran.success._tag === "CheckPassed") {
         yield* events.emit({ ...base, command: ran.success.command, result: "passed" })
       }
-      return ran
+      return { ran, kept: undefined }
     }
     const error = ran.failure
     const { keep } = options
@@ -122,7 +154,7 @@ export const recorded = <R>(
       ...(error._tag === "CheckNotRun" ? {} : { output: kept ?? error.outputFile }),
       ...(said.length === 0 ? {} : { said }),
     })
-    return ran
+    return { ran, kept }
   })
 
 /** The ticket a check is for. */
@@ -360,7 +392,7 @@ export const checkOnce = (
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, checkLogName, "the check's")
         let status: ReadonlyArray<StatusEntry> | undefined
-        const ran = yield* recorded(
+        const { ran, kept } = yield* recordedKeeping(
           how.suite,
           ticket.id,
           noteWritten(ticket.worktree, checks.fast({ cwd: ticket.worktree, ...to }), {
@@ -375,7 +407,7 @@ export const checkOnce = (
           },
         )
         if (ran._tag === "Failure") {
-          return Checked.Failed({ error: ran.failure, output: to.outputFile })
+          return Checked.Failed({ error: ran.failure, output: to.outputFile, kept })
         }
         const result = ran.success
         const after = status === undefined ? {} : { after: status }

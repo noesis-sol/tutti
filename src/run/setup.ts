@@ -41,7 +41,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { decodeConfig, parseConfigJson } from "../project/configFile.ts"
 import { type Requirement, Settings, settingsFile } from "../project/settings.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
-import { type CheckError, Checks, setupLogName } from "../services/Checks.ts"
+import { Checks, setupLogName } from "../services/Checks.ts"
 import { Git, type Sha, type StatusEntry } from "../services/Git.ts"
 import { Store, ticketsIn } from "../services/Store.ts"
 import {
@@ -53,7 +53,7 @@ import {
   writeRunFile,
 } from "../services/Worktrees.ts"
 import { gitReads } from "./branch.ts"
-import { howFailed, outputTo, recorded } from "./check.ts"
+import { type CheckFailure, howFailed, outputKept, outputTo, recordedKeeping } from "./check.ts"
 import { noteWritten } from "./checkWrote.ts"
 import type { EventStream } from "./eventstream.ts"
 import { settingsGlobMatch } from "./glob.ts"
@@ -254,8 +254,8 @@ export type SetUp = Data.TaggedEnum<{
   Unneeded: Record<never, never>
   /** `after`: its worktree's status read as it ended, if git read one (noteWritten). */
   Passed: { readonly after?: ReadonlyArray<StatusEntry> }
-  /** It failed, timed out or couldn't run; `output` is where its whole output is. */
-  Failed: { readonly error: CheckError; readonly output: string }
+  /** It failed, timed out or couldn't run. */
+  Failed: CheckFailure
 }>
 
 export const SetUp = Data.taggedEnum<SetUp>()
@@ -340,10 +340,10 @@ export const setUp = (
     yield* (yield* Log).write(detail`${ticket.id}: ${what}; running '${command}' before the check`)
     const checks = yield* Checks
     let after: ReadonlyArray<StatusEntry> | undefined
-    const { ran, output } = yield* Effect.scoped(
+    const { ran, output, kept } = yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, setupLogName, "the setup's")
-        const ran = yield* recorded(
+        const { ran, kept } = yield* recordedKeeping(
           "setup",
           ticket.id,
           noteWritten(
@@ -358,11 +358,11 @@ export const setUp = (
           ),
           { keep: { worktree: ticket.worktree, name: setupLogName } },
         )
-        return { ran, output: to.outputFile }
+        return { ran, output: to.outputFile, kept }
       }),
     )
     if (Result.isFailure(ran)) {
-      return SetUp.Failed({ error: ran.failure, output })
+      return SetUp.Failed({ error: ran.failure, output, kept })
     }
     if (ran.success._tag === "NoCheckCommand") return SetUp.Unneeded()
     yield* setUps.set(ticket.id, onto, head)
@@ -374,8 +374,8 @@ export type WorktreeSetUp = Data.TaggedEnum<{
   /** No setup command is set, or the worktree's dependencies are set up already: nothing ran. */
   Unneeded: Record<never, never>
   Passed: Record<never, never>
-  /** `command` failed, timed out or couldn't run; `output` is where its whole output is. */
-  Failed: { readonly command: string; readonly error: CheckError; readonly output: string }
+  /** `command` failed, timed out or couldn't run. */
+  Failed: CheckFailure & { readonly command: string }
 }>
 
 export const WorktreeSetUp = Data.taggedEnum<WorktreeSetUp>()
@@ -461,21 +461,21 @@ export const setUpWorktree = (
     yield* (yield* Log).write(detail`${id}: ${what} before its worker starts`)
     yield* writeMark(id, path, "")
     const checks = yield* Checks
-    const { ran, output } = yield* Effect.scoped(
+    const { ran, output, kept } = yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo({ id, worktree: path }, setupLogName, "the setup's")
-        const ran = yield* recorded(
+        const { ran, kept } = yield* recordedKeeping(
           "setup",
           id,
           checks.setup({ cwd: path, ...to, before: "fast", command }),
           { keep: { worktree: path, name: setupLogName } },
         )
-        return { ran, output: to.outputFile }
+        return { ran, output: to.outputFile, kept }
       }),
     )
     if (Result.isFailure(ran)) {
       yield* writeMark(id, path, failedMark)
-      return WorktreeSetUp.Failed({ command, error: ran.failure, output })
+      return WorktreeSetUp.Failed({ command, error: ran.failure, output, kept })
     }
     if (now !== undefined) yield* setUps.setWorktree(id, now)
     yield* dropMark(id, path)
@@ -513,7 +513,8 @@ export const leaveSetupFailed = (
     const beads = yield* Beads
     const ledger = yield* Ledger
     const { id } = ticket
-    const { command, output } = failed
+    const { command } = failed
+    const output = outputKept(failed)
     const how = howFailed(failed.error)
     let notReopened = false
     if (ticket.status !== undefined && ticket.status !== "open") {

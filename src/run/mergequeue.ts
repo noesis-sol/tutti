@@ -370,14 +370,7 @@ export const make = (
             return false
           }
           if (resolved._tag === "CheckFailed") {
-            const fixed = yield* fixResolution(
-              stop,
-              resolved.error,
-              resolved.output,
-              resolved.at,
-              options,
-              memory,
-            )
+            const fixed = yield* fixResolution(stop, resolved, resolved.at, options, memory)
             return fixed._tag === "Verified"
           }
           return resolved._tag === "Verified"

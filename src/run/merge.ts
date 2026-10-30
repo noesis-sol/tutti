@@ -80,8 +80,10 @@ import {
   worktreeStatus,
 } from "./branch.ts"
 import {
+  type CheckFailure,
   failedHow,
   markUnchecked,
+  outputKept,
   type Passes,
   runMergeCheck,
   saidOf,
@@ -861,8 +863,9 @@ const check = (
     const at = read.success
     const handBack = (stop: HandedCheck) => Prepared.FixBack({ stop })
     const passed = Step.Confirm({ onto, at })
-    const failed = (error: CheckError, output: string) =>
+    const failed = (failure: CheckFailure) =>
       Effect.gen(function* () {
+        const { error, output, kept } = failure
         const stop: CheckStop = {
           ticket,
           onto,
@@ -871,20 +874,12 @@ const check = (
           at,
           error,
           output,
+          kept,
           onTop,
           ...(tries.length === 0 ? {} : { tried: tries }),
         }
         if (carried?.fixed !== undefined) {
-          const after = yield* fixFailed(
-            stop,
-            carried.fixed,
-            error,
-            output,
-            tries,
-            options,
-            memory,
-            at,
-          )
+          const after = yield* fixFailed(stop, carried.fixed, failure, tries, options, memory, at)
           return after._tag === "Aside" ? Prepared.Over({}) : handBack(after.stop)
         }
         const fix = yield* toFix(stop, options, yield* memory.fixes.count(id))
@@ -899,6 +894,7 @@ const check = (
           onto,
           error,
           output,
+          kept,
           tried,
           onTop,
         })
@@ -917,7 +913,7 @@ const check = (
     })
     if (setup._tag === "Failed") {
       yield* ends(false)
-      return yield* failed(setup.error, setup.output)
+      return yield* failed(setup)
     }
     yield* ledger.refine(id, Detail.Step({ step: "check" }))
     // A ticket checked once more after a failed check (recheck.ts) has its check recorded so.
@@ -953,7 +949,7 @@ const check = (
         yield* notePass(ticket, memory.passes, at)
         return passed
       case "Failed":
-        return yield* failed(checked.error, checked.output)
+        return yield* failed(checked)
     }
   })
 
@@ -1027,8 +1023,10 @@ export interface FailedCheck {
   /** The base's commit its branch was rebased onto, or is on top of. */
   readonly onto: string
   readonly error: CheckError
-  /** Where its whole output is. */
+  /** Where its whole output is in its worktree. */
   readonly output: string
+  /** Its copy beside the ticket's transcript, where it was kept (check.ts's CheckFailure). */
+  readonly kept?: string | undefined
   /** What came of handing it back to its worker, if anything, as its line says it. */
   readonly tried?: Line | string
   /** On top of the base already, not rebased. */
@@ -1045,10 +1043,12 @@ export const checksFailed = (
   ticket: FinishedTicket,
   options: MergeOptions,
   rechecks: Rechecks,
-  { onto, error, output, tried = "", onTop = false }: FailedCheck,
+  { onto, error, tried = "", onTop = false, ...failure }: FailedCheck,
 ): Effect.Effect<void, never, MergeEnv> =>
   Effect.gen(function* () {
     const log = yield* Log
+    // The worktree goes once the ticket is set aside: its kept copy is named where there is one.
+    const output = outputKept(failure)
     const where = error._tag === "CheckNotRun" ? "" : line` (output is in ${output})`
     const again = (yield* rechecks.rechecked(ticket.id)) ? " again" : ""
     const later = yield* keepForRecheck(ticket, options, rechecks, onto, error)
