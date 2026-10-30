@@ -230,7 +230,9 @@ below are the coverage report's uncovered lines at 368899e.
 
 - **Reached by**: `tutti --feature "<request>"`, or New feature at the start question.
 - **Tests**: `interview.test.ts`, `feature.test.ts`, `feature-binary.test.ts` (`--feature` on a
-  terminal, without one, and `--yes`), `feature-retired.test.ts`, `in-renderer.test.ts`,
+  terminal, without one, and `--yes`), `feature-start-binary.test.ts` (`--feature` and New
+  feature filed through the breakdown's MCP tools, the run's START block naming the epic and the
+  request), `feature-retired.test.ts`, `in-renderer.test.ts`,
   `ui-interview.test.tsx`, `ui-interview-narrow.test.tsx`, `ui-interview-keys.test.tsx` (the
   view's keys and mouse: PgUp/PgDn and loading older items, ↑↓, Tab and the arrows in a request's
   card, Enter, the number keys, g and G, a click on an entry).

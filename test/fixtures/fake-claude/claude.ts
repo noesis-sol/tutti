@@ -3,7 +3,8 @@
 // SDK's stream-json protocol on stdin and stdout, with the message shapes
 // docs/spikes/01-sdk-session.md and 02-sdk-lifecycle.md recorded
 // (SDK 0.3.301, Claude Code 2.1.301). It answers the SDK's initialize, interrupt and
-// cancel_async_message control requests, plays one turn per message it is sent (a message sent
+// cancel_async_message control requests, calls the SDK's in-process MCP tools through
+// mcp_message, plays one turn per message it is sent (a message sent
 // during a turn waits in its queue and runs as the next turn, with those of its kind waiting behind
 // it, or a wait step folds it into the running turn), and ends when its stdin closes, which it logs as `{ closed: true }`. Each
 // message gets its command_lifecycle (queued, started, then completed or cancelled), each result
@@ -41,6 +42,18 @@ type Step =
         readonly hook_event_name: string
         readonly tool_name: string
         readonly tool_input: Record<string, unknown>
+      }
+    }
+  /**
+   * Calls a tool of one of the SDK's in-process MCP servers through the mcp_message control request,
+   * as Claude Code does (initializing the server on its first call), and logs
+   * `{ mcp: { server, tool, answer } }`, the answer the tool's text.
+   */
+  | {
+      readonly mcp: {
+        readonly server: string
+        readonly tool: string
+        readonly arguments: Record<string, unknown>
       }
     }
   /** Asks the SDK's canUseTool, waits for the answer, and says what it was. */
@@ -166,6 +179,37 @@ const ask = (request: object) =>
     answers.set(id, resolve)
     void write({ type: "control_request", request_id: id, request })
   })
+
+/** The SDK MCP servers initialized, by name. */
+const mcpServers = new Set<string>()
+let mcpRequests = 0
+
+/** A JSON-RPC message to the SDK's MCP server `server`; a request's result, a notification's none. */
+const mcpMessage = async (server: string, method: string, params: object, notify = false) => {
+  const answer = (await ask({
+    subtype: "mcp_message",
+    server_name: server,
+    message: { jsonrpc: "2.0", method, params, ...(notify ? {} : { id: ++mcpRequests }) },
+  })) as { mcp_response?: { result?: unknown } } | undefined
+  return answer?.mcp_response?.result
+}
+
+/** Calls `tool` of the SDK's MCP server `server` with `input`: the text it answers with. */
+const callMcp = async (server: string, tool: string, input: Record<string, unknown>) => {
+  if (!mcpServers.has(server)) {
+    mcpServers.add(server)
+    await mcpMessage(server, "initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "claude-code", version: "2.1.301" },
+    })
+    await mcpMessage(server, "notifications/initialized", {}, true)
+  }
+  const called = (await mcpMessage(server, "tools/call", { name: tool, arguments: input })) as
+    | { content?: unknown }
+    | undefined
+  return textOf(called?.content)
+}
 
 /** Messages sent during a turn, waiting for the next. */
 let queued: Array<UserMessage> = []
@@ -334,6 +378,12 @@ const turn = async (first: ReadonlyArray<UserMessage>) => {
           tool_use_id: "toolu_fake",
         })
       }
+    } else if ("mcp" in step) {
+      const { server, tool, arguments: input } = step.mcp
+      const answer = await callMcp(server, tool, input)
+      log({ mcp: { server, tool, answer } })
+      last = answer
+      await assistant(answer)
     } else {
       await write({ type: "system", subtype: "session_state_changed", state: "requires_action" })
       const answer = (await ask({
