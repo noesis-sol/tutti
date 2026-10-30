@@ -531,6 +531,8 @@ describe("the in-memory repository, scripted", () => {
       "status",
       "status",
       "status",
+      // The rebase's read of the branch's merges, as live, before it.
+      "log --merges",
       "rebase",
     ])
   })

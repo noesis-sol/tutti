@@ -133,17 +133,18 @@ describe("one merge's reads", () => {
     expect(merged.shows).toBe(1)
   })
 
-  test("a branch rebased onto the base that moved on, checked and merged: 21 and one", async () => {
+  test("a branch rebased onto the base that moved on, checked and merged: 22 and one", async () => {
     const merged = resultOf(await counted("a" as TicketId, "b" as TicketId))
     expect(merged.phase).toBe("Done")
     // Before: 29, with 3 statuses, a merge-base and a diff more, and 2 bd shows; then 24, with a
-    // status and 2 rev-parses more.
+    // status and 2 rev-parses more; the rebase's read of the branch's merges is one more.
     expect(merged.git).toEqual({
       "symbolic-ref": 2,
       "rev-parse": 6,
       "merge-base": 1,
       status: 5,
       "diff --name-only": 3,
+      "log --merges": 1,
       rebase: 1,
       "merge --ff-only": 1,
       log: 2,

@@ -805,7 +805,11 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
       () => `rebased onto ${base}, which has its changes already, ${branch} changes nothing`,
     )
     if (dropped._tag === "Unchanged") return dropped
-    yield* log.write(detail`rebased ${branch} onto ${base}, which moved on while it ran`)
+    yield* log.write(
+      rebased.success.merges
+        ? detail`rebased ${branch}, with its merges, onto ${base}, which moved on while it ran`
+        : detail`rebased ${branch} onto ${base}, which moved on while it ran`,
+    )
     return Step.Check({
       fork,
       onto,

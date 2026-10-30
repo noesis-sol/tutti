@@ -25,6 +25,7 @@ import {
   gitCall,
   gitOps,
   RebaseConflict,
+  type Rebased,
   rebaseFolders,
   resetTo,
   Sha,
@@ -507,8 +508,19 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           : Effect.succeed(checkout)
       }
 
+      // Its commits have one parent each, none of its operations making a merge: every rebase is
+      // in a line, as the live layer's of a branch without merges, after the read that finds none.
+      const inLine: Rebased = { merges: false }
       const rebase = (worktree: string, onto: string) =>
-        operation(gitCall(gitOps.rebase, onto), worktree, (refuse) =>
+        Effect.andThen(
+          operation(gitCall(gitOps.branchMerges, onto), worktree, (refuse) =>
+            inRepo(refuse, worktree),
+          ),
+          replayLine(worktree, onto),
+        )
+
+      const replayLine = (worktree: string, onto: string) =>
+        operation(gitCall(gitOps.rebase, onto, "linear"), worktree, (refuse) =>
           Effect.gen(function* () {
             const checkout = yield* inRepo(refuse, worktree)
             if (checkout.rebase !== undefined) {
@@ -540,7 +552,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               .sort((a, b) => a.seq - b.seq)
             const force = branch === undefined ? undefined : forced.get(branch)
             if (force !== undefined && todo.length > 0) forced.delete(branch as string)
-            else if (isAncestor(target, head)) return
+            else if (isAncestor(target, head)) return inLine
             const overwritten = untracked(checkout).filter((path) => treeOf(target).has(path))
             if (overwritten.length > 0) {
               return yield* refuse(
@@ -558,6 +570,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             if (replayed.conflicts.length > 0) {
               return yield* new RebaseConflict({ files: replayed.conflicts })
             }
+            return inLine
           }),
         )
 

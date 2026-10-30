@@ -77,8 +77,9 @@ const calls: ReadonlyArray<{
     call: (git, dir) => git.deleteBranch(dir, "b", { force: true }),
   },
   {
-    op: "rebase",
-    command: "git rebase --no-autostash --no-update-refs --end-of-options main",
+    op: "log --merges",
+    command:
+      "git log --merges --no-show-signature '--format=%H %T %P' --end-of-options main..HEAD --",
     call: (git, dir) => git.rebase(dir, "main"),
   },
   { op: "rebase --abort", command: "git rebase --abort", call: (git, dir) => git.abortRebase(dir) },

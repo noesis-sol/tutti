@@ -199,6 +199,111 @@ export const parseWorktrees = (output: string): ReadonlyArray<Worktree> => {
   return worktrees
 }
 
+/** A merge commit on a branch beyond the base it is rebased onto, as `branchMerges` reads it. */
+export interface BranchMerge {
+  readonly hash: Sha
+  readonly tree: Sha
+  /** Its first parent first. */
+  readonly parents: ReadonlyArray<Sha>
+}
+
+/** Reads `git log --merges --format='%H %T %P'`: a merge's hash, tree and parents a line. */
+export const parseMerges = (output: string): ReadonlyArray<BranchMerge> =>
+  output
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/))
+    .filter((fields) => fields.length >= 4)
+    .map(([hash, tree, ...parents]) => ({
+      hash: Sha.of(hash ?? ""),
+      tree: Sha.of(tree ?? ""),
+      parents: parents.map(Sha.of),
+    }))
+
+/**
+ * How a rebase replays the branch: `linear`, its commits in a line, as git rebases by default;
+ * `merges`, its merges recreated by git (--rebase-merges); `replaying`, its merges recreated, those
+ * git's own merge of their parents wouldn't make (a `git subtree add`, a merge whose conflicts were
+ * resolved, one amended) by replaying what each changed on its first parent (`rebaseMergesScript`).
+ */
+export type RebaseHow = "linear" | "merges" | "replaying"
+
+/** What a rebase that finished did: whether it recreated merges, the branch having some. */
+export interface Rebased {
+  readonly merges: boolean
+}
+
+/**
+ * The script a `replaying` rebase runs, from the worktree's git folder, as `sh <script> edit <todo>`
+ * (its sequence editor) and `sh <script> merge …` (an exec line of its todo). git rebase
+ * --rebase-merges recreates a merge by merging its parents again, which loses what the merge itself
+ * changed: the subtree `git subtree add` reads in under its prefix (its squashed commit's files land
+ * at the root, conflicting with the repository's own), a conflict's resolution. So the editor
+ * rewrites each `merge -C <merge> <label>…` line of the merges TUTTI_REBASE_REPLAY names, a space
+ * between them, into a
+ * pick of a commit holding the merge's tree on its first parent, which replays its change as any
+ * pick does, stopping on conflicts its worker resolves with git add and git rebase --continue; then
+ * an exec that makes HEAD the merge again, its tree with the merge's message, author and other
+ * parents. Where the pick was dropped, its change on the base already, the merge goes on HEAD.
+ * Written down for each rebase, as the exec runs again when a worker continues one stopped there.
+ */
+export const rebaseMergesScript = `# tutti's rebase of a branch's merges (src/services/Git.ts, rebaseMergesScript).
+set -euf
+case $1 in
+edit)
+  todo=$2
+  : > "$todo.tutti"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case $line in
+    "merge -C "*)
+      set -- $line
+      merge=$(git rev-parse --verify "$3^{commit}")
+      case " $TUTTI_REBASE_REPLAY " in
+      *" $merge "*)
+        shift 3
+        labels=""
+        for label; do
+          [ "$label" = "#" ] && break
+          labels="$labels $label"
+        done
+        pick=$(git log -1 --format=%B "$merge" | git commit-tree "$merge^{tree}" -p "$merge^1")
+        printf 'label tutti-%s\\npick %s\\nexec %s merge %s tutti-%s%s\\n' "$merge" "$pick" "$TUTTI_REBASE_SCRIPT" "$merge" "$merge" "$labels" >> "$todo.tutti"
+        continue
+        ;;
+      esac
+      ;;
+    esac
+    printf '%s\\n' "$line" >> "$todo.tutti"
+  done < "$todo"
+  mv "$todo.tutti" "$todo"
+  ;;
+merge)
+  merge=$2
+  before=$(git rev-parse --verify "refs/rewritten/$3")
+  shift 3
+  head=$(git rev-parse --verify HEAD)
+  first=$head
+  [ "$head" = "$before" ] || first=$(git rev-parse --verify HEAD^)
+  parents="-p $first"
+  for label; do
+    parent=$(git rev-parse --quiet --verify "refs/rewritten/$label^{commit}" || git rev-parse --verify "$label^{commit}")
+    parents="$parents -p $parent"
+  done
+  GIT_AUTHOR_NAME=$(git log -1 --format=%an "$merge")
+  GIT_AUTHOR_EMAIL=$(git log -1 --format=%ae "$merge")
+  GIT_AUTHOR_DATE=$(git log -1 --format=%ad --date=raw "$merge")
+  export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE
+  commit=$(git log -1 --format=%B "$merge" | git commit-tree "HEAD^{tree}" $parents)
+  git update-ref -m "rebase (merge): $(git log -1 --format=%s "$merge")" HEAD "$commit"
+  ;;
+esac
+`
+
+/** Where a `replaying` rebase keeps `rebaseMergesScript`, in the worktree's git folder. */
+export const rebaseMergesFile = "tutti-rebase-merges.sh"
+
+/** A word the shell reads as `text`, whatever it holds. */
+const shellQuote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`
+
 /**
  * A command's revisions after --end-of-options, so that none is taken for an option, and, for a
  * command that takes pathspecs, those after --, so that no revision is taken for a path: git refuses
@@ -293,15 +398,45 @@ export const gitOps = {
   },
   // --no-update-refs: with the user's rebase.updateRefs set, git would move every other branch
   // that points into the rebased range (a backup, orchestra's wt/<id>) along with this one, and
-  // putting the branch back resets only this one.
+  // putting the branch back resets only this one. `replaying` is interactive, for its editor to
+  // rewrite the todo (rebaseMergesScript): the todo's commands spelt out and none of the user's
+  // checks on it, its commits squashed by none of their autosquash, one made empty dropped.
   rebase: {
     op: "rebase",
     kind: "write",
-    args: (onto: string): ReadonlyArray<string> => [
+    args: (onto: string, how: RebaseHow = "linear"): ReadonlyArray<string> => [
+      ...(how === "replaying"
+        ? ["-c", "rebase.abbreviateCommands=false", "-c", "rebase.missingCommitsCheck=ignore"]
+        : []),
       "rebase",
+      ...(how === "linear" ? [] : ["--rebase-merges"]),
+      ...(how === "replaying" ? ["--interactive", "--no-autosquash", "--empty=drop"] : []),
       "--no-autostash",
       "--no-update-refs",
       ...revisions([onto]),
+    ],
+  },
+  /** The merges on HEAD beyond `onto`, a line each: hash, tree and parents. */
+  branchMerges: {
+    op: "log --merges",
+    kind: "read",
+    args: (onto: string): ReadonlyArray<string> => [
+      "log",
+      "--merges",
+      "--no-show-signature",
+      "--format=%H %T %P",
+      ...revisions([`${onto}..HEAD`], []),
+    ],
+  },
+  /** What git's own merge of these commits gives: its tree first, exit 1 on conflicts. */
+  remerge: {
+    op: "merge-tree",
+    kind: "read",
+    args: (a: string, b: string): ReadonlyArray<string> => [
+      "merge-tree",
+      "--write-tree",
+      "--no-messages",
+      ...revisions([a, b]),
     ],
   },
   /** The files a stopped rebase left conflicted. */
@@ -548,6 +683,8 @@ export interface GitCall<K extends GitKind = GitKind> {
   readonly op: GitOp
   readonly kind: K
   readonly args: ReadonlyArray<string>
+  /** Variables git is given besides the live layer's own, as a `replaying` rebase's editor. */
+  readonly env?: Readonly<Record<string, string>>
 }
 
 /** The call of an operation of `gitOps` with these arguments. */
@@ -677,9 +814,10 @@ export class Git extends Context.Service<
      * git rebase: rebases the branch checked out in worktree onto `onto`. Stopped on conflicts, it
      * fails with RebaseConflict and is left in progress; failing otherwise, timing out or interrupted,
      * it is aborted, and the branch is as it was. No other branch moves, whatever rebase.updateRefs
-     * says.
+     * says. A branch with merges beyond `onto` keeps them, recreated on it (`RebaseHow`), and the
+     * rebase says so; one without is rebased in a line.
      */
-    rebase(worktree: string, onto: string): Effect.Effect<void, GitError | RebaseConflict>
+    rebase(worktree: string, onto: string): Effect.Effect<Rebased, GitError | RebaseConflict>
     /** git rebase --abort: puts back the branch a stopped rebase was rewriting. */
     abortRebase(worktree: string): Effect.Effect<void, GitError>
     /** Whether a rebase has stopped in worktree and not been finished or aborted. */
@@ -828,6 +966,7 @@ export class Git extends Context.Service<
               GIT_TERMINAL_PROMPT: "0",
               GIT_EDITOR: "true",
               ...(call.kind === "read" ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
+              ...call.env,
             },
           }
           const shown = showCommand({ command: "git", args })
@@ -921,14 +1060,66 @@ export class Git extends Context.Service<
             Effect.ignore,
           )
 
+        // Whether git's own merge of the merge's parents gives its tree: a merge of two whose
+        // merge-tree is clean and the same. One of three or more is replayed whatever it holds.
+        const remade = (worktree: string, merge: BranchMerge) =>
+          Effect.gen(function* () {
+            const [first, second, ...more] = merge.parents
+            if (first === undefined || second === undefined || more.length > 0) return false
+            const { output } = yield* gitRead(gitCall(gitOps.remerge, first, second), worktree)
+            return (
+              output.exitCode === 0 && (output.stdout.split("\n")[0] ?? "").trim() === merge.tree
+            )
+          })
+
+        // How to rebase the branch: in a line without merges; with them, recreated by git where its
+        // own merge gives each, replayed otherwise, the script written down for its editor and execs.
+        const rebaseCall = (worktree: string, onto: string) =>
+          Effect.gen(function* () {
+            const merges = parseMerges(yield* read(gitCall(gitOps.branchMerges, onto), worktree))
+            if (merges.length === 0) return gitCall(gitOps.rebase, onto, "linear")
+            const replayed: Array<Sha> = []
+            for (const merge of merges) {
+              if (!(yield* remade(worktree, merge))) replayed.push(merge.hash)
+            }
+            if (replayed.length === 0) return gitCall(gitOps.rebase, onto, "merges")
+            const call = gitCall(gitOps.rebase, onto, "replaying")
+            const path = (yield* read(
+              gitCall(gitOps.gitPaths, [rebaseMergesFile]),
+              worktree,
+            )).trim()
+            // Not written, the rebase is as if it ran and failed: nothing was begun to abort.
+            yield* fs.writeFileString(path, rebaseMergesScript).pipe(
+              Effect.mapError(
+                (error) =>
+                  new GitFailed({
+                    op: call.op,
+                    command: showCommand({ command: "git", args: call.args }),
+                    exitCode: 1,
+                    stderr: `tutti could not write ${path}: ${error.message}`,
+                  }),
+              ),
+            )
+            const script = `sh ${shellQuote(path)}`
+            return {
+              ...call,
+              env: {
+                GIT_SEQUENCE_EDITOR: `${script} edit`,
+                TUTTI_REBASE_SCRIPT: script,
+                TUTTI_REBASE_REPLAY: replayed.join(" "),
+              },
+            }
+          })
+
         const rebase = (worktree: string, onto: string) =>
           writer.withLock(
             Effect.gen(function* () {
-              const call = gitCall(gitOps.rebase, onto)
+              const call = yield* rebaseCall(worktree, onto)
+              const rebased: Rebased = { merges: call.args.includes("--rebase-merges") }
               const { shown, output } = yield* git(call, worktree).pipe(
                 Effect.tapError(() => abandonRebase(worktree)),
               )
-              if (output.exitCode === 0) return
+              if (output.exitCode === 0) return rebased
               const conflicted = yield* read(gitCall(gitOps.conflicted), worktree).pipe(
                 Effect.orElseSucceed(() => ""),
               )
