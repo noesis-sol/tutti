@@ -2,7 +2,7 @@
 // folder's events, and the poll, which goes on where the watch fails or its folder goes.
 
 import { describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { CanUseTool, PermissionResult } from "@anthropic-ai/claude-agent-sdk"
@@ -104,26 +104,51 @@ const realUntil = (check: () => boolean) =>
 const settledWithin = (result: Promise<PermissionResult | null>, ms: number) =>
   Effect.promise(() => Promise.race([result.then(() => true), Bun.sleep(ms).then(() => false)]))
 
+/** How long, in real time, the folder's events have to wake the scan. */
+const eventWithin = 20_000
+
+/**
+ * Whether `result` has settled within `eventWithin` of real time, while a file of no request is
+ * written in `repo`'s attention folder every 250 ms: on macOS the events come through FSEvents,
+ * which drops them while the machine is loaded (the full check), and one of a few gets through.
+ */
+const settledOnEvents = (repo: string, result: Promise<PermissionResult | null>) =>
+  Effect.promise(async () => {
+    let settled = false
+    void result.then(() => {
+      settled = true
+    })
+    for (let n = 0; n * 250 < eventWithin && !settled; n++) {
+      writeFileSync(join(repo, attentionFolder, `nudge-${n}`), "")
+      await Promise.race([result, Bun.sleep(250)])
+    }
+    return settled
+  })
+
 const allow = (repo: string, id: string) =>
   Effect.orDie(
     writeExclusive(repo, answerFile(id), encodeFile({ v: 1, request: id, answer: "allow" })),
   )
 
 describe("the attention folder's scan", () => {
-  test("an answer file is taken on the folder's event, with no poll", async () => {
-    const repo = tempRepo()
-    const taken = await run(
-      repo,
-      Effect.gen(function* () {
-        const { request, result } = yield* ask
-        yield* pastFirstScan
-        yield* allow(repo, request.id)
-        // TestClock never moves: only the folder's event can wake the scan.
-        return yield* settledWithin(result, 5_000)
-      }),
-    )
-    expect(taken).toBe(true)
-  })
+  test(
+    "an answer file is taken on the folder's event, with no poll",
+    async () => {
+      const repo = tempRepo()
+      const taken = await run(
+        repo,
+        Effect.gen(function* () {
+          const { request, result } = yield* ask
+          yield* pastFirstScan
+          yield* allow(repo, request.id)
+          // TestClock never moves: only the folder's events can wake the scan.
+          return yield* settledOnEvents(repo, result)
+        }),
+      )
+      expect(taken).toBe(true)
+    },
+    eventWithin + 10_000,
+  )
 
   test("with a watch that fails, the poll takes the answer, and only once it is due", async () => {
     const repo = tempRepo()
