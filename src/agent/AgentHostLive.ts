@@ -959,6 +959,7 @@ export const layer = (
         lastRound: workers.lastRound,
         workers: workers.workers,
         compactions: workers.compactions,
+        verifierCalls: workers.verifierCalls,
         contexts: workers.contexts,
         processes: Effect.sync(() => {
           const pids = new Map<TicketId, number>()

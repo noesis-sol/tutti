@@ -52,6 +52,7 @@ import { aheadKey, clearAhead, markAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
 import { gitReads, onBranch, type Restored, restoreBranch } from "./branch.ts"
 import { Checked, checkOnce, clearUnchecked, failedHow, outputKept } from "./check.ts"
+import { holdingSlot } from "./earlyCheck.ts"
 import { RunFibers } from "./fibers.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import {
@@ -472,20 +473,29 @@ export const make = (
         )
         const setting = yield* save({ ...rebased, step: Step.Checking({ head, setUp: true }) })
         yield* mark(setting)
-        const setup = yield* setUp(setting.ticket, options, memory.setUps, {
-          fork: setting.fork ?? setting.onto,
-          onto: setting.onto,
-          ahead: true,
-        })
+        // Its setup and check hold the early checks' slot (earlyCheck.ts).
+        const { setup, checking, checked } = yield* holdingSlot(
+          options.early,
+          line`${branch}'s check ahead of its turn`,
+          Effect.gen(function* () {
+            const setup = yield* setUp(setting.ticket, options, memory.setUps, {
+              fork: setting.fork ?? setting.onto,
+              onto: setting.onto,
+              ahead: true,
+            })
+            const checking =
+              setup._tag !== "Unneeded"
+                ? setting
+                : yield* save({ ...setting, step: Step.Checking({ head, setUp: false }) })
+            if (setup._tag === "Unneeded") yield* mark(checking)
+            const checked =
+              setup._tag === "Failed"
+                ? Checked.Failed({ error: setup.error, output: setup.output, kept: setup.kept })
+                : yield* checkOnce(checking.ticket, { suite: "merge", train: true })
+            return { setup, checking, checked }
+          }),
+        )
         const ranSetUp = setup._tag !== "Unneeded"
-        const checking = ranSetUp
-          ? setting
-          : yield* save({ ...setting, step: Step.Checking({ head, setUp: false }) })
-        if (!ranSetUp) yield* mark(checking)
-        const checked =
-          setup._tag === "Failed"
-            ? Checked.Failed({ error: setup.error, output: setup.output, kept: setup.kept })
-            : yield* checkOnce(checking.ticket, { suite: "merge", train: true })
         if (checked._tag !== "Failed") {
           const passed = yield* save({ ...checking, step: Step.Passed({ head, setUp: ranSetUp }) })
           yield* show(passed, "passed")

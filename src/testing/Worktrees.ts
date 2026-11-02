@@ -2,7 +2,8 @@
 // <root>/<id>, with no git in it: reused when it is there already, or made anew where the options
 // say its branch was left without it, with what they say an earlier attempt left, as live's found
 // counts it. A detached worktree is a new folder under <root>, its name starting with
-// its prefix. IDs are checked by prepare, and run files opened through the symlink guard, as live;
+// its prefix, checked out in Git's test layer too where the caller has it (its Repository), as live
+// adds it with git, so that git commands run in it; removed, git forgets it. IDs are checked by prepare, and run files opened through the symlink guard, as live;
 // remove, which takes an ID unchecked as live does, deletes no folder for one prepare refuses; asked
 // to set a worktree aside, it moves its folder into <root>/.trash, as live, when it is there.
 import {
@@ -16,8 +17,9 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Option } from "effect"
 import type { TicketId } from "../services/Beads.ts"
+import { Git } from "../services/Git.ts"
 import {
   checkRunFolder,
   checkTicketId,
@@ -31,6 +33,7 @@ import {
   Worktrees,
   writeRunFile,
 } from "../services/Worktrees.ts"
+import { Repository } from "./Git.ts"
 
 /** A call the layer was asked for. */
 export type WorktreeCall =
@@ -57,12 +60,23 @@ export interface Options {
   readonly branchesLeft?: ReadonlyArray<string>
 }
 
+/** Git's test layer and its repository, where the caller has them. */
+const inGit = Effect.gen(function* () {
+  const git = yield* Effect.serviceOption(Git)
+  const repo = yield* Effect.serviceOption(Repository)
+  return Option.isSome(git) && Option.isSome(repo)
+    ? { git: git.value, repo: repo.value }
+    : undefined
+})
+
 /** The test layer; each call is pushed onto `calls` when one is given. */
 export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
   Layer.sync(Worktrees, () => {
     const root = options.root ?? realpathSync(mkdtempSync(join(tmpdir(), "tutti-worktrees-")))
     const branchesLeft = new Set(options.branchesLeft)
     const trash = join(root, trashFolder)
+    // The detached worktrees checked out in Git's test layer, which git forgets as they go.
+    const inRepository = new Set<string>()
     return Worktrees.of({
       prepare: (id) =>
         Effect.flatMap(checkTicketId(id), () =>
@@ -109,15 +123,25 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
           : [],
       ),
       addDetached: (prefix, commit) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           const path = mkdtempSync(join(root, prefix))
           calls.push({ op: "addDetached", path, commit })
+          const git = yield* inGit
+          if (git !== undefined) {
+            yield* git.git.addDetachedWorktree(git.repo.dir, path, commit)
+            inRepository.add(path)
+          }
           return path
         }),
       removeDetached: (path) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           calls.push({ op: "removeDetached", path })
           rmSync(path, { recursive: true, force: true })
+          const git = yield* inGit
+          if (git !== undefined && inRepository.delete(path)) {
+            yield* git.repo.removeFolder(path)
+            yield* git.git.pruneWorktrees(git.repo.dir)
+          }
         }),
       leftDetached: (prefix) =>
         Effect.sync(() =>

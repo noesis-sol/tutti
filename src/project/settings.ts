@@ -300,6 +300,12 @@ export const Settings = Schema.Struct({
      * the branch ahead as that one is checked (mergetrain.ts); 0 checks each in its turn alone.
      */
     train: Count.pipe(withDefault(1)),
+    /**
+     * Whether a finished ticket's branch is checked early, rebased onto the base in a checkout of
+     * its own while its worker's verifier runs, so that its turn merges it with no second check
+     * when nothing changed since (src/run/earlyCheck.ts); false runs none.
+     */
+    early_check: Schema.Boolean.pipe(withDefault(true)),
   }).pipe(withDefault({})),
   environment_hold: Schema.Struct({
     /** How many tickets in a row failing at once hold the run; 0 turns the hold off. */

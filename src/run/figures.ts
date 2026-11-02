@@ -5,7 +5,8 @@
 //
 // - the time in each phase, from the `phase` records, as "Time per phase" counts it: from a
 //   ticket's record to its next, a ticket's last phase in the run counting no time;
-// - the checks, from the `check` records, as "Each kind of check and command" counts them;
+// - the checks, from the `check` records, as "Each kind of check and command" counts them, and the
+//   early checks, from the `early_check` records, as "Early checks" counts them;
 // - the tokens and dollars of the workers' turns, from the `turn` records, as Spending sums them,
 //   the cache's share as "The prompt cache" gives it, a ticket's dollars as "Each ticket" does;
 // - the usage windows, from the `usage_window` records: each window's first figure, as the run
@@ -33,6 +34,17 @@ export interface SuiteFigures {
   readonly unpassed: ReadonlyArray<Unpassed>
 }
 
+/**
+ * What the early checks came to (earlyCheck.ts): the turns that used one (`hits`) and those that
+ * didn't (`misses`), the check-seconds the hits saved, and the seconds every early check ran.
+ */
+export interface EarlyFigures {
+  readonly hits: number
+  readonly misses: number
+  readonly saved: number
+  readonly spent: number
+}
+
 /** What the run's records add up to. Times are epoch milliseconds. */
 export interface Figures {
   /** Each ticket's phase as its last `phase` record left it, with its hold and when it began. */
@@ -45,6 +57,7 @@ export interface Figures {
   /** Their time HeldBack, by its hold, in milliseconds. */
   readonly holds: ReadonlyMap<string, number>
   readonly checks: ReadonlyMap<Suite, SuiteFigures>
+  readonly early: EarlyFigures
   /** The workers' turns: how many, their tokens of every model added up, and their dollars. */
   readonly turns: number
   readonly tokens: Tokens
@@ -62,6 +75,7 @@ export const noFigures: Figures = {
   phases: new Map(),
   holds: new Map(),
   checks: new Map(),
+  early: { hits: 0, misses: 0, saved: 0, spent: 0 },
   turns: 0,
   tokens: { input: 0, output: 0, cache_write: 0, cache_read: 0 },
   costUsd: 0,
@@ -135,6 +149,24 @@ export const addRecord = (figures: Figures, event: Event, at: number): Figures =
         tickets: plus(figures.tickets, event.ticket, event.cost_usd),
       }
     }
+    case "early_check": {
+      const { early } = figures
+      switch (event.detail) {
+        case "hit":
+          return {
+            ...figures,
+            early: { ...early, hits: early.hits + 1, saved: early.saved + (event.seconds ?? 0) },
+          }
+        case "miss":
+          return { ...figures, early: { ...early, misses: early.misses + 1 } }
+        case "passed":
+        case "failed":
+        case "cancelled":
+          return { ...figures, early: { ...early, spent: early.spent + (event.seconds ?? 0) } }
+        default:
+          return figures
+      }
+    }
     case "slept":
       return { ...figures, slept: figures.slept + event.seconds * 1000 }
     case "usage_window": {
@@ -205,7 +237,7 @@ const phaseParts = (figures: Figures): ReadonlyArray<Part> => {
 }
 
 /** The suites in the order the Checks line names them. */
-const suiteOrder: ReadonlyArray<Suite> = ["merge", "recheck", "fix", "setup", "full"]
+const suiteOrder: ReadonlyArray<Suite> = ["merge", "recheck", "fix", "early", "setup", "full"]
 
 /** How a check that didn't pass ended, in words. */
 const endedWords: Readonly<Record<Unpassed["result"], string>> = {
@@ -249,11 +281,39 @@ const suitePart = (suite: Suite, figures: SuiteFigures): string => {
     : `${count} passed, ${byResult.map((each) => unpassedPart(each)).join(", ")}`
 }
 
-const checksParts = (figures: Figures): ReadonlyArray<Part> =>
-  suiteOrder.flatMap((suite) => {
+/**
+ * The early checks' part of the Checks line, where a turn found one: `early used 3 of 4, saved
+ * 4m2s, 1m10s thrown away`, the seconds thrown away those the early checks ran that no turn used.
+ */
+export const earlyPart = (early: EarlyFigures): ReadonlyArray<Part> => {
+  const turns = early.hits + early.misses
+  if (turns === 0) return []
+  const thrown = Math.max(0, early.spent - early.saved)
+  return [
+    {
+      text: `early used ${early.hits} of ${turns}, saved ${took(early.saved)}, ${took(thrown)} thrown away`,
+    },
+  ]
+}
+
+/**
+ * What the run report is told of the early checks, where a turn found one: the turns that used
+ * one, the check-seconds they saved and those spent on early checks thrown away; null otherwise.
+ */
+export const earlyEvidence = (early: EarlyFigures): string | null => {
+  const turns = early.hits + early.misses
+  if (turns === 0) return null
+  const thrown = Math.max(0, early.spent - early.saved)
+  return `${early.hits} of the ${turns} merges that found an early check of their ticket used it (hits), merging with no second check; ${early.misses} did not (misses). The hits saved ${took(early.saved)} of merge checks; ${took(thrown)} of early checks were thrown away (cancelled, failed, or passed and not used).`
+}
+
+const checksParts = (figures: Figures): ReadonlyArray<Part> => [
+  ...suiteOrder.flatMap((suite) => {
     const of = figures.checks.get(suite)
     return of === undefined || of.runs === 0 ? [] : [{ text: suitePart(suite, of) }]
-  })
+  }),
+  ...earlyPart(figures.early),
+]
 
 /** A count of tokens to two figures at most: `950`, `12k`, `1.2M`, `53M`. */
 export const tokenCount = (n: number): string => {

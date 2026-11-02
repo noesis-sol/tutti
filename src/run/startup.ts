@@ -590,6 +590,13 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
       ["machine workers", machineWorkersLabel(config.machineWorkers, config.machineWorkersFrom)],
       ["ticket limit", ticketLimit === null ? "none" : formatDuration(ticketLimit)],
       ["check timeout", formatDuration(config.settings.checks.fast.timeout)],
+      // merge.early_check (earlyCheck.ts): off too without a check command, as none runs then.
+      [
+        "early check",
+        config.settings.merge.early_check && config.settings.checks.fast.command !== null
+          ? "on"
+          : "off",
+      ],
       ["worktrees", config.worktrees],
       ...(servers.length === 0 ? [] : [["MCP servers", servers.join(", ")] as const]),
     ],

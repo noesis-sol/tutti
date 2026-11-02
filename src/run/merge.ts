@@ -81,6 +81,7 @@ import {
 } from "./branch.ts"
 import {
   type CheckFailure,
+  clearUnchecked,
   failedHow,
   markUnchecked,
   outputKept,
@@ -102,6 +103,7 @@ import {
   toFix,
 } from "./checkback.ts"
 import { writtenOnly } from "./checkWrote.ts"
+import type { EarlyChecks } from "./earlyCheck.ts"
 import type { EventStream } from "./eventstream.ts"
 import {
   type AtReset,
@@ -179,6 +181,12 @@ export interface MergeOptions {
    * (mergetrain.ts). Never without it.
    */
   readonly machineFull: Effect.Effect<boolean>
+  /**
+   * The run's early checks (earlyCheck.ts): each check of a merge takes their check slot, and a
+   * ticket's turn merges with no second check where its early check passed on the same tree on the
+   * same base. None without them.
+   */
+  readonly early?: EarlyChecks
 }
 
 /** Where the merges land: the main checkout and the base, all that most of their steps read. */
@@ -900,6 +908,18 @@ const check = (
         })
         return Prepared.Over({})
       })
+    // Its early check passed on the same tree on the same base (earlyCheck.ts): no second check. A
+    // fix carried from a hand-back is checked here, to say whether it fixed it.
+    const early = options.early
+    if (early !== undefined && carried === undefined) {
+      const tree = yield* Effect.result(git.revParse(options.repo, `${at}^{tree}`))
+      const hit = yield* early.passed(id, Result.isSuccess(tree) ? tree.success : undefined, onto)
+      if (hit) {
+        yield* clearUnchecked(id)
+        yield* notePass(ticket, memory.passes, at)
+        return passed
+      }
+    }
     // The tickets behind it may be checked ahead of their turn meanwhile, on top of its branch.
     const train = memory.train
     if (train !== undefined) yield* train.starts(ticket, at)

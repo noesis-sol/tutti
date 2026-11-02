@@ -295,6 +295,28 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
       output: ".tutti/run/checks/proj-a2-2.log",
     },
   ],
+  // The early checks in each run
+  [
+    {
+      run: "2026-10-21T06:18:11.587Z",
+      started: 2,
+      hits: 0,
+      misses: 2,
+      seconds_saved: 0,
+      seconds_thrown_away: 204,
+      seconds_waited: 0,
+    },
+  ],
+  // Why early checks were cancelled or not used
+  [
+    { detail: "cancelled", why: "tutti/proj-b1's merge took the check slot", times: 1 },
+    {
+      detail: "miss",
+      why: "it was cancelled (tutti/proj-b1's merge took the check slot)",
+      times: 1,
+    },
+    { detail: "miss", why: "its turn did not check it", times: 1 },
+  ],
   // Each request
   [
     {

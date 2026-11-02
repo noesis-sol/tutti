@@ -49,6 +49,7 @@ import type { TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
 import { fixCheck, fixResolution, type HandedCheck, handOverFix, makeFixes } from "./checkback.ts"
+import { holdingSlot } from "./earlyCheck.ts"
 import { RunFibers } from "./fibers.ts"
 import {
   type HandBacks,
@@ -392,7 +393,9 @@ export const make = (
 
     // Its turn and its merge, under one mask: a quit as its turn starts finds it Merging, and puts
     // it back in line, as does a defect before the fast-forward. A ticket checked ahead of its turn
-    // boards its train first (mergetrain.ts): over when git can't put its branch back.
+    // boards its train first (mergetrain.ts): over when git can't put its branch back. The turn
+    // holds the early checks' slot (earlyCheck.ts), cancelling those of other tickets; its own is
+    // waited for by its check, and dropped once its turn is over if the turn didn't take it.
     const merge = (ticket: FinishedTicket) =>
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
@@ -424,7 +427,11 @@ export const make = (
           yield* merged(stop)
           yield* fit(ticket.id, rechecks, handBacks)
         }),
-      ).pipe(Effect.ensuring(train.holderDone))
+      ).pipe(
+        (turn) => holdingSlot(options.early, `${ticket.branch}'s merge`, turn, ticket.id),
+        Effect.ensuring(train.holderDone),
+        Effect.ensuring(options.early?.over(ticket.id) ?? Effect.void),
+      )
 
     const consume = Effect.forever(
       Effect.gen(function* () {
@@ -453,7 +460,10 @@ export const make = (
       mergedByHand,
       hold: Effect.andThen(
         Ref.set(held, true),
-        Effect.andThen(train.leave, FiberSet.clear(handBacksSet)),
+        Effect.andThen(
+          options.early?.stop("the run is quitting") ?? Effect.void,
+          Effect.andThen(train.leave, FiberSet.clear(handBacksSet)),
+        ),
       ),
       stopMerges: Effect.andThen(FiberSet.clear(set), train.leave),
     } satisfies MergeQueue

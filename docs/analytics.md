@@ -45,7 +45,7 @@ FROM read_json(path, format = 'newline_delimited', filename = true, columns = {
   answer: 'VARCHAR', via: 'VARCHAR', after_ms: 'BIGINT', cancelled: 'BOOLEAN',
   reason_type: 'VARCHAR', reason: 'VARCHAR',
   status: 'VARCHAR', "limit": 'VARCHAR', resets_at: 'TIMESTAMPTZ', session: 'VARCHAR',
-  "window": 'VARCHAR', utilization: 'DOUBLE'
+  "window": 'VARCHAR', utilization: 'DOUBLE', waited: 'DOUBLE'
 });
 
 CREATE OR REPLACE MACRO transcripts(path) AS TABLE
@@ -325,6 +325,31 @@ SELECT time, suite, ticket, command, seconds, output
 FROM events('.tutti/run/events.jsonl')
 WHERE kind = 'check' AND result = 'timed_out'
 ORDER BY time DESC;
+```
+
+The early checks in each run (`merge.early_check`): how many started, how many merges used one
+(`hits`, merged with no second check) or didn't (`misses`), the check-seconds the hits saved, the
+seconds spent on early checks thrown away (cancelled, failed, or passed and not used), and how long
+the hits' turns waited for theirs to end.
+
+```sql
+SELECT run, count(*) FILTER (detail = 'started') AS started,
+  count(*) FILTER (detail = 'hit') AS hits, count(*) FILTER (detail = 'miss') AS misses,
+  round(coalesce(sum(seconds) FILTER (detail = 'hit'), 0), 1) AS seconds_saved,
+  round(coalesce(sum(seconds) FILTER (detail IN ('passed', 'failed', 'cancelled')), 0)
+    - coalesce(sum(seconds) FILTER (detail = 'hit'), 0), 1) AS seconds_thrown_away,
+  round(coalesce(sum(waited) FILTER (detail = 'hit'), 0), 1) AS seconds_waited
+FROM events('.tutti/run/events.jsonl') WHERE kind = 'early_check'
+GROUP BY run ORDER BY run;
+```
+
+Why the early checks were cancelled, didn't run, or weren't used, most often first.
+
+```sql
+SELECT detail, why, count(*) AS times
+FROM events('.tutti/run/events.jsonl')
+WHERE kind = 'early_check' AND detail IN ('cancelled', 'not run', 'miss')
+GROUP BY ALL ORDER BY times DESC, detail, why;
 ```
 
 ## Waiting on you

@@ -69,6 +69,7 @@ import {
   runMergeCheck,
 } from "./check.ts"
 import type { Carried } from "./checkback.ts"
+import { holdingSlot } from "./earlyCheck.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { loadEvery } from "./load.ts"
@@ -994,7 +995,7 @@ export const carryIfBaseMoved = (
 export const checkWithFix = (
   stop: Stopped,
   fix: Fix,
-  options: MergeTarget,
+  options: MergeTarget & Pick<MergeOptions, "early">,
   memory: MergeMemory,
 ): Effect.Effect<
   { readonly at: Sha | undefined; readonly checked: SetUp | Checked },
@@ -1003,15 +1004,21 @@ export const checkWithFix = (
 > =>
   Effect.gen(function* () {
     const at = yield* branchHead(stop.ticket, options)
-    const setup = yield* setUp(stop.ticket, options, memory.setUps, {
-      fork: stop.fork,
-      onto: stop.onto,
-      fix,
-    })
-    const checked =
-      setup._tag === "Failed"
-        ? setup
-        : yield* runMergeCheck(stop.ticket, fix.what === "fix" ? "fix" : "merge")
+    // Its setup and check hold the early checks' slot (earlyCheck.ts).
+    const checked = yield* holdingSlot(
+      options.early,
+      line`${stop.ticket.branch}'s check after its worker's ${fix.what}`,
+      Effect.gen(function* () {
+        const setup = yield* setUp(stop.ticket, options, memory.setUps, {
+          fork: stop.fork,
+          onto: stop.onto,
+          fix,
+        })
+        return setup._tag === "Failed"
+          ? setup
+          : yield* runMergeCheck(stop.ticket, fix.what === "fix" ? "fix" : "merge")
+      }),
+    )
     if (checked._tag !== "Failed") yield* notePass(stop.ticket, memory.passes, at)
     return { at, checked }
   })

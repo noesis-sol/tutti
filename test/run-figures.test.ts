@@ -383,7 +383,7 @@ describe("the analytics fixture's runs", () => {
     ])
     expect(second === undefined ? [] : texts(second)).toEqual([
       "Time    38% working · 27% held back (overlap 27%) · 14% merging · 9% to merge · 7% resolving · 3% queued · 2% asked",
-      "Checks  merge 2 of 2",
+      "Checks  merge 2 of 2 · early used 0 of 2, saved 0s, 3m24s thrown away",
       "Spent   918k tokens (94% from the cache) · $1.20 (estimate) · $0.30 a ticket (median)",
       "Usage   Current usage 10% → 25% · This week 38% → 40%",
     ])

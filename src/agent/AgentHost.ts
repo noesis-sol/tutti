@@ -14,7 +14,8 @@
 // account's rate-limit events, and which workers are UsageLimited, go to UsageLimits, for the
 // usage-limit hold (§ 4.12). Each compaction a worker's PreCompact hook reports goes on one stream
 // for the run to count and log (§ 4.2). Each worker's verifier rounds, which its hooks show (hooks.ts), are
-// kept beside its state, for a ticket deferred with its last fix unverified (src/run/lastRound.ts).
+// kept beside its state, for a ticket deferred with its last fix unverified (src/run/lastRound.ts),
+// and each round's begin goes on one stream too, for the early check (src/run/earlyCheck.ts).
 //
 // The caller draws each new session's ID, and saves it once the session has begun (§ 4.8). A
 // resumed session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so
@@ -131,6 +132,13 @@ export interface Compaction {
   readonly ticket: TicketId
   /** What triggered it: `auto`, or `manual` for `/compact`. */
   readonly trigger: string
+}
+
+/** A worker's call to the verifier, as its hooks show it beginning (hooks.ts's VerifierEvent). */
+export interface VerifierCall {
+  readonly ticket: TicketId
+  /** The Agent call's tool use ID. */
+  readonly call: string
 }
 
 /** The SDK user message that carries `message`, stamped `uuid`, into session `session`. */
@@ -261,6 +269,11 @@ export class AgentHost extends Context.Service<
     /** Every worker's compactions, from now on, as their PreCompact hooks report them (§ 4.2). */
     readonly compactions: Stream.Stream<Compaction>
     /**
+     * Every worker's calls to the verifier, from now on, each as its hooks show it begin, once: an
+     * early check of its ticket may start then (src/run/earlyCheck.ts).
+     */
+    readonly verifierCalls: Stream.Stream<VerifierCall>
+    /**
      * How full each worker's context window is, by ticket, as its session last said after a model
      * call or a finished turn (§ 7.5): now, then on each change. A worker ended is left out.
      */
@@ -354,6 +367,8 @@ export interface Workers {
   readonly compacted: (entry: WorkerEntry, trigger: string) => Effect.Effect<void>
   /** Every worker's compactions, from now on. */
   readonly compactions: Stream.Stream<Compaction>
+  /** Every worker's calls to the verifier, from now on, each once as it begins. */
+  readonly verifierCalls: Stream.Stream<VerifierCall>
   /** How full the worker's context window is, as its session said after a model call or a turn. */
   readonly measured: (entry: WorkerEntry, usage: ContextUsage) => Effect.Effect<void>
   /** How full each worker's context window is, by ticket: now, then on each change. */
@@ -388,6 +403,7 @@ export const makeWorkers = (
     // Folds are serialised, so the state set last is the one the last fold gave.
     const one = yield* Semaphore.make(1)
     const compactions = yield* PubSub.unbounded<Compaction>()
+    const verifierCalls = yield* PubSub.unbounded<VerifierCall>()
     const contexts = yield* SubscriptionRef.make<ReadonlyMap<TicketId, ContextUsage>>(new Map())
     const log = yield* Log
     const usage = yield* Effect.serviceOption(UsageLimits)
@@ -403,7 +419,13 @@ export const makeWorkers = (
         if (event.session !== (yield* Ref.get(entry.session))) return
         if (event._tag === "Hook") {
           const round = verifierEvent(event.input)
-          if (round !== undefined) yield* Ref.update(entry.rounds, (all) => roundStep(all, round))
+          if (round !== undefined) {
+            const was = yield* Ref.getAndUpdate(entry.rounds, (all) => roundStep(all, round))
+            const begun =
+              round._tag === "Began" && !was.rounds.some((each) => each.call === round.call)
+            if (begun)
+              yield* PubSub.publish(verifierCalls, { ticket: entry.ticket, call: round.call })
+          }
         }
         const now = yield* Clock.currentTimeMillis
         const before = yield* SubscriptionRef.get(entry.worker)
@@ -596,6 +618,7 @@ export const makeWorkers = (
       compacted: (entry, trigger) =>
         Effect.asVoid(PubSub.publish(compactions, { ticket: entry.ticket, trigger })),
       compactions: Stream.fromPubSub(compactions),
+      verifierCalls: Stream.fromPubSub(verifierCalls),
       measured: (entry, usage) =>
         Effect.suspend(() =>
           known.get(entry.ticket) === entry

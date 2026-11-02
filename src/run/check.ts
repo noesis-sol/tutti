@@ -99,6 +99,8 @@ export const recorded = <R>(
  * whole output, the run file `name` in the ticket's `worktree`; where it failed or timed out, its
  * output is kept beside the ticket's transcript first (keptChecks.ts), as the worktree goes when the
  * ticket merges or is set aside, and its record names the copy, `kept`, given with how it went.
+ * `options.early`: a setup run for an early check (earlyCheck.ts), its record marked so and its
+ * output kept as an early check's.
  */
 export const recordedKeeping = <R>(
   suite: CheckSuite,
@@ -106,6 +108,7 @@ export const recordedKeeping = <R>(
   check: Effect.Effect<CheckResult, CheckError, R>,
   options: {
     readonly train?: boolean
+    readonly early?: boolean
     readonly keep?: { readonly worktree: string; readonly name: string }
   } = {},
 ): Effect.Effect<
@@ -124,6 +127,7 @@ export const recordedKeeping = <R>(
       ...(ticket === undefined ? {} : { ticket }),
       seconds,
       ...(options.train === true ? { train: true as const } : {}),
+      ...(options.early === true ? { early: true as const } : {}),
     }
     if (Result.isSuccess(ran)) {
       if (ran.success._tag === "CheckPassed") {
@@ -140,7 +144,12 @@ export const recordedKeeping = <R>(
       keep === undefined ||
       error.outputFile !== join(keep.worktree, runFolder, keep.name)
         ? undefined
-        : yield* keepFailedOutput(ticket, suite, keep.worktree, keep.name)
+        : yield* keepFailedOutput(
+            ticket,
+            options.early === true ? "early" : suite,
+            keep.worktree,
+            keep.name,
+          )
     const said = saidOf(error)
     yield* events.emit({
       ...base,

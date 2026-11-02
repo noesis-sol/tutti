@@ -40,6 +40,7 @@ import { type CheckError, type CheckResult, Checks, setupLogName } from "../serv
 import { Git, type Sha, shortHash } from "../services/Git.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { flakyWarnings, howFailed, outputTo, recorded } from "./check.ts"
+import { type EarlyChecks, holdingSlot } from "./earlyCheck.ts"
 import { type checksGateOutcomes, type GateRan, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import {
@@ -184,6 +185,8 @@ export interface ChecksGateOptions {
   readonly takesWork?: Effect.Effect<boolean>
   /** How it asks in a terminal; none without one. */
   readonly ask?: GateAsk
+  /** The run's early checks (earlyCheck.ts), whose slot each of its checks holds; none without. */
+  readonly early?: EarlyChecks
 }
 
 /** A spec run's checks gate. */
@@ -491,127 +494,134 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
           }
         })
 
-        /** Runs `check` once, in a worktree of its own at `at`, the setup first. */
+        /**
+         * Runs `check` once, in a worktree of its own at `at`, the setup first, holding the early
+         * checks' slot (earlyCheck.ts).
+         */
         const runOnce = (check: "fast" | "full", what: string, at: Sha, since: number) =>
-          Effect.gen(function* () {
-            const worktrees = yield* Worktrees
-            const checks = yield* Checks
-            const setup = yield* options.setup
-            const command = config.settings.checks[check].command ?? ""
-            yield* show(
-              setup === null
-                ? { step: "check", command, began: since, gate: true }
-                : { step: "setup", command: setup, began: since, gate: true },
-            )
-            const made = yield* Effect.result(worktrees.addDetached(gateFolderPrefix, at))
-            if (Result.isFailure(made)) {
-              const error = made.failure
-              const why = error._tag === "ExcludeUnwritable" ? error.message : worktreeWhy(error)
-              ran.push({ check, seconds: 0, outcome: "not run" })
-              return {
-                _tag: "Failed",
-                outcome: "not run",
-                why: line`could not run: no worktree for it (${why})`,
-              } satisfies CheckRan as CheckRan
-            }
-            const dir = made.success
-            const kept = `${gateFolderPrefix}${check}-${what.replace(/\D+/g, "-").replace(/^-|-$/g, "")}.log`
-            const timed = <A, E, R>(
-              step: "setup" | "fast" | "full",
-              effect: Effect.Effect<Result.Result<A, E>, never, R>,
-              outcome: (result: Result.Result<A, E>) => (typeof GateRan.Type)["outcome"],
-            ) =>
-              Effect.gen(function* () {
-                const start = yield* Clock.currentTimeMillis
-                const result = yield* effect
-                const ms = (yield* Clock.currentTimeMillis) - start
-                ran.push({ check: step, seconds: tenths(ms), outcome: outcome(result) })
-                return result
-              })
-            const outcomeOf = (result: Result.Result<CheckResult, CheckError>) =>
-              Result.isSuccess(result)
-                ? ("passed" as const)
-                : result.failure._tag === "CheckTimedOut"
-                  ? ("timed out" as const)
-                  : result.failure._tag === "CheckNotRun"
-                    ? ("not run" as const)
-                    : ("failed" as const)
-            const failedWith = (error: CheckError, name: string, setupOf?: string) =>
-              Effect.gen(function* () {
-                const output =
-                  error._tag === "CheckNotRun"
-                    ? undefined
-                    : yield* keepRunOutput(dir, name, kept, whose)
-                const how = howFailed(error)
+          holdingSlot(
+            options.early,
+            "the checks gate",
+            Effect.gen(function* () {
+              const worktrees = yield* Worktrees
+              const checks = yield* Checks
+              const setup = yield* options.setup
+              const command = config.settings.checks[check].command ?? ""
+              yield* show(
+                setup === null
+                  ? { step: "check", command, began: since, gate: true }
+                  : { step: "setup", command: setup, began: since, gate: true },
+              )
+              const made = yield* Effect.result(worktrees.addDetached(gateFolderPrefix, at))
+              if (Result.isFailure(made)) {
+                const error = made.failure
+                const why = error._tag === "ExcludeUnwritable" ? error.message : worktreeWhy(error)
+                ran.push({ check, seconds: 0, outcome: "not run" })
                 return {
                   _tag: "Failed",
-                  outcome: outcomeOf(Result.fail(error)) as "failed" | "timed out" | "not run",
-                  why:
-                    setupOf === undefined
-                      ? (how as Line)
-                      : line`did not run: the setup before it, '${setupOf}', ${how}`,
-                  ...(output === undefined ? {} : { output }),
+                  outcome: "not run",
+                  why: line`could not run: no worktree for it (${why})`,
                 } satisfies CheckRan as CheckRan
-              })
-            const body = Effect.gen(function* () {
-              yield* logs.write(
-                gateLine`running ${what}${setup === null ? "" : line`, after '${setup}',`} in ${dir} (time limit ${formatDuration(config.settings.checks[check].timeout)})`,
-              )
-              if (setup !== null) {
-                const setUp = yield* timed(
-                  "setup",
+              }
+              const dir = made.success
+              const kept = `${gateFolderPrefix}${check}-${what.replace(/\D+/g, "-").replace(/^-|-$/g, "")}.log`
+              const timed = <A, E, R>(
+                step: "setup" | "fast" | "full",
+                effect: Effect.Effect<Result.Result<A, E>, never, R>,
+                outcome: (result: Result.Result<A, E>) => (typeof GateRan.Type)["outcome"],
+              ) =>
+                Effect.gen(function* () {
+                  const start = yield* Clock.currentTimeMillis
+                  const result = yield* effect
+                  const ms = (yield* Clock.currentTimeMillis) - start
+                  ran.push({ check: step, seconds: tenths(ms), outcome: outcome(result) })
+                  return result
+                })
+              const outcomeOf = (result: Result.Result<CheckResult, CheckError>) =>
+                Result.isSuccess(result)
+                  ? ("passed" as const)
+                  : result.failure._tag === "CheckTimedOut"
+                    ? ("timed out" as const)
+                    : result.failure._tag === "CheckNotRun"
+                      ? ("not run" as const)
+                      : ("failed" as const)
+              const failedWith = (error: CheckError, name: string, setupOf?: string) =>
+                Effect.gen(function* () {
+                  const output =
+                    error._tag === "CheckNotRun"
+                      ? undefined
+                      : yield* keepRunOutput(dir, name, kept, whose)
+                  const how = howFailed(error)
+                  return {
+                    _tag: "Failed",
+                    outcome: outcomeOf(Result.fail(error)) as "failed" | "timed out" | "not run",
+                    why:
+                      setupOf === undefined
+                        ? (how as Line)
+                        : line`did not run: the setup before it, '${setupOf}', ${how}`,
+                    ...(output === undefined ? {} : { output }),
+                  } satisfies CheckRan as CheckRan
+                })
+              const body = Effect.gen(function* () {
+                yield* logs.write(
+                  gateLine`running ${what}${setup === null ? "" : line`, after '${setup}',`} in ${dir} (time limit ${formatDuration(config.settings.checks[check].timeout)})`,
+                )
+                if (setup !== null) {
+                  const setUp = yield* timed(
+                    "setup",
+                    Effect.scoped(
+                      Effect.flatMap(
+                        outputTo({ worktree: dir }, setupLogName, `${whose} setup's`),
+                        (to) =>
+                          recorded(
+                            "setup",
+                            undefined,
+                            checks.setup({ cwd: dir, ...to, before: check, command: setup }),
+                          ),
+                      ),
+                    ),
+                    outcomeOf,
+                  )
+                  if (Result.isFailure(setUp))
+                    return yield* failedWith(setUp.failure, setupLogName, setup)
+                  yield* show({ step: "check", command, began: since, gate: true })
+                }
+                const name = `check-${check}.log`
+                const checked = yield* timed(
+                  check,
                   Effect.scoped(
-                    Effect.flatMap(
-                      outputTo({ worktree: dir }, setupLogName, `${whose} setup's`),
-                      (to) =>
-                        recorded(
-                          "setup",
-                          undefined,
-                          checks.setup({ cwd: dir, ...to, before: check, command: setup }),
-                        ),
+                    Effect.flatMap(outputTo({ worktree: dir }, name, `${whose} ${what}'s`), (to) =>
+                      // The check record names check-fast's runs as the merge check's.
+                      recorded(
+                        check === "fast" ? "merge" : "full",
+                        undefined,
+                        checks[check]({ cwd: dir, ...to }),
+                      ),
                     ),
                   ),
                   outcomeOf,
                 )
-                if (Result.isFailure(setUp))
-                  return yield* failedWith(setUp.failure, setupLogName, setup)
-                yield* show({ step: "check", command, began: since, gate: true })
-              }
-              const name = `check-${check}.log`
-              const checked = yield* timed(
-                check,
-                Effect.scoped(
-                  Effect.flatMap(outputTo({ worktree: dir }, name, `${whose} ${what}'s`), (to) =>
-                    // The check record names check-fast's runs as the merge check's.
-                    recorded(
-                      check === "fast" ? "merge" : "full",
-                      undefined,
-                      checks[check]({ cwd: dir, ...to }),
-                    ),
-                  ),
-                ),
-                outcomeOf,
-              )
-              if (Result.isFailure(checked)) return yield* failedWith(checked.failure, name)
-              const output = yield* keepRunOutput(dir, name, kept, whose)
-              yield* logs.write(gateLine`${what} passed; its whole output is in ${output}`)
-              if (checked.success._tag === "CheckPassed") {
-                for (const text of flakyWarnings(
-                  line`the checks gate's ${what}`,
-                  checked.success,
-                )) {
-                  yield* warn(text)
+                if (Result.isFailure(checked)) return yield* failedWith(checked.failure, name)
+                const output = yield* keepRunOutput(dir, name, kept, whose)
+                yield* logs.write(gateLine`${what} passed; its whole output is in ${output}`)
+                if (checked.success._tag === "CheckPassed") {
+                  for (const text of flakyWarnings(
+                    line`the checks gate's ${what}`,
+                    checked.success,
+                  )) {
+                    yield* warn(text)
+                  }
                 }
-              }
-              return { _tag: "Passed" } satisfies CheckRan as CheckRan
-            })
-            return yield* Effect.ensuring(
-              body,
-              Effect.catch(worktrees.removeDetached(dir), (error) =>
-                leftWarning(dir, error, whose),
-              ),
-            )
-          })
+                return { _tag: "Passed" } satisfies CheckRan as CheckRan
+              })
+              return yield* Effect.ensuring(
+                body,
+                Effect.catch(worktrees.removeDetached(dir), (error) =>
+                  leftWarning(dir, error, whose),
+                ),
+              )
+            }),
+          )
 
         /** Records on the root epic that the gate passed these runners. */
         const record = (print: string) =>

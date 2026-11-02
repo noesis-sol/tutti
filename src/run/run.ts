@@ -118,11 +118,13 @@ import { closedBranches } from "./closedBranches.ts"
 import { noteCompactions } from "./compactions.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
 import { type DrainRequest, hear } from "./drain.ts"
+import { make as makeEarlyChecks } from "./earlyCheck.ts"
 import { make as makeEndOfRun } from "./endOfRun.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { featureRequestHeading } from "./feature.ts"
 import { RunFibers } from "./fibers.ts"
+import { earlyEvidence } from "./figures.ts"
 import { removeLeftFullChecks } from "./fullcheck.ts"
 import { makeGateAsk, noScout } from "./gateForm.ts"
 import {
@@ -476,10 +478,18 @@ const runFrom = (
     // TICKET_LIMIT (overnightAside.ts): its register of the fibers following their workers, the
     // hand-backs' included.
     const overnight = config.overnight ? { overnight: yield* makeOvernightAside } : {}
+    // Each finished ticket's branch checked early, while its worker's verifier runs, in the check
+    // slot every other check takes (earlyCheck.ts).
+    const early = yield* makeEarlyChecks({
+      repo: config.repo,
+      base,
+      setup: Effect.map(setUps.now, (setup) => setup.command),
+    })
     const queue = yield* makeQueue(
       {
         repo: config.repo,
         base,
+        early,
         noMore,
         atReset: usage.atReset,
         recheckSlot,
@@ -600,6 +610,7 @@ const runFrom = (
       show: showOn(status, "fullCheck"),
       takesWork: Effect.map(gate, takesBack),
       ...(gateAsk === undefined ? {} : { ask: gateAsk }),
+      early,
     })
     const beforeStart = Effect.andThen(requiresChecked, checksGate.before)
 
@@ -1097,11 +1108,15 @@ const runFrom = (
     const phases: Record<string, TicketPhase> = {}
     for (const entry of state.tickets.values()) phases[entry.ticket] = entry.phase
     // The report's evidence beside the log, in orchestra's order: the failed checks, the full
-    // check, the follow-ups filed outside the scope, the feature request.
+    // check, the follow-ups filed outside the scope, the feature request; then the early checks.
     const sections = [...failedChecksSection(state.tickets, yield* queue.rechecks.failures)]
+    // No early check runs beside the full check, nor after it.
+    yield* early.stop("the full check runs")
     const checked = yield* end.fullCheck(Object.values(phases), all.length > 0, quit)
     const said = [...summary, closing, ...checked.said]
     sections.push(...checked.sections)
+    const earlyChecks = earlyEvidence((yield* events.figures).early)
+    if (earlyChecks !== null) sections.push(section("Early checks", earlyChecks))
     const exitCode = checked.code ?? exitCodeOf(all)
 
     // Gathered only for a report, which a quit skips: bd lists the scope's tickets level by level.

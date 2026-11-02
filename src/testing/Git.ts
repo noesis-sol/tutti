@@ -206,6 +206,14 @@ const subjectOf = (message: string) => {
 const sameTree = (a: Tree, b: Tree) =>
   a.size === b.size && [...a].every(([path, content]) => b.get(path) === content)
 
+/** A tree's hash, as `<rev>^{tree}` names it: the same files give the same hash, as git's. */
+const treeHash = (tree: Tree): Sha =>
+  Sha.of(
+    createHash("sha1")
+      .update(JSON.stringify([...tree].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))))
+      .digest("hex"),
+  )
+
 /** The paths whose content differs between the trees, sorted. */
 const changedPaths = (a: Tree, b: Tree) =>
   [...new Set([...a.keys(), ...b.keys()])].filter((path) => a.get(path) !== b.get(path)).sort()
@@ -640,12 +648,15 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           }),
         )
 
-      // --verify --quiet: a rev that names nothing fails with exit 1, saying nothing.
+      // --verify --quiet: a rev that names nothing fails with exit 1, saying nothing. `<rev>^{tree}`
+      // names its commit's tree.
       const revParse = (dir: string, rev: string) =>
         operation(gitCall(gitOps.revParse, rev), dir, (refuse) =>
           Effect.gen(function* () {
-            const hash = resolve(yield* inRepo(refuse, dir), rev)
-            return hash === undefined ? yield* refuse(1, "") : hash
+            const tree = rev.endsWith("^{tree}")
+            const hash = resolve(yield* inRepo(refuse, dir), tree ? rev.slice(0, -7) : rev)
+            if (hash === undefined) return yield* refuse(1, "")
+            return tree ? treeHash(treeOf(hash)) : hash
           }),
         )
 

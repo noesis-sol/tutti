@@ -495,7 +495,8 @@ for a project that sets them all; the table below gives each one's default:
     "resolve_conflicts": true,
     "resolve_timeout": "20m",
     "check_hand_backs": 2,
-    "train": 1
+    "train": 1,
+    "early_check": true
   },
   "environment_hold": { "count": 2, "window": "2m", "probe": "10m" },
   "ui": { "colour_scheme": "orchestra" }
@@ -535,6 +536,7 @@ for a project that sets them all; the table below gives each one's default:
 | `merge.resolve_timeout` | `"20m"` | how long the worker has for a hand-back |
 | `merge.check_hand_backs` | `2` | how often a check failing on the rebased branch is handed back; `0` for never |
 | `merge.train` | `1` | how many tickets waiting to merge are checked ahead of their turn; `0` for none; [The merge queue](running.md#the-merge-queue) |
+| `merge.early_check` | `true` | check a ticket's branch early, rebased onto the base while its worker's verifier runs, so that its turn merges it with no second check; `false` for none; [The merge queue](running.md#the-merge-queue) |
 | `environment_hold.count` | `2` | tickets in a row failing at once that hold the run; `0` turns the hold off |
 | `environment_hold.window` | `"2m"` | how soon after dispatch a failure counts as at once |
 | `environment_hold.probe` | `"10m"` | how long after the hold the machine is probed; `"0"` for no probe |

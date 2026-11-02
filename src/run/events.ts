@@ -379,8 +379,11 @@ export const End = Schema.Struct({
   organs: optional(OrganTotals),
 })
 
-/** Which check a `check` record is of, as orchestra's `suite`. */
-export const checkSuites = ["merge", "recheck", "fix", "full", "setup"] as const
+/**
+ * Which check a `check` record is of, as orchestra's `suite`; `early` is tutti's: a ticket's early
+ * check, while its worker's verifier runs (src/run/earlyCheck.ts).
+ */
+export const checkSuites = ["merge", "recheck", "fix", "full", "setup", "early"] as const
 
 /** How a check ended, as orchestra's `result`; `not_run` is tutti's: it couldn't start. */
 export const checkResults = ["passed", "failed", "timed_out", "not_run"] as const
@@ -404,6 +407,49 @@ export const Check = Schema.Struct({
   said: optional(Schema.Array(Schema.String)),
   /** It ran ahead of its ticket's turn, as the second ticket of the merge train. */
   train: optional(Schema.Literal(true)),
+  /** A setup run for an early check (suite `setup`), in the early check's own checkout. */
+  early: optional(Schema.Literal(true)),
+})
+
+/**
+ * What became of an early check (src/run/earlyCheck.ts): it started, was cancelled, could not be
+ * run, passed or failed; and, at its ticket's turn to merge, whether its pass was used (`hit`) or
+ * not (`miss`).
+ */
+export const earlyCheckOutcomes = [
+  "started",
+  "cancelled",
+  "not run",
+  "passed",
+  "failed",
+  "hit",
+  "miss",
+] as const
+
+/**
+ * A ticket's early check, run while its worker's verifier runs on its branch rebased onto the base
+ * in a checkout of its own, for its turn to merge with no second check. tutti's own.
+ */
+export const EarlyCheck = Schema.Struct({
+  ...head("early_check"),
+  ticket: Schema.String,
+  detail: Schema.Literals(earlyCheckOutcomes),
+  /** cancelled, not run, miss: why, in the run's words. */
+  why: optional(Schema.String),
+  /** The base's commit its branch was rebased onto. */
+  base: optional(Schema.String),
+  /** The rebased branch's tree, which a merge matches with the base. */
+  tree: optional(Schema.String),
+  /**
+   * cancelled, passed, failed: from its start to its end, to a tenth. hit: the early check's own
+   * time, the check-seconds its turn saved.
+   */
+  seconds: optional(Seconds),
+  /** hit: how long its turn waited for it to end, to a tenth. */
+  waited: optional(Seconds),
+  /** failed: where its whole output is. */
+  output: optional(Schema.String),
+  text: Schema.String,
 })
 
 /** A worker's turn ended: its SDK result, with this turn's share of the session's running totals. */
@@ -689,6 +735,7 @@ export const kinds = {
   full_check: FullCheck,
   checks_gate: ChecksGate,
   check: Check,
+  early_check: EarlyCheck,
   turn: Turn,
   organ: Organ,
   ticket_end: TicketEnd,

@@ -908,6 +908,24 @@ at the machine's cap on workers (`HOLD: MACHINE`), and a ticket queued again aft
 worker, or checked once more, is checked in its turn. Quitting, or the merges stopping, puts back the
 branches rebased ahead of their turn.
 
+A ticket is checked early too, before it finishes: when its worker calls the verifier, with its
+worktree clean and commits on its branch, tutti checks the branch rebased onto the base's head in a
+worktree of its own, the setup first (`EARLY_CHECK: <id>: checking tutti/<id> at <commit> rebased
+onto <base> at <commit>, in a worktree of its own, while its worker's verifier runs`), and keeps a
+pass by the rebased tree and the base's commit. In its turn, a rebase that gives the same tree on the
+same base merges with no second check (`EARLY_CHECK: <id>: passed on the same tree on <base> at
+<commit>: tutti/<id> merges with no second check`), waiting for the early check if it still runs;
+the base moved on since, or a commit after it, takes the merge check as ever (`… not used: <why>`).
+The verifier runs a minute or more before a worker settles, so most merges save a whole check. Checks
+side by side slow each other, so an early check runs only while no other check does, and any other
+check (a merge's, a train's, a hand-back's, the checks gate's, the full check) cancels it as it
+starts, its processes killed; so do a new commit on the branch, another call to the verifier (which
+starts another), the ticket leaving `Working` other than to merge, and the run winding down or
+quitting. A failed early check is dropped: its worker isn't told, the merge check decides, and its
+output is kept beside the ticket's transcript as `checks/early-<n>.log`. The summary's Checks line
+counts them (`early used 3 of 4, saved 4m2s, 1m10s thrown away`), as does the run report, and
+`"merge": { "early_check": false }` in `.tutti/settings.json` runs none.
+
 What can go wrong, and what becomes of the ticket:
 
 | | |
