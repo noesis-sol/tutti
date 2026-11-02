@@ -3,9 +3,9 @@ import { existsSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Console, Effect, Fiber, Queue, type Scope } from "effect"
+import { Console, Duration, Effect, Exit, Fiber, Queue, type Scope } from "effect"
 import { Command } from "effect/cli"
-import { requestFile } from "../src/agent/attentionFiles.ts"
+import { AttentionPoll, requestFile } from "../src/agent/attentionFiles.ts"
 import { planServices, tuttiWith } from "../src/cli/commands.ts"
 import { gitAgainAfter, gitTries } from "../src/run/branch.ts"
 import type { DrainRequest } from "../src/run/drain.ts"
@@ -50,6 +50,7 @@ import {
   type Setup,
   scenario,
   type World,
+  whyFailed,
 } from "./harness.ts"
 
 /** A new folder, its real path: the main checkout's (for the attention files), or the worktrees'. */
@@ -196,6 +197,9 @@ describe("a plain run", () => {
   })
 })
 
+/** The run's attention poll where tutti answer answers, in TestClock's time. */
+const answerPoll = Duration.millis(1)
+
 describe("attention in plain mode", () => {
   test("a PERMISSION line names the tutti answer command, and its answer unblocks the worker", async () => {
     const rm = { command: "rm -rf build" }
@@ -223,6 +227,10 @@ describe("attention in plain mode", () => {
           }
         },
       },
+      // The scenarios' attention poll never wakes, and on macOS the folder's events come through
+      // FSEvents, which may deliver none for seconds while the machine is loaded: here the run
+      // polls every millisecond of TestClock, which moves on as tutti answer waits.
+      around: (running) => Effect.provideService(running, AttentionPoll, answerPoll),
       during: (repo) =>
         Effect.gen(function* () {
           // The request's file is there for tutti answer; it answers on the real clock.
@@ -234,19 +242,31 @@ describe("attention in plain mode", () => {
             log: (...args: ReadonlyArray<unknown>) => said.push(args.join(" ")),
             error: (...args: ReadonlyArray<unknown>) => said.push(args.join(" ")),
           })
-          yield* Effect.promise(() =>
-            Effect.runPromise(
-              Command.runWith(tuttiWith(Effect.succeed(repo), planServices), { version: "test" })([
-                "answer",
-                "r1",
-                "allow",
-                "--confirm",
-              ]).pipe(
-                Effect.provide(BunServices.layer),
-                Effect.provideService(Console.Console, console),
+          const answered = yield* Effect.race(
+            Effect.promise(() =>
+              Effect.runPromiseExit(
+                Command.runWith(tuttiWith(Effect.succeed(repo), planServices), {
+                  version: "test",
+                })(["answer", "r1", "allow", "--confirm"]).pipe(
+                  Effect.provide(BunServices.layer),
+                  Effect.provideService(Console.Console, console),
+                ),
+              ),
+            ),
+            Effect.forever(
+              Effect.andThen(
+                advance(answerPoll),
+                Effect.promise(() => Bun.sleep(100)),
               ),
             ),
           )
+          if (Exit.isFailure(answered)) {
+            return yield* Effect.die(
+              new Error(
+                `tutti answer r1 allow --confirm failed, saying:\n${said.join("\n")}\n${whyFailed(answered.cause)}`,
+              ),
+            )
+          }
           expect(said.join("\n")).toContain("r1")
         }),
     })

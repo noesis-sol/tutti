@@ -10,7 +10,7 @@
 // scenario's frames move only as `advance` moves the clock.
 import { expect } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
-import { Duration, Effect, Exit, Layer, type Scope } from "effect"
+import { Cause, Duration, Effect, Exit, Layer, type Scope } from "effect"
 import { TestClock } from "effect/testing"
 import type { Account, AccountProbeFailed, Billing, Initialization } from "../src/agent/Account.ts"
 import type { AgentHost } from "../src/agent/AgentHost.ts"
@@ -391,9 +391,29 @@ export { tty } from "../src/testing/Tty.ts"
 /** Moves TestClock on by `duration`, running whatever was waiting for that time. */
 export const advance = (duration: Duration.Input): Effect.Effect<void> => TestClock.adjust(duration)
 
+/**
+ * Why a scenario's Effect failed: the cause, and the fields of each error and defect in it, which
+ * its message may not name (CommandFailed names its command only in a field).
+ */
+export const whyFailed = (cause: Cause.Cause<unknown>): string => {
+  const fields = cause.reasons.flatMap((reason) => {
+    const error = Cause.isFailReason(reason)
+      ? reason.error
+      : Cause.isDieReason(reason)
+        ? reason.defect
+        : undefined
+    if (typeof error !== "object" || error === null) return []
+    const own = Object.entries(error)
+    if (own.length === 0) return []
+    const tag = "_tag" in error ? String(error._tag) : error.constructor.name
+    return [`${tag} ${JSON.stringify(Object.fromEntries(own))}`]
+  })
+  return [Cause.pretty(cause), ...fields].join("\n")
+}
+
 /** The run's outcome, or a test failure showing why the scenario's Effect didn't give one. */
 const outcomeOf = (ran: Ran<Outcome>): Outcome => {
-  if (Exit.isFailure(ran.exit)) throw new Error(`the run failed: ${ran.exit.cause}`)
+  if (Exit.isFailure(ran.exit)) throw new Error(`the run failed: ${whyFailed(ran.exit.cause)}`)
   return ran.exit.value
 }
 
