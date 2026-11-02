@@ -17,9 +17,9 @@
 // verifier again (that round starts another), its ticket leaves Working other than for the merge
 // queue (deferred, blocked, set aside), or the run winds down, quits or comes to its full check. A
 // failed early check is dropped: its worker isn't told (its verifier reports to it, and the merge
-// check decides), and its output is kept as a failed check's is (keptChecks.ts), as early-<n>.log;
-// so is a pass that left uncommitted changes to tracked files in its worktree, a pass on files that
-// won't merge, which the merge check then judges as ever (DIRTY_WORKTREE).
+// check decides), and its output is kept as a failed check's is (keptChecks.ts), as early-<n>.log.
+// A pass that left uncommitted changes to tracked files in its worktree, a pass on files that won't
+// merge, is dropped too, its record failed and saying why; the merge check judges it as ever.
 //
 // Each is measured in early_check records, with a line in the log: started, cancelled (why), not run
 // (why), passed, failed, and at its ticket's turn hit (and how long the turn waited for it) or miss

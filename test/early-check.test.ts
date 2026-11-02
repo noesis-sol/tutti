@@ -20,10 +20,11 @@ import { make as makeChecksGate } from "../src/run/checksGate.ts"
 import { type EarlyChecks, make as makeEarly, noEarlyChecks } from "../src/run/earlyCheck.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { addRecord, earlyEvidence, earlyPart, noFigures } from "../src/run/figures.ts"
-import { checkWithFix, makeHandBacks } from "../src/run/handback.ts"
+import { checkWithFix, makeHandBacks, noReset } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
+import { make as makeTrain } from "../src/run/mergetrain.ts"
 import { Move } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import { makeSetUps } from "../src/run/setup.ts"
@@ -752,5 +753,57 @@ describe("the checks gate", () => {
     )
     expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast", "fast", "full"])
     expect(claims).toEqual(["the checks gate", "the checks gate", "the checks gate"])
+  })
+})
+
+describe("the merge train", () => {
+  test("takes the check slot for a check ahead of its turn, which may outlive the turn ahead", async () => {
+    const claims: Array<string> = []
+    const recording: EarlyChecks = {
+      ...noEarlyChecks,
+      claim: (what, work) =>
+        Effect.andThen(
+          Effect.sync(() => void claims.push(what)),
+          work,
+        ),
+    }
+    const ran = await run(
+      {},
+      Effect.gen(function* () {
+        const git = yield* Git
+        const ahead = yield* working(t1)
+        const behind = yield* working(t2)
+        const setUps = yield* makeSetUps
+        const memory = {
+          rechecks: yield* makeRechecks,
+          setUps,
+          passes: yield* makePasses,
+          handBacks: yield* makeHandBacks,
+          fixes: yield* makeFixes,
+        }
+        const train = yield* makeTrain(
+          {
+            ...options,
+            noMore: Effect.succeed(undefined),
+            atReset: noReset,
+            loaded: Effect.succeed(false),
+            recheckSlot: () => Effect.succeed(true),
+            setUps,
+            machineFull: Effect.succeed(false),
+            early: recording,
+            waiting: Effect.succeed([t2]),
+          },
+          memory,
+          (_where, effect) => effect,
+        )
+        yield* train.mayCheckAhead(behind)
+        yield* train.starts(ahead, yield* orDie(git.revParse(options.repo, ahead.branch)))
+        for (let turns = 0; turns < 20_000 && claims.length === 0; turns++) yield* Effect.yieldNow
+        yield* settle
+        yield* train.leave
+      }),
+    )
+    expect(claims).toEqual(["tutti/t-2's check ahead of its turn"])
+    expect(ran.checkRuns.filter((each) => each.check === "fast")).toHaveLength(1)
   })
 })
