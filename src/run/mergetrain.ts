@@ -16,7 +16,8 @@
 // before any merge check.
 //
 // Each check ahead competes with the workers' for the CPU, so none starts without a check command,
-// nor while the run holds at the machine's cap on workers (HOLD: MACHINE), and a ticket put back in
+// nor while the run holds at the machine's cap on workers (HOLD: MACHINE) or the machine's memory is
+// pressed (pressureGate.ts), and a ticket put back in
 // line after a hand-back to its worker, a recheck or a conflict you handed over is checked in its
 // turn. Quitting, or the merges stopping, stops the trains and puts back the branches they rebased:
 // the tickets are left waiting to merge, for the next run to merge as any other.
@@ -536,8 +537,8 @@ export const make = (
     // Starts checking ahead of their turn the first merge.train tickets in line that wait for their
     // first turn, each rebased onto the branch of the one ahead of it as that one is checked: the
     // branch whose turn it is, or the train's ahead of it once rebased. None starts while no turn's
-    // check runs, nor once the trains are left or while the run holds at the machine's cap, and none
-    // behind a ticket not checked ahead, or whose train failed.
+    // check runs, nor once the trains are left or while the run holds at the machine's cap or the
+    // machine's memory is pressed, and none behind a ticket not checked ahead, or whose train failed.
     const start: Effect.Effect<void> = lock.withPermit(
       Effect.gen(function* () {
         const { stopped, checking } = yield* Ref.get(trains)

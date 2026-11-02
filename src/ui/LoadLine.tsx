@@ -3,7 +3,8 @@
 //
 //   ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · load 9.8/10 cores
 //
-// the workers at work out of their slots, the memory their processes take and what tutti runs
+// the workers at work out of those allowed now (concurrent, or fewer in the notice colour while the
+// pressure cap holds them lower, src/run/pressureCap.ts), the memory their processes take and what tutti runs
 // besides (its merge check above all, named `full check` while the end-of-run full check runs), the
 // kernel's memory pressure (and on Linux the memory available), swapping while it is under way, and
 // the 1-minute load average against the cores (src/run/load.ts), named load, not CPU: on macOS it
@@ -37,13 +38,28 @@ export const gigabytes = (bytes: number): string => `${number(bytes)} GB`
 /** A worker's memory on its line in Current: `1.2 GB`, `? GB` when its processes can't be found. */
 export const workerMemory = (memory: number): string => (memory < 0 ? "? GB" : gigabytes(memory))
 
-/** The workers at work out of their slots: `▶ 4 of 4 workers`, faint with none. */
+/**
+ * The workers at work out of those allowed now: `▶ 4 of 4 workers`, faint with none. While the
+ * pressure cap holds them below concurrent, the number allowed is in the notice colour: `▶ 3 of 2
+ * workers`.
+ */
 const workersPart = (totals: Totals, theme: Theme): Segments => {
   const { styles } = theme
-  const of = ` of ${totals.slots} ${totals.slots === 1 ? "worker" : "workers"}`
-  return totals.workers === 0
-    ? [seg(`${marks.working} 0${of}`, styles.dim)]
-    : [seg(`${marks.working} ${totals.workers}`, styles.picked), seg(of, styles.dim)]
+  const allowed = totals.allowed ?? totals.slots
+  const capped = totals.allowed !== null
+  const faint = totals.workers === 0
+  const word = ` ${allowed === 1 ? "worker" : "workers"}`
+  const count = faint
+    ? [seg(`${marks.working} 0`, styles.dim)]
+    : [seg(`${marks.working} ${totals.workers}`, styles.picked)]
+  return capped
+    ? [
+        ...count,
+        seg(" of ", styles.dim),
+        seg(String(allowed), styles.deferred),
+        seg(word, styles.dim),
+      ]
+    : [...count, seg(` of ${allowed}${word}`, styles.dim)]
 }
 
 /**

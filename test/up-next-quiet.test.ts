@@ -36,6 +36,7 @@ const totals: Totals = {
   asked: 0,
   workers: 0,
   slots: 4,
+  allowed: null,
   queued: 5,
   unclosed: null,
   heldBack: 4,

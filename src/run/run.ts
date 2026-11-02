@@ -152,12 +152,14 @@ import { Load, pressing, watchLoad } from "./load.ts"
 import { type Line, Log, tagged } from "./log.ts"
 import { loginStop, refusedLine, saveTold, watchLogins } from "./login.ts"
 import { make as makeLoop } from "./look.ts"
-import { make as makeMachineGate } from "./machineGate.ts"
+import { hasRoom, make as makeMachineGate } from "./machineGate.ts"
 import { make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { putBackLeft } from "./mergetrain.ts"
 import { make as makeOvernightAside } from "./overnightAside.ts"
 import type { TicketPhase } from "./phase.ts"
 import { make as makePredictor } from "./predict.ts"
+import { capEvidence } from "./pressureCap.ts"
+import { make as makePressureGate } from "./pressureGate.ts"
 import { interruptedText, keptText, panicLines, type QuitRequest } from "./quit.ts"
 import { make as makeQuits, Quitting, quitStop } from "./quitting.ts"
 import { dropRechecks } from "./recheck.ts"
@@ -471,9 +473,19 @@ const runFrom = (
     // Whether the run holds at --machine-workers (machineGate.ts): no ticket is checked ahead of
     // its turn to merge then (mergetrain.ts).
     const machineFull = Effect.map(holds.now, (now) => now.machine)
-    // Whether the machine's last load reading has it pressed (load.ts's pressing), read with the
-    // dashboard alone: with machineFull, the time a hand-back's limit leaves out (handback.ts).
+    // Whether the machine's last load reading has it pressed (load.ts's pressing): with machineFull,
+    // the time a hand-back's limit leaves out (handback.ts).
     const pressed = yield* Ref.make(false)
+    // The workers memory pressure allows (pressureGate.ts): the ticket about to start or resume
+    // waits while the run's workers are at them, and the optional checks start none while the
+    // memory is pressed.
+    const pressure = yield* makePressureGate({
+      concurrent: config.settings.concurrent,
+      on: config.settings.pressure_cap,
+      holds,
+      status,
+      wakeUp: wakeUp("hold"),
+    })
     // An overnight run sets a ticket aside rather than hold the run for PAUSED, BLOCKED or
     // TICKET_LIMIT (overnightAside.ts): its register of the fibers following their workers, the
     // hand-backs' included.
@@ -484,6 +496,7 @@ const runFrom = (
       repo: config.repo,
       base,
       setup: Effect.map(setUps.now, (setup) => setup.command),
+      held: pressure.pressed,
     })
     const queue = yield* makeQueue(
       {
@@ -494,7 +507,12 @@ const runFrom = (
         atReset: usage.atReset,
         recheckSlot,
         setUps,
-        machineFull,
+        // No ticket is checked ahead of its turn while the run holds at the machine's cap, nor while
+        // the memory is pressed.
+        machineFull: Effect.map(
+          Effect.all([machineFull, pressure.pressed]),
+          ([full, hard]) => full || hard,
+        ),
         loaded: Effect.map(
           Effect.all([machineFull, Ref.get(pressed)]),
           ([full, hard]) => full || hard,
@@ -617,6 +635,15 @@ const runFrom = (
     // The machine's other tutti and orchestra runs (machineGate.ts): with --machine-workers, the
     // ticket about to start waits while the workers across them are at that cap.
     const machine = yield* makeMachineGate({ holds, status, wakeUp: wakeUp("hold") })
+    // The workers allowed are the least of concurrent, the machine's cap and the pressure cap: the
+    // pressure cap's room is asked first, then the machine's.
+    const room = (own: number) =>
+      Effect.gen(function* () {
+        const first = yield* pressure.room(own)
+        if (!hasRoom(first)) return first
+        const second = yield* machine.room(own)
+        return first === "lifted" && second === "room" ? "lifted" : second
+      })
     // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
     // the checks' scripts, and what the merge and full checks' scripts run, count as no ticket's,
     // and the queue's shared files hold none apart. A ticket works in the worktree the Store saved
@@ -657,7 +684,7 @@ const runFrom = (
       start: { start: ticketFiber },
       gate,
       beforeStart,
-      room: machine.room,
+      room,
       machineFull,
       carrying: Ref.get(carrying),
       ...(footprints === undefined ? {} : { footprints }),
@@ -673,7 +700,9 @@ const runFrom = (
     yield* Ref.set(limitReached, scheduler.limitReached)
     // A look around the machine (machineGate.ts): the hold's end writes the queue's record.
     const lookAround = Effect.gen(function* () {
-      if (yield* machine.lookAround(yield* scheduler.slots)) yield* scheduler.recordQueue
+      const own = yield* scheduler.slots
+      const lifted = yield* pressure.lookAround(own)
+      if ((yield* machine.lookAround(own)) || lifted) yield* scheduler.recordQueue
     })
 
     // The run's watchers: one that dies panics the run.
@@ -869,28 +898,38 @@ const runFrom = (
       }
       yield* watch(Stream.runForEach(host.contexts, showOn(status, "contexts", Object.is)))
     }
-    // With the dashboard shown, the machine's load (load.ts), for its load line and each worker's
-    // memory in Current. A reading that fails stops the reading, not the run: the line stays as it
-    // was last read.
+    // The machine's load (load.ts), with the dashboard or plain output: the pressure cap's readings,
+    // the load line and each worker's memory in Current. A reading that fails stops the reading,
+    // not the run: the line stays as it was last read, and the cap goes back to concurrent.
     const loadSource = yield* Load
-    if (screen !== null && loadSource !== null) {
+    if (loadSource !== null) {
       yield* watch(
         watchLoad({
           source: loadSource,
           roots: host.processes,
           self: process.pid,
           show: (load) =>
-            Effect.andThen(Ref.set(pressed, pressing(load.levels)), showOn(status, "load")(load)),
+            Effect.asVoid(
+              Effect.all([
+                Ref.set(pressed, pressing(load.levels)),
+                pressure.read(load),
+                showOn(status, "load")(load),
+              ]),
+            ),
         }).pipe(
           Effect.catchDefect((defect) =>
             Effect.andThen(
               // No longer read: the machine's hold alone counts.
-              Ref.set(pressed, false),
-              logs.write(
-                tagged(
-                  "LOAD_FAILED",
-                )`${firstLine(defect)}; the machine's load is not shown for the rest of the run`,
+              Effect.andThen(
+                Ref.set(pressed, false),
+                logs.write(
+                  tagged(
+                    "LOAD_FAILED",
+                  )`${firstLine(defect)}; the machine's load is not shown for the rest of the run`,
+                ),
               ),
+              // Nor the pressure: the workers allowed go back to concurrent.
+              pressure.unread,
             ),
           ),
         ),
@@ -1117,6 +1156,8 @@ const runFrom = (
     sections.push(...checked.sections)
     const earlyChecks = earlyEvidence((yield* events.figures).early)
     if (earlyChecks !== null) sections.push(section("Early checks", earlyChecks))
+    const capped = capEvidence(yield* pressure.spent)
+    if (capped !== null) sections.push(section("Workers allowed under memory pressure", capped))
     const exitCode = checked.code ?? exitCodeOf(all)
 
     // Gathered only for a report, which a quit skips: bd lists the scope's tickets level by level.

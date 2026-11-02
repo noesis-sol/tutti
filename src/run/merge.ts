@@ -177,8 +177,8 @@ export interface MergeOptions {
   /** The run's setups (setup.ts), which starting a ticket shares; the queue's own without it. */
   readonly setUps: SetUps
   /**
-   * Whether the run holds at the machine's cap on workers: no check ahead starts then
-   * (mergetrain.ts). Never without it.
+   * Whether the run holds at the machine's cap on workers, or the machine's memory is pressed
+   * (pressureGate.ts): no check ahead starts then (mergetrain.ts). Never without it.
    */
   readonly machineFull: Effect.Effect<boolean>
   /**

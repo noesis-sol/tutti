@@ -139,6 +139,11 @@ export interface Status {
   readonly autoAnswer: string | null
   /** The machine's load, as the run last read it (load.ts); null until it has, or when it doesn't. */
   readonly load: Reading | null
+  /**
+   * The workers the pressure cap allows while it holds them below concurrent (pressureCap.ts); null
+   * while it doesn't.
+   */
+  readonly allowed: number | null
   /** The tickets not closed that the queue draws from (`9 of 16`); null until the run says. */
   readonly unclosed: number | null
   /**
@@ -186,6 +191,7 @@ export const emptyStatus: Status = {
   keepAwake: false,
   autoAnswer: null,
   load: null,
+  allowed: null,
   unclosed: null,
   holdTexts: { waits: {}, skips: {} },
   questions: new Map(),
@@ -254,6 +260,8 @@ export interface Totals {
   /** Workers at work, of `slots`. */
   readonly workers: number
   readonly slots: number
+  /** The workers the pressure cap allows, below `slots`; null while it allows them all. */
+  readonly allowed: number | null
   readonly queued: number
   /** The tickets not closed the queue draws from; null until the run says. */
   readonly unclosed: number | null
@@ -560,6 +568,7 @@ export const emptyView: RunView = {
     asked: 0,
     workers: 0,
     slots: 0,
+    allowed: null,
     queued: 0,
     unclosed: null,
     heldBack: 0,
@@ -975,7 +984,12 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   }
   const none: ReadonlyArray<ShownRequest> = []
 
-  const totals = { ...emptyView.totals, slots: status.concurrency, unclosed: status.unclosed }
+  const totals = {
+    ...emptyView.totals,
+    slots: status.concurrency,
+    allowed: status.allowed,
+    unclosed: status.unclosed,
+  }
   const needsYou = new Set(requestsOf.keys())
   const rows: Array<{ readonly at: number; readonly row: Row }> = []
   const ready: Array<QueueRow> = []

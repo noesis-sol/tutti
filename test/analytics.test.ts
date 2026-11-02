@@ -617,6 +617,28 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
     last_pct,
     resets_at,
   })),
+  // How often each run met memory pressure
+  [
+    {
+      run: "2026-10-20T06:00:00.000Z",
+      readings: 5,
+      pressed_minutes: 4,
+      critical_minutes: 0,
+      swapping_minutes: 3,
+      peak_swapping: 900,
+    },
+  ],
+  // What the pressure cap did in each run
+  [
+    {
+      run: "2026-10-20T06:00:00.000Z",
+      concurrency: 3,
+      lowered: 1,
+      raised: 1,
+      lowest: 2,
+      minutes_below: 8,
+    },
+  ],
 ]
 
 test("the fixture's records are the event stream's, each decoding as its kind", () => {

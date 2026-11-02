@@ -24,7 +24,8 @@
 // Each is measured in early_check records, with a line in the log: started, cancelled (why), not run
 // (why), passed, failed, and at its ticket's turn hit (and how long the turn waited for it) or miss
 // (why). The figures' Checks line and the run report count the hits, the misses, the check-seconds
-// the hits saved and those spent on early checks thrown away. merge.early_check false runs none.
+// the hits saved and those spent on early checks thrown away. merge.early_check false runs none, and
+// none starts while the machine's memory is pressed (pressureGate.ts).
 import {
   Clock,
   Data,
@@ -167,6 +168,11 @@ export interface EarlyOptions {
   readonly base: string
   /** The setup command as the run has it now, a merge's settings taken (setup.ts). */
   readonly setup: Effect.Effect<string | null>
+  /**
+   * Whether the machine's memory is pressed now (pressureGate.ts): no early check starts meanwhile,
+   * as one is optional. Never without it.
+   */
+  readonly held?: Effect.Effect<boolean>
 }
 
 type Env =
@@ -191,6 +197,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
     const config = yield* AppConfig
     const command = config.settings.checks.fast.command
     if (!config.settings.merge.early_check || command === null) return noEarlyChecks
+    const held = options.held ?? Effect.succeed(false)
     yield* removeLeftWorktrees(earlyFolderPrefix, whose)
     const context = yield* Effect.context<Env>()
     const git = yield* Git
@@ -520,6 +527,9 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
         // Its uncommitted changes wouldn't merge; a branch with no commits merges nothing.
         if (trackedChanges(status).length > 0 || ahead.length === 0) return
         if (yield* passedOn(id, head, onto)) return
+        if (yield* held) {
+          return yield* Effect.logDebug(`${id}: no early check: the machine's memory is pressed`)
+        }
         const started = yield* start(id, branch, head, onto)
         if (!started) yield* Effect.logDebug(`${id}: no early check: the check slot is taken`)
       }).pipe(Effect.provideContext(context))

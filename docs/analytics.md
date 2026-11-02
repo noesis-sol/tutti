@@ -45,7 +45,8 @@ FROM read_json(path, format = 'newline_delimited', filename = true, columns = {
   answer: 'VARCHAR', via: 'VARCHAR', after_ms: 'BIGINT', cancelled: 'BOOLEAN',
   reason_type: 'VARCHAR', reason: 'VARCHAR',
   status: 'VARCHAR', "limit": 'VARCHAR', resets_at: 'TIMESTAMPTZ', session: 'VARCHAR',
-  "window": 'VARCHAR', utilization: 'DOUBLE', waited: 'DOUBLE'
+  "window": 'VARCHAR', utilization: 'DOUBLE', waited: 'DOUBLE',
+  pressure: 'VARCHAR', swapping: 'DOUBLE', allowed: 'INTEGER'
 });
 
 CREATE OR REPLACE MACRO transcripts(path) AS TABLE
@@ -765,4 +766,48 @@ SELECT run, "window", round(100 * arg_min(utilization, time)) AS first_pct,
   arg_max(resets_at, time) AS resets_at
 FROM events('.tutti/run/events.jsonl') WHERE kind = 'usage_window'
 GROUP BY ALL ORDER BY run, "window";
+```
+
+## Memory pressure
+
+How often each run met memory pressure, from its `load` records, a minute apart and at each change
+of the pressure's level or of swapping: the readings, and the minutes the memory pressure was at
+`warn` or worse, at `critical`, and the machine swapping 600 pages a minute or more, each reading
+counted until the next; and the most pages swapped a minute. A run that read no load has no row.
+
+```sql
+WITH readings AS (
+  SELECT run, time, pressure, swapping,
+    lead(time) OVER (PARTITION BY run ORDER BY time, seq) AS next
+  FROM events('.tutti/run/events.jsonl') WHERE kind = 'load'
+)
+SELECT run, count(*) AS readings,
+  round(coalesce(sum(date_diff('second', time, next))
+    FILTER (pressure IN ('warn', 'critical')), 0) / 60, 1) AS pressed_minutes,
+  round(coalesce(sum(date_diff('second', time, next)) FILTER (pressure = 'critical'), 0) / 60, 1)
+    AS critical_minutes,
+  round(coalesce(sum(date_diff('second', time, next)) FILTER (swapping >= 600), 0) / 60, 1)
+    AS swapping_minutes,
+  max(swapping) AS peak_swapping
+FROM readings GROUP BY run ORDER BY run;
+```
+
+What the pressure cap did in each run, from its `pressure_cap` records: how many times it lowered
+and raised the workers allowed, the lowest it went, and the minutes they were below `concurrent`,
+each step counted until the next or the run's end. A run whose cap never moved has no row.
+
+```sql
+WITH stream AS (SELECT * FROM events('.tutti/run/events.jsonl')),
+steps AS (
+  SELECT s.run, s.time, s."from"::INTEGER AS was, s."to"::INTEGER AS now,
+    coalesce(lead(s.time) OVER (PARTITION BY s.run ORDER BY s.time, s.seq), e.time) AS until
+  FROM stream s LEFT JOIN (SELECT run, time FROM stream WHERE kind = 'end') e USING (run)
+  WHERE s.kind = 'pressure_cap'
+)
+SELECT run, r.concurrency, count(*) FILTER (now < was) AS lowered,
+  count(*) FILTER (now > was) AS raised, min(now) AS lowest,
+  round(coalesce(sum(date_diff('second', time, until)) FILTER (now < r.concurrency), 0) / 60, 1)
+    AS minutes_below
+FROM steps JOIN (SELECT run, concurrency FROM stream WHERE kind = 'start') r USING (run)
+GROUP BY ALL ORDER BY run;
 ```

@@ -190,6 +190,11 @@ export const Settings = Schema.Struct({
     withDefault(1),
   ),
   /**
+   * Whether the run lowers the workers it allows while the machine's memory is pressed, and raises
+   * them as the pressure passes (src/run/pressureCap.ts, § 5); false keeps them at concurrent.
+   */
+  pressure_cap: Schema.Boolean.pipe(withDefault(true)),
+  /**
    * Whether runs keep the machine awake (§ 8.2): the project's default, which keep_awake in the user
    * config overrides for one person, and --overnight always keeps it awake.
    */

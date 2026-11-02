@@ -90,6 +90,7 @@ describe("settings", () => {
       $schema: example.$schema,
       version: 1,
       concurrent: 2,
+      pressure_cap: true,
       keep_awake: true,
       checks: {
         fast: { command: "scripts/check-fast.sh", timeout: minutes(30) },
@@ -126,6 +127,7 @@ describe("settings", () => {
   const defaults: Settings = {
     version: 1,
     concurrent: 1,
+    pressure_cap: true,
     keep_awake: true,
     checks: {
       fast: { command: null, timeout: minutes(30) },

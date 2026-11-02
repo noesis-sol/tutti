@@ -86,7 +86,9 @@ machine, read every 5 seconds:
  ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · load 9.8/10 cores
 ```
 
-- **Workers**: workers at work out of how many may run (`-c`).
+- **Workers**: workers at work out of how many may run now: `-c`, or fewer while memory pressure
+  holds them lower, that number in amber, `▶ 3 of 2 workers` (see
+  [Memory pressure](running.md#memory-pressure)).
 - **Memory**: what the workers' processes take (each worker's Claude Code, its process group and all
   below them) and what tutti runs besides, its merge check above all, named `full check` while the
   end-of-run full check runs; `· 1 unknown` for a worker
@@ -108,8 +110,8 @@ memory's breakdown, then the memory; a pane too short for a line for each worker
 above it first.
 
 The time the pressure is red, the machine swaps or the load is red is left out of a hand-back's time
-limit (see [Hand-backs](workers.md#hand-backs)). The run reads the machine's load only while the
-dashboard shows; with plain output, the hold at `--machine-workers` alone counts.
+limit (see [Hand-backs](workers.md#hand-backs)). The run reads the machine's load with plain output
+too, for the workers it allows under memory pressure.
 
 ### The totals
 

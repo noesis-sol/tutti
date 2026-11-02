@@ -597,6 +597,8 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
           ? "on"
           : "off",
       ],
+      // pressure_cap (pressureCap.ts): the workers allowed fall under memory pressure.
+      ["pressure cap", config.settings.pressure_cap ? "on" : "off"],
       ["worktrees", config.worktrees],
       ...(servers.length === 0 ? [] : [["MCP servers", servers.join(", ")] as const]),
     ],

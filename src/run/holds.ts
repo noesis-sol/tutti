@@ -25,6 +25,7 @@ import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import { holdWord as machineWord } from "./machine.ts"
 import { type Mentions, shared } from "./overlap.ts"
 import { type HoldBack, phaseFacts } from "./phase.ts"
+import { holdWord as pressureWord } from "./pressureCap.ts"
 import type { RunHold, Usage } from "./runView.ts"
 import { warn } from "./say.ts"
 import { ledgerView } from "./scope.ts"
@@ -506,6 +507,11 @@ export interface RunHolds {
   readonly overLimit: ReadonlySet<TicketId>
   /** The run holds a free slot while the machine is at --machine-workers. */
   readonly machine: boolean
+  /**
+   * The run holds a free slot while its workers are at the workers memory pressure allows
+   * (pressureCap.ts); none when left out.
+   */
+  readonly pressure?: boolean
   /** What the usage limit's hold shows: the usage line, its banner and its notice. */
   readonly usage: UsageView
   /** The battery's notice while it runs low (battery.ts): it holds nothing, but shows beside them. */
@@ -557,6 +563,10 @@ export const liftBlocked = (holds: RunHolds, ticket: TicketId): RunHolds =>
 export const withMachineHold = (holds: RunHolds, full: boolean): RunHolds =>
   holds.machine === full ? holds : { ...holds, machine: full }
 
+/** `holds` with the pressure cap's hold on (`full`) or off. */
+export const withPressureHold = (holds: RunHolds, full: boolean): RunHolds =>
+  (holds.pressure ?? false) === full ? holds : { ...holds, pressure: full }
+
 /** `holds` showing the battery's `notice`, or none. */
 export const withBattery = (holds: RunHolds, notice: string | null): RunHolds =>
   holds.battery === notice ? holds : { ...holds, battery: notice }
@@ -572,7 +582,7 @@ export const showUsage = (holds: RunHolds, view: UsageView): RunHolds => ({ ...h
 export interface ShownHolds {
   /** A stop holds the run, and the running tickets are finishing. */
   readonly stopping: boolean
-  /** The banners, BLOCKED first, then the usage limit's and the machine's. */
+  /** The banners, BLOCKED first, then the usage limit's, the machine's and the pressure cap's. */
   readonly holds: ReadonlyArray<RunHold>
   readonly usage: Usage | null
   /** The usage limit's notice, if it holds the run. */
@@ -585,6 +595,7 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
     ...(blockedTickets(holds).size > 0 ? [{ word: Tag.blocked, resetsAt: null }] : []),
     ...(holds.usage.hold === null ? [] : [holds.usage.hold]),
     ...(holds.machine ? [{ word: machineWord, resetsAt: null }] : []),
+    ...(holds.pressure === true ? [{ word: pressureWord, resetsAt: null }] : []),
     ...(holds.filing == null ? [] : [{ word: holds.filing, resetsAt: null }]),
   ],
   usage: holds.usage.usage,

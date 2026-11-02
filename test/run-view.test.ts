@@ -139,6 +139,7 @@ describe("totals", () => {
       asked: 1,
       workers: 4,
       slots: 3,
+      allowed: null,
       queued: 1,
       unclosed: null,
       heldBack: 1,

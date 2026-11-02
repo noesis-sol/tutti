@@ -7,8 +7,9 @@
 // level and the swap rate do. The dashboard shows a reading on its load line, each figure in the
 // colour of its own level (src/ui/LoadLine.tsx), and each worker's memory on its line in Current.
 //
-// The run reads it every loadEvery while it shows the dashboard, through LoadSource: main.ts gives
-// the live one, and a run without one (the tests') reads nothing.
+// The run reads it every loadEvery while it runs, with the dashboard or plain output, through
+// LoadSource: main.ts gives the live one, and a run without one (the tests') reads nothing. Its
+// memory pressure and swapping lower the workers the run allows while they last (pressureCap.ts).
 import { availableParallelism } from "node:os"
 import { Clock, Context, Duration, Effect, FileSystem } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
@@ -35,6 +36,18 @@ export const stallWarn = 10
 export const stallCritical = 10
 export const availableWarn = 0.1
 export const availableCritical = 0.05
+
+// The pressure cap's times and steps (pressureCap.ts): tune them here.
+/** How long the memory pressure stays at warn or worse, or swapping under way, before the workers
+ * allowed fall a step; and again each further such time it lasts. */
+export const pressureLowerAfter = 60_000
+/** How long the memory pressure stays normal, with no swapping, before the workers allowed rise a
+ * step, up to concurrent; and again each further such time it lasts. */
+export const pressureRaiseAfter = 300_000
+/** The workers allowed fall by this many at a step at critical; by one at warn or swapping. */
+export const criticalStep = 2
+/** How often a load record goes into events.jsonl when nothing it says has changed. */
+export const loadRecordEvery = 60_000
 
 /** How often the run reads the machine's load: one process listing and the kernel's figures. */
 export const loadEvery: Duration.Duration = Duration.seconds(5)

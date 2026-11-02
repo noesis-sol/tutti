@@ -269,6 +269,38 @@ export const SharedMachine = Schema.Struct({
 export const MachineHold = lineRecord("machine_hold")
 
 /**
+ * The workers the run allows under memory pressure fell or rose a step (`HOLD: PRESSURE: workers
+ * allowed 4 → 3: memory pressure warn for 60 s`, `workers allowed 3 → 4: …`).
+ */
+export const PressureCap = Schema.Struct({
+  ...head("pressure_cap"),
+  from: Count,
+  to: Count,
+  /** What moved it: `memory pressure warn for 60 s`, `memory pressure normal for 5 min`. */
+  why: Schema.String,
+  text: Schema.String,
+})
+
+/**
+ * A reading of the machine's load, a minute apart, and at each change of the memory pressure's
+ * level or of whether swapping is under way: how often runs meet pressure.
+ */
+export const LoadReading = Schema.Struct({
+  ...head("load"),
+  pressure: Schema.Literals(["unknown", "normal", "warn", "critical"]),
+  /** Pages swapped in and out a minute, rounded; left out before two readings tell. */
+  swapping: optional(Count),
+  /** The 1-minute load average; left out when not known. */
+  load: optional(Amount),
+  cores: optional(Count),
+  /** The memory of the workers' processes and tutti's own commands, in bytes. */
+  memory: optional(Count),
+  /** The workers the run allows now (the pressure cap), and its concurrent. */
+  allowed: Count,
+  concurrent: Count,
+})
+
+/**
  * The machine slept (`SLEPT: …`), from when the run last saw it awake to its wake: the run's time
  * limits don't count the time.
  */
@@ -728,6 +760,8 @@ export const kinds = {
   probed: Probed,
   shared_machine: SharedMachine,
   machine_hold: MachineHold,
+  pressure_cap: PressureCap,
+  load: LoadReading,
   slept: Slept,
   battery: Battery,
   stop: Stop,

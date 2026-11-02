@@ -781,6 +781,27 @@ The other runs' workers count in each worker's share of the cores (`TUTTI_CORES`
 as the run last read them, no more than `--machine-workers` unless it is `0`. A worker takes its
 share as it starts and keeps it.
 
+### Memory pressure
+
+On a machine short of memory, the run lowers how many workers it allows, and raises it again once
+the pressure has passed. It reads the machine's load every 5 seconds, with the dashboard or plain
+output: after the kernel's memory pressure has been at `warn` or worse, or the machine swapping, for
+60 seconds, it allows one worker fewer (two fewer at `critical`), and one fewer again each further 60
+seconds it lasts, never fewer than one; after 5 minutes with the pressure `normal` and no swapping,
+it allows one more, and again each further 5 minutes, up to `concurrent`. The load average doesn't
+count: it counts threads waiting, and the run's own checks keep it high.
+
+It stops nothing: a worker at work goes on with its ticket, and the run starts or resumes no ticket
+until fewer workers run than it allows, with `PRESSURE` on the dashboard's title line while one
+waits for it. The merge queue isn't held, but while the memory is pressed no early check starts, nor
+any check ahead of its turn on the merge train. Each step is a log line and a `pressure_cap` record:
+`HOLD: PRESSURE: workers allowed 4 → 3: memory pressure warn for 60 s`, then
+`workers allowed 3 → 4: memory pressure normal for 5 min`. The load line says the workers allowed
+in amber meanwhile, `▶ 3 of 2 workers`, and the run report the time spent below `concurrent` and the
+lowest it went. `load` records in the event stream say how often runs meet pressure
+([Analytics](analytics.md#memory-pressure)). `"pressure_cap": false` in `.tutti/settings.json` keeps
+the workers at `concurrent`; the `START` line says `pressure cap: on` or `off`.
+
 ### Footprints
 
 Tickets that touch the same code don't run side by side. Each ticket has a **footprint**:
