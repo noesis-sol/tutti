@@ -467,6 +467,7 @@ for a project that sets them all; the table below gives each one's default:
   "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/settings.json",
   "version": 1,
   "concurrent": 1,
+  "pressure_cap": true,
   "keep_awake": true,
   "checks": {
     "fast": { "command": "scripts/check-fast.sh", "timeout": "30m" },
