@@ -6,17 +6,27 @@
 // commit, another verifier round, the ticket leaving Working and the run winding down. Each is
 // measured in early_check records, which the figures and the run report count.
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, realpathSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { HookInput } from "@anthropic-ai/claude-agent-sdk"
-import { Deferred, Effect, Exit, Fiber, Layer, type Scope, Stream } from "effect"
+import { Deferred, Duration, Effect, Exit, Fiber, Layer, type Scope, Stream } from "effect"
 import { makeWorkers } from "../src/agent/AgentHost.ts"
 import { WorkerEvent } from "../src/agent/WorkerState.ts"
-import { make as makeEarly, noEarlyChecks } from "../src/run/earlyCheck.ts"
+import { fastScript, fullScript } from "../src/init/runners.ts"
+import { makePasses } from "../src/run/check.ts"
+import { makeFixes } from "../src/run/checkback.ts"
+import { make as makeChecksGate } from "../src/run/checksGate.ts"
+import { type EarlyChecks, make as makeEarly, noEarlyChecks } from "../src/run/earlyCheck.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { addRecord, earlyEvidence, earlyPart, noFigures } from "../src/run/figures.ts"
+import { checkWithFix, makeHandBacks } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
+import { makeRechecks } from "../src/run/recheck.ts"
+import { makeSetUps } from "../src/run/setup.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, type CheckResult } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
@@ -24,7 +34,7 @@ import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
-import { passed } from "../src/testing/Checks.ts"
+import { type CheckRun, passed } from "../src/testing/Checks.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import type { Files } from "../src/testing/Git.ts"
 import { Repository } from "../src/testing/Git.ts"
@@ -363,6 +373,24 @@ describe("at the ticket's turn", () => {
     expect(done).toBeDefined()
   })
 
+  test("a hit with the merge train on, as by default", async () => {
+    const ran = await run(
+      {},
+      Effect.gen(function* () {
+        const early = yield* makeEarly(options)
+        const queue = yield* makeQueue({ ...options, early })
+        const ticket = yield* working(t1)
+        yield* early.called(t1)
+        yield* until(t1, "passed")
+        yield* close(ticket)
+        yield* queue.offer(ticket)
+        yield* queue.settled
+      }),
+    )
+    expect(details(ran.events, t1)).toEqual(["started", "passed", "hit"])
+    expect(fastRuns(ran)).toHaveLength(1)
+  })
+
   test("still running, it is waited for", async () => {
     const started = Effect.runSync(Deferred.make<void>())
     const gate = Effect.runSync(Deferred.make<void>())
@@ -459,6 +487,61 @@ describe("at the ticket's turn", () => {
   })
 })
 
+describe("an early check's pass", () => {
+  test("is no pass where its check changed tracked files: the merge check decides, DIRTY_WORKTREE", async () => {
+    // The repository as the scenario has it, for the check to write in its worktree's files.
+    const held: { repository?: Repository["Service"] } = {}
+    const rewrites = (each: CheckRun) =>
+      Effect.as(
+        Effect.suspend(
+          () =>
+            held.repository?.write(each.cwd, { [`${t1}.txt`]: "rewritten by the check\n" }) ??
+            Effect.void,
+        ),
+        passed("fast"),
+      )
+    const ran = await run(
+      { ...noTrain, checks: { fast: [rewrites, rewrites] } },
+      Effect.gen(function* () {
+        held.repository = yield* Repository
+        const early = yield* makeEarly(options)
+        const queue = yield* makeQueue({ ...options, early })
+        const ticket = yield* working(t1)
+        yield* early.called(t1)
+        yield* until(t1, "failed")
+        yield* close(ticket)
+        yield* queue.offer(ticket)
+        yield* queue.settled
+      }),
+    )
+    expect(details(ran.events, t1)).toEqual(["started", "failed", "miss"])
+    expect(recordOf(ran.events, t1, "failed")?.why).toContain(
+      `its setup or check left uncommitted changes to ${t1}.txt`,
+    )
+    expect(fastRuns(ran)).toHaveLength(2)
+    expect(ran.log.some((line) => line.includes(`DIRTY_WORKTREE: ${t1} closed, but`))).toBe(true)
+  })
+
+  test("with tests that passed only on a rerun is warned of, FLAKY", async () => {
+    const ran = await run(
+      { checks: { fast: [passed("fast", { flaky: ["a.test.ts > b"], flakyCount: 1 })] } },
+      Effect.gen(function* () {
+        const early = yield* makeEarly(options)
+        yield* working(t1)
+        yield* early.called(t1)
+        yield* until(t1, "passed")
+      }),
+    )
+    expect(
+      ran.log.some((line) =>
+        line.includes(
+          `FLAKY: ${t1}'s early check 'scripts/check-fast.sh' passed, but a test failed and then passed on a rerun: a.test.ts > b`,
+        ),
+      ),
+    ).toBe(true)
+  })
+})
+
 describe("an early check is cancelled", () => {
   /** Starts t-1's early check, endless, then does `then`; the scenario's records. */
   const cancelledBy = (
@@ -509,6 +592,60 @@ describe("an early check is cancelled", () => {
     expect(recordOf(ran.events, t1, "cancelled")?.why).toBe("the run is winding down")
   }, 15_000)
 
+  test("by the run quitting, as the merge queue holds", async () => {
+    const started = Effect.runSync(Deferred.make<void>())
+    const ran = await run(
+      { checks: { fast: [endless(started)] } },
+      Effect.gen(function* () {
+        const early = yield* makeEarly(options)
+        const queue = yield* makeQueue({ ...options, early })
+        yield* working(t1)
+        yield* early.called(t1)
+        yield* Deferred.await(started)
+        yield* queue.hold
+        yield* working(t2)
+        yield* early.called(t2)
+        yield* settle
+      }),
+    )
+    expect(recordOf(ran.events, t1, "cancelled")?.why).toBe("the run is quitting")
+    expect(details(ran.events, t2)).toEqual([])
+  }, 15_000)
+
+  test("by the check of a ticket's fix after a hand-back, as it starts", async () => {
+    const started = Effect.runSync(Deferred.make<void>())
+    const ran = await run(
+      { checks: { fast: [endless(started), passed("fast")] } },
+      Effect.gen(function* () {
+        const early = yield* makeEarly(options)
+        const git = yield* Git
+        yield* working(t1)
+        const fixed = yield* working(t2)
+        yield* early.called(t1)
+        yield* Deferred.await(started)
+        const onto = yield* orDie(git.revParse(options.repo, "main"))
+        const from = yield* orDie(git.revParse(options.repo, fixed.branch))
+        const memory = {
+          rechecks: yield* makeRechecks,
+          setUps: yield* makeSetUps,
+          passes: yield* makePasses,
+          handBacks: yield* makeHandBacks,
+          fixes: yield* makeFixes,
+        }
+        const { checked } = yield* checkWithFix(
+          { ticket: fixed, onto, fork: onto },
+          { what: "fix", from },
+          { ...options, early },
+          memory,
+        )
+        expect(checked._tag).toBe("Passed")
+      }),
+    )
+    expect(recordOf(ran.events, t1, "cancelled")?.why).toBe(
+      "tutti/t-2's check after its worker's fix took the check slot",
+    )
+  }, 15_000)
+
   test("by another call to the verifier, which starts another", async () => {
     const started = Effect.runSync(Deferred.make<void>())
     const ran = await run(
@@ -549,5 +686,71 @@ describe("the figures", () => {
   test("say nothing where no turn found an early check", () => {
     expect(earlyPart(noFigures.early)).toEqual([])
     expect(earlyEvidence(noFigures.early)).toBeNull()
+  })
+})
+
+describe("the checks gate", () => {
+  test("takes the check slot for each of its checks", async () => {
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-early-gate-")))
+    const fast = "scripts/check-fast.sh"
+    const full = "scripts/check-full.sh"
+    const spec = "shop.md"
+    const claims: Array<string> = []
+    const recording: EarlyChecks = {
+      ...noEarlyChecks,
+      claim: (what, work) =>
+        Effect.andThen(
+          Effect.sync(() => void claims.push(what)),
+          work,
+        ),
+    }
+    const ran = await run(
+      {
+        config: {
+          repo,
+          ticket: "s-1" as TicketId,
+          specPath: spec,
+          settings: {
+            ...settings,
+            checks: {
+              ...settings.checks,
+              setup: { ...settings.checks.setup, command: null },
+              fast: { command: fast, timeout: Duration.minutes(10) },
+              full: { command: full, timeout: Duration.minutes(60) },
+            },
+          },
+        },
+        git: { dir: repo },
+        backlog: backlog()
+          .ticket("s-1", { type: "epic", metadata: { spec } })
+          .ticket("s-1.1", { parent: "s-1", priority: 0, labels: ["solo"], metadata: { spec } })
+          .seeds,
+      },
+      Effect.gen(function* () {
+        const at = yield* (yield* Repository).commit(repo, "Set the checks (s-1.1)", {
+          [fast]: fastScript([{ name: "unit", command: "bun test", foundIn: "", serial: false }]),
+          [full]: fullScript(
+            [{ name: "e2e", command: "bun run e2e", foundIn: "", serial: false }],
+            false,
+          ),
+        })
+        const ledger = yield* Ledger
+        const id = "s-1.1" as TicketId
+        yield* ledger.transition(id, Move.Ready(), { title: "Environment" })
+        yield* ledger.transition(id, Move.Dispatched())
+        yield* ledger.transition(id, Move.Verified({ place: 1 }))
+        yield* ledger.transition(id, Move.ItsTurn())
+        yield* ledger.transition(id, Move.FastForwarded({ commit: at }))
+        const gate = yield* makeChecksGate({
+          base: "main",
+          setup: Effect.succeed(null),
+          stopped: () => Effect.void,
+          early: recording,
+        })
+        yield* gate.before
+      }),
+    )
+    expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast", "fast", "full"])
+    expect(claims).toEqual(["the checks gate", "the checks gate", "the checks gate"])
   })
 })

@@ -17,7 +17,9 @@
 // verifier again (that round starts another), its ticket leaves Working other than for the merge
 // queue (deferred, blocked, set aside), or the run winds down, quits or comes to its full check. A
 // failed early check is dropped: its worker isn't told (its verifier reports to it, and the merge
-// check decides), and its output is kept as a failed check's is (keptChecks.ts), as early-<n>.log.
+// check decides), and its output is kept as a failed check's is (keptChecks.ts), as early-<n>.log;
+// so is a pass that left uncommitted changes to tracked files in its worktree, a pass on files that
+// won't merge, which the merge check then judges as ever (DIRTY_WORKTREE).
 //
 // Each is measured in early_check records, with a line in the log: started, cancelled (why), not run
 // (why), passed, failed, and at its ticket's turn hit (and how long the turn waited for it) or miss
@@ -46,14 +48,14 @@ import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { branchOf, Worktrees } from "../services/Worktrees.ts"
-import { failedHow, outputKept, outputTo, recordedKeeping } from "./check.ts"
+import { failedHow, flakyWarnings, outputKept, outputTo, recordedKeeping } from "./check.ts"
 import { tenths } from "./events.ts"
 import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { leftWarning, removeLeftWorktrees, worktreeWhy } from "./fullcheck.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, type Log, line, ticketLine } from "./log.ts"
-import { say } from "./say.ts"
+import { say, warn } from "./say.ts"
 
 /** How the early check's worktrees' folder names start, under the worktrees' folder. */
 export const earlyFolderPrefix = "early-check-"
@@ -295,6 +297,35 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
         )
         if (Result.isFailure(checked.ran)) {
           return yield* failed(early, checked.ran.failure, outputKept(checked), seconds)
+        }
+        // A pass on tracked files the setup or check changed is a pass on what won't merge: the
+        // merge check decides, and sets the ticket aside if it does the same (DIRTY_WORKTREE).
+        const after = yield* Effect.result(git.status(path))
+        const changed = Result.isSuccess(after) ? trackedChanges(after.success) : []
+        if (Result.isFailure(after) || changed.length > 0) {
+          const why = Result.isFailure(after)
+            ? line`git could not read its worktree after its check: ${gitWhy(after.failure)}`
+            : line`its setup or check left uncommitted changes to ${changed}, which would not merge`
+          const ended = Ended.Failed({ seconds: yield* seconds })
+          yield* say({
+            kind: "early_check",
+            ticket: id,
+            detail: "failed",
+            why,
+            base: early.onto,
+            seconds: ended.seconds,
+            text: earlyLine(
+              id,
+              line`'${command}' passes on ${early.branch} rebased onto ${base}, but ${why}; dropped, its merge check decides`,
+            ),
+          })
+          return ended
+        }
+        const result = checked.ran.success
+        if (result._tag === "CheckPassed") {
+          for (const warning of flakyWarnings(line`${id}'s early check '${command}'`, result)) {
+            yield* warn(warning, id)
+          }
         }
         const ended = Ended.Passed({ seconds: yield* seconds })
         yield* say({
