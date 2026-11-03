@@ -1,5 +1,5 @@
 // A hand-back's time limit on a loaded machine (handback.ts's clock), as orchestra 0.9.0 has it:
-// the time the machine is loaded, its kernel's memory pressure, swapping or CPU pressing it
+// the time the machine is loaded, its kernel's memory pressure or CPU pressing it
 // (load.ts's pressing), or the run holding at --machine-workers, is left out of resolve_timeout, up
 // to resolve_timeout again; the line ending a hand-back past it says how much more it was given.
 // Whole runs under TestClock: the dashboard shown for the run to read the machine's load, or plain
@@ -55,11 +55,15 @@ const defaults = appConfig().settings
 const green: Levels = { cpu: "green", pressure: "green", swapping: "green" }
 
 describe("pressing", () => {
-  test("is the memory pressure red, swapping under way or the CPU red", () => {
+  test("is the memory pressure red or the CPU red", () => {
     expect(pressing(green)).toBe(false)
     expect(pressing({ ...green, pressure: "red" })).toBe(true)
-    expect(pressing({ ...green, swapping: "amber" })).toBe(true)
     expect(pressing({ ...green, cpu: "red" })).toBe(true)
+  })
+
+  test("is not swapping alone, which goes on long after the pressure has passed", () => {
+    expect(pressing({ ...green, swapping: "amber" })).toBe(false)
+    expect(pressing({ ...green, swapping: "amber", pressure: "red" })).toBe(true)
   })
 
   test("is not a CPU in amber alone, as a run's workers keep it", () => {

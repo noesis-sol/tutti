@@ -10,7 +10,7 @@
 // The run reads it every loadEvery while it runs, with the dashboard or plain output, through
 // LoadSource: main.ts gives the live one, and a run without one (the tests') reads nothing. Its
 // memory pressure lowers the workers the run allows while it lasts (pressureCap.ts); its swapping,
-// only a figure, doesn't.
+// only a figure, doesn't, nor counts against a hand-back's time limit (pressing).
 import { availableParallelism } from "node:os"
 import { Clock, Context, Duration, Effect, FileSystem } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
@@ -385,12 +385,14 @@ export const levelsOf = (
 
 /**
  * Whether `levels` have the machine pressed hard enough to slow a worker's tests several times over,
- * as orchestra 0.9.0 has it: the kernel's memory pressure red, swapping under way, or the load red. A
- * load in amber alone doesn't: a run's workers keep it there. A hand-back's time limit leaves out
- * the time it is (handback.ts's clock).
+ * as orchestra 0.9.0 has it: the kernel's memory pressure red or the load red. A load in amber alone
+ * doesn't: a run's workers keep it there. Nor does swapping, as the pressure cap's strain doesn't
+ * (pressureCap.ts, tutti-epza.14): with gigabytes in swap the machine swaps far past
+ * swappingPerMinute long after the pressure has passed. A hand-back's time limit leaves out the time
+ * it is (handback.ts's clock).
  */
 export const pressing = (levels: Levels): boolean =>
-  levels.pressure === "red" || levels.swapping !== "green" || levels.cpu === "red"
+  levels.pressure === "red" || levels.cpu === "red"
 
 /**
  * A reading at `now` from a listing (undefined: every worker unknown and nothing of tutti's own) and

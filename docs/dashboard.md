@@ -112,9 +112,9 @@ else the share of memory available), and `ps` on both. A pane too narrow for the
 memory's breakdown, then the memory; a pane too short for a line for each worker drops the blank line
 above it first.
 
-The time the pressure is red, the machine swaps or the load is red is left out of a hand-back's time
-limit (see [Hand-backs](workers.md#hand-backs)). The run reads the machine's load with plain output
-too, for the workers it allows under memory pressure.
+The time the pressure or the load is red is left out of a hand-back's time limit (see
+[Hand-backs](workers.md#hand-backs)); swapping alone isn't. The run reads the machine's load with
+plain output too, for the workers it allows under memory pressure.
 
 ### The totals
 
