@@ -35,8 +35,8 @@ tutti cannot start:
   - Not logged in to Claude: run claude /login, or tutti login
 ```
 
-It checks the repository and its main checkout (on a branch, its tree clean but for `.tutti/run/`
-and `.beads/`), `bd` and the Beads database, the Claude Code it runs, the login and your Claude Code
+It checks the repository and its main checkout (on a branch, no uncommitted changes to tracked
+files but in `.tutti/run/` and `.beads/`; an untracked file, such as a `.DS_Store`, is left to git), `bd` and the Beads database, the Claude Code it runs, the login and your Claude Code
 settings ([Login and billing](setup.md#login-and-billing)), the settings and your user config, the MCP
 servers workers get, and the worker prompt. In a repository `tutti init` hasn't set up, it says so
 first:
