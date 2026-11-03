@@ -148,6 +148,7 @@ below are the coverage report's uncovered lines at 368899e.
   `schedule-waiting-window.test.ts`, `phase.test.ts`, `held-back.test.ts`, `unready.test.ts`,
   `live-status.test.ts`, `no-ticket-limit.test.ts`, `machine-workers.test.ts`,
   `machine-workers-default.test.ts`, `machine-core-share.test.ts`, `core-share.test.ts`,
+  `memory-share.test.ts`,
   `holds-time.test.ts`, `run-footprints.test.ts`, `run-footprints-worktree.test.ts`,
   `dispatch-footprint-line.test.ts`, `carry-footprint-line.test.ts`, `scope-open-followup.test.ts`,
   `run-predictor.test.ts`, `state-records.test.ts`, `store.test.ts`, `run-finish.test.ts`,

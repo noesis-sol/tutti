@@ -11,6 +11,7 @@
 import { Context, Duration } from "effect"
 import pkg from "../../package.json" with { type: "json" }
 import type { billings } from "../cli/flags.ts"
+import { memoryFloor } from "../run/load.ts"
 import { gitLocalVariable } from "../services/gitEnv.ts"
 
 /** The variable that holds an Anthropic API key. */
@@ -92,11 +93,53 @@ export const orchestraCoresVariable = "ORCHESTRA_CORES"
  * workers' checks crowd the machine, every check takes two or three times as long, and tests time
  * out in code no ticket touched (tutti-0ye, tutti-kkb.24). As orchestra's coreShare.
  */
-export const coreShare = (cores: number, concurrent: number, others = 0, limit = 0): number => {
+export const coreShare = (cores: number, concurrent: number, others = 0, limit = 0): number =>
+  Math.max(Math.floor(cores / sharers(concurrent, others, limit)), 1)
+
+/**
+ * The workers a share is divided among: the run's `concurrent` (at least 1) and the machine's
+ * other runs' `others`, no more than `limit` where it is above 0.
+ */
+export const sharers = (concurrent: number, others = 0, limit = 0): number => {
   const all = Math.max(concurrent, 1) + Math.max(others, 0)
-  const workers = limit > 0 ? Math.min(all, limit) : all
-  return Math.max(Math.floor(cores / workers), 1)
+  return limit > 0 ? Math.min(all, limit) : all
 }
+
+/** A mebibyte, the unit of TUTTI_MEMORY_MB. */
+export const mebibyte = 1024 ** 2
+
+/** The variable that gives a worker its share of the memory checks may use, in MiB. */
+export const memoryVariable = "TUTTI_MEMORY_MB"
+
+/** orchestra's name for it, set too, as for the cores. */
+export const orchestraMemoryVariable = "ORCHESTRA_MEMORY_MB"
+
+/** The variable naming the file tutti keeps a worker's current share in (src/run/share.ts). */
+export const shareFileVariable = "TUTTI_SHARE_FILE"
+
+/**
+ * A check's share of the memory checks may use, `budget` bytes (src/run/share.ts' budgetOf), in
+ * MiB: divided among the run's `allowed` workers and the machine's other runs' `others`, no more
+ * workers than `limit` (as coreShare), and one more for the merge check, which the early check's
+ * slot is; at least memoryFloor, so a check can always run, one process at a time. A test runner
+ * left alone starts as many processes as it has cores, each of a gigabyte or more, and two
+ * workers' checks wanted 15 GB of a 16 GB machine (tutti-epza.18).
+ */
+export const memoryShare = (budget: number, allowed: number, others = 0, limit = 0): number => {
+  const each = Math.max(budget, 0) / (sharers(allowed, others, limit) + 1)
+  return Math.floor(Math.max(each, memoryFloor) / mebibyte)
+}
+
+/**
+ * A worker's share of the memory in its environment: TUTTI_MEMORY_MB and ORCHESTRA_MEMORY_MB, in
+ * MiB, as the share stood as its session started; and TUTTI_SHARE_FILE, the file its current share
+ * is kept in, where tutti keeps one.
+ */
+export const memoryVariables = (memory: number, file?: string): Record<string, string> => ({
+  [memoryVariable]: String(memory),
+  [orchestraMemoryVariable]: String(memory),
+  ...(file === undefined ? {} : { [shareFileVariable]: file }),
+})
 
 /** Whether the go command's flags, `GOFLAGS`'s words, set -p, as the maintainer may. */
 export const setsParallel = (flags: ReadonlyArray<string>): boolean =>
@@ -229,15 +272,22 @@ export const WorkerEnv = Context.Reference<Readonly<Record<string, string>>>(
 
 /**
  * `env`, a WorkerEnv, with a worker's share of the machine: Bash's timeouts for its merge check's
- * `checkTimeout`, and its `cores` (coreVariables, after `env`'s GOFLAGS).
+ * `checkTimeout`, its `cores` (coreVariables, after `env`'s GOFLAGS), and its `memory` and the
+ * `file` its current share is kept in, where it has them (memoryVariables).
  */
 export const sharedEnv = (
   env: Readonly<Record<string, string>>,
-  share: { readonly checkTimeout: Duration.Duration; readonly cores: number },
+  share: {
+    readonly checkTimeout: Duration.Duration
+    readonly cores: number
+    readonly memory?: number
+    readonly file?: string
+  },
 ): Record<string, string> => ({
   ...env,
   ...bashTimeouts(share.checkTimeout),
   ...coreVariables(share.cores, env.GOFLAGS),
+  ...(share.memory === undefined ? {} : memoryVariables(share.memory, share.file)),
 })
 
 /** The account probe's environment: a worker's, always without the key, to find the login (§ 4.13). */

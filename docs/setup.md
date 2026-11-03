@@ -371,6 +371,36 @@ check once (see [The worker prompt](workers.md#the-worker-prompt)) then gives it
 run, in place of the merge check. tutti never runs it itself, and its files, as the other checks',
 count as no ticket's in footprints.
 
+### Sizing a check to its share
+
+Other workers' checks run beside a worker's own, so tutti gives each worker its share of the
+machine ([The checks' share](running.md#the-checks-share)): `TUTTI_CORES`, its cores, and
+`TUTTI_MEMORY_MB`, the memory its checks may use, in MB, both as they stood as its session started
+(`ORCHESTRA_CORES` and `ORCHESTRA_MEMORY_MB` too, for scripts written for orchestra), and
+`TUTTI_SHARE_FILE`, the file the run keeps the share in as it changes, a JSON line
+(`{"cores":3,"memory_mb":3584,"at":"…"}`). A check script that starts several processes, a test
+runner's pool, Electron, a build's jobs, reads the file as it starts, or the variables where it
+can't, and starts no more processes than the cores, nor than fit in the memory at what one process
+takes:
+
+```sh
+# The share now, from the file tutti keeps it in, else as the session started.
+cores=${TUTTI_CORES:-4}
+memory_mb=${TUTTI_MEMORY_MB:-4096}
+if [ -r "${TUTTI_SHARE_FILE:-}" ]; then
+  cores=$(sed -n 's/.*"cores":\([0-9]*\).*/\1/p' "$TUTTI_SHARE_FILE")
+  memory_mb=$(sed -n 's/.*"memory_mb":\([0-9]*\).*/\1/p' "$TUTTI_SHARE_FILE")
+fi
+# About 1.5 GB a test process: no more of them than fit, nor than the cores, and at least one.
+jobs=$(( ${memory_mb:-4096} / 1536 ))
+[ "$jobs" -le "${cores:-4}" ] || jobs=${cores:-4}
+[ "$jobs" -ge 1 ] || jobs=1
+npx vitest run --maxWorkers="$jobs"
+```
+
+tutti's own `scripts/test.ts` sizes its `bun test --parallel` processes by `TUTTI_CORES` so
+(`coreShareOf`), and is to take the memory share as well.
+
 ## The requires list
 
 What the project needs of the machine (a tool, a service running, a permission) is its requires list,

@@ -120,6 +120,7 @@ import {
   runMain,
 } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
+import { shares, startShareNote } from "./run/share.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
 import { fetchOnce, fetchSpecLive, type LiveFetch } from "./run/specSource.ts"
 import { setUpFromFlags, specStart } from "./run/specStart.ts"
@@ -194,6 +195,8 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     fibersLayer,
     // The other runs' workers, which the run reads and its workers' share of the cores counts.
     otherWorkers,
+    // The workers' share of the machine, which the run keeps live and each session starts with.
+    shares,
     // The machine's load, which the run reads for the dashboard's load line.
     Layer.succeed(Load, liveLoad()),
     // The battery, which the run reads every minute to warn before it runs low.
@@ -881,8 +884,18 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         return putting._tag === "Cancelled" ? yield* stoppedAtQuestions(putting.answered) : null
       })
       const why = mode._tag === "Plain" ? plainReasonLine(mode.reason, tty.term) : undefined
+      // The workers' share of the machine, from one reading of it, for the START block.
+      const share = yield* startShareNote(
+        liveLoad(),
+        { cores: availableParallelism(), limit: config.machineWorkers },
+        config.settings.concurrent,
+      )
       const start = () => [
-        ...startBlock({ ...started, config: { ...config, ticket: scope, feature } }, version),
+        ...startBlock(
+          { ...started, config: { ...config, ticket: scope, feature } },
+          version,
+          share,
+        ),
         ...(why === undefined ? [] : [detail`${why}`]),
       ]
 

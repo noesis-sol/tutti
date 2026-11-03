@@ -5,7 +5,13 @@
 // since the workers don't get the tool.
 import { isAbsolute, join, relative, resolve } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
-import { coresVariable, orchestraCoresVariable } from "../agent/env.ts"
+import {
+  coresVariable,
+  memoryVariable,
+  orchestraCoresVariable,
+  orchestraMemoryVariable,
+  shareFileVariable,
+} from "../agent/env.ts"
 import { type AppConfigValue, SetupProblem, workerPromptFile } from "../cli/AppConfig.ts"
 import { settingsFile } from "./settings.ts"
 import builtIn from "./templates/worker-prompt.md" with { type: "text" }
@@ -98,14 +104,21 @@ export const checkNote = (command: string | null): string =>
   `passed. Piping a check through tail hides its exit status. ${coresNote}\n`
 
 /**
- * The check note's last sentence: a worker's environment gives it its share of the machine's
- * cores (src/agent/env.ts's coreVariables), for its checks to keep to, as orchestra 0.9.0's does.
+ * The check note's last sentences: a worker's environment gives it its share of the machine's
+ * cores (src/agent/env.ts's coreVariables), for its checks to keep to, as orchestra 0.9.0's does,
+ * and of the memory checks may use (memoryVariables), and names the file tutti keeps the share
+ * in as it changes (src/run/share.ts).
  */
 export const coresNote =
   `Other workers' checks run on this machine beside yours: ${coresVariable} in your environment ` +
   `(and ${orchestraCoresVariable}, for scripts written for orchestra) is your share of its cores, ` +
   `so a check that runs things side by side (test files or packages, a linter's jobs, a build) ` +
-  `runs no more than that many at once; GOFLAGS has Go's commands keep to it already (-p).`
+  `runs no more than that many at once; GOFLAGS has Go's commands keep to it already (-p). ` +
+  `${memoryVariable} (and ${orchestraMemoryVariable}) is your checks' share of its memory, in MB: ` +
+  `a check that starts several processes starts no more than fit in it. Both are the share as ` +
+  `your session started; ${shareFileVariable}, where it is set, names a file tutti keeps your ` +
+  `share in as it changes, a JSON line ({"cores":3,"memory_mb":3584,"at":"…"}), which a check ` +
+  `script reads as it starts.`
 
 /** The words of the worker prompt's rule on the requires list, as orchestra's RequiresRule. */
 export const requiresRule = "never by hand outside the list"

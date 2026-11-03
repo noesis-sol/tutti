@@ -171,6 +171,16 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       text: "HOLD: PRESSURE: workers allowed 4 → 3: memory pressure warn for 60 s",
     },
   ],
+  share: [
+    {
+      ...head,
+      kind: "share",
+      cores: { from: 5, to: 3 },
+      memory: { from: 6144, to: 3584 },
+      why: "workers allowed 2 → 1",
+      text: "share: cores 5 → 3, memory 6.0 → 3.5 GB: workers allowed 2 → 1",
+    },
+  ],
   load: [
     {
       ...head,
@@ -567,7 +577,7 @@ describe("the records", () => {
       [
         ...["start", "info", "dispatch", "queue", "closed", "deferred", "asked", "answered"],
         ...["waits", "reopened", "triage", "warn", "hold", "drain", "resume", "probed", "stop"],
-        ...["shared_machine", "machine_hold", "pressure_cap", "load", "slept", "battery"],
+        ...["shared_machine", "machine_hold", "pressure_cap", "share", "load", "slept", "battery"],
         ...["done", "full_check", "checks_gate", "early_check", "end", "phase", "attention"],
         ...["attention_answered", "denied"],
         ...[

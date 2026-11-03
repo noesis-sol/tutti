@@ -74,6 +74,10 @@ export interface WorkerShare {
   readonly checkTimeout: Duration.Duration
   /** Its share of the machine's cores (coreShare). */
   readonly cores: number
+  /** Its checks' share of the memory, in MiB (memoryShare), as it stands as the session starts. */
+  readonly memory?: number
+  /** The file its current share is kept in (src/run/share.ts), where the run keeps one. */
+  readonly file?: string
 }
 
 /** What a session is opened with. */

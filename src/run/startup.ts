@@ -560,10 +560,14 @@ export const memoryEstimate = (concurrency: number): string =>
 /**
  * The START block of a run that passed its checks: `START tutti <version> in <repo> on <base>`,
  * its scope, ` · overnight` for an overnight run, its settings, ` · auto-answer` with --auto-answer, then its billing, its permission mode in effect, its MCP servers when it
- * has none, its `concurrent` above the cap on the machine's workers, the memory its workers take, its vendored paths, why its colour scheme isn't used (a line per notice), and
+ * has none, its `concurrent` above the cap on the machine's workers, the memory its workers take, the workers' `share` of the machine where it is given (src/run/share.ts' shareNote), its vendored paths, why its colour scheme isn't used (a line per notice), and
  * its warnings.
  */
-export const startBlock = (started: Started, version: string): ReadonlyArray<Line> => {
+export const startBlock = (
+  started: Started,
+  version: string,
+  share: string | null = null,
+): ReadonlyArray<Line> => {
   const { config } = started
   const spec = started.spec ?? null
   const concurrency = config.settings.concurrent
@@ -620,6 +624,7 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
         ? [aboveCapNote(concurrency, config.machineWorkers)]
         : []),
       `memory: ${memoryEstimate(concurrency)}`,
+      ...(share === null ? [] : [share]),
       ...(started.vendored === undefined || started.vendored === null ? [] : [started.vendored]),
       ...schemeNotices(config.scheme),
       ...started.warnings,

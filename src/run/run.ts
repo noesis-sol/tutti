@@ -62,6 +62,7 @@
 // (machineGate.ts), the screen's commands and the run's end they act until (screenCommands.ts),
 // BLOCKED (blockedWatch.ts), the loop that looks at the run until nothing is left (look.ts),
 // quitting (quitting.ts) and the end's steps (endOfRun.ts).
+import { availableParallelism } from "node:os"
 import { join } from "node:path"
 import {
   Cause,
@@ -154,6 +155,7 @@ import { Load, pressing, watchLoad } from "./load.ts"
 import { type Line, Log, line, tagged } from "./log.ts"
 import { loginStop, refusedLine, saveTold, watchLogins } from "./login.ts"
 import { make as makeLoop } from "./look.ts"
+import { OtherWorkers } from "./machine.ts"
 import { hasRoom, make as makeMachineGate } from "./machineGate.ts"
 import { make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { putBackLeft } from "./mergetrain.ts"
@@ -181,6 +183,7 @@ import {
 import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
+import { makeShareKeeper } from "./share.ts"
 import { watchSleeps } from "./slept.ts"
 import { endRecord, Spending, showSums } from "./spending.ts"
 import { Trash } from "./trash.ts"
@@ -915,6 +918,15 @@ const runFrom = (
     // not the run: the line stays as it was last read, and the cap goes back to concurrent.
     const loadSource = yield* Load
     if (loadSource !== null) {
+      // The workers' share of the machine for their checks (share.ts), worked out again at each
+      // reading from the workers the pressure cap allows then: kept in .tutti/run/share.json.
+      const otherWorkers = yield* OtherWorkers
+      const share = yield* makeShareKeeper({
+        repo: config.repo,
+        machine: { cores: availableParallelism(), limit: config.machineWorkers },
+        allowed: pressure.allowed,
+        others: otherWorkers.others,
+      })
       yield* watch(
         watchLoad({
           source: loadSource,
@@ -925,6 +937,7 @@ const runFrom = (
               Effect.all([
                 Ref.set(pressed, pressing(load.levels)),
                 pressure.read(load),
+                share.read(load),
                 showOn(status, "load")(load),
               ]),
             ),
@@ -940,8 +953,8 @@ const runFrom = (
                   )`${firstLine(defect)}; the machine's load is not shown for the rest of the run`,
                 ),
               ),
-              // Nor the pressure: the workers allowed go back to concurrent.
-              pressure.unread,
+              // Nor the pressure: the workers allowed go back to concurrent, and the share with them.
+              Effect.andThen(pressure.unread, share.refresh),
             ),
           ),
         ),

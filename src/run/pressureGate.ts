@@ -48,6 +48,8 @@ export interface PressureGate {
   lookAround(own: number): Effect.Effect<boolean>
   /** Whether the memory is pressed now, as last read: the optional checks start none meanwhile. */
   readonly pressed: Effect.Effect<boolean>
+  /** The workers allowed now: the cap, concurrent while it is off (share.ts divides by them). */
+  readonly allowed: Effect.Effect<number>
   /** The time spent below concurrent so far, and the lowest cap. */
   readonly spent: Effect.Effect<CapSpent>
 }
@@ -177,6 +179,7 @@ export const make = (options: {
       room,
       lookAround,
       pressed: Ref.get(pressedNow),
+      allowed: Effect.map(Ref.get(cap), (now) => now.cap),
       spent,
     } satisfies PressureGate
   })

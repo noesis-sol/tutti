@@ -50,6 +50,14 @@ export const criticalStep = 2
 /** How often a load record goes into events.jsonl when nothing it says has changed. */
 export const loadRecordEvery = 60_000
 
+// The checks' memory share (share.ts): tune it here.
+/** The memory the budget leaves for the machine to breathe in, beside what tutti doesn't own. */
+export const memoryReserve = 2 * 1024 ** 3
+/** The least memory share a check gets, however short the machine: enough to run one process. */
+export const memoryFloor = 1024 ** 3
+/** How far the memory share moves before the share is changed, on readings alone. */
+export const memoryStep = 512 * 1024 ** 2
+
 /** How often the run reads the machine's load: one process listing and the kernel's figures. */
 export const loadEvery: Duration.Duration = Duration.seconds(5)
 
@@ -71,6 +79,20 @@ export interface Kernel {
   /** The memory available to start programs without swapping, in bytes (Linux's MemAvailable); -1
    * where the kernel doesn't say, as on macOS. */
   readonly available: number
+  /** The machine's memory and what the kernel keeps of it; left out where it isn't known. */
+  readonly memory?: Memory
+}
+
+/** The machine's memory, as the kernel says it, for the checks' budget (budgetOf), in bytes. */
+export interface Memory {
+  /** All of it: macOS's hw.memsize, Linux's MemTotal. */
+  readonly total: number
+  /** What the kernel keeps for itself, which no process's resident memory counts: macOS's wired
+   * pages; 0 on Linux, whose MemAvailable leaves it out already. */
+  readonly wired: number
+  /** The pages macOS's compressor occupies, every process's compressed memory, which no
+   * resident memory counts either; 0 on Linux. */
+  readonly compressed: number
 }
 
 /** A Kernel that says nothing. */
@@ -101,6 +123,12 @@ export interface Reading {
   readonly workers: ReadonlyMap<string, number>
   /** The memory of what tutti runs besides its workers, its merge check above all, in bytes. */
   readonly check: number
+  /**
+   * The resident memory of the checks, in bytes: what tutti runs besides its workers and each
+   * worker's processes but its Claude Code itself; and that of every other process, tutti's own and
+   * the workers' Claude Code included. Left out without a listing.
+   */
+  readonly memory?: { readonly checks: number; readonly others: number }
   readonly kernel: Kernel
   /** The pages swapped in and out a minute since the reading before; -1 before there are two. */
   readonly swapping: number
@@ -210,26 +238,53 @@ const counter = (text: string, name: string): number | undefined => {
 const decimal = (text: string | undefined): number | undefined =>
   text !== undefined && /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : undefined
 
+/** vm_stat's page size, from its first line (`… (page size of 16384 bytes)`); undefined without. */
+const pageSize = (vmstat: string): number | undefined => {
+  const size = /\(page size of (\d+) bytes\)/.exec(vmstat)?.[1]
+  return size === undefined ? undefined : Number(size)
+}
+
 /**
- * macOS's figures: sysctl -n's answer for kern.memorystatus_vm_pressure_level, vm.loadavg and
- * hw.ncpu, a line each (`1`, `{ 9.80 8.12 7.40 }`, `10`), and vm_stat's page counts; undefined when
- * sysctl's answer isn't three lines.
+ * The machine's memory from hw.memsize's `total` (`17179869184`) and vm_stat's wired pages and the
+ * compressor's; undefined where any of them can't be read.
+ */
+const darwinMemory = (total: string | undefined, vmstat: string): Memory | undefined => {
+  const page = pageSize(vmstat)
+  const wired = counter(vmstat, "Pages wired down:")
+  const compressed = counter(vmstat, "Pages occupied by compressor:")
+  if (total === undefined || !/^\d+$/.test(total)) return undefined
+  if (page === undefined || wired === undefined || compressed === undefined) return undefined
+  return { total: Number(total), wired: wired * page, compressed: compressed * page }
+}
+
+/**
+ * macOS's figures: sysctl -n's answer for kern.memorystatus_vm_pressure_level, vm.loadavg, hw.ncpu
+ * and hw.memsize, a line each (`1`, `{ 9.80 8.12 7.40 }`, `10`, `17179869184`), and vm_stat's page
+ * counts; undefined when sysctl's answer isn't three or four lines. Without hw.memsize's line the
+ * machine's memory isn't known.
  */
 export const parseDarwin = (sysctl: string, vmstat: string): Kernel | undefined => {
   const lines = sysctl.trim().split("\n")
-  if (lines.length !== 3) return undefined
-  const [level, average, cores] = lines.map((line) => line.trim()) as [string, string, string]
+  if (lines.length !== 3 && lines.length !== 4) return undefined
+  const [level, average, cores, total] = lines.map((line) => line.trim()) as [
+    string,
+    string,
+    string,
+    string | undefined,
+  ]
   const pressure: Pressure =
     level === "1" ? "normal" : level === "2" ? "warn" : level === "4" ? "critical" : "unknown"
   const load1 = decimal(average.replace(/[{}]/g, " ").trim().split(/\s+/)[0])
   const ins = counter(vmstat, "Swapins:")
   const outs = counter(vmstat, "Swapouts:")
+  const memory = darwinMemory(total, vmstat)
   return {
     pressure,
     swaps: ins === undefined || outs === undefined ? -1 : ins + outs,
     load1: load1 ?? -1,
     cores: /^\d+$/.test(cores) ? Number(cores) : 0,
     available: -1,
+    ...(memory === undefined ? {} : { memory }),
   }
 }
 
@@ -279,6 +334,7 @@ export const parseLinux = (files: {
     load1,
     cores: files.cores,
     available,
+    ...(total === undefined ? {} : { memory: { total: total * 1024, wired: 0, compressed: 0 } }),
   }
 }
 
@@ -342,10 +398,13 @@ export const sample = (options: {
   const { sampler, now, processes } = options
   const workers = new Map<string, number>()
   const theirs = new Set<number>()
+  // The workers' Claude Code processes' own memory, which no check of theirs can use.
+  let sessions = 0
   for (const [ticket, root] of options.roots) {
     const tree = processes === undefined ? new Set<number>() : treeOf(processes, root)
     for (const pid of tree) theirs.add(pid)
     workers.set(ticket, tree.size === 0 ? unknownMemory : memoryOf(processes ?? new Map(), tree))
+    sessions += processes?.get(root)?.memory ?? 0
   }
   const check = processes === undefined ? 0 : below(processes, options.self, theirs)
   const kernel = options.kernel ?? unknownKernel
@@ -358,8 +417,21 @@ export const sample = (options: {
     last = { swaps: kernel.swaps, at: now }
   }
   const { levels, overSince } = levelsOf(sampler, kernel, swapping, now)
+  let memory: Reading["memory"]
+  if (processes !== undefined) {
+    const checks = memoryOf(processes, theirs) - sessions + check
+    memory = { checks, others: memoryOf(processes, processes.keys()) - checks }
+  }
   return {
-    reading: { at: now, workers, check, kernel, swapping, levels },
+    reading: {
+      at: now,
+      workers,
+      check,
+      ...(memory === undefined ? {} : { memory }),
+      kernel,
+      swapping,
+      levels,
+    },
     sampler: { last, overSince },
   }
 }
@@ -396,6 +468,7 @@ const kernelOf = (platform: NodeJS.Platform, cores: () => number) =>
         "kern.memorystatus_vm_pressure_level",
         "vm.loadavg",
         "hw.ncpu",
+        "hw.memsize",
       ])
       const vmstat = yield* output("vm_stat", [])
       return sysctl === undefined ? undefined : parseDarwin(sysctl, vmstat ?? "")

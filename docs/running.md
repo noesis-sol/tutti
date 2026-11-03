@@ -779,10 +779,11 @@ working, handed back to their workers and its checks run once more, and a ticket
 merge or merging only beyond
 `concurrent` of them, as such tickets take no slot up to that many.
 
-The other runs' workers count in each worker's share of the cores (`TUTTI_CORES`, see
-[the worker prompt](workers.md)): the cores divided among this run's `concurrent` workers and theirs,
-as the run last read them, no more than `--machine-workers` unless it is `0`. A worker takes its
-share as it starts and keeps it.
+The other runs' workers count in each worker's share of the cores and the memory (`TUTTI_CORES`,
+`TUTTI_MEMORY_MB`, see [the worker prompt](workers.md)): divided among the workers this run allows
+and theirs, as the run last read them, no more than `--machine-workers` unless it is `0`. The
+variables keep the share as the worker's session started; `TUTTI_SHARE_FILE` names the file the run
+keeps it in as it changes ([The checks' share](#the-checks-share)).
 
 ### Memory pressure
 
@@ -806,6 +807,30 @@ in amber meanwhile, `▶ 3 of 2 workers`, and the run report the time spent belo
 lowest it went. `load` records in the event stream say how often runs meet pressure
 ([Analytics](analytics.md#memory-pressure)). `"pressure_cap": false` in `.tutti/settings.json` keeps
 the workers at `concurrent`; the `START` line says `pressure cap: on` or `off`.
+
+### The checks' share
+
+Each worker's checks get a share of the machine's memory as well as its cores, as a test runner left
+alone starts a process per core, each of a gigabyte or more. The **memory budget** is what checks may
+use: on macOS the machine's memory less the wired pages, the compressor's and the resident memory of
+every process but the checks (tutti itself and the workers' Claude Code included); on Linux the
+memory available and what the checks hold; less a 2 GB reserve. It is divided among the workers
+allowed now (the pressure cap), the other runs' workers (no more than `--machine-workers`) and one
+more for the merge check, whose slot the early check takes, at least 1 GB a check so that one can
+always run, one process at a time. The `START` block says the budget and how it is divided:
+
+```
+share: memory budget 6.3 GB (16.0 GB less 5.4 GB wired, 2.3 GB compressed, 2.0 GB outside the checks and the 2.0 GB reserve), divided among 3 (2 workers allowed and the merge check): 2.1 GB a check, 5 cores a worker; kept live in .tutti/run/share.json
+```
+
+The share follows the run. Each load reading works it out again, and where the workers allowed or
+the other runs' workers changed, or the readings moved the memory share by half a gigabyte or more,
+the run writes it to `.tutti/run/share.json`, a single JSON line, `{"cores":3,"memory_mb":3584,"at":"2026-11-03T09:12:40.000Z"}`,
+and says so: `share: cores 5 → 3, memory 6.0 → 3.5 GB: workers allowed 2 → 1`, a `share` record in
+the event stream. Each worker's environment has `TUTTI_MEMORY_MB` (and `ORCHESTRA_MEMORY_MB`), the
+memory share in MB as its session started, beside `TUTTI_CORES`, and `TUTTI_SHARE_FILE`, the file's
+path, which a check script reads as it starts, so that a check started under pressure starts
+smaller ([Setup](setup.md#sizing-a-check-to-its-share)).
 
 ### Footprints
 

@@ -281,6 +281,23 @@ export const PressureCap = Schema.Struct({
   text: Schema.String,
 })
 
+/** A figure that moved: from, to. */
+const Moved = Schema.Struct({ from: Count, to: Count })
+
+/**
+ * A worker's share of the machine for its checks moved (`share: cores 5 → 3, memory 6.0 → 3.5 GB:
+ * workers allowed 2 → 1`), and .tutti/run/share.json with it (src/run/share.ts).
+ */
+export const ShareMoved = Schema.Struct({
+  ...head("share"),
+  cores: Moved,
+  /** In MiB, as TUTTI_MEMORY_MB. */
+  memory: Moved,
+  /** What moved it: `workers allowed 2 → 1`, `other runs' workers 0 → 2`, `memory budget 9.6 → 6.1 GB`. */
+  why: Schema.String,
+  text: Schema.String,
+})
+
 /**
  * A reading of the machine's load, a minute apart, and at each change of the memory pressure's
  * level or of whether swapping is under way: how often runs meet pressure.
@@ -761,6 +778,7 @@ export const kinds = {
   shared_machine: SharedMachine,
   machine_hold: MachineHold,
   pressure_cap: PressureCap,
+  share: ShareMoved,
   load: LoadReading,
   slept: Slept,
   battery: Battery,

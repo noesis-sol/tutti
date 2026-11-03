@@ -76,6 +76,7 @@ import { readmeName } from "../project/requires.ts"
 import { checkCommands } from "../project/settings.ts"
 import { detail, Log } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
+import { budgetOf, Shares, shareFileOf, shareOf } from "../run/share.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { timeoutAwake } from "../services/Wake.ts"
 import type { AccountProbe } from "./Account.ts"
@@ -103,7 +104,6 @@ import {
 } from "./ClaudeCode.ts"
 import { type SessionFibers, sessionFibers } from "./callbacks.ts"
 import { readContextUsage } from "./contextUsage.ts"
-import { coreShare } from "./env.ts"
 import { type ChosenServers, withOwn } from "./mcp.ts"
 import {
   changingNotes,
@@ -194,7 +194,7 @@ export interface LiveOptions {
   readonly account: Pick<AccountProbe, "billing">
   /**
    * The machine's cores, divided among the run's workers and the other runs' (coreShare,
-   * OtherWorkers) as each session starts; availableParallelism().
+   * OtherWorkers) as each session starts where the run keeps no share (Shares); availableParallelism().
    */
   readonly cores?: number
   /** How long an interrupt's control requests have to be answered; interruptLimit. */
@@ -355,16 +355,30 @@ export const layer = (
       const scope = yield* Effect.scope
       const services = yield* Effect.context<Attention | Transcripts>()
       const otherWorkers = yield* OtherWorkers
+      const shares = yield* Shares
       const cores = options.cores ?? availableParallelism()
-      // A session's share of the machine, its share of the cores taken as it starts, from the other
-      // runs' workers the run last read: one started as another run begins keeps more than its share.
-      const shareNow = Effect.map(
-        otherWorkers.others,
-        (others): WorkerShare => ({
+      // A session's share of the machine as it starts: the share the run keeps (src/run/share.ts),
+      // and the file it keeps it in, for the session's checks to follow; where it keeps none, the
+      // cores and half the memory divided among concurrent and the other runs' workers last read.
+      const shareNow = Effect.gen(function* () {
+        const kept = yield* shares.now
+        const share =
+          kept ??
+          shareOf(
+            { cores, limit: config.machineWorkers },
+            {
+              budget: budgetOf(null).bytes,
+              allowed: config.settings.concurrent,
+              others: yield* otherWorkers.others,
+            },
+          )
+        return {
           checkTimeout: config.settings.checks.fast.timeout,
-          cores: coreShare(cores, config.settings.concurrent, others, config.machineWorkers),
-        }),
-      )
+          cores: share.cores,
+          memory: share.memory,
+          ...(kept === null ? {} : { file: shareFileOf(config.repo) }),
+        } satisfies WorkerShare
+      })
       // Whether workers keep Skill (§ 4.1), decided once, from the main checkout, as the run begins.
       const skills = yield* projectHasSkills(config.repo)
       // Whether workers that change the requires list write the README's section again (§ 4.11).

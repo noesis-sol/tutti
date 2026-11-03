@@ -84,6 +84,14 @@ things side by side (a test runner's workers, a linter's jobs) keeps to it; Go's
 already. Left alone, each check runs as many at once as there are cores, and several workers' checks
 crowd the machine until tests time out in code no ticket touched.
 
+The note goes on with its share of the memory: `TUTTI_MEMORY_MB` (and `ORCHESTRA_MEMORY_MB`), in MB,
+the memory checks may use divided among the workers allowed, the other runs' and the merge check
+([The checks' share](running.md#the-checks-share)), so that a check starting several processes
+starts no more than fit in it. Both variables are the share as the worker's session started;
+`TUTTI_SHARE_FILE` names `.tutti/run/share.json` in the main checkout, which the run rewrites as the
+workers allowed and the machine's memory change, for a check script to read as it starts
+([Sizing a check to its share](setup.md#sizing-a-check-to-its-share)).
+
 Each rule of the template prevents a way a run goes wrong:
 
 - **Its own worktree; never push; tutti merges.** Workers can't disturb each other or the branch
