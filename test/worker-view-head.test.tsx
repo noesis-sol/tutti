@@ -412,7 +412,7 @@ describe("the ticket's box", () => {
       for (const row of lines.slice(6, 11)) expect(row).toMatch(/^│ \S.*│$/)
       expect(lines[10]).toContain("…")
       expect(lines[11]).toMatch(/^╰─+ ▾ whole ticket {2}t ─╯$/)
-      expect(lines[12]).toMatch(/^─+$/)
+      expect(lines[12]).toMatch(/^── Output ─+$/)
       const control = frame.spans.lines[11]?.spans.find((each) => each.text.includes("▾"))
       expect(control?.fg.toInts()).toEqual(theme.rgba("link", "fg").toInts())
       // The title has no line of its own outside the box.
@@ -487,7 +487,7 @@ describe("the ticket's box", () => {
           `│ Read the second file too.${" ".repeat(52)}│`,
           `╰${"─".repeat(78)}╯`,
         ])
-        expect(lines[8]).toMatch(/^─+$/)
+        expect(lines[8]).toMatch(/^── Output ─+$/)
       },
     )
   })

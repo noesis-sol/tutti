@@ -515,7 +515,7 @@ describe("the worker view", () => {
         "
          ← Dashboard   • t-1  done  1m07s  $0.00
           Title of t-1
-        ────────────────────────────────────────────────────────────────────────────────
+        ── Output ──────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
           I'll read the **undo** module first.
@@ -545,7 +545,7 @@ describe("the worker view", () => {
         "
          ← Dashboard   • t-1  done  1m07s  $0.00
           Title of t-1
-        ────────────────────────────────────────────────────────────────────────────────
+        ── Output ──────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
           I'll read the **undo** module first.
@@ -624,7 +624,7 @@ describe("the worker view", () => {
         "
          ← Dashboard   • t-1  done  1m07s  $0.00
           Title of t-1
-        ────────────────────────────────────────────────────────────────────────────────
+        ── Output ──────────────────────────────────────────────────────────────────────
         ▸ Agent  Find the callers                                                      ✓
           │   Looking for callers.
           │   Grep  undo                                                               ✓
@@ -722,7 +722,7 @@ describe("the attention panel", () => {
           "
            ← Dashboard   • t-1  permission — waiting for you  1m07s  $0.00
             Title of t-1
-          ────────────────────────────────────────────────────────────────────────────────
+          ── Output ──────────────────────────────────────────────────────────────────────
             I'll clean the build.
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
           ┃ Bash: Remove the build cache                                               ┃

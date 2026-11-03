@@ -3,8 +3,9 @@
 // status and what it consumes (worker/figures.ts), on one line (worker/Head.tsx); a blank line, and
 // the ticket's box, `Ticket` in its top border with the type and priority, the title in bold, a
 // blank line and the description, which `t` grows into the whole ticket (TicketHead.tsx); over a
-// rule. At the minimum size there is no box: line 1 ends with the type and priority, and the title
-// stands alone under it. Below the transcript, the attention panel shows the worker's open
+// rule named `Output`, as the box is named `Ticket` and in its column (transcriptRule). At the
+// minimum size there is no box: line 1 ends with the type and priority, and the title stands alone
+// under it, over the same rule. Below the transcript, the attention panel shows the worker's open
 // requests with the card's buttons and rules (attentionKeys.ts), each with its description, its
 // reason and its whole input, and a conflict hand-back waiting for a steered worker (§ 4.3) as a
 // notice with Hand it the conflict now. Answer in view, for what a card can't hold, opens the
@@ -62,7 +63,7 @@ import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
-import { Line, Lines, Section, type Segments, seg } from "./line.tsx"
+import { Line, Lines, Section, type Segments, seg, widthOf } from "./line.tsx"
 import {
   badgesOf,
   descriptionLeast,
@@ -76,6 +77,7 @@ import {
   useTicketPanel,
 } from "./TicketHead.tsx"
 import { useLinesUnderToasts } from "./Toasts.tsx"
+import type { Theme } from "./theme.ts"
 import {
   inertTranscript,
   type TranscriptActions,
@@ -143,6 +145,22 @@ export interface ViewLayout extends ViewChrome {
 
 /** The rules' lines, under the head and over the composer's. */
 const ruleLines = 2
+
+/** The transcript's name, on the rule over it, as the ticket's box is named `Ticket`. */
+export const transcriptName = "Output"
+
+/**
+ * The rule over the transcript, `width` wide: `── Output ─────…`, `Output` in the look of the box's
+ * `Ticket` and in its column, after `── ` as the box's after `╭─ `. A pane too narrow for the name
+ * and a `─` after it keeps the bare rule.
+ */
+export const transcriptRule = (theme: Theme, width: number): Segments => {
+  const frame = theme.look("frame")
+  const name = [seg("── ", frame), seg(transcriptName, theme.styles.tickets), seg(" ", frame)]
+  return widthOf(name) < width
+    ? [...name, seg("─".repeat(width - widthOf(name)), frame)]
+    : [seg("─".repeat(width), frame)]
+}
 
 /**
  * The lines the request panel may take in a pane `height` tall: what `chrome`, the rules and the
@@ -537,6 +555,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
   const boxShown = boxed && (ticketPanel.open || description !== null)
   const boxHeight = laid.title + laid.ticketGap + boxLines
   const rule: Segments = [seg("─".repeat(inner), theme.look("frame"))]
+  const named = useMemo(() => transcriptRule(theme, inner), [theme, inner])
   const { box } = composer
   return (
     <LooksContext.Provider value={looks}>
@@ -587,7 +606,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
           </>
         )}
         <Section lines={laid.rules[0]}>
-          <Line segments={rule} />
+          <Line segments={named} />
         </Section>
         <TranscriptSection lines={laid.transcript}>
           <TranscriptPane transcript={transcript} selection={selection} width={inner} />

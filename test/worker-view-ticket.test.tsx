@@ -212,7 +212,7 @@ describe("the ticket's description in the head", () => {
         │ Chromium keeps bookmarks saved to the Google account in a second file,       │
         │ AccountBookmarks, beside Bookmarks. mnemos reads only Bookmarks, so those…   │
         ╰────────────────────────────────────────────────────────── ▾ whole ticket  t ─╯
-        ────────────────────────────────────────────────────────────────────────────────"
+        ── Output ──────────────────────────────────────────────────────────────────────"
       `)
       const lines = linesOf(frame)
       expect(Bun.stringWidth(lines[boxBottom] ?? "")).toBe(80)
@@ -443,9 +443,9 @@ describe("the whole ticket", () => {
   test("before the run has read the ticket, t opens it reading", async () => {
     await scene(undefined, { width: 80, height: 24 }, async ({ rendered, commands }) => {
       const frame = await until(rendered, has("Reading the scripts."))
-      // No box until the run has read the ticket: the title, then the rule.
+      // No box until the run has read the ticket: the title, then the rule, named.
       expect(linesOf(frame)[2]).toBe("  Read Chrome's AccountBookmarks")
-      expect(linesOf(frame)[3]).toMatch(/^─+$/)
+      expect(linesOf(frame)[3]).toMatch(/^── Output ─+$/)
       taken(commands)
       await typeKey(rendered, "t")
       expect((await until(rendered, has("Reading the ticket…"))).chars).toContain("▴ less")

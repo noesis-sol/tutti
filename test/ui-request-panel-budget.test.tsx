@@ -149,7 +149,7 @@ describe("the request panel's height", () => {
 
          ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
           Title of t-1
-        ────────────────────────────────────────────────────────────────────────────────
+        ── Output ──────────────────────────────────────────────────────────────────────
           Two commands to run.
 
 
@@ -184,7 +184,7 @@ describe("the request panel's height", () => {
 
          ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
           Title of t-1
-        ────────────────────────────────────────────────────────────────────────────────
+        ── Output ──────────────────────────────────────────────────────────────────────
           Two commands to run.
 
 
@@ -233,7 +233,7 @@ describe("the request panel's height", () => {
          ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
 
           Title of t-1
-        ────────────────────────────────────────────────────────────────────────────────
+        ── Output ──────────────────────────────────────────────────────────────────────
           Two commands to run.
 
 
@@ -272,7 +272,7 @@ describe("the request panel's height", () => {
         "
          ← Dashboard   • t-1  permission — wait…
           Title of t-1
-        ────────────────────────────────────────
+        ── Output ──────────────────────────────
           Two commands to run.
 
 

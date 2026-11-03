@@ -127,7 +127,7 @@ describe("the worker view in a narrow pane", () => {
          ← Dashboard   • t-1  done  1m07s  $0.00
           Add tools/lint.sh to run Biome and shellcheck on the files
           a branch changed
-        ────────────────────────────────────────────────────────────
+        ── Output ──────────────────────────────────────────────────
           Reading the scripts.
         ────────────────────────────────────────────────────────────
          > i to write to the worker
@@ -149,7 +149,7 @@ describe("the worker view in a narrow pane", () => {
          ← Dashboard   • t-1  done  1m07s  $0.00
           Add tools/lint.sh to run Biome and
           shellcheck on the files a branch…
-        ────────────────────────────────────────
+        ── Output ──────────────────────────────
           Reading the scripts.
         ────────────────────────────────────────
          > your message to the worker
