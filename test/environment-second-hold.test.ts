@@ -1,12 +1,13 @@
-// The machine is probed once per run (§ 4.9): after PROBE_OK, an environment that fails again holds
-// the run a second time, and that hold ends the run ENVIRONMENT, exit 7, with no second probe. The
-// tickets of the second row are reopened, as the first row's were.
+// Each hold is probed (§ 4.9): after PROBE_OK, an environment that fails again holds the run a second
+// time, and that hold is probed too, twice as long after as the first (probeWait), rather than end
+// the run unprobed. The tickets of the second row are reopened, as the first row's were; a second
+// probe that fails ends the run ENVIRONMENT, exit 7.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Fiber } from "effect"
-import { probeFile, probeWorker } from "../src/run/environment.ts"
+import { Duration, Effect, Fiber } from "effect"
+import { probeFile, probeWait, probeWorker } from "../src/run/environment.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
@@ -43,11 +44,22 @@ const untilLogged = (pattern: RegExp) =>
     throw new Error(`no log line matched ${pattern}`)
   })
 
-const holdLine =
-  "ENVIRONMENT: the last 2 tickets (t-1, t-2) each settled within 2m of starting without being claimed or changed; check the machine, then restart"
+const endLine =
+  "ENVIRONMENT: the last 2 tickets (t-1, t-2) each settled within 2m of starting without being claimed or changed; a session probing the machine 20m later failed too: it stopped without running its command; check the machine, then restart"
+
+describe("the wait before a probe", () => {
+  test("doubles with each probe, up to an hour, or environment_hold.probe when it is longer", () => {
+    const minutes = (after: string, probes: number) =>
+      Duration.toMinutes(probeWait(Duration.fromInputUnsafe(after), probes))
+    expect([0, 1, 2, 3, 4, 50].map((probes) => minutes("10 minutes", probes))).toEqual([
+      10, 20, 40, 60, 60, 60,
+    ])
+    expect([0, 1, 5].map((probes) => minutes("2 hours", probes))).toEqual([120, 120, 120])
+  })
+})
 
 describe("the environment hold after PROBE_OK", () => {
-  test("a second hold after PROBE_OK ends the run ENVIRONMENT, exit 7, without probing again", async () => {
+  test("a second hold after PROBE_OK is probed 20m after; failing, it ends the run, exit 7", async () => {
     const repo = folder("repo")
     const root = folder("worktrees")
     // t-3 comes after t-1 and t-2, so the row the second time is theirs again.
@@ -61,8 +73,8 @@ describe("the environment hold after PROBE_OK", () => {
         scripts: {
           "t-1": [givesUp, givesUp],
           "t-2": [givesUp, givesUp],
-          // One probe session: a second probe would find none to play.
-          [probeWorker]: [probeRuns(repo)],
+          // The first probe runs its command; the second stops without running it.
+          [probeWorker]: [probeRuns(repo), turn([])],
         },
       },
       Effect.gen(function* () {
@@ -76,15 +88,8 @@ describe("the environment hold after PROBE_OK", () => {
         yield* untilLogged(/^PROBE: /)
         yield* advance("10 minutes")
         yield* untilLogged(/^PROBE_OK: /)
-        // Should the run probe again, its clock is moved on to that probe too, so that the test
-        // fails on what the run says rather than waiting for a clock nothing moves.
-        for (let i = 0; i < 2000 && fiber.pollUnsafe() === undefined; i++) {
-          if ((yield* texts).filter((text) => text.startsWith("PROBE: ")).length > 1) {
-            yield* advance("10 minutes")
-            break
-          }
-          yield* Effect.promise(() => Bun.sleep(2))
-        }
+        yield* untilLogged(/^PROBE: the run holds for the environment; in 20m /)
+        yield* advance("20 minutes")
         return yield* Fiber.join(fiber)
       }),
     )
@@ -105,20 +110,21 @@ describe("the environment hold after PROBE_OK", () => {
       /^\[\d+\] t-2 dispatching: t-2$/,
       "  t-1 reopened: its worker failed at once, like the tickets before it",
       "  t-2 reopened: its worker failed at once, like the tickets before it",
-      holdLine,
+      /^PROBE: the run holds for the environment; in 20m /,
+      `  probe session started in ${repo}`,
+      endLine,
     ])
-    // One probe, the first time the run held: the second hold isn't probed.
-    expect(ran.log.filter((text) => text.startsWith("PROBE: "))).toHaveLength(1)
-    expect(ran.log.filter((text) => text.includes("probe session started"))).toHaveLength(1)
+    // Each hold is probed: the second 20m after, twice the first's wait.
+    expect(ran.log.filter((text) => text.startsWith("PROBE: "))).toHaveLength(2)
+    expect(ran.log.filter((text) => text.includes("probe session started"))).toHaveLength(2)
     expect(
       ran.sent.filter((sent) => sent._tag === "Started" && sent.ticket === probeWorker),
-    ).toHaveLength(1)
-    expect(ran.log.some((text) => text.includes("later failed too"))).toBe(false)
+    ).toHaveLength(2)
     expect(ran.log.some((text) => text.includes("t-3 dispatching"))).toBe(false)
     expect(ran.events.filter((record) => record.kind === "reopened")).toHaveLength(4)
     expect(ran.events.filter((record) => record.kind === "probed")).toHaveLength(1)
     expect(ran.events.find((record) => record.kind === "end")).toMatchObject({ code: 7 })
-    expect(ran.log.at(-1)).toBe(holdLine)
+    expect(ran.log.at(-1)).toBe(endLine)
     for (const id of ["t-1", "t-2"]) {
       expect(ran.issues.find((each) => each.id === id)?.status).toBe("open")
     }

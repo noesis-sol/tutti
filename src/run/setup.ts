@@ -28,8 +28,10 @@
 // one. A setup that fails there isn't the ticket's fault: no worker starts (SETUP_FAILED), and the
 // ticket goes back in the queue, open, Waiting{setup}, its worktree and the setup's output kept,
 // until a ticket merges, which may bring what the setup needs, or a probe ends a hold for the
-// environment (retrySetups). Setups failing ticket after ticket hold the run for the environment,
-// as workers failing at once do (environment.ts), and the run's end names the tickets still waiting
+// environment (retrySetups). One that fails in a worktree an earlier attempt left commits in sets
+// its ticket aside instead (start.ts): those commits may be what breaks it. Setups failing ticket
+// after ticket hold the run for the environment, as workers failing at once do (environment.ts),
+// each ticket once in a row, and the run's end names the tickets still waiting
 // on one (SETUP_WAITS). A merge that changes checks.setup in .tutti/settings.json has the run use it
 // from then on (takeSettings), and one that changes its requires list has the run check the new
 // list before the next ticket starts (requires.ts).

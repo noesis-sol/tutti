@@ -297,6 +297,7 @@ describe("triage's blame", () => {
       Effect.gen(function* () {
         const held = yield* Ref.make<ReadonlyArray<StopReason>>([])
         const hold = yield* makeHold({
+          base: "main",
           onHold: (stop) => Ref.update(held, (all) => [...all, stop]),
         })
         return yield* use(hold, held)
@@ -347,6 +348,7 @@ describe("triage's blame", () => {
       Effect.gen(function* () {
         const config = yield* AppConfig
         const off = yield* makeHold({
+          base: "main",
           onHold: (stop) => Ref.update(held, (all) => [...all, stop]),
         }).pipe(
           Effect.provideService(AppConfig, {

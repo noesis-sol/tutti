@@ -12,6 +12,8 @@
 //
 // A worker seen UsageLimited in its attempt counts for nothing (§ 4.12), as do a ticket back in
 // the queue to wait for a merge and one set aside as it started; any other settling ends the row.
+// Each ticket counts once in a row: one ticket failing again, as its setup does after each merge
+// (retrySetups), doesn't fill the row alone.
 // A ticket failing at once while the run holds is reopened too. A setup that failed in a ticket's
 // worktree before its worker could start (setup.ts) adds to the row as a worker failing at once
 // does, so that setups failing ticket after ticket hold the run rather than leave the queue to
@@ -23,13 +25,16 @@
 //
 // Once nothing runs or waits to merge, and environment_hold.probe after, one session without a
 // ticket is started in the main checkout, with no MCP servers and no worker prompt, and asked to
-// run one command, which writes .tutti/run/probe. If it does within probeLimit, PROBE_OK: the hold
+// run one command, which writes .tutti/run/probe. If it does within probeLimit, and the run's setup
+// command, when it has one, passes in a new worktree of the base's head, as a ticket's new worktree
+// has it (its whole output in the main checkout's .tutti/run/probe-setup.log), PROBE_OK: the hold
 // ends, the reopened tickets, and those whose setup failed, go back to Queued and the run takes
-// tickets again. If not, the run
-// ends ENVIRONMENT (exit 7). The machine is probed once per run, so an environment that keeps
-// failing ends the run the second time it holds. Triage's verdicts on tickets queued for it before
-// the probe ended the hold count for nothing (the generation): they can come long after the probe
-// has shown that the machine works. The probe shows as a card labelled `probe` (probing).
+// tickets again. If not, the run ends ENVIRONMENT (exit 7). Each hold is probed, the wait before
+// each probe twice the one before, up to an hour (probeWait), so that a blip at 1am and another at
+// 4am don't end the run, nor an environment that keeps failing spend sessions on it every few
+// minutes. Triage's verdicts on tickets queued for it before the probe ended the hold count for
+// nothing (the generation): they can come long after the probe has shown that the machine works.
+// The probe shows as a card labelled `probe` (probing).
 import { join } from "node:path"
 import {
   Clock,
@@ -47,11 +52,16 @@ import { AgentHost } from "../agent/AgentHost.ts"
 import { SessionKind } from "../agent/sessionKind.ts"
 import { settled as isSettled, type WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
+import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
+import { Checks } from "../services/Checks.ts"
+import { Git } from "../services/Git.ts"
 import { sleepAwake } from "../services/Wake.ts"
-import { readRunFile, runFolder, writeRunFile } from "../services/Worktrees.ts"
+import { readRunFile, runFolder, Worktrees, writeRunFile } from "../services/Worktrees.ts"
+import { howFailed } from "./check.ts"
 import type { EventStream } from "./eventstream.ts"
+import { leftWarning, removeLeftWorktrees, worktreeWhy } from "./fullcheck.ts"
 import { type StopReason, type Stops, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log, Tag, tagged, ticketLine } from "./log.ts"
@@ -113,6 +123,26 @@ export const probeFile = "probe"
 /** How long the probe's session has to run its command, from its start, awake (§ 4.9, Wake.ts). */
 export const probeLimit: Duration.Duration = Duration.minutes(5)
 
+/** The longest wait before a probe that the doubling reaches, unless environment_hold.probe is longer. */
+export const probeWaitMost: Duration.Duration = Duration.hours(1)
+
+/**
+ * How long the run waits, once nothing runs, before the probe of a hold after `probes` probes in
+ * the run: environment_hold.probe (`after`) the first time, twice the wait before each time after,
+ * up to probeWaitMost or `after`, whichever is longer.
+ */
+export const probeWait = (after: Duration.Duration, probes: number): Duration.Duration => {
+  const most = Duration.max(after, probeWaitMost)
+  const doubled = Duration.times(after, 2 ** Math.min(probes, 30))
+  return Duration.min(doubled, most)
+}
+
+/** The prefix of the folder of the worktree the probe runs the setup in, under the worktrees' folder. */
+export const probeFolderPrefix = "probe-setup-"
+
+/** The run file, in the main checkout's .tutti/run/, the probe's setup writes its output to. */
+export const probeSetupLogName = "probe-setup.log"
+
 const shellQuote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`
 
 /** What the probe's session is asked, its command writing `file`. */
@@ -169,6 +199,13 @@ export const probeFailedStop = (why: string, after: Duration.Duration, failed: s
     `${why}; a session probing the machine ${formatDuration(after)} later failed too: ${failed}; check the machine, then restart`,
   )
 
+/** The stop of a hold whose probe's session, `after` the hold, ran its command but whose setup failed. */
+export const probeSetupFailedStop = (why: string, after: Duration.Duration, failed: string) =>
+  stopFor(
+    "ENVIRONMENT",
+    `${why}; a session probing the machine ${formatDuration(after)} later ran its command, but ${failed}; check the machine, then restart`,
+  )
+
 /** The time a worker settled in `state`: Idle's and Failed's own, else `now`. */
 const settledAt = (state: WorkerState, now: number): number =>
   state._tag === "Idle" || state._tag === "Failed" ? state.at : now
@@ -209,7 +246,7 @@ export interface EnvironmentHold {
   blamed(verdict: Verdict): Effect.Effect<void>
   /**
    * Once nothing runs or waits to merge, with `stops` the run's: when the hold's stop is the only
-   * one and the run hasn't probed, waits environment_hold.probe and probes the machine.
+   * one, waits probeWait and probes the machine.
    */
   probe(stops: Stops): Effect.Effect<Probed>
   /** The probe's card while its session runs, null otherwise: now, then each change. */
@@ -224,7 +261,8 @@ interface HoldState {
   /** The hold's stop, while the run holds for the environment. */
   readonly stop: StopReason | null
   readonly why: string
-  readonly probed: boolean
+  /** How many probes the run has begun. */
+  readonly probes: number
   readonly generation: number
 }
 
@@ -233,7 +271,7 @@ const fresh: HoldState = {
   blamed: [],
   stop: null,
   why: "",
-  probed: false,
+  probes: 0,
   generation: 0,
 }
 
@@ -243,25 +281,32 @@ const fresh: HoldState = {
  */
 export const make = (options: {
   readonly onHold: (stop: StopReason) => Effect.Effect<void>
-  /** The run's setup command now, for the hold's why; checks.setup's by default. */
+  /** Where finished tickets land: the probe runs the setup on its head. */
+  readonly base: string
+  /** The run's setup command now, for the hold's why and the probe; checks.setup's by default. */
   readonly setup?: Effect.Effect<string | null>
 }): Effect.Effect<
   EnvironmentHold,
   never,
-  AppConfig | AgentHost | Beads | Ledger | Log | EventStream
+  AppConfig | AgentHost | Beads | Checks | Git | Worktrees | Ledger | Log | EventStream
 > =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const host = yield* AgentHost
     const beads = yield* Beads
+    const checks = yield* Checks
+    const git = yield* Git
+    const worktrees = yield* Worktrees
     const ledger = yield* Ledger
     const logs = yield* Log
+    const context = yield* Effect.context<Worktrees | Log | EventStream>()
     const { say, warn } = yield* sayer
     const { count, probe: after } = config.settings.environment_hold
     const state = yield* Ref.make(fresh)
     const probing = yield* SubscriptionRef.make<ProbeView | null>(null)
     // Counting and holding run one at a time, so a row is never counted twice.
     const one = yield* Semaphore.make(1)
+    const setupNow = options.setup ?? Effect.succeed(config.settings.checks.setup.command)
 
     // Puts a ticket whose worker failed at once back in the queue to wait for the probe.
     const reopen = (id: TicketId) =>
@@ -308,15 +353,16 @@ export const make = (options: {
           yield* Ref.update(state, (now) => ({ ...now, atOnce: [] }))
           return
         }
-        const now = yield* Ref.updateAndGet(state, (s) => ({
-          ...s,
-          atOnce: [...s.atOnce, { ticket, how }],
-        }))
+        // A ticket in the row already isn't counted again.
+        const now = yield* Ref.updateAndGet(state, (s) =>
+          s.atOnce.some((each) => each.ticket === ticket)
+            ? s
+            : { ...s, atOnce: [...s.atOnce, { ticket, how }] },
+        )
         if (now.stop !== null) {
           if (how !== "setup") yield* reopen(ticket)
         } else if (now.atOnce.length >= count) {
-          const command = yield* options.setup ??
-            Effect.succeed(config.settings.checks.setup.command)
+          const command = yield* setupNow
           yield* hold(fastFailsWhy(now.atOnce, config.settings.environment_hold.window, command))
         }
       }).pipe(one.withPermit)
@@ -329,6 +375,7 @@ export const make = (options: {
           yield* Ref.set(state, { ...before, blamed: [] })
           return
         }
+        if (before.blamed.includes(verdict.ticket)) return
         const now = { ...before, blamed: [...before.blamed, verdict.ticket] }
         yield* Ref.set(state, now)
         if (now.blamed.length >= count) yield* hold(blamedWhy(now.blamed, verdict.summary))
@@ -403,6 +450,56 @@ export const make = (options: {
       Effect.ensuring(Effect.andThen(host.end(probeWorker), SubscriptionRef.set(probing, null))),
     )
 
+    // Runs the run's setup in a new worktree of the base's head, as a ticket's new worktree has it,
+    // the worktree removed after: why it failed, or null once it passed or there is none.
+    const probeSetup = Effect.gen(function* () {
+      const command = yield* setupNow
+      if (command === null) return null
+      const { base } = options
+      const file = join(config.repo, runFolder, probeSetupLogName)
+      const what = `the setup '${command}'`
+      // The probe's worktrees a run killed while its setup ran left behind.
+      yield* removeLeftWorktrees(probeFolderPrefix, "the probe's")
+      const head = yield* Effect.result(git.revParse(config.repo, base))
+      if (Result.isFailure(head)) {
+        return `${what} couldn't run on ${base}: ${worktreeWhy(head.failure)}`
+      }
+      const made = yield* Effect.result(worktrees.addDetached(probeFolderPrefix, head.success))
+      if (Result.isFailure(made)) {
+        const error = made.failure
+        const why = error._tag === "ExcludeUnwritable" ? error.message : worktreeWhy(error)
+        return `${what} couldn't run on ${base}: no worktree for it (${why})`
+      }
+      const path = made.success
+      yield* logs.write(detail`probe: running '${command}' in a new worktree of ${base} (${path})`)
+      const ran = Effect.scoped(
+        Effect.gen(function* () {
+          const fd = yield* worktrees.openRunFile(
+            config.repo,
+            probeSetupLogName,
+            O.WRONLY | O.CREAT | O.TRUNC,
+          )
+          const to = { cwd: path, outputFile: file, outputFd: fd }
+          return yield* Effect.result(checks.setup({ ...to, before: "fast", command }))
+        }),
+      )
+      const outcome = yield* Effect.result(ran).pipe(
+        Effect.ensuring(
+          Effect.catch(worktrees.removeDetached(path), (error) =>
+            leftWarning(path, error, "the probe's"),
+          ),
+        ),
+      )
+      if (Result.isFailure(outcome)) {
+        return `${what} couldn't run: its output can't be kept in ${file} (${outcome.failure.message})`
+      }
+      const set = outcome.success
+      if (Result.isFailure(set)) {
+        return `${what} ${howFailed(set.failure)} in a new worktree of ${base} (the whole output is in ${file})`
+      }
+      return null
+    }).pipe(Effect.provide(context))
+
     // Puts each ticket the hold reopened, or whose setup failed, back in the queue, Waiting → Queued.
     const requeue = Effect.gen(function* () {
       for (const entry of (yield* ledger.current).tickets.values()) {
@@ -424,15 +521,16 @@ export const make = (options: {
       }
     })
 
-    // Waits `after`, or until the run winds down: whether it waited.
-    const waitToProbe = Effect.raceFirst(
-      Effect.as(Effect.sleep(after), true),
-      ledger.changes.pipe(
-        Stream.filter((ledgerState) => ledgerState.windDown !== null),
-        Stream.runHead,
-        Effect.as(false),
-      ),
-    )
+    // Waits `wait`, or until the run winds down: whether it waited.
+    const waitToProbe = (wait: Duration.Duration) =>
+      Effect.raceFirst(
+        Effect.as(Effect.sleep(wait), true),
+        ledger.changes.pipe(
+          Stream.filter((ledgerState) => ledgerState.windDown !== null),
+          Stream.runHead,
+          Effect.as(false),
+        ),
+      )
 
     const probe = (stops: Stops) =>
       Effect.gen(function* () {
@@ -442,20 +540,30 @@ export const make = (options: {
           now.stop === null ||
           stops[0] !== now.stop ||
           stops.length > 1 ||
-          now.probed ||
           Duration.isZero(after) ||
           winding
         ) {
           return Probed.Ends()
         }
-        yield* Ref.set(state, { ...now, probed: true })
-        const text = tagged(
-          Tag.probe,
-        )`the run holds for the environment; in ${formatDuration(after)} a session without a ticket runs a command in the main checkout, and if it does the run takes tickets again`
+        const wait = probeWait(after, now.probes)
+        yield* Ref.set(state, { ...now, probes: now.probes + 1 })
+        const command = yield* setupNow
+        const text =
+          command === null
+            ? tagged(
+                Tag.probe,
+              )`the run holds for the environment; in ${formatDuration(wait)} a session without a ticket runs a command in the main checkout, and if it does the run takes tickets again`
+            : tagged(
+                Tag.probe,
+              )`the run holds for the environment; in ${formatDuration(wait)} a session without a ticket runs a command in the main checkout, and '${command}' runs in a new worktree of ${options.base}; if both work, the run takes tickets again`
         yield* say({ kind: "hold", text })
-        if (!(yield* waitToProbe)) return Probed.Ends()
+        if (!(yield* waitToProbe(wait))) return Probed.Ends()
         const failed = yield* runProbe
-        if (failed !== null) return Probed.Failed({ stop: probeFailedStop(now.why, after, failed) })
+        if (failed !== null) return Probed.Failed({ stop: probeFailedStop(now.why, wait, failed) })
+        const unset = yield* probeSetup
+        if (unset !== null) {
+          return Probed.Failed({ stop: probeSetupFailedStop(now.why, wait, unset) })
+        }
         // Triage's verdicts still to come on the tickets queued so far are forgotten with the row.
         yield* Ref.update(state, (s) => ({
           ...s,
@@ -467,7 +575,7 @@ export const make = (options: {
         }))
         const ok = tagged(
           Tag.probeOk,
-        )`a session without a ticket ran a command ${formatDuration(after)} after the hold; taking tickets again`
+        )`a session without a ticket ran a command ${formatDuration(wait)} after the hold; taking tickets again`
         yield* say({ kind: "probed", text: ok })
         yield* requeue
         return Probed.Resumed()

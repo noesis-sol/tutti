@@ -12,7 +12,10 @@
 // Before the session, the project's setup runs in the worktree when it is new, or when the last
 // setup there failed or didn't finish (setup.ts's setUpWorktree), and the first message says how its
 // dependencies are installed. A setup that fails there starts no worker: SETUP_FAILED, the ticket
-// back in the queue, Working → Waiting{setup}, until a ticket merges or a probe passes.
+// back in the queue, Working → Waiting{setup}, until a ticket merges or a probe passes. One that
+// fails in a worktree an earlier attempt left commits in is set aside instead (Working → Deferred),
+// not counted toward the environment hold: those commits may be what breaks it, and back in the
+// queue the ticket would fail again after every merge.
 //
 // A ticket whose ID can't name a worktree (BAD_TICKET_ID), whose worktree's run folder is a
 // symbolic link (RUN_FILES_OUTSIDE), or whose worker didn't start (START_FAILED) is set aside:
@@ -47,6 +50,7 @@ import {
 } from "../services/Worktrees.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { type Aside, type AsideTicket, putAside } from "./aside.ts"
+import { howFailed, outputKept } from "./check.ts"
 import type { EventStream } from "./eventstream.ts"
 import type { Ledger } from "./ledger.ts"
 import type { Log } from "./log.ts"
@@ -295,6 +299,42 @@ export const startFailed = ({
 })
 
 /**
+ * Setting aside a ticket whose setup, `command`, `how` it failed (howFailed), failed in its
+ * worktree, on a branch with `commits` commits of its own, its whole output in `output`.
+ */
+export const setupFailedOnBranch = ({
+  id,
+  worktree,
+  command,
+  how,
+  output,
+  commits,
+}: {
+  readonly id: TicketId
+  readonly worktree: string
+  readonly command: string
+  readonly how: string
+  readonly output: string
+  readonly commits: number
+}): Aside => {
+  const own = `${commits} ${commits === 1 ? "commit" : "commits"} of its own`
+  const why = `the setup '${command}' ${how} in its worktree, whose branch has ${own}`
+  return {
+    note:
+      `tutti: ${why} (the whole output is in ${output}), so no worker was started. Those commits ` +
+      "may be what breaks the setup, so it isn't put back in the queue to fail after every merge. " +
+      `Fix the setup on tutti/${id} (worktree ${worktree}), then bring it back with: bd undefer ${id}`,
+    reason: why,
+    detail: "its setup failed on its branch",
+    deferred: log.ticketLine(
+      log.Tag.setupFailed,
+    )`'${command}' ${how} in ${worktree} for ${id}, whose branch has ${own} -> deferred without starting a worker; the whole output is in ${output}`,
+    failed: `${why}, and bd could not defer ${id}`,
+    instead: `worktree ${worktree} left as it is`,
+  }
+}
+
+/**
  * Why a session didn't start, with the CLI's startup_failure_reason when it gave one and the
  * reason doesn't already say it, as the live host's does (startFailure).
  */
@@ -421,6 +461,14 @@ export const start = (
     const setups = setUps ?? (yield* makeSetUps)
     const setup = yield* setUpWorktree(worktree, setups, config.repo)
     if (setup._tag === "Failed") {
+      const commits = worktree.reused ? worktree.earlier.commits.length : 0
+      if (commits > 0) {
+        const { command } = setup
+        const output = outputKept(setup)
+        const how = howFailed(setup.error)
+        const aside = setupFailedOnBranch({ id, worktree: path, command, how, output, commits })
+        return yield* new SetAsideBy({ aside })
+      }
       yield* leaveSetupFailed(ticket, path, setup, setups)
       return Start.SetupFailed({ output: setup.output })
     }

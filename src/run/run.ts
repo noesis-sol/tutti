@@ -422,6 +422,7 @@ const runFrom = (
     // (environment.ts).
     const environment = yield* makeEnvironmentHold({
       onHold: stopped,
+      base,
       setup: Effect.map(setUps.now, (setup) => setup.command),
     })
 
