@@ -22,9 +22,10 @@
 // turn ending is the user's turn, and leaving the view ends it.
 //
 // A turn that ends on the account's usage limit waits for the reset, as a worker's does (§ 4.12):
-// its time limit paused, it is told to carry on at the reset plus liftAfter (or, its reset passed,
-// retryEvery later), and the log says both. One whose reset is unknown, or later than
-// --usage-limit-wait, is given up on, as a run with nothing else running ends USAGE_LIMIT.
+// its time limit paused, it is told to carry on at the reset plus liftAfter (or, its reset unknown
+// or passed, retryEvery later), and the log says both. One whose reset is later than
+// --usage-limit-wait, or, unknown, whose next try is later than --usage-limit-wait after its wait
+// began, is given up on, as a run with nothing else running ends USAGE_LIMIT.
 import { randomUUID } from "node:crypto"
 import {
   Clock,
@@ -207,7 +208,8 @@ export type BreakdownEnd = Data.TaggedEnum<{
   NoTree: { readonly why: string; readonly state: BreakdownState }
   /**
    * It ended without the tree: why, and what it had filed; `usageLimit` when it was given up on at
-   * the account's usage limit, which resets too late or at an unknown time.
+   * the account's usage limit, which resets too late, or at an unknown time no try
+   * within --usage-limit-wait found.
    */
   Failed: {
     readonly why: string
@@ -233,29 +235,38 @@ export const featureResetText =
   "tutti: the account's usage limit has reset. Carry on with the feature's breakdown where you left off."
 
 /**
- * When a breakdown at the usage limit at `now`, its reset `resetsAt`, is told to carry on: the
- * reset plus liftAfter, or retryEvery from now for a reset that has passed. Why it is given up on
- * instead when its reset is unknown, or later than `wait` (--usage-limit-wait).
+ * When a breakdown at the usage limit at `now`, its reset `resetsAt`, waiting for it since
+ * `since`, is told to carry on: the reset plus liftAfter, or retryEvery from now for a reset unknown
+ * or passed, as the run's hold tries one again. Why it is given up on instead when its reset is
+ * later than `wait` (--usage-limit-wait), or, unknown, its next try later than `wait` after
+ * `since`.
  */
 export const limitWait = (
   resetsAt: number | null,
   now: number,
+  since: number,
   wait: Duration.Duration,
 ): { readonly at: number } | { readonly giveUp: string } => {
-  if (resetsAt === null) {
-    return { giveUp: "it stopped at the account's usage limit, and when it resets is unknown" }
+  const waits = formatDuration(wait)
+  if (resetsAt !== null && resetsAt > now) {
+    if (resetsAt - now > Duration.toMillis(wait)) {
+      return {
+        giveUp: `it stopped at the account's usage limit, which resets at ${resetLabel(resetsAt, now)}, in ${countdown(resetsAt, now)}, later than --usage-limit-wait (${waits})`,
+      }
+    }
+    return { at: resetsAt + Duration.toMillis(liftAfter) }
   }
-  if (resetsAt > now && resetsAt - now > Duration.toMillis(wait)) {
+  const at = now + Duration.toMillis(retryEvery)
+  if (at - since > Duration.toMillis(wait)) {
+    const reset =
+      resetsAt === null
+        ? "and when it resets is unknown"
+        : `which was to reset at ${resetLabel(resetsAt, now)}`
     return {
-      giveUp: `it stopped at the account's usage limit, which resets at ${resetLabel(resetsAt, now)}, in ${countdown(resetsAt, now)}, later than --usage-limit-wait (${formatDuration(wait)})`,
+      giveUp: `it stopped at the account's usage limit, ${reset}; it has waited since ${resetLabel(since, now)}, and its next try, at ${resetLabel(at, now)}, is later than --usage-limit-wait (${waits}) allows`,
     }
   }
-  return {
-    at:
-      resetsAt > now
-        ? resetsAt + Duration.toMillis(liftAfter)
-        : now + Duration.toMillis(retryEvery),
-  }
+  return { at }
 }
 
 /** A breakdown under way. */
@@ -399,6 +410,11 @@ const openBreakdown = (setup: {
     const nudged = yield* Ref.make(false)
     // The usage limit: free of it, waiting for its reset, or told to carry on and not yet going.
     const limit = yield* Ref.make<"free" | "waiting" | "told">("free")
+    // Its wait at the limit: since when, and when it was last told to carry on. A stop within
+    // retryEvery of that carry-on is the limit refusing it still, and goes on with the same wait.
+    const limitWaited = yield* Ref.make<{ readonly since: number; readonly told: number } | null>(
+      null,
+    )
     const waits = yield* FiberSet.make()
     // The time limit: when it runs out, moved on by each wait for the reset, during which the
     // latch is closed.
@@ -416,22 +432,28 @@ const openBreakdown = (setup: {
       }
     })
     /** Waits until `at` with the time limit paused, then tells the session to carry on. */
-    const waitOut = (at: number, resetsAt: number) =>
+    const waitOut = (at: number, resetsAt: number | null) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
         yield* running.close
         const paused = setup.refine ? "" : ", its time limit paused"
+        const tries = `tutti tries again at ${resetLabel(at, now)}, in ${countdown(at, now)}${paused}`
         yield* log.write(
-          resetsAt > now
+          resetsAt === null
             ? tagged(
                 Tag.spec,
-              )`the breakdown stopped at the account's usage limit; it waits for the reset at ${resetLabel(resetsAt, now)}, in ${countdown(resetsAt, now)}${paused}`
-            : tagged(
-                Tag.spec,
-              )`the breakdown stopped at the account's usage limit, which was to reset at ${resetLabel(resetsAt, now)}; tutti tries again at ${resetLabel(at, now)}, in ${countdown(at, now)}${paused}`,
+              )`the breakdown stopped at the account's usage limit, and when it resets is unknown; ${tries}`
+            : resetsAt > now
+              ? tagged(
+                  Tag.spec,
+                )`the breakdown stopped at the account's usage limit; it waits for the reset at ${resetLabel(resetsAt, now)}, in ${countdown(resetsAt, now)}${paused}`
+              : tagged(
+                  Tag.spec,
+                )`the breakdown stopped at the account's usage limit, which was to reset at ${resetLabel(resetsAt, now)}; ${tries}`,
         )
         yield* Effect.sleep(Duration.millis(Math.max(0, at - now)))
         const resumed = yield* Clock.currentTimeMillis
+        yield* Ref.update(limitWaited, (w) => (w === null ? w : { ...w, told: resumed }))
         yield* Ref.update(deadline, (d) => d + (resumed - now))
         yield* Ref.set(limit, "told")
         yield* running.open
@@ -476,7 +498,13 @@ const openBreakdown = (setup: {
           // Told to carry on, it stays UsageLimited until its turn starts.
           if ((yield* Ref.get(limit)) !== "free") return Option.none()
           const now = yield* Clock.currentTimeMillis
-          const wait = limitWait(state.resetsAt, now, config.usageLimitWait)
+          const before = yield* Ref.get(limitWaited)
+          const since =
+            before !== null && now - before.told <= Duration.toMillis(retryEvery)
+              ? before.since
+              : now
+          yield* Ref.set(limitWaited, { since, told: now })
+          const wait = limitWait(state.resetsAt, now, since, config.usageLimitWait)
           if ("giveUp" in wait) {
             yield* host.end(worker)
             return Option.some(
@@ -484,7 +512,7 @@ const openBreakdown = (setup: {
             )
           }
           yield* Ref.set(limit, "waiting")
-          yield* FiberSet.run(waits, waitOut(wait.at, state.resetsAt ?? now))
+          yield* FiberSet.run(waits, waitOut(wait.at, state.resetsAt))
           return Option.none()
         }
         if (state._tag === "LoginRefused") {

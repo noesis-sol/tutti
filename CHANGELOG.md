@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Current's cards are spaced alike across and down: a card shorter than its row, a full card beside an attention card or an attention card beside a taller one, is drawn as tall as the row, its frame round blank lines, rather than leaving blank lines under it, so that the cards meet frame to frame down as they do across (§ 7.2; `src/ui/Card.tsx`' `Cards`, `src/ui/AttentionCard.tsx`' `attentionLines`; tutti-5sf0). `test/current-card-spacing.test.tsx` covers it.
+- A spec's breakdown whose turn ends on the usage limit with no reset given, a 429 alone, no longer gives up at once, exit 8 (§ 4.14; `src/agent/breakdown.ts`' `limitWait`; tutti-uuxo): as the run's hold does since tutti-epza.7, it is told to carry on 15 minutes on, its time limit paused (`SPEC: the breakdown stopped at the account's usage limit, and when it resets is unknown; tutti tries again at 14:21, in 15m, its time limit paused`), and is given up on only once its next try is later than `--usage-limit-wait` after its wait began. A reset that has passed is waited for so too, where it was tried again every 15 minutes with no end. `test/spec-breakdown-unknown-reset.test.ts` covers it.
 
 ## [0.6.6] - 2026-11-03
 
