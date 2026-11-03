@@ -140,6 +140,13 @@ export const probeWait = (after: Duration.Duration, probes: number): Duration.Du
 /** The prefix of the folder of the worktree the probe runs the setup in, under the worktrees' folder. */
 export const probeFolderPrefix = "probe-setup-"
 
+/**
+ * Removes the probe's worktrees a run killed while the probe's setup ran left, as a run starts and
+ * before each probe's setup (removeLeftWorktrees).
+ */
+export const removeLeftProbes: Effect.Effect<void, never, Worktrees | Log | EventStream> =
+  removeLeftWorktrees(probeFolderPrefix, "the probe's")
+
 /** The run file, in the main checkout's .tutti/run/, the probe's setup writes its output to. */
 export const probeSetupLogName = "probe-setup.log"
 
@@ -464,7 +471,7 @@ export const make = (options: {
       const file = join(config.repo, runFolder, probeSetupLogName)
       const what = `the setup '${command}'`
       // The probe's worktrees a run killed while its setup ran left behind.
-      yield* removeLeftWorktrees(probeFolderPrefix, "the probe's")
+      yield* removeLeftProbes
       const head = yield* Effect.result(git.revParse(config.repo, base))
       if (Result.isFailure(head)) {
         return `${what} couldn't run on ${base}: ${worktreeWhy(head.failure)}`

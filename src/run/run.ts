@@ -125,7 +125,7 @@ import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
 import { type DrainRequest, hear } from "./drain.ts"
 import { make as makeEarlyChecks } from "./earlyCheck.ts"
 import { make as makeEndOfRun } from "./endOfRun.ts"
-import { make as makeEnvironmentHold } from "./environment.ts"
+import { make as makeEnvironmentHold, removeLeftProbes } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { featureRequestHeading } from "./feature.ts"
 import { RunFibers } from "./fibers.ts"
@@ -856,6 +856,9 @@ const runFrom = (
 
     // The full check's worktrees a run killed while its full check ran left, removed (fullcheck.ts).
     yield* untilQuit(removeLeftFullChecks, undefined)
+
+    // The probe's worktrees a run killed while the probe's setup ran left, removed (environment.ts).
+    yield* untilQuit(removeLeftProbes, undefined)
 
     // The merged worktrees' folders an earlier run left in the trash folder, deleted in the
     // background (trash.ts), before a carried-over ticket's merge sets aside any more.

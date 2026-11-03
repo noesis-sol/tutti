@@ -1124,7 +1124,8 @@ waits 10 minutes, then asks one session in the main checkout to run a command. I
 goes on: `PROBE_OK: a session without a ticket ran a command 10m after the hold; taking tickets
 again`. If not within 5 minutes, the run ends `ENVIRONMENT`, exit 7. With a setup command, the probe
 then runs it in a new worktree of the base, and a setup that fails there ends the run too, its
-output in `.tutti/run/probe-setup.log`. Each hold is probed, the wait doubling each time up to an
+output in `.tutti/run/probe-setup.log`; a run killed while it ran leaves that worktree, and the
+next run removes it as it starts. Each hold is probed, the wait doubling each time up to an
 hour (10m, 20m, 40m, then 1h), so a blip at 1am and another at 4am don't end the run. Each ticket
 counts once in the row, and a setup that fails in a worktree where an earlier attempt left commits
 counts for nothing: the ticket is deferred (`SETUP_FAILED: … whose branch has 1 commit of its own ->
