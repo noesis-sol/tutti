@@ -67,6 +67,7 @@ import {
   Cause,
   Clock,
   Deferred,
+  Duration,
   Effect,
   FiberSet,
   type FileSystem,
@@ -149,7 +150,7 @@ import {
 import { make as makeHoldsGate } from "./holdsGate.ts"
 import { Ledger } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
-import { type Line, Log, tagged } from "./log.ts"
+import { type Line, Log, line, tagged } from "./log.ts"
 import { loginStop, refusedLine, saveTold, watchLogins } from "./login.ts"
 import { make as makeLoop } from "./look.ts"
 import { hasRoom, make as makeMachineGate } from "./machineGate.ts"
@@ -160,6 +161,7 @@ import type { TicketPhase } from "./phase.ts"
 import { make as makePredictor } from "./predict.ts"
 import { capEvidence } from "./pressureCap.ts"
 import { make as makePressureGate } from "./pressureGate.ts"
+import { backoff, failedRead, lasted, type Outage, readDue, sustained } from "./queueOutage.ts"
 import { interruptedText, keptText, panicLines, type QuitRequest } from "./quit.ts"
 import { make as makeQuits, Quitting, quitStop } from "./quitting.ts"
 import { dropRechecks } from "./recheck.ts"
@@ -168,7 +170,13 @@ import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { runRequires } from "./requires.ts"
 import { emptyStatus, type Status, showOn } from "./runView.ts"
 import { warn } from "./say.ts"
-import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
+import {
+  beadsOutage,
+  footprintsOf,
+  make as makeScheduler,
+  readyPoll,
+  type Scheduler,
+} from "./schedule.ts"
 import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
@@ -832,6 +840,8 @@ const runFrom = (
     const unslotted = yield* Ref.make<ReadonlySet<string>>(new Set())
     // Whether a question --auto-answer takes waits for its time, as the last fill found (look.ts).
     const autoAnswering = yield* Ref.make(false)
+    // bd failing every fill's read of the queue since, if it does (queueOutage.ts).
+    const outage = yield* Ref.make<Outage | null>(null)
     const carryOptions: CarryOptions = {
       base,
       queue,
@@ -1027,14 +1037,39 @@ const runFrom = (
         // nothing, notify now. A hold only puts their answer off.
         if (gateNow.windingDown) yield* notifyLeftOpen
       }
-      if (takesNew(yield* gate)) {
+      // A fill bd can't read the queue for leaves the slots as they are, and a later look reads it
+      // again; bd failing every read for beadsOutage stops the run (queueOutage.ts).
+      const failing = yield* Ref.get(outage)
+      if (takesNew(yield* gate) && readDue(failing, yield* Clock.currentTimeMillis)) {
         const filled = yield* Effect.result(
           open === undefined ? scheduler.fillTrying : scheduler.fillWith(open),
         )
-        if (Result.isFailure(filled)) {
-          yield* stopped(
-            stopFor("BEADS_FAILED", `could not read the queue: ${beadsWhy(filled.failure)}`),
-          )
+        const now = yield* Clock.currentTimeMillis
+        if (Result.isSuccess(filled)) {
+          yield* Ref.set(outage, null)
+          if (failing !== null) {
+            yield* logs.write(
+              line`read the queue again, after ${lasted(failing, now)} of bd failing`,
+            )
+          }
+        } else {
+          const why = beadsWhy(filled.failure)
+          const failed = failedRead(failing, now)
+          yield* Ref.set(outage, failed)
+          if (sustained(failed, now)) {
+            yield* stopped(
+              stopFor(
+                "BEADS_FAILED",
+                `could not read the queue for ${lasted(failed, now)}: ${why}`,
+              ),
+            )
+          } else {
+            const after = backoff(failed.failed)
+            const next = Duration.isZero(after) ? "at the next look" : `in ${formatDuration(after)}`
+            yield* logs.write(
+              line`could not read the queue: ${why}; nothing new starts until it is read, again ${next}, and the run stops if bd fails for ${formatDuration(beadsOutage)}`,
+            )
+          }
         }
       }
       // For the other runs to count before this one next looks around.
@@ -1057,6 +1092,7 @@ const runFrom = (
       environment,
       resuming: Effect.map(Ref.get(unslotted), (all) => all.size > 0),
       answering: Ref.get(autoAnswering),
+      unread: Effect.map(Ref.get(outage), (now) => now !== null),
       ...(options.filing === undefined
         ? {}
         : { filing: Effect.map(SubscriptionRef.get(options.filing), (now) => now !== null) }),

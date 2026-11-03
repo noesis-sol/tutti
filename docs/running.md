@@ -1028,8 +1028,11 @@ and then the run ends with that reason. The log says
 
 An [overnight run](#overnight) sets the ticket aside for these three instead, and goes on.
 - **`DIRTY_TREE`**, **`GIT_FAILED`**, **`MERGE_FAILED`**: the merges stop.
-- **`BEADS_FAILED`**: `bd` failing. A worker's session that won't start isn't a stop of its own:
-  a row of them holds the run as `ENVIRONMENT`.
+- **`BEADS_FAILED`**: `bd` failing for 10 minutes. Shorter, a Dolt lock or a `bd sync`, it only
+  delays: a look that can't read the queue starts nothing new and a later one reads it again, 30 s
+  to 2 minutes apart, and a ticket whose worker ended is read again 30 s apart, keeping its slot. A
+  worker's session that won't start isn't a stop of its own: a row of them holds the run as
+  `ENVIRONMENT`.
 - **`ENVIRONMENT`** and **`USAGE_LIMIT`**, below.
 - **`SETUP_PROBLEM`**: a worker's session showed a setup problem as it started, or in its first
   `system/init`: MCP servers it wasn't given, or an API key it would bill beside your subscription. The worker is stopped before

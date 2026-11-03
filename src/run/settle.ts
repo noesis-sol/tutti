@@ -20,9 +20,11 @@
 import { Data, Duration, Effect, Option, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
+import { formatDuration } from "../project/configFile.ts"
 import {
   Beads,
   type BeadsError,
+  beadsWhy,
   HumanLabel,
   type Issue,
   type Status,
@@ -45,7 +47,7 @@ import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
 import type { MergeEnv } from "./merge.ts"
 import type { Stuck } from "./overnightAside.ts"
-import { readAgain } from "./schedule.ts"
+import { readAgain, readOutlasting } from "./schedule.ts"
 import { resumeGone } from "./sessions.ts"
 import type { StartedWorker } from "./start.ts"
 import { nudgeText } from "./told.ts"
@@ -253,11 +255,24 @@ export const limitDeferralNote =
   "tutti: deferred as its worker stopped at the account's usage limit; back in progress, its " +
   "worker carries on after the reset"
 
-/** The ticket as bd show gives it, read again a few seconds later while bd fails. */
+/**
+ * The ticket as bd show gives it, read again a few seconds later while bd fails, then a poll apart
+ * for as long as an outage short of beadsOutage lasts, its worker keeping its slot meanwhile: a
+ * Dolt lock or a bd sync of a minute doesn't fail the ticket's fiber, which would stop the run. A
+ * ticket bd has none of isn't read again.
+ */
 const show = (id: TicketId) =>
   Effect.gen(function* () {
     const beads = yield* Beads
-    return yield* retrying(beads.show(id), readAgain)
+    const logs = yield* Log
+    const outage = (error: BeadsError) => !(error._tag === "BeadsFailed" && error.noSuchIssue)
+    return yield* retrying(retrying(beads.show(id), readAgain), readOutlasting, {
+      while: outage,
+      tried: (error) =>
+        logs.write(
+          detail`bd could not read ${id} as its worker ended, reading it again in ${formatDuration(readOutlasting.after)}: ${beadsWhy(error)}`,
+        ),
+    })
   })
 
 /**

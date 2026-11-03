@@ -39,6 +39,11 @@ export interface Look {
    * having started on its environment ticket: the run waits for them rather than end.
    */
   readonly filing?: boolean
+  /**
+   * Whether bd failed the last fill's read of the queue (queueOutage.ts): the run reads it again at
+   * a later look rather than end on the tickets it couldn't see, while it would take them.
+   */
+  readonly unread?: boolean
   /** Whether the merge queue is settled now: nothing merging, queued or resolving. */
   readonly settled: boolean
   /** The triage calls under way. */
@@ -101,6 +106,7 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<T
     !look.resuming &&
     !look.answering &&
     look.filing !== true &&
+    !(look.unread === true && look.canTake) &&
     busy.length === 0 &&
     !toStart &&
     look.mergedBefore &&

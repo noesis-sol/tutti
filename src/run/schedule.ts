@@ -101,6 +101,15 @@ export const readAgainAfter: Duration.Duration = Duration.seconds(3)
 /** How a bd read is made again while it fails: readTries in all, readAgainAfter apart. */
 export const readAgain: Again = { tries: readTries, after: readAgainAfter }
 
+/**
+ * How long bd may fail every read of the queue, or of a ticket whose worker ended, before the run
+ * stops with BEADS_FAILED: a shorter outage only delays the fill (queueOutage.ts) or the settle.
+ */
+export const beadsOutage: Duration.Duration = Duration.minutes(10)
+
+/** How a ticket's read is made again once readAgain has failed: a poll apart, for beadsOutage. */
+export const readOutlasting: Again = { tries: Infinity, after: readyPoll, within: beadsOutage }
+
 /** The per-ticket fiber's entry: `start` is that fiber, and the ticket holds its slot until it ends. */
 export interface Start {
   /** Takes the ticket, now Working in the ledger, from its worktree and session to its outcome. */

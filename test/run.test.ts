@@ -499,7 +499,7 @@ describe("stops and exit codes", () => {
     expectLog(ran, [/^GIT_FAILED: could not read the state of /])
   })
 
-  test("BEADS_FAILED: bd ready fails three times running, exit 4, with nothing started", async () => {
+  test("BEADS_FAILED: bd ready failing every read for 10 minutes, exit 4, with nothing started", async () => {
     const ran = await runs({
       tickets: [],
       setup: { backlog: backlog().ticket("t-1").seeds, scripts: () => ({}) },
@@ -521,9 +521,11 @@ describe("stops and exit codes", () => {
             }),
           )
         }),
+      // A failed fill is tried again at later looks, the ready poll's, until bd has failed every
+      // read for beadsOutage (queueOutage.ts).
       during: () =>
         Effect.gen(function* () {
-          for (let i = 0; i < 4; i++) {
+          for (let i = 0; i < 250; i++) {
             for (let j = 0; j < 200; j++) yield* Effect.yieldNow
             yield* advance("3 seconds")
           }
@@ -533,8 +535,9 @@ describe("stops and exit codes", () => {
     expectLog(ran, [
       "could not read the queue (try 1 of 3), reading it again: database is locked",
       "could not read the queue (try 2 of 3), reading it again: database is locked",
+      /^could not read the queue: database is locked; nothing new starts until it is read, /,
       /^ {2}Completed 0 · Set aside 0 · Needs you 0$/,
-      "BEADS_FAILED: could not read the queue: database is locked",
+      /^BEADS_FAILED: could not read the queue for 10m\d*s?: database is locked$/,
     ])
   })
 

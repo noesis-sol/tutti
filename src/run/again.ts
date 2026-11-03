@@ -7,6 +7,8 @@ import { type Duration, Effect, Schedule } from "effect"
 export interface Again {
   readonly tries: number
   readonly after: Duration.Duration
+  /** And no more once this long has gone since the first failure, however many tries are left. */
+  readonly within?: Duration.Duration
 }
 
 /** What else a retry by `again` takes: which failures are tried again, and who is told of each. */
@@ -29,7 +31,7 @@ export const again = <E, R = never>(
   const { while: retries, tried } = options
   return Schedule.spaced(policy.after).pipe(
     Schedule.setInputType<E>(),
-    Schedule.upTo({ times: policy.tries - 1 }),
+    Schedule.upTo({ times: policy.tries - 1, duration: policy.within }),
     Schedule.while(({ input }) => retries === undefined || retries(input)),
     Schedule.tap(({ input, attempt }) =>
       tried === undefined ? Effect.void : tried(input, attempt),
