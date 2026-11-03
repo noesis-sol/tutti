@@ -189,6 +189,9 @@ const request = (id: string, ticket: TicketId, createdAt: number): AttentionRequ
 
 const limit = Duration.toMillis(blockedAfter)
 
+/** Whether a request has been open for blockedAfter at `now`. */
+const overdueAt = (now: number) => (request: AttentionRequest) => now - request.createdAt >= limit
+
 describe("BLOCKED, as the open requests say", () => {
   test("a ticket trips once a request of its worker has been open for blockedAfter", () => {
     const open = [
@@ -196,13 +199,13 @@ describe("BLOCKED, as the open requests say", () => {
       request("r2", "t-1" as TicketId, 10),
       request("r3", "t-2" as TicketId, 60_000),
     ]
-    expect(blockedAt(open, new Set(), limit - 1, blockedAfter)).toEqual({ trips: [], lifts: [] })
-    expect(blockedAt(open, new Set(), limit, blockedAfter)).toEqual({
+    expect(blockedAt(open, new Set(), overdueAt(limit - 1))).toEqual({ trips: [], lifts: [] })
+    expect(blockedAt(open, new Set(), overdueAt(limit))).toEqual({
       trips: [{ ticket: "t-1" as TicketId, what: "Bash(rm -rf build)" }],
       lifts: [],
     })
     // Held already, it doesn't trip again.
-    expect(blockedAt(open, new Set(["t-1" as TicketId]), limit + 60_000, blockedAfter)).toEqual({
+    expect(blockedAt(open, new Set(["t-1" as TicketId]), overdueAt(limit + 60_000))).toEqual({
       trips: [{ ticket: "t-2" as TicketId, what: "Bash(rm -rf build)" }],
       lifts: [],
     })
@@ -211,7 +214,7 @@ describe("BLOCKED, as the open requests say", () => {
   test("a ticket held lifts once none of its requests is open, a new one too", () => {
     const open = [request("r3", "t-2" as TicketId, limit * 2)]
     expect(
-      blockedAt(open, new Set(["t-1" as TicketId, "t-2" as TicketId]), limit * 2, blockedAfter),
+      blockedAt(open, new Set(["t-1" as TicketId, "t-2" as TicketId]), overdueAt(limit * 2)),
     ).toEqual({
       trips: [],
       lifts: ["t-1" as TicketId],

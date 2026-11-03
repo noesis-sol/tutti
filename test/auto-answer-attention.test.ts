@@ -10,7 +10,6 @@ import {
   type AttentionRequest,
   type AutoAnswerOptions,
   blockedAfter,
-  overdue,
   type Question,
   recommendedChoices,
 } from "../src/agent/Attention.ts"
@@ -153,22 +152,18 @@ describe("--auto-answer and a question asked in the session", () => {
     ).toEqual(["A", "C (Recommended)", "F (recommended)", ""])
   })
 
-  test("with a time, waits that long, holding with BLOCKED past blockedAfter, then answers", async () => {
+  test("with a time, waits that long, then answers, not blocking the run before it", async () => {
     const seen = await run(
       Effect.gen(function* () {
         const result = yield* call("AskUserQuestion", which)
         const attention = yield* Attention
         const [request] = yield* openRequests(1)
-        yield* minutes(5)
-        const now = Number(yield* Effect.clockWith((clock) => clock.currentTimeMillis))
-        // Open past blockedAfter (4 minutes): the run holds with BLOCKED as it does today.
-        const blocked = overdue(yield* attention.current, now).map((r) => r.id)
-        yield* minutes(4)
+        yield* minutes(9)
         const before = (yield* attention.current).length
         yield* minutes(1)
         return {
-          request,
-          blocked,
+          // Its answer on its way, it holds the run with BLOCKED only past it (tutti-epza.8).
+          blocks: Duration.toMinutes(attention.blocksAfter(request as AttentionRequest)),
           before,
           after: (yield* attention.current).length,
           result: yield* settled(result),
@@ -177,8 +172,8 @@ describe("--auto-answer and a question asked in the session", () => {
       }),
       tenMinutes,
     )
-    expect(Duration.toMinutes(blockedAfter)).toBeLessThan(5)
-    expect(seen.blocked).toEqual([(seen.request as AttentionRequest).id])
+    expect(Duration.toMinutes(blockedAfter)).toBeLessThan(10)
+    expect(seen.blocks).toBe(10 + Duration.toMinutes(blockedAfter))
     expect(seen.before).toBe(1)
     expect(seen.after).toBe(0)
     expect(seen.result).toMatchObject({ behavior: "allow" })

@@ -607,9 +607,10 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
 // for it to end, and the run's end suspends it (§ 4.8). Without a limit, one still going after
 // longRunning is said once, LONG_RUNNING. As orchestra's overTime, the time a worker waits for the
 // usage limit to reset (UsageLimited, § 4.12) doesn't count, nor the time the machine sleeps
-// (Wake.ts). An attention request unanswered for Attention's blockedAfter holds the run with
-// BLOCKED, for its ticket; once that ticket has no request open, the hold is lifted, as what held
-// the run is gone. run.ts keeps these stops.
+// (Wake.ts). An attention request unanswered for Attention's blockedAfter, with the machine awake,
+// holds the run with BLOCKED, for its ticket (a question --auto-answer takes after a time, only
+// blockedAfter past it: Attention's blocksAfter); once that ticket has no request open, the hold is
+// lifted, as what held the run is gone. run.ts keeps these stops.
 
 /** How long a worker may go on, without a ticket limit, before the log says LONG_RUNNING. */
 export const longRunning: Duration.Duration = Duration.hours(2)
@@ -652,22 +653,21 @@ export const isBlockedOn = (stop: StopReason, id: TicketId): boolean =>
   stop.why === "BLOCKED" && stop.ticket === id
 
 /**
- * What the open requests, oldest first, say of the BLOCKED holds at `now`: the tickets with one
- * open past `after`, each with its oldest such request, and the tickets held (`blocked`) that have
- * none open any longer.
+ * What the open requests, oldest first, say of the BLOCKED holds: the tickets with one `overdue`
+ * (open past its time), each with its oldest such request, and the tickets held (`blocked`) that
+ * have none open any longer.
  */
 export const blockedAt = (
   requests: ReadonlyArray<AttentionRequest>,
   blocked: ReadonlySet<TicketId>,
-  now: number,
-  after: Duration.Duration,
+  overdue: (request: AttentionRequest) => boolean,
 ): {
   readonly trips: ReadonlyArray<{ readonly ticket: TicketId; readonly what: string }>
   readonly lifts: ReadonlyArray<TicketId>
 } => {
   const trips = new Map<TicketId, string>()
   for (const request of requests) {
-    if (now - request.createdAt < Duration.toMillis(after)) continue
+    if (!overdue(request)) continue
     if (blocked.has(request.ticket) || trips.has(request.ticket)) continue
     trips.set(request.ticket, describe(request))
   }

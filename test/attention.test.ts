@@ -5,7 +5,7 @@ import type {
   PermissionResult,
   PermissionUpdate,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Effect, Exit, Layer, Stream } from "effect"
+import { Duration, Effect, Exit, Layer, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import {
@@ -17,7 +17,6 @@ import {
   DoesNotFit,
   denialMessage,
   NotOpen,
-  overdue,
   type Policy,
   questionsOf,
   summarize,
@@ -631,11 +630,18 @@ describe("Attention: the record", () => {
     expect(seen.tally).toMatchObject({ permissions: 1, questions: 1, denied: 1, answered: 1 })
   })
 
-  test("overdue gives the requests open for blockedAfter or longer", () => {
-    const at = (createdAt: number) => ({ createdAt }) as AttentionRequest
-    const limit = 4 * 60_000
-    expect(blockedAfter).toBeDefined()
-    expect(overdue([at(0), at(1), at(limit)], limit).map((r) => r.createdAt)).toEqual([0])
+  test("without --auto-answer, every request blocks after blockedAfter", async () => {
+    const at = (kind: AttentionRequest["kind"]["_tag"]) =>
+      ({ kind: { _tag: kind } }) as AttentionRequest
+    const after = await run(
+      Effect.map(Attention, (attention) =>
+        (["Permission", "Question", "Elicitation"] as const).map((kind) =>
+          Duration.toMinutes(attention.blocksAfter(at(kind))),
+        ),
+      ),
+    )
+    expect(after).toEqual([4, 4, 4])
+    expect(Duration.toMinutes(blockedAfter)).toBe(4)
   })
 })
 

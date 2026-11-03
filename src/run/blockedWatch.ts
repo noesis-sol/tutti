@@ -1,11 +1,13 @@
-// BLOCKED (§ 5 item 10, holds.ts): a request unanswered for blockedAfter holds the run, for its
-// ticket; once that ticket has none open, the hold is lifted. Each request is looked at again as it
-// reaches its time, and every request open at each change, which wakes the run too: a worker that
-// asks, or is answered, may end it or keep it open (D19). In an overnight run, a ticket whose fiber
-// follows its worker, or whose hand-back waits on it, is given BLOCKED instead, and set aside
-// (overnightAside.ts).
-import { Clock, Duration, Effect, Ref, Semaphore, Stream } from "effect"
-import { Attention, blockedAfter } from "../agent/Attention.ts"
+// BLOCKED (§ 5 item 10, holds.ts): a request unanswered for its time (Attention's blocksAfter:
+// blockedAfter, or past the time of a question --auto-answer takes), counted with the machine awake
+// as the other limits are (Wake.ts), holds the run, for its ticket; once that ticket has none open,
+// the hold is lifted. Each request is looked at again as it reaches its time, and every request
+// open at each change, which wakes the run too: a worker that asks, or is answered, may end it or
+// keep it open (D19). In an overnight run, a ticket whose fiber follows its worker, or whose
+// hand-back waits on it, is given BLOCKED instead, and set aside (overnightAside.ts).
+import { Duration, Effect, Ref, Semaphore, Stream } from "effect"
+import { Attention, type AttentionRequest } from "../agent/Attention.ts"
+import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import type { EventStream } from "./eventstream.ts"
 import { blockedAt, blockedLifted, blockedStop, blockedTickets, liftBlocked } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
@@ -15,7 +17,7 @@ import { sayer } from "./say.ts"
 import type { Wake } from "./wakes.ts"
 
 export interface BlockedWatch {
-  /** Holds the run for each request now past blockedAfter, and lifts the holds of tickets with none. */
+  /** Holds the run for each request now past its time, and lifts the holds of tickets with none. */
   readonly look: Effect.Effect<void>
 }
 
@@ -37,13 +39,20 @@ export const make = (options: {
     const { say } = yield* sayer
     const { holds, wakeUp, watch } = options
     const oneLook = yield* Semaphore.make(1)
+    // How long, in ms, the request has yet to wait, awake, before it holds the run.
+    const left = (request: AttentionRequest) =>
+      Effect.map(
+        awakeSince(request.createdAt),
+        (waited) => Duration.toMillis(attention.blocksAfter(request)) - waited,
+      )
     const look = oneLook.withPermits(1)(
       Effect.gen(function* () {
         if (yield* options.ended) return
         const held = blockedTickets(yield* holds.now)
-        const now = yield* Clock.currentTimeMillis
         const requests = yield* attention.current
-        const { trips, lifts } = blockedAt(requests, held, now, blockedAfter)
+        const due = new Set<string>()
+        for (const request of requests) if ((yield* left(request)) <= 0) due.add(request.id)
+        const { trips, lifts } = blockedAt(requests, held, (request) => due.has(request.id))
         if (trips.length === 0 && lifts.length === 0) return
         for (const ticket of lifts) {
           yield* holds.changeHolds((now) => liftBlocked(now, ticket))
@@ -62,17 +71,24 @@ export const make = (options: {
         yield* wakeUp("hold")
       }),
     )
+    // Waits until the request has waited its time, a sleep noticed meanwhile added, then looks.
+    const due = (request: AttentionRequest) =>
+      Effect.gen(function* () {
+        for (;;) {
+          const wait = yield* left(request)
+          if (wait <= 0) return yield* look
+          yield* sleepAwake(Duration.millis(wait))
+        }
+      })
     // The requests whose time a fiber waits for.
     const timed = yield* Ref.make<ReadonlySet<string>>(new Set())
     yield* watch(
       Stream.runForEach(attention.open, (requests) =>
         Effect.gen(function* () {
-          const now = yield* Clock.currentTimeMillis
           for (const request of requests) {
             if ((yield* Ref.get(timed)).has(request.id)) continue
             yield* Ref.update(timed, (all) => new Set([...all, request.id]))
-            const left = request.createdAt + Duration.toMillis(blockedAfter) - now
-            yield* watch(Effect.andThen(Effect.sleep(Duration.millis(Math.max(0, left))), look))
+            yield* watch(due(request))
           }
           yield* look
           yield* wakeUp("attention")

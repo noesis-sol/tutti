@@ -14,9 +14,10 @@
 // suggested destinations, `localSettings` and `projectSettings`, which resolve in the worktree.
 //
 // With --auto-answer (Options.autoAnswer), an AskUserQuestion call is answered with each question's
-// recommended option, at once or once it has waited that long with the machine awake: one waiting
-// past blockedAfter holds the run with BLOCKED first, and the answer lifts the hold. A permission
-// request is never answered so, the safety check's holds included.
+// recommended option, at once or once it has waited that long with the machine awake. Such a
+// question doesn't hold the run with BLOCKED past blockedAfter as other requests do, its answer
+// being on its way: only should that not have come blockedAfter past its time (`blocksAfter`,
+// tutti-epza.8). A permission request is never answered so, the safety check's holds included.
 //
 // Every request and answer is a PERMISSION or QUESTION log line and an `attention` or
 // `attention_answered` event, and is tallied per ticket. So is each call Claude Code denied without
@@ -452,13 +453,6 @@ export interface AutoAnswered {
   readonly answers: ReadonlyArray<string>
 }
 
-/** The requests open longer than `blockedAfter` at `now`, oldest first: what holds the run. */
-export const overdue = (
-  requests: ReadonlyArray<AttentionRequest>,
-  now: number,
-): ReadonlyArray<AttentionRequest> =>
-  requests.filter((r) => now - r.createdAt >= Duration.toMillis(blockedAfter))
-
 /** An answer the SDK no longer waits for. */
 const Cancelled = { _tag: "Cancelled" } as const
 type Outcome = Answer | typeof Cancelled
@@ -483,6 +477,11 @@ export class Attention extends Context.Service<
     readonly current: Effect.Effect<ReadonlyArray<AttentionRequest>>
     /** The open requests, every worker's, oldest first: now, then on each change. */
     readonly open: Stream.Stream<ReadonlyArray<AttentionRequest>>
+    /**
+     * How long `request` may wait, with the machine awake, before it holds the run with BLOCKED:
+     * blockedAfter, or for a question --auto-answer answers after a time, blockedAfter past it.
+     */
+    blocksAfter(request: AttentionRequest): Duration.Duration
     /** The ticket's worker's open requests, oldest first: now, then on each change. */
     openFor(ticket: TicketId): Stream.Stream<ReadonlyArray<AttentionRequest>>
     /**
@@ -611,6 +610,13 @@ export const make = (
     // Whether it answers it at once: the request's record then doesn't notify (notices.ts).
     const answersAtOnce = (request: AttentionRequest) =>
       autoAnswers(request) && Duration.isZero(options.autoAnswer?.after ?? Duration.zero)
+    // A question it answers after a time holds the run only should its answer not have come by
+    // blockedAfter past that time: holding it before, an overnight run would set the ticket aside
+    // and a plain one end with it, the answer never given (tutti-epza.8).
+    const blocksAfter = (request: AttentionRequest) =>
+      autoAnswers(request)
+        ? Duration.sum(blockedAfter, options.autoAnswer?.after ?? Duration.zero)
+        : blockedAfter
 
     const asked = (request: AttentionRequest) =>
       Effect.gen(function* () {
@@ -1000,6 +1006,7 @@ export const make = (
       answer,
       current: Effect.map(SubscriptionRef.get(opened), requests),
       open: Stream.map(SubscriptionRef.changes(opened), requests),
+      blocksAfter,
       openFor: (ticket) =>
         SubscriptionRef.changes(opened).pipe(
           Stream.map((all) => requests(all).filter((r) => r.ticket === ticket)),

@@ -278,7 +278,8 @@ with one recommended, as the worker prompt asks: `bd human respond` records the 
 tutti chose it, not you, which closes the question, and the label `auto-answered` marks it. It
 answers an `AskUserQuestion` in a worker's session too, with the option marked `(Recommended)`, else
 the first. With a time, the time counts only while the machine is awake, a question you answer
-first is yours, and the run doesn't end while one it will answer waits.
+first is yours, and the run doesn't end while one it will answer waits: such a question doesn't
+hold the run with `BLOCKED` at 4 minutes, nor does an overnight run set its ticket aside for it.
 
 It leaves to you, and the question's `ASKED` line says why: a question that asks you to do
 something only you can (`maintainer_only` in its metadata), one without options, and one already

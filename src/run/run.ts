@@ -994,7 +994,7 @@ const runFrom = (
       )
     }
 
-    // A request unanswered for blockedAfter holds the run with BLOCKED, for its ticket, until its
+    // A request unanswered for its time holds the run with BLOCKED, for its ticket, until its
     // ticket has none open (blockedWatch.ts).
     yield* makeBlockedWatch({ holds, ended: commands.ended, wakeUp, watch, ...overnight })
 

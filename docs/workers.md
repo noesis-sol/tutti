@@ -214,7 +214,8 @@ key, open on **Deny**, have no one-key allow (`a` and `r` do nothing), and need 
 A request answered by now, or withdrawn because the worker's turn ended, is gone: an answer to it is
 dropped, with a toast. A request withdrawn and asked again (after a resume, say) is a new request.
 
-**Unanswered requests.** After 4 minutes, a request still open holds the run:
+**Unanswered requests.** After 4 minutes with the machine awake, a request still open holds the run
+(a question `--auto-answer` answers after a time holds it only 4 minutes past that time):
 `HOLD: BLOCKED >4min: tut-9a1 needs you: Bash: Remove the build cache`. No new tickets start, but the
 request stays answerable, and answering every open request lifts the hold:
 `HOLD lifted: tut-9a1's requests were answered`. With a dashboard, a run with nothing left but workers
