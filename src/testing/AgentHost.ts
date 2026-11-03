@@ -397,10 +397,7 @@ export const backgroundTasks = (...tasks: ReadonlyArray<LiveTask>) =>
  * A background task's end, as the CLI sends it (docs/spikes/01-sdk-session.md, item 4):
  * `task_updated` (completed), `task_notification`, then the live set without it, `left`.
  */
-export const taskEnds = (
-  id: string,
-  ...left: ReadonlyArray<LiveTask>
-): ReadonlyArray<Step> => [
+export const taskEnds = (id: string, ...left: ReadonlyArray<LiveTask>): ReadonlyArray<Step> => [
   emit({ type: "system", subtype: "task_updated", task_id: id, patch: { status: "completed" } }),
   emit({
     type: "system",
@@ -417,10 +414,7 @@ export const taskEnds = (
  * A background task's stop, as a `stop_task` request has the CLI send it: `task_notification`
  * (stopped), then the live set without it, `left`.
  */
-export const taskStopped = (
-  id: string,
-  ...left: ReadonlyArray<LiveTask>
-): ReadonlyArray<Step> => [
+export const taskStopped = (id: string, ...left: ReadonlyArray<LiveTask>): ReadonlyArray<Step> => [
   emit({
     type: "system",
     subtype: "task_notification",

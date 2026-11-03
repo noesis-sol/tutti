@@ -27,15 +27,7 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { texts } from "../src/testing/Log.ts"
 import { advance } from "./harness.ts"
-import {
-  id,
-  quiet,
-  stoppedTask,
-  stops,
-  untilLogged,
-  workedOf,
-  working,
-} from "./leftTasks.ts"
+import { id, quiet, stoppedTask, stops, untilLogged, workedOf, working } from "./leftTasks.ts"
 
 const sdk = (message: object): WorkerEvent =>
   WorkerEvent.Message({ session: "s", reading: read(message as unknown as SDKMessage) })

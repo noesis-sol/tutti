@@ -494,8 +494,7 @@ const derive = (worker: Worker, now: number): WorkerState => {
     const doing = worker.tool ?? (worker.subagents.length > 0 ? "subagent" : "working")
     if (!quiet) return WorkerState.Working({ doing })
     const onlyAgents = worker.tasks.every((task) => worker.agents.includes(task))
-    const since =
-      agentsOnly(worker.state) === onlyAgents ? tasksOnlySince(worker.state) : undefined
+    const since = agentsOnly(worker.state) === onlyAgents ? tasksOnlySince(worker.state) : undefined
     return WorkerState.Working({
       doing,
       tasksSince: since ?? now,
