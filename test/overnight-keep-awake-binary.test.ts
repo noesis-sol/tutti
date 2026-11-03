@@ -48,10 +48,17 @@ exec bun '${fake}' "$@"
         mode: 0o755,
       })
     }
+    const waitFor = `i=0; while [ ! -f '${ran}' ] && [ $i -lt 200 ]; do sleep 0.1; i=$((i+1)); done`
     const repo = makeRepo()
     repo.commit("Set up tutti", {
       ".tutti/settings.json": `${JSON.stringify(
-        { concurrent: 2, workers: { ticket_limit: "2h" }, checks: { fast: { command: "true" } } },
+        {
+          concurrent: 2,
+          workers: { ticket_limit: "2h" },
+          // The merge check, the pre-flight's last, waits for the keep-awake command to have said
+          // so, up to 20 s: the run it refuses ends at once, killing the command.
+          checks: { fast: { command: waitFor } },
+        },
         null,
         2,
       )}\n`,
@@ -83,13 +90,15 @@ exec bun '${fake}' "$@"
       ],
       { cwd: repo.dir, stdin: "ignore", stdout: "pipe", stderr: "pipe", env },
     )
-    const [code] = await Promise.all([
+    const [code, stdout] = await Promise.all([
       proc.exited,
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
     ])
     expect(code).toBe(2)
     expect(existsSync(ran)).toBe(true)
+    // Plain output prints the log's lines, the keep-awake's among them.
+    expect(stdout).toContain("keeping the machine awake while the run goes")
     const log = readFileSync(join(repo.dir, ".tutti", "tutti.log"), "utf8").split("\n")
     const awake = log.findIndex((line) =>
       line.includes("keeping the machine awake while the run goes"),

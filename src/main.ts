@@ -556,11 +556,16 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     const keepingAwake = yield* SubscriptionRef.make(false)
     // An overnight run keeps the machine awake from before its pre-flight, whose questions wait for
     // a maintainer who may have walked away (tutti-epza.17); the others as the run begins. Its lines
-    // go to the log, opened for it in the run's scope; one that can't be opened leaves it to begin.
+    // go to the log, opened for it in the run's scope, which plain output prints, as the run's;
+    // one that can't be opened leaves it to begin.
     let keptAwake = false
     if (config.overnight && awake._tag === "Command") {
+      const plain = outputMode(terminal, config.plain)._tag === "Plain"
+      if (plain) yield* ready.end
       const logged = yield* Effect.result(
-        Layer.build(Log.layer({ repo: config.repo })).pipe(Scope.provide(runScope)),
+        Layer.build(Log.layer({ repo: config.repo, sink: plain ? "stdout" : "none" })).pipe(
+          Scope.provide(runScope),
+        ),
       )
       if (Result.isSuccess(logged)) {
         yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(
