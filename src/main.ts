@@ -65,6 +65,7 @@ import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
 import { screenOut } from "./print/screenOut.ts"
+import { currentHome } from "./project/userConfig.ts"
 import { talkQuestion } from "./run/answerTalk.ts"
 import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
@@ -129,6 +130,7 @@ import { check, live, type Started, StartupFailed, startBlock } from "./run/star
 import { layer as trashLayer } from "./run/trash.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
+import { claudeProjects, readyRoot } from "./run/worktreesRoot.ts"
 import { Beads, beadsWhy, type TicketId } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
 import { Git, GitWriter } from "./services/Git.ts"
@@ -137,6 +139,7 @@ import { whichOnPath } from "./services/onPath.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
 import { layer as straysLayer } from "./services/Strays.ts"
+import { TimeMachine } from "./services/TimeMachine.ts"
 import {
   outputMode,
   plainReasonLine,
@@ -552,6 +555,23 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     )
     if (Result.isFailure(locked)) return yield* cannot(locked.failure.message)
     const lock = locked.success
+
+    // The worktrees' root (src/run/worktreesRoot.ts), with the lock held, so no other run of the
+    // repository moves its worktrees meanwhile, and before the pre-flight and the run's services,
+    // which make worktrees there: the default claimed, the old root's worktrees moved into it once,
+    // and its Time Machine exclusion made.
+    const rooted = yield* readyRoot(config, {
+      platform: process.platform,
+      home: yield* currentHome,
+      projects: yield* claudeProjects,
+    }).pipe(Effect.provide(Layer.mergeAll(gitLayer, TimeMachine.layer)))
+    started = {
+      ...started,
+      config: { ...config, worktrees: rooted.root },
+      worktrees: { line: rooted.line, notes: rooted.notes },
+      warnings: [...started.warnings, ...rooted.warnings],
+    }
+    config = started.config
 
     // The scope the run's services and the keep-awake command close with, once the report is done.
     const runScope = yield* Effect.scope

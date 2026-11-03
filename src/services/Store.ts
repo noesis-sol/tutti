@@ -320,6 +320,18 @@ const writeStateUnder = (repo: string, text: string): Effect.Effect<void, Refusa
     writeFileUnder(repo, stateFile, text),
   )
 
+/**
+ * Writes `state` to state.json below `repo` as it is, its run stamp kept, through the symlink guard
+ * (writeStateUnder): a change made before the run's Store is built, which reads it then
+ * (src/run/worktreesRoot.ts's move of the worktrees).
+ */
+export const writeState = (repo: string, state: State): Effect.Effect<void, StoreWriteFailed> =>
+  writeStateUnder(repo, stateText(state)).pipe(
+    Effect.mapError(
+      (error) => new StoreWriteFailed({ file: statePath(repo), reason: error.message }),
+    ),
+  )
+
 /** A state as committed: as reading state.json back gives it, and the text state.json holds. */
 export interface Committed {
   readonly state: State

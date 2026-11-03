@@ -10,20 +10,12 @@
 // started in, as a shell's completion offers it; in a variable, which stands for every run of the
 // project, it is taken from the main checkout's top level, as the settings' are.
 
-import { availableParallelism } from "node:os"
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve as resolvePath,
-  sep,
-} from "node:path"
+import { availableParallelism, homedir } from "node:os"
+import { join, resolve as resolvePath } from "node:path"
 import { Config, Context, Duration, Effect, Exit, Layer, Option, Result, Schema } from "effect"
 import { type ConfigFileInvalid, type ConfigProblem, decodeConfig } from "../project/configFile.ts"
 import { readSettings, retiredOrganNotes, Settings, settingsFile } from "../project/settings.ts"
-import { readUserConfig, UserConfig, userConfigShown } from "../project/userConfig.ts"
+import { currentHome, readUserConfig, UserConfig, userConfigShown } from "../project/userConfig.ts"
 import {
   defaultMachineWorkers,
   defaultMachineWorkersFrom,
@@ -31,6 +23,7 @@ import {
   runsDir,
   runsDirVariables,
 } from "../run/machine.ts"
+import { findRoot, plainRoot, within } from "../run/worktreesRoot.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { type LoadedScheme, loadScheme, orchestraLoaded, schemeFolders } from "../ui/theme.ts"
 import {
@@ -76,10 +69,6 @@ export const noColorVariable = "NO_COLOR"
 /** The user config's file as the START block names it where its own path isn't given. */
 export const defaultUserFile = "~/.config/tutti/config.json"
 
-/** The default folder for the worktrees: `<repo>-tutti` beside the repository (§ 11). */
-export const defaultWorktrees = (repo: string): string =>
-  join(dirname(repo), `${basename(repo)}-tutti`)
-
 export interface AppConfigValue {
   /** The main checkout's top level. */
   readonly repo: string
@@ -121,6 +110,12 @@ export interface AppConfigValue {
   readonly prompt: string
   /** The folder for the tickets' worktrees, absolute and outside the repository. */
   readonly worktrees: string
+  /**
+   * Whether `worktrees` is tutti's default, `~/.tutti/worktrees/<name>` (src/run/worktreesRoot.ts),
+   * no --worktrees or TUTTI_WORKTREES given: the run claims it, and moves the worktrees of the old
+   * default, `<repo>-tutti`, into it.
+   */
+  readonly worktreesDefault: boolean
   /**
    * The folder the machine's tutti and orchestra runs register in (src/run/machine.ts), as
    * orchestra finds it from ORCHESTRA_RUNS_DIR, HOME and XDG_CACHE_HOME; null for none.
@@ -210,6 +205,11 @@ export interface Sources {
   readonly settings: Settings
   /** The machine's cores, for the default --machine-workers; availableParallelism() when not given. */
   readonly cores?: number
+  /**
+   * The default folder for the worktrees, as found on disk (src/run/worktreesRoot.ts's findRoot);
+   * `~/.tutti/worktrees/<the repository's folder name>` when not given.
+   */
+  readonly worktreesDefault?: string
 }
 
 /** A config file's problem as a sentence: `<file>: <key path>: <message>`. */
@@ -217,13 +217,6 @@ export const showConfigProblem = (problem: ConfigProblem): string =>
   problem.path === ""
     ? `${problem.file}: ${problem.message}`
     : `${problem.file}: ${problem.path}: ${problem.message}`
-
-/** Whether `path` is `dir` or inside it, ignoring case on macOS, whose filesystems usually do. */
-const within = (path: string, dir: string): boolean => {
-  const fold = (p: string) => (process.platform === "darwin" ? p.toLowerCase() : p)
-  const rel = relative(fold(dir), fold(path))
-  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-}
 
 /**
  * Resolves a run's configuration from its sources, or returns every problem with them. It reads
@@ -375,7 +368,10 @@ export const resolveAll = (
 
   const prompt = pick("prompt", workerPromptFile)
   const worktrees = pick("worktrees", null)
-  const worktreesPath = worktrees === null ? defaultWorktrees(repo) : pathOf("worktrees", worktrees)
+  const worktreesPath =
+    worktrees === null
+      ? (sources.worktreesDefault ?? plainRoot(homedir(), repo))
+      : pathOf("worktrees", worktrees)
   // A --claude with no `/` is a command name, which the startup checks look up on PATH.
   const claude = pick("claude", null)
   if (within(worktreesPath, repo)) {
@@ -470,6 +466,7 @@ export const resolveAll = (
     mouse: !pick("noMouse", !user.mouse),
     prompt: pathOf("prompt", prompt),
     worktrees: worktreesPath,
+    worktreesDefault: worktrees === null,
     runs: runsDir(env),
     machineWorkers,
     machineWorkersFrom,
@@ -577,7 +574,17 @@ export const loadLenient = (
     const env = (name: string) =>
       only === undefined || only.includes(name) ? variables.get(name) : undefined
     const userFile = yield* userConfigShown
-    const { value, problems } = resolveAll({ repo, cwd, flags, env, user, userFile, settings })
+    const worktreesDefault = yield* findRoot(yield* currentHome, repo)
+    const { value, problems } = resolveAll({
+      repo,
+      cwd,
+      flags,
+      env,
+      user,
+      userFile,
+      settings,
+      worktreesDefault,
+    })
     return {
       value,
       problems,

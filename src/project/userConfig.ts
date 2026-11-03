@@ -76,13 +76,22 @@ export const userConfigPath = Effect.map(userConfigDir, (dir) => join(dir, "conf
  * `~/.config/tutti/config.json` most often.
  */
 export const userConfigShown = Effect.gen(function* () {
-  const file = yield* userConfigPath
-  const home = homeFolder(Option.getOrUndefined(yield* Config.option(Config.String("HOME"))))
-  const rel = relative(home, file)
+  return fromHome(yield* userConfigPath, yield* currentHome)
+})
+
+/** The home folder now, homeFolder's of HOME. */
+export const currentHome: Effect.Effect<string> = Effect.map(
+  Config.option(Config.String("HOME")),
+  (home) => homeFolder(Option.getOrUndefined(home)),
+).pipe(Effect.orDie)
+
+/** `path` from `~` where it is below `home`, else as it is. */
+export const fromHome = (path: string, home: string): string => {
+  const rel = relative(home, path)
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)
     ? `~/${rel.split(sep).join("/")}`
-    : file
-}).pipe(Effect.orDie)
+    : path
+}
 
 /** Reads the user config; a missing file gives the defaults. */
 export const readUserConfig = Effect.flatMap(userConfigPath, (file) =>

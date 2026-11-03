@@ -96,6 +96,12 @@ export interface Started {
    * `vendored: repos/** (from .gitattributes)`; none where nothing is vendored.
    */
   readonly vendored?: string | null
+  /**
+   * The worktrees' root as the run made it ready (src/run/worktreesRoot.ts's readyRoot): the START
+   * block's line for it, with its exclusions, and what it says of the move from the old root; none
+   * before then, the line naming `config.worktrees` alone.
+   */
+  readonly worktrees?: { readonly line: string; readonly notes: ReadonlyArray<string> }
   /** What the run says once as it starts, but doesn't stop it. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -564,7 +570,8 @@ export const memoryEstimate = (concurrency: number): string =>
 /**
  * The START block of a run that passed its checks: `START tutti <version> in <repo> on <base>`,
  * its scope, ` · overnight` for an overnight run, its settings, ` · auto-answer` with --auto-answer, then its billing, its permission mode in effect, its MCP servers when it
- * has none, its `concurrent` above the cap on the machine's workers, the memory its workers take, the workers' `share` of the machine where it is given (src/run/share.ts' shareNote), its vendored paths, why its colour scheme isn't used (a line per notice), and
+ * has none, its `concurrent` above the cap on the machine's workers, its worktrees' root with its
+ * exclusions and the move from the old root, the memory its workers take, the workers' `share` of the machine where it is given (src/run/share.ts' shareNote), its vendored paths, why its colour scheme isn't used (a line per notice), and
  * its warnings.
  */
 export const startBlock = (
@@ -607,7 +614,6 @@ export const startBlock = (
       ],
       // pressure_cap (pressureCap.ts): the workers allowed fall under memory pressure.
       ["pressure cap", config.settings.pressure_cap ? "on" : "off"],
-      ["worktrees", config.worktrees],
       ...(servers.length === 0 ? [] : [["MCP servers", servers.join(", ")] as const]),
     ],
     // --auto-answer, at the line's end, as orchestra has nothing there.
@@ -627,6 +633,8 @@ export const startBlock = (
       ...(config.machineWorkers > 0 && concurrency > config.machineWorkers
         ? [aboveCapNote(concurrency, config.machineWorkers)]
         : []),
+      `worktrees: ${started.worktrees?.line ?? config.worktrees}`,
+      ...(started.worktrees?.notes ?? []),
       `memory: ${memoryEstimate(concurrency)}`,
       ...(share === null ? [] : [share]),
       ...(started.vendored === undefined || started.vendored === null ? [] : [started.vendored]),

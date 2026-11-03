@@ -100,6 +100,7 @@ describe("settings", () => {
       concurrent: 2,
       pressure_cap: true,
       keep_awake: true,
+      exclude_worktrees: true,
       checks: {
         fast: { command: "scripts/check-fast.sh", timeout: minutes(30) },
         full: { command: "scripts/check-full.sh", timeout: minutes(60) },
@@ -145,6 +146,7 @@ describe("settings", () => {
     concurrent: 1,
     pressure_cap: true,
     keep_awake: true,
+    exclude_worktrees: true,
     checks: {
       fast: { command: null, timeout: minutes(30) },
       full: { command: null, timeout: minutes(60) },

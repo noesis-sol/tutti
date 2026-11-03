@@ -398,6 +398,16 @@ export const gitOps = {
     kind: "write",
     args: (): ReadonlyArray<string> => ["worktree", "prune"],
   },
+  repairWorktrees: {
+    op: "worktree repair",
+    kind: "write",
+    args: (paths: ReadonlyArray<string>): ReadonlyArray<string> => [
+      "worktree",
+      "repair",
+      "--",
+      ...paths,
+    ],
+  },
   createBranch: {
     op: "branch",
     kind: "write",
@@ -815,6 +825,11 @@ export class Git extends Context.Service<
     worktrees(repo: string): Effect.Effect<ReadonlyArray<Worktree>, GitError>
     /** git worktree prune: forgets the worktrees whose folders are gone. */
     pruneWorktrees(repo: string): Effect.Effect<void, GitError>
+    /**
+     * git worktree repair: points git's records of the worktrees moved to `paths` at them, and
+     * theirs back at the repository, run from its main checkout.
+     */
+    repairWorktrees(repo: string, paths: ReadonlyArray<string>): Effect.Effect<void, GitError>
     /** git branch: a new branch at `start`. */
     createBranch(repo: string, branch: string, start: string): Effect.Effect<void, GitError>
     /** git branch -d: refuses a branch not merged into HEAD unless forced (-D). */
@@ -1170,6 +1185,8 @@ export class Git extends Context.Service<
             Effect.asVoid(write(gitCall(gitOps.removeWorktree, path, remove.force), repo)),
           worktrees: (repo) => Effect.map(read(gitCall(gitOps.worktrees), repo), parseWorktrees),
           pruneWorktrees: (repo) => Effect.asVoid(write(gitCall(gitOps.pruneWorktrees), repo)),
+          repairWorktrees: (repo, paths) =>
+            Effect.asVoid(write(gitCall(gitOps.repairWorktrees, paths), repo)),
           createBranch: (repo, branch, start) =>
             Effect.asVoid(write(gitCall(gitOps.createBranch, branch, start), repo)),
           deleteBranch: (repo, branch, remove = {}) =>

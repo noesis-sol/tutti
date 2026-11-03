@@ -811,6 +811,29 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               for (const [path, each] of checkouts) if (each.gone) checkouts.delete(path)
             }),
           ),
+        // git finds a moved worktree's records through the .git file in its new folder; this has no
+        // folders, and finds them by the folder's name, which git names its records after.
+        repairWorktrees: (repo, paths) =>
+          operation(gitCall(gitOps.repairWorktrees, paths), repo, (refuse) =>
+            Effect.gen(function* () {
+              yield* inRepo(refuse, repo)
+              for (const path of paths) {
+                const where = normalize(path)
+                const moved = [...checkouts.values()].find(
+                  (each) =>
+                    each.path !== main &&
+                    each.path !== where &&
+                    posix.basename(each.path) === posix.basename(where),
+                )
+                if (moved === undefined) {
+                  if (checkouts.has(where)) continue
+                  return yield* refuse(1, `error: not a valid path: ${path}`)
+                }
+                checkouts.delete(moved.path)
+                checkouts.set(where, { ...moved, path: where, gone: false })
+              }
+            }),
+          ),
         createBranch: (repo, branch, start) =>
           operation(gitCall(gitOps.createBranch, branch, start), repo, (refuse) =>
             Effect.gen(function* () {

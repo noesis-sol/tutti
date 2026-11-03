@@ -199,6 +199,11 @@ export const Settings = Schema.Struct({
    * config overrides for one person, and --overnight always keeps it awake.
    */
   keep_awake: Schema.Boolean.pipe(withDefault(true)),
+  /**
+   * Whether runs exclude the worktrees' folder from Time Machine's backups on macOS (§ 11,
+   * src/run/worktreesRoot.ts); false leaves it as it is.
+   */
+  exclude_worktrees: Schema.Boolean.pipe(withDefault(true)),
   checks: Schema.Struct({
     /** The merge check, run on each finished ticket. */
     fast: Check("30m").pipe(withDefault({})),
