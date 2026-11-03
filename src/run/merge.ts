@@ -62,7 +62,7 @@ import {
   type StatusEntry,
   shortHash,
 } from "../services/Git.ts"
-import { allChanges, checkoutChanges } from "../services/gitStatus.ts"
+import { allChanges, checkoutTrackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
@@ -1464,7 +1464,8 @@ export const fastForward = (
         line`could not read the state of ${repo} (${gitTries} tries): ${gitWhy(checkout.failure)}; ${left}`,
       )
     }
-    if (checkoutChanges(checkout.success.status).length > 0) {
+    // An untracked file is left to git, which refuses only one the branch would overwrite (InTheWay).
+    if (checkoutTrackedChanges(checkout.success.status).length > 0) {
       return yield* stopped(
         ticket,
         "DIRTY_TREE",

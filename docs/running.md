@@ -957,7 +957,7 @@ What can go wrong, and what becomes of the ticket:
 | `MERGE_CONFLICT` | the rebase stops on conflicts: handed back to its worker, else blocked |
 | `CHECKS_FAILED` | the check fails or doesn't finish within its time limit: handed back, else left for review |
 | `FLAKY` | the check passed, but a test failed and passed on a rerun: merged, with a warning |
-| `DIRTY_TREE` | the main checkout has uncommitted changes, or left its branch: the merges stop, and the run holds |
+| `DIRTY_TREE` | the main checkout has uncommitted changes to tracked files, an untracked file the branch would overwrite, or left its branch: the merges stop, and the run holds |
 | `GIT_FAILED`, `MERGE_FAILED` | git fails, or the branch doesn't fast-forward: the merges stop, and the run holds |
 
 A git read that steers the merge (what the worktree has checked out, its status, where its branch

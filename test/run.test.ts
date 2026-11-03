@@ -421,7 +421,7 @@ describe("stops and exit codes", () => {
         scripts: (world, root) => {
           const c = commands(world, root, "t-1" as TicketId)
           const stray = Effect.flatMap(Repository, (repository) =>
-            repository.write(repository.dir, { "stray.txt": "x\n" }),
+            repository.write(repository.dir, { "README.md": "edited by hand\n" }),
           ).pipe(Effect.provideService(Repository, world.repository))
           return {
             "t-1": [

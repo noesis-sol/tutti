@@ -51,3 +51,15 @@ export const untrackedFiles = (status: ReadonlyArray<StatusEntry>): ReadonlyArra
 /** The files with changes in the main checkout, untracked ones included, outside `ignoredFolders`. */
 export const checkoutChanges = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
   paths(status.filter(changeOutside(ignoredFolders)).sort(byPath))
+
+/**
+ * The tracked files with uncommitted changes in the main checkout, outside `ignoredFolders`. An
+ * untracked file there is left to git: a fast-forward refuses only one the branch would overwrite.
+ */
+export const checkoutTrackedChanges = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
+  paths(
+    status
+      .filter(changeOutside(ignoredFolders))
+      .filter((entry) => entry.code !== "??")
+      .sort(byPath),
+  )

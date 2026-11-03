@@ -425,7 +425,7 @@ describe("an overnight run sets a stuck ticket aside and goes on", () => {
       overnight: true,
       scripts: (world, root) => {
         const stray = Effect.flatMap(Repository, (repository) =>
-          repository.write(repository.dir, { "stray.txt": "x\n" }),
+          repository.write(repository.dir, { "README.md": "edited by hand\n" }),
         ).pipe(Effect.provideService(Repository, world.repository))
         return { "t-1": [finishes(world, root, "t-1" as TicketId, [step(stray)])] }
       },
