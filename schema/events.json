@@ -2566,7 +2566,7 @@
           "minimum": 0,
           "maximum": 9007199254740991
         },
-        "questions": {
+        "asked": {
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
@@ -2633,7 +2633,7 @@
         "checks",
         "flaky",
         "denied",
-        "questions"
+        "asked"
       ],
       "additionalProperties": true
     },

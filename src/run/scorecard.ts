@@ -80,13 +80,18 @@ export interface Scoring {
 
 export const noScoring: Scoring = { tallies: new Map(), scores: new Map() }
 
-/** The middle of `values`, or the mean of the two middle ones; 0 for none. */
+/**
+ * The middle of `values`, or the mean of the two middle ones, which two finite values keep finite
+ * however large; 0 for none.
+ */
 export const median = (values: ReadonlyArray<number>): number => {
   const sorted = [...values].sort((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1
-    ? (sorted[middle] ?? 0)
-    : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
+  if (sorted.length % 2 === 1) return sorted[middle] ?? 0
+  const low = sorted[middle - 1] ?? 0
+  const high = sorted[middle] ?? 0
+  const sum = low + high
+  return Number.isFinite(sum) ? sum / 2 : low / 2 + high / 2
 }
 
 /** The size class of a footprint of `files` files: 0–1, 2–3, 4–7, 8–15, 16 or more; -1 unknown. */
@@ -199,7 +204,11 @@ const laterOf = (t: Tally): Pick<Score, "follow_ups" | "reverts"> => ({
   ...(t.reverts.length === 0 ? {} : { reverts: t.reverts }),
 })
 
-const tenth = (n: number): number => Math.round(n * 10) / 10 || 0
+// `n` to a tenth, or as it is where a tenth of it can't be written.
+const tenth = (n: number): number => {
+  const rounded = Math.round(n * 10) / 10
+  return Number.isFinite(rounded) ? rounded || 0 : n
+}
 
 /**
  * The median of the latest scores, other than `ticket`'s, of the tickets of `size`'s class; absent
