@@ -1,13 +1,17 @@
 // How a failed read, or a write git was kept from, is made again: a few times in all, a few
 // seconds apart, as a Schedule for Effect.retry. Each policy is named once, where its reads are:
 // branch.ts's gitAgain for the git reads that steer a merge, schedule.ts's readAgain for bd's.
-import { type Duration, Effect, Schedule } from "effect"
+import { Duration, Effect, Schedule } from "effect"
+import { awakeSince } from "../services/Wake.ts"
 
 /** How a failing effect is made again: up to `tries` times in all, `after` apart. */
 export interface Again {
   readonly tries: number
   readonly after: Duration.Duration
-  /** And no more once this long has gone since the first failure, however many tries are left. */
+  /**
+   * And no more once the machine has been awake this long since the first failure, however many
+   * tries are left: a sleep of the machine meanwhile isn't counted, as tutti's time limits aren't.
+   */
   readonly within?: Duration.Duration
 }
 
@@ -31,7 +35,13 @@ export const again = <E, R = never>(
   const { while: retries, tried } = options
   return Schedule.spaced(policy.after).pipe(
     Schedule.setInputType<E>(),
-    Schedule.upTo({ times: policy.tries - 1, duration: policy.within }),
+    Schedule.upTo({ times: policy.tries - 1 }),
+    Schedule.while(({ start }) => {
+      const within = policy.within
+      return within === undefined
+        ? true
+        : Effect.map(awakeSince(start), (awake) => awake <= Duration.toMillis(within))
+    }),
     Schedule.while(({ input }) => retries === undefined || retries(input)),
     Schedule.tap(({ input, attempt }) =>
       tried === undefined ? Effect.void : tried(input, attempt),

@@ -3,7 +3,8 @@
 // next one at first, then a poll later, doubling up to readBackoffMax. The run stops with
 // BEADS_FAILED only once every read has failed for beadsOutage: a Dolt lock, a bd sync or a Dolt
 // server restarting after a wake delays the fill by a few minutes rather than end the run hours
-// early. Until the queue is read again, the run doesn't end on the tickets it couldn't see.
+// early. Its time is counted awake, as tutti's limits are (§ 3.3). Until the queue is read again,
+// the run doesn't end on the tickets it couldn't see.
 import { Duration } from "effect"
 import { formatDuration } from "../project/configFile.ts"
 import { beadsOutage, readyPoll } from "./schedule.ts"
@@ -40,10 +41,13 @@ export const failedRead = (outage: Outage | null, now: number): Outage => {
 export const readDue = (outage: Outage | null, now: number): boolean =>
   outage === null || now >= outage.next
 
-/** Whether the outage has lasted beadsOutage at `now`, which stops the run. */
-export const sustained = (outage: Outage, now: number): boolean =>
-  now - outage.since >= Duration.toMillis(beadsOutage)
+/**
+ * Whether an outage the machine has been awake for `awake` ms of, since it began, has lasted
+ * beadsOutage, which stops the run: a sleep meanwhile isn't counted (Wake.ts's awakeSince), so a
+ * fill failing as the machine wakes, Dolt restarting, doesn't stop it at once.
+ */
+export const sustained = (awake: number): boolean => awake >= Duration.toMillis(beadsOutage)
 
-/** How long the outage has lasted at `now`, to the second, as the log says it ("1m30s"). */
-export const lasted = (outage: Outage, now: number): string =>
-  formatDuration(Duration.seconds(Math.round((now - outage.since) / 1000)))
+/** How long an outage has lasted, `awake` ms of the machine awake, to the second ("1m30s"). */
+export const lasted = (awake: number): string =>
+  formatDuration(Duration.seconds(Math.round(awake / 1000)))

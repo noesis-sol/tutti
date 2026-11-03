@@ -101,6 +101,7 @@ import { Git, gitWhy } from "../services/Git.ts"
 import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
+import { awakeSince } from "../services/Wake.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { askedLook, askedQuestions, takeAnswers } from "./asked.ts"
 import {
@@ -1048,20 +1049,17 @@ const runFrom = (
         if (Result.isSuccess(filled)) {
           yield* Ref.set(outage, null)
           if (failing !== null) {
-            yield* logs.write(
-              line`read the queue again, after ${lasted(failing, now)} of bd failing`,
-            )
+            const awake = yield* awakeSince(failing.since)
+            yield* logs.write(line`read the queue again, after ${lasted(awake)} of bd failing`)
           }
         } else {
           const why = beadsWhy(filled.failure)
           const failed = failedRead(failing, now)
           yield* Ref.set(outage, failed)
-          if (sustained(failed, now)) {
+          const awake = yield* awakeSince(failed.since)
+          if (sustained(awake)) {
             yield* stopped(
-              stopFor(
-                "BEADS_FAILED",
-                `could not read the queue for ${lasted(failed, now)}: ${why}`,
-              ),
+              stopFor("BEADS_FAILED", `could not read the queue for ${lasted(awake)}: ${why}`),
             )
           } else {
             const after = backoff(failed.failed)

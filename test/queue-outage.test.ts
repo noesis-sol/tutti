@@ -6,7 +6,9 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Clock, Duration, Effect, Fiber } from "effect"
+import { Clock, Duration, Effect, Fiber, Layer } from "effect"
+import { TestClock } from "effect/testing"
+import { retrying } from "../src/run/again.ts"
 import { line } from "../src/run/log.ts"
 import {
   backoff,
@@ -18,11 +20,12 @@ import {
 } from "../src/run/queueOutage.ts"
 import { run } from "../src/run/run.ts"
 import { decide, type Snapshot } from "../src/run/runEnd.ts"
-import { beadsOutage, readyPoll } from "../src/run/schedule.ts"
+import { beadsOutage, readOutlasting, readyPoll } from "../src/run/schedule.ts"
 import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, type SessionScript } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
+import { Asleep, layer as wakeLayer } from "../src/testing/Wake.ts"
 import {
   advance,
   expectExitCode,
@@ -61,12 +64,11 @@ describe("an outage of the queue's reads", () => {
     expect(readDue(second, second.next)).toBe(true)
   })
 
-  test("is sustained once it has lasted beadsOutage, said to the second", () => {
-    const outage = failedRead(null, 0)
+  test("is sustained once the machine has been awake beadsOutage in it, said to the second", () => {
     const limit = Duration.toMillis(beadsOutage)
-    expect(sustained(outage, limit - 1)).toBe(false)
-    expect(sustained(outage, limit)).toBe(true)
-    expect(lasted(outage, minute + 30_400)).toBe("1m30s")
+    expect(sustained(limit - 1)).toBe(false)
+    expect(sustained(limit)).toBe(true)
+    expect(lasted(minute + 30_400)).toBe("1m30s")
   })
 })
 
@@ -106,6 +108,8 @@ interface Faults {
   readonly ready?: Duration.Duration
   /** How many of bd show t-1's calls fail once the worker has closed it. */
   readonly show?: number
+  /** The machine sleeps for `span` once the run has gone on for `after`. */
+  readonly asleep?: { readonly after: Duration.Duration; readonly span: Duration.Duration }
 }
 
 /**
@@ -168,12 +172,21 @@ const runs = (faults: Faults) => {
           }),
         ),
       )
+      const { asleep } = yield* Asleep
+      const step = Duration.seconds(3)
       for (let i = 0; i < 400 && fiber.pollUnsafe() === undefined; i++) {
         for (let j = 0; j < 200; j++) yield* Effect.yieldNow
-        yield* advance("3 seconds")
+        yield* advance(step)
+        const sleep = faults.asleep
+        if (
+          sleep !== undefined &&
+          (i + 1) * Duration.toMillis(step) === Duration.toMillis(sleep.after)
+        ) {
+          yield* asleep(sleep.span)
+        }
       }
       return yield* Fiber.join(fiber)
-    }),
+    }).pipe(Effect.provide(wakeLayer)),
   )
 }
 
@@ -188,6 +201,22 @@ describe("a run whose bd ready fails", () => {
       /^could not read the queue: database is locked; nothing new starts until it is read, again in 30s, /,
       "[1] t-1 dispatching: t-1",
       /^read the queue again, after 1m\d*s? of bd failing$/,
+      "READY_EMPTY after 1 tickets",
+    ])
+    expect(ran.log.some((text) => text.startsWith("BEADS_FAILED"))).toBe(false)
+  })
+
+  test("across a sleep: the sleep isn't counted, and a read failing at the wake doesn't stop it", async () => {
+    // A minute failing awake, 30 minutes asleep, two more failing awake: 3 minutes of 10.
+    const ran = await runs({
+      ready: Duration.minutes(33),
+      asleep: { after: Duration.minutes(1), span: Duration.minutes(30) },
+    })
+    expectExitCode(ran, 0)
+    expectPhases(ran, { "t-1": "Done" })
+    expectLog(ran, [
+      "[1] t-1 dispatching: t-1",
+      /^read the queue again, after [2-5]m\d*s? of bd failing$/,
       "READY_EMPTY after 1 tickets",
     ])
     expect(ran.log.some((text) => text.startsWith("BEADS_FAILED"))).toBe(false)
@@ -226,5 +255,54 @@ describe("bd show failing as a ticket's worker ends", () => {
       "  bd could not read t-1 as its worker ended, reading it again in 30s: database is locked",
       "BEADS_FAILED: bd failed on t-1: database is locked",
     ])
+  })
+})
+
+describe("a ticket's read made again a poll apart", () => {
+  /** How many times an always failing read is made under readOutlasting, after each `moves`. */
+  const tries = (moves: ReadonlyArray<"asleep" | Duration.Duration>) =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        let made = 0
+        const fiber = yield* Effect.forkChild(
+          Effect.exit(
+            retrying(
+              Effect.suspend(() => Effect.fail(++made)),
+              readOutlasting,
+            ),
+          ),
+        )
+        const { asleep } = yield* Asleep
+        const counts: Array<{ readonly made: number; readonly done: boolean }> = []
+        for (const move of moves) {
+          if (move === "asleep") yield* asleep("30 minutes")
+          else {
+            for (let s = 0; s < Duration.toMillis(move); s += 3000) {
+              yield* TestClock.adjust("3 seconds")
+            }
+          }
+          counts.push({ made, done: fiber.pollUnsafe() !== undefined })
+        }
+        return counts
+      }).pipe(Effect.provide(Layer.provideMerge(wakeLayer, TestClock.layer()))),
+    )
+
+  test("gives up once the machine has been awake beadsOutage since it first failed", async () => {
+    const [before, after] = await tries([Duration.minutes(9), Duration.minutes(2)])
+    expect(before?.done).toBe(false)
+    expect(after?.done).toBe(true)
+  })
+
+  test("doesn't count a sleep: 3 minutes awake around 30 asleep don't end it", async () => {
+    const [, slept, woke, later] = await tries([
+      Duration.minutes(1),
+      "asleep",
+      Duration.minutes(2),
+      Duration.minutes(8),
+    ])
+    expect(slept?.done).toBe(false)
+    expect(woke?.done).toBe(false)
+    expect(woke?.made).toBeGreaterThan(slept?.made ?? 0)
+    expect(later?.done).toBe(true)
   })
 })
