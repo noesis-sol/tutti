@@ -90,10 +90,10 @@ export interface Memory {
   /**
    * What programs could be given now without pressing the others: on macOS vm_stat's free,
    * inactive, speculative and purgeable pages, which the kernel hands out, drops or compresses
-   * before it touches what is in use (scripts/test.ts' darwinAvailable counts the same); on Linux
-   * MemAvailable, -1 where /proc/meminfo hasn't it. Not the processes' resident memory summed, which
-   * counts each shared page once per process that maps it: on a 16 GB Mac under a run, 7.6-8.3 GB
-   * of it against 4.6-5.3 GB of pages in use (tutti-lt2x).
+   * before it touches what is in use (scripts/test.ts' darwinAvailable counts them but the
+   * speculative); on Linux MemAvailable, -1 where /proc/meminfo hasn't it. Not the processes'
+   * resident memory summed, which counts each shared page once per process that maps it: on a 16 GB
+   * Mac under a run, 7.6-8.3 GB of it against 4.6-5.3 GB of pages in use (tutti-lt2x).
    */
   readonly available: number
 }
