@@ -330,8 +330,8 @@ export const answered = (a: {
   /** The reason given with a denial, or the options chosen for a question. */
   readonly detail?: string
   /**
-   * --auto-answer: tutti answered it with the recommended options, not the maintainer; --overnight:
-   * tutti denied it, setting its ticket aside overnight.
+   * --auto-answer: tutti answered it with the recommended options, not the maintainer, or declined
+   * or denied what it can't answer so; --overnight: tutti denied it, nobody being there overnight.
    */
   readonly via: "screen" | "tutti answer" | "--auto-answer" | "--overnight"
 }): Marked => {
@@ -341,7 +341,9 @@ export const answered = (a: {
     a.via === "tutti answer"
       ? ", via tutti answer"
       : a.via === "--auto-answer"
-        ? ", the recommended option, by --auto-answer"
+        ? a.verdict === "answered"
+          ? ", the recommended option, by --auto-answer"
+          : ", by tutti, under --auto-answer"
         : a.via === "--overnight"
           ? ", by tutti, the run being an overnight one"
           : ""

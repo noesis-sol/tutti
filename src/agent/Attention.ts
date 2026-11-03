@@ -26,6 +26,12 @@
 // (tutti-epza.10). Such a request holds the run with BLOCKED only should that denial not have come
 // blockedAfter past its time, as an auto-answered question does.
 //
+// What neither answers would wait for a person nobody is (tutti-epza.22): under --auto-answer or
+// --overnight, an MCP server's form elicitation is declined, its fields being for a person to fill,
+// and an AskUserQuestion call whose input didn't decode, a permission request otherwise, is denied
+// with what to ask again with (`reshapeDenial`). Each once it has waited as long as a question does
+// (--auto-answer's time, else an overnight run's denial's), in nobody's name, said in the log.
+//
 // Every request and answer is a PERMISSION or QUESTION log line and an `attention` or
 // `attention_answered` event, and is tallied per ticket. So is each call Claude Code denied without
 // asking (`permission_denied`): a DENIED line and a `denied` event, tallied by what denied it.
@@ -73,6 +79,16 @@ export const blockedAfter = Duration.minutes(4)
 /** Why an overnight run denies a permission request, after tuttiDenialMessage in its message. */
 export const overnightDenial =
   "the run is an overnight one: go on without it, or, if the ticket can't, say on it what it needs for the morning"
+
+/**
+ * Why tutti denies an AskUserQuestion call whose input didn't decode, under --auto-answer or
+ * --overnight, after tuttiDenialMessage in its message: what to ask again with.
+ */
+export const reshapeDenial =
+  "its input isn't in AskUserQuestion's shape: ask again with questions, 1 to 4, each a question, a header, options (2 to 4, each a label and a description) and multiSelect"
+
+/** Why tutti declines an MCP server's form elicitation, under --auto-answer or --overnight. */
+export const formDecline = "nobody being there to fill in its form"
 
 /** A question of AskUserQuestion's, its text sanitised for showing. */
 export interface Question {
@@ -277,7 +293,8 @@ export const answersOf = (request: AttentionRequest): ReadonlyArray<AnswerWord> 
     case "Question":
       return ["allow", "deny"]
     case "Elicitation":
-      // A form's fields can't be given there: only a URL login can be accepted (§ 7.6).
+      // A form's fields can't be given there: only a URL login can be accepted (§ 7.6). The screen
+      // takes them; an unattended run declines the form (tutti-epza.22).
       return request.kind.mode === "url" ? ["allow", "deny"] : ["deny"]
   }
 }
@@ -628,37 +645,67 @@ export const make = (
         return found === undefined ? [undefined, all] : [found, all.filter((o) => o !== found)]
       })
 
-    // Whether --auto-answer takes the request, a question of a ticket it answers.
-    const autoAnswers = (request: AttentionRequest) => {
+    // What tutti answers the request with itself, and once it has waited how long, or undefined
+    // when it leaves it to a person: --auto-answer a question with its recommended options, an
+    // overnight run a permission request with its denial; under either, a form elicitation is
+    // declined and an AskUserQuestion call that didn't decode denied, after as long as a question
+    // waits (tutti-epza.22).
+    const tuttiAnswer = (
+      request: AttentionRequest,
+    ):
+      | { readonly after: Duration.Duration; readonly answer: Answer; readonly via: Via }
+      | undefined => {
       const auto = options.autoAnswer
-      return (
-        auto !== undefined &&
-        request.kind._tag === "Question" &&
-        (auto.answers === undefined || auto.answers(request.ticket))
-      )
-    }
-    // Whether an overnight run denies the request, a permission request of a ticket it denies.
-    const tuttiDenies = (request: AttentionRequest) => {
+      const autoTakes = auto !== undefined && (auto.answers?.(request.ticket) ?? true)
       const deny = options.denyPermissions
-      return (
-        deny !== undefined &&
-        request.kind._tag === "Permission" &&
-        (deny.denies === undefined || deny.denies(request.ticket))
-      )
+      const denyTakes = deny !== undefined && (deny.denies?.(request.ticket) ?? true)
+      const unattended = autoTakes
+        ? { after: auto.after, via: "auto_answer" as const }
+        : denyTakes
+          ? { after: deny.after, via: "overnight" as const }
+          : undefined
+      const kind = request.kind
+      switch (kind._tag) {
+        case "Question":
+          return autoTakes
+            ? {
+                after: auto.after,
+                answer: { _tag: "Choose", answers: recommendedChoices(kind.questions) },
+                via: "auto_answer",
+              }
+            : undefined
+        case "Elicitation":
+          return kind.mode === "form" && unattended !== undefined
+            ? { ...unattended, answer: { _tag: "Decline" } }
+            : undefined
+        case "Permission":
+          if (kind.tool === askUserQuestion) {
+            return unattended === undefined
+              ? undefined
+              : { ...unattended, answer: { _tag: "Deny", reason: reshapeDenial, byTutti: true } }
+          }
+          return denyTakes
+            ? {
+                after: deny.after,
+                answer: { _tag: "Deny", reason: overnightDenial, byTutti: true },
+                via: "overnight",
+              }
+            : undefined
+      }
     }
     // Whether it answers it at once: the request's record then doesn't notify (notices.ts).
-    const answersAtOnce = (request: AttentionRequest) =>
-      autoAnswers(request) && Duration.isZero(options.autoAnswer?.after ?? Duration.zero)
-    // A question it answers after a time holds the run only should its answer not have come by
+    const answersAtOnce = (request: AttentionRequest) => {
+      const tuttis = tuttiAnswer(request)
+      return tuttis !== undefined && Duration.isZero(tuttis.after)
+    }
+    // A request it answers after a time holds the run only should its answer not have come by
     // blockedAfter past that time: holding it before, an overnight run would set the ticket aside
-    // and a plain one end with it, the answer never given (tutti-epza.8).
-    // So does a permission request an overnight run denies after a time (tutti-epza.10).
-    const blocksAfter = (request: AttentionRequest) =>
-      autoAnswers(request)
-        ? Duration.sum(blockedAfter, options.autoAnswer?.after ?? Duration.zero)
-        : tuttiDenies(request)
-          ? Duration.sum(blockedAfter, options.denyPermissions?.after ?? Duration.zero)
-          : blockedAfter
+    // and a plain one end with it, the answer never given (tutti-epza.8). So for a permission
+    // request an overnight run denies after a time (tutti-epza.10).
+    const blocksAfter = (request: AttentionRequest) => {
+      const tuttis = tuttiAnswer(request)
+      return tuttis === undefined ? blockedAfter : Duration.sum(blockedAfter, tuttis.after)
+    }
 
     const asked = (request: AttentionRequest) =>
       Effect.gen(function* () {
@@ -668,6 +715,7 @@ export const make = (
           ticket: request.ticket,
           request: request.id,
           default_to_no: request.defaultToNo,
+          ...(answersAtOnce(request) ? { auto_answering: true as const } : {}),
         }
         switch (kind._tag) {
           case "Permission": {
@@ -713,12 +761,7 @@ export const make = (
                   })),
                 }),
               ],
-              events.emit({
-                ...base,
-                type: "question",
-                questions,
-                ...(answersAtOnce(request) ? { auto_answering: true as const } : {}),
-              }),
+              events.emit({ ...base, type: "question", questions }),
             )
             return
           }
@@ -809,7 +852,11 @@ export const make = (
             return
           case "Decline":
             yield* count(request.ticket, "declined")
-            yield* line({ ...base, answer: "deny", ...viaField }, "declined")
+            yield* line(
+              { ...base, answer: "deny", ...viaField },
+              "declined",
+              via === "auto_answer" || via === "overnight" ? formDecline : undefined,
+            )
             return
           case "Choose":
             yield* count(request.ticket, via === "auto_answer" ? "autoAnswered" : "answered")
@@ -877,24 +924,9 @@ export const make = (
           Deferred.await(done),
           Effect.andThen(aborted(signal), Effect.andThen(cancel(request.id), Deferred.await(done))),
         )
-        // --auto-answer: a question's recommended options once it has waited; --overnight: a
-        // permission request's denial, in nobody's name. An answer from a person first wins, and
-        // tutti's is refused NotOpen.
-        const kind = request.kind
-        const tuttis: { after: Duration.Duration; answer: Answer; via: Via } | undefined =
-          options.autoAnswer !== undefined && autoAnswers(request) && kind._tag === "Question"
-            ? {
-                after: options.autoAnswer.after,
-                answer: { _tag: "Choose", answers: recommendedChoices(kind.questions) },
-                via: "auto_answer",
-              }
-            : options.denyPermissions !== undefined && tuttiDenies(request)
-              ? {
-                  after: options.denyPermissions.after,
-                  answer: { _tag: "Deny", reason: overnightDenial, byTutti: true },
-                  via: "overnight",
-                }
-              : undefined
+        // tutti's own answer once the request has waited (tuttiAnswer), in nobody's name. An answer
+        // from a person first wins, and tutti's is refused NotOpen.
+        const tuttis = tuttiAnswer(request)
         const answering =
           tuttis === undefined
             ? outcome
