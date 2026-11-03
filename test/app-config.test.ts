@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
-import { availableParallelism, tmpdir } from "node:os"
-import { join } from "node:path"
+import { availableParallelism, homedir, tmpdir } from "node:os"
+import { basename, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Duration, Effect, Exit, Option, Result } from "effect"
 import { Command } from "effect/cli"
@@ -360,7 +360,8 @@ describe("precedence", () => {
       limit: null,
       plain: false,
       prompt: join(repo, ".tutti", "worker-prompt.md"),
-      worktrees: "/work/project-tutti",
+      worktrees: join(homedir(), ".tutti", "worktrees", "project"),
+      worktreesDefault: true,
       claude: null,
     })
     expect(defaults.usageLimitWait).toEqual(Duration.hours(6))
@@ -615,6 +616,8 @@ describe("the live layer", () => {
           settings: defaultSettings,
           machineWorkers: defaultMachineWorkers(cores),
           machineWorkersFrom: defaultMachineWorkersFrom(cores),
+          // The default root is under HOME's ~/.tutti/worktrees, named after the project.
+          worktrees: join("/nowhere", ".tutti", "worktrees", basename(dirs.project)),
         },
         dirs.project,
       ),

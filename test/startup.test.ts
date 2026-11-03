@@ -565,10 +565,28 @@ describe("the START block", () => {
 
   test("names the version, repository, branch and settings, then billing and permission mode", () => {
     expect(block(started(), "0.1.0")).toEqual([
-      "START tutti 0.1.0 in /work/project on main (limit: none, concurrent: 1, machine workers: 5 (default: half of 10 cores), ticket limit: none, check timeout: 30m, early check: on, pressure cap: on, worktrees: /work/project-tutti)",
+      "START tutti 0.1.0 in /work/project on main (limit: none, concurrent: 1, machine workers: 5 (default: half of 10 cores), ticket limit: none, check timeout: 30m, early check: on, pressure cap: on)",
       "  billing: subscription",
       "  permission mode: auto",
       `  ${noServersNote}`,
+      `  worktrees: ${started().config.worktrees}`,
+      "  memory: about 1 GiB of memory, about 1 GiB per worker",
+    ])
+  })
+
+  test("names the worktrees' root as the run made it ready, with its exclusions and its move", () => {
+    const lines = block(
+      started({
+        worktrees: {
+          line: "~/.tutti/worktrees/project (excluded from Time Machine; not indexed by Spotlight)",
+          notes: ["moved 7 worktrees from /work/project-tutti to ~/.tutti/worktrees/project"],
+        },
+      }),
+      "0.1.0",
+    )
+    expect(lines.slice(4, 7)).toEqual([
+      "  worktrees: ~/.tutti/worktrees/project (excluded from Time Machine; not indexed by Spotlight)",
+      "  moved 7 worktrees from /work/project-tutti to ~/.tutti/worktrees/project",
       "  memory: about 1 GiB of memory, about 1 GiB per worker",
     ])
   })
@@ -602,9 +620,10 @@ describe("the START block", () => {
       "0.1.0",
     )
     expect(lines).toEqual([
-      "START tutti 0.1.0 in /work/project on main · ticket tut-7 (limit: none, concurrent: 4, machine workers: 5 (default: half of 10 cores), ticket limit: 2h, check timeout: 30m, early check: on, pressure cap: on, worktrees: /work/project-tutti, MCP servers: postgres, github)",
+      "START tutti 0.1.0 in /work/project on main · ticket tut-7 (limit: none, concurrent: 4, machine workers: 5 (default: half of 10 cores), ticket limit: 2h, check timeout: 30m, early check: on, pressure cap: on, MCP servers: postgres, github)",
       "  billing: subscription (ANTHROPIC_API_KEY is set but not used; --billing api uses it)",
       "  permission mode: default (auto mode isn't available here)",
+      `  worktrees: ${config.worktrees}`,
       "  memory: about 4 GiB of memory, about 1 GiB per worker",
       "  orchestra left workers on tut-1; finish them with orchestra first",
     ])

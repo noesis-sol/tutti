@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
@@ -36,7 +36,7 @@ describe("the AppConfig test layer", () => {
     const config = appConfig({ repo: "/work/other" })
     expect(config).toEqual(appConfig({}, "/work/other"))
     expect(config.prompt).toBe("/work/other/.tutti/worker-prompt.md")
-    expect(config.worktrees).toBe("/work/other-tutti")
+    expect(config.worktrees).toBe(join(homedir(), ".tutti", "worktrees", "other"))
   })
 
   test("resolves the settings it is given, as a run's are", () => {
