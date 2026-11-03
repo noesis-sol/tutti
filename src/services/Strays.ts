@@ -10,6 +10,11 @@
 // from /proc on Linux, where lsof may not be installed; another user's processes, which tutti may
 // not signal, aren't listed. Each gets a SIGTERM, and those still in the folder after the grace a
 // SIGKILL. tutti's own process and its parent are never strays.
+//
+// A check's strays are stopped so too, in its folder, as it ends without passing (Checks.ts'
+// stoppingStrays), and a detached worktree's before Worktrees.removeDetached deletes it; `running`
+// lists a folder's processes as a check starts, so that those there before it, a worker's session in
+// its ticket's worktree, are spared.
 import { join } from "node:path"
 import { Context, Duration, Effect, FileSystem, Layer, Schedule } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
@@ -27,12 +32,22 @@ export class Strays extends Context.Service<
   {
     /**
      * Stops the processes left running in `folder`, other users' aside: SIGTERM, then SIGKILL to
-     * those still there after the grace. It returns those it signalled, and never fails: a folder
-     * that isn't there, or a listing that fails, has none.
+     * those still there after the grace, but the processes `spare` names. It returns those it
+     * signalled, and never fails: a folder that isn't there, or a listing that fails, has none.
      */
-    stop(folder: string): Effect.Effect<ReadonlyArray<Stray>>
+    stop(folder: string, spare?: ReadonlyArray<number>): Effect.Effect<ReadonlyArray<Stray>>
+    /**
+     * The processes running in `folder` now, other users' aside: those a check that fails there
+     * mustn't stop, as they were there before it (Checks.ts). Undefined when they couldn't be
+     * listed; a folder that isn't there has none.
+     */
+    running(folder: string): Effect.Effect<ReadonlyArray<Stray> | undefined>
   }
 >()("tutti/services/Strays") {}
+
+/** `count` processes, said: "1 process", "2 processes". */
+export const processCount = (count: number): string =>
+  count === 1 ? "1 process" : `${count} processes`
 
 /** How long a stray has between its SIGTERM and its SIGKILL. */
 export const strayGrace: Duration.Duration = Duration.seconds(5)
@@ -133,20 +148,32 @@ export const layer = (options: { readonly grace?: Duration.Input } = {}) =>
         (output) => parseLsof(output.stdout),
       )
 
-      const listing: Effect.Effect<ReadonlyArray<Listed>> =
+      // Undefined when the processes couldn't be listed.
+      const listing: Effect.Effect<ReadonlyArray<Listed> | undefined> =
         process.platform === "linux"
-          ? Effect.orElseSucceed(fromProc, () => [])
-          : Effect.orElseSucceed(Effect.provideContext(fromLsof, context), () => [])
+          ? Effect.orElseSucceed(fromProc, () => undefined)
+          : Effect.orElseSucceed(Effect.provideContext(fromLsof, context), () => undefined)
 
-      const spare = [process.pid, process.ppid]
-      const strays = (folder: string) =>
-        Effect.map(listing, (listed) => straysIn(listed, folder, spare))
+      const own = [process.pid, process.ppid]
+      const listedIn = (folder: string, spare: ReadonlyArray<number>) =>
+        Effect.map(listing, (listed) =>
+          listed === undefined ? undefined : straysIn(listed, folder, [...own, ...spare]),
+        )
+      const strays = (folder: string, spare: ReadonlyArray<number>) =>
+        Effect.map(listedIn(folder, spare), (found) => found ?? [])
+      const realFolder = (given: string) =>
+        Effect.orElseSucceed(fs.realPath(given), () => undefined)
 
-      const stop = (given: string) =>
+      const running = (given: string) =>
+        Effect.flatMap(realFolder(given), (folder) =>
+          folder === undefined ? Effect.succeed([]) : listedIn(folder, []),
+        )
+
+      const stop = (given: string, spare: ReadonlyArray<number> = []) =>
         Effect.gen(function* () {
-          const folder = yield* Effect.orElseSucceed(fs.realPath(given), () => undefined)
+          const folder = yield* realFolder(given)
           if (folder === undefined) return []
-          const found = yield* strays(folder)
+          const found = yield* strays(folder, spare)
           const signalled = found.filter((stray) => signal(stray.pid, "SIGTERM"))
           if (signalled.length === 0) return signalled
           yield* Effect.repeat(
@@ -155,11 +182,11 @@ export const layer = (options: { readonly grace?: Duration.Input } = {}) =>
           ).pipe(Effect.timeoutOption(grace))
           if (!signalled.some((stray) => processAlive(stray.pid))) return signalled
           // Listed again, so a PID that has gone and been reused elsewhere gets no SIGKILL.
-          const left = yield* strays(folder)
+          const left = yield* strays(folder, spare)
           for (const stray of left) signal(stray.pid, "SIGKILL")
           return signalled
         })
 
-      return Strays.of({ stop })
+      return Strays.of({ stop, running })
     }),
   )

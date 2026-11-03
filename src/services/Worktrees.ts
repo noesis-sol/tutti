@@ -13,9 +13,13 @@
 // would write wherever that led, and git's ignore rule for the folder (/.tutti/run/, which matches a
 // folder and not a link) wouldn't cover files written through it, for a worker's git add -A to
 // commit. So every link on the way is refused, wherever it points, with RunFilesOutside.
+//
+// A worktree addDetached made (an early check's, the full check's, the checks gate's) has what was
+// left running in it stopped before removeDetached deletes it, where the layer is built with Strays:
+// a check's server, out of its process group, would hold its port for every check after it.
 import { readSync, writeSync } from "node:fs"
 import { basename, join } from "node:path"
-import { Context, Effect, FileSystem, Layer, Result, Schema, type Scope } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, Result, Schema, type Scope } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import {
   close,
@@ -27,9 +31,11 @@ import {
   type PathRefused,
   SymlinkRefused,
 } from "../native/libc.ts"
+import { detail, Log } from "../run/log.ts"
 import { writeFileAtomic } from "./atomicFile.ts"
 import type { TicketId } from "./Beads.ts"
 import { type Commit, Git, type GitError, GitWriter, type StatusEntry } from "./Git.ts"
+import { processCount, Strays } from "./Strays.ts"
 
 /** A ticket ID that can't name a worktree folder and a branch; `why` says what is wrong with it. */
 export class BadTicketId extends Schema.TaggedError<BadTicketId>()("BadTicketId", {
@@ -332,7 +338,8 @@ export class Worktrees extends Context.Service<
       commit: string,
     ): Effect.Effect<string, GitError | ExcludeUnwritable | PlatformError>
     /**
-     * Removes a worktree addDetached made, whatever was left in it, and has git forget it: its
+     * Removes a worktree addDetached made, whatever was left in it, and has git forget it: what was
+     * left running in it is stopped (Strays.stop, where the layer has Strays, said in its Log), its
      * folder is deleted, then git's worktrees are pruned.
      */
     removeDetached(path: string): Effect.Effect<void, GitError | PlatformError>
@@ -370,6 +377,8 @@ export class Worktrees extends Context.Service<
         const git = yield* Git
         const writer = yield* GitWriter
         const fs = yield* FileSystem.FileSystem
+        const strays = yield* Effect.serviceOption(Strays)
+        const logs = yield* Effect.serviceOption(Log)
         const { repo, root, base } = options
 
         // The worktree that has the branch checked out, if one does; a prunable one doesn't count.
@@ -505,10 +514,21 @@ export class Worktrees extends Context.Service<
             }),
           )
 
+        const stopLeft = (path: string) =>
+          Effect.gen(function* () {
+            if (Option.isNone(strays)) return
+            const stopped = yield* strays.value.stop(path)
+            if (stopped.length === 0 || Option.isNone(logs)) return
+            const commands = stopped.map((stray) => stray.command)
+            yield* logs.value.write(
+              detail`stopped ${processCount(stopped.length)} left running in ${path}: ${commands}`,
+            )
+          })
+
         const removeDetached = (path: string) =>
-          Effect.andThen(
-            fs.remove(path, { recursive: true, force: true }),
-            git.pruneWorktrees(repo),
+          stopLeft(path).pipe(
+            Effect.andThen(fs.remove(path, { recursive: true, force: true })),
+            Effect.andThen(git.pruneWorktrees(repo)),
           )
 
         const leftDetached = (prefix: string) =>

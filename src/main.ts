@@ -197,6 +197,9 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Transcripts.layer({ repo }),
     UsageLimits.layer,
     fibersLayer,
+    // What was left running in a folder (Strays.ts): stopped as the trash deletes a merged
+    // worktree's, Worktrees removes a detached worktree, or a check that didn't pass ends.
+    straysLayer(),
     // The other runs' workers, which the run reads and its workers' share of the cores counts.
     otherWorkers,
     // The workers' share of the machine, which the run keeps live and each session starts with.
@@ -275,7 +278,7 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Layer.provideMerge(attention),
     // Merged worktrees' folders, deleted in the background (trash.ts), what was left running in
     // them stopped first (Strays.ts).
-    Layer.provideMerge(trashLayer.pipe(Layer.provide(straysLayer()))),
+    Layer.provideMerge(trashLayer),
     Layer.provideMerge(notifying),
     Layer.provideMerge(second),
     Layer.provideMerge(first),
@@ -335,6 +338,7 @@ const preflightLayers = (started: Started) => {
     Log.layer({ repo }),
     Layer.succeed(BranchEnv, branchEnv(env)),
     Layer.succeed(WorkerEnv, workerEnv(env)),
+    straysLayer(),
   )
   return Layer.mergeAll(
     Beads.layer({ cwd: repo }),

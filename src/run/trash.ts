@@ -14,7 +14,7 @@
 import { Context, Effect, FiberSet, Layer, Result } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import type { TicketId } from "../services/Beads.ts"
-import { Strays } from "../services/Strays.ts"
+import { processCount, Strays } from "../services/Strays.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { detail, Log, Tag, ticketLine } from "./log.ts"
@@ -70,7 +70,7 @@ export const layer: Layer.Layer<Trash, never, TrashEnv> = Layer.effect(
       Effect.gen(function* () {
         const stopped = yield* strays.stop(path)
         if (stopped.length === 0) return
-        const count = stopped.length === 1 ? "1 process" : `${stopped.length} processes`
+        const count = processCount(stopped.length)
         const commands = stopped.map((stray) => stray.command)
         yield* logs.write(
           ticket === undefined

@@ -11,13 +11,18 @@
 // for tsc and Biome, the tools of a TypeScript project such as tutti's own. A check
 // that loops printing until its time limit holds no more of tutti's memory than one that prints a
 // page. Interrupting a check kills its process group, and no result comes of it (§ 3.4).
-import { Context, Duration, Effect, type FileSystem, Layer, Schema } from "effect"
+// What a check that failed, timed out or was interrupted left running in its folder outside that
+// group (setsid, nohup, a double fork), a server on a fixed port that would fail every check after
+// it, is stopped as it ends, where the run has Strays (stoppingStrays).
+import { Context, Duration, Effect, Exit, type FileSystem, Layer, Option, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { BranchEnv, type CheckShare, checkShareEnv } from "../agent/env.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { Settings } from "../project/settings.ts"
+import { detail, Log } from "../run/log.ts"
 import { Shares, shareFileOf } from "../run/share.ts"
 import { exec } from "./exec.ts"
+import { processCount, Strays } from "./Strays.ts"
 
 export const checkKinds = ["setup", "fast", "full"] as const
 export type CheckKind = (typeof checkKinds)[number]
@@ -526,6 +531,42 @@ export const checksOf = (checks: Settings["checks"], run: RunCommand): Checks["S
   }
 }
 
+/**
+ * `run`, `check` in `cwd`, and once it has failed, timed out or been interrupted, the processes it
+ * left running in `cwd` stopped (Strays.stop), those there before it started aside, as a worker's
+ * session in its ticket's worktree is, and a detail line in `logs` naming them, where given. Without
+ * `strays`, or with no listing of what ran in `cwd` before it, `run` alone.
+ */
+export const stoppingStrays = <A, E, R>(
+  check: CheckKind,
+  cwd: string,
+  run: Effect.Effect<A, E, R>,
+  strays: Option.Option<Strays["Service"]>,
+  logs: Option.Option<Log["Service"]>,
+): Effect.Effect<A, E, R> => {
+  if (Option.isNone(strays)) return run
+  const what = check === "setup" ? "the setup" : `the ${check} check`
+  return Effect.flatMap(strays.value.running(cwd), (before) =>
+    before === undefined
+      ? run
+      : Effect.onExit(run, (exit) =>
+          Exit.isSuccess(exit)
+            ? Effect.void
+            : Effect.gen(function* () {
+                const stopped = yield* strays.value.stop(
+                  cwd,
+                  before.map((each) => each.pid),
+                )
+                if (stopped.length === 0 || Option.isNone(logs)) return
+                const commands = stopped.map((stray) => stray.command)
+                yield* logs.value.write(
+                  detail`stopped ${processCount(stopped.length)} ${what} left running in ${cwd}: ${commands}`,
+                )
+              }),
+        ),
+  )
+}
+
 export class Checks extends Context.Service<
   Checks,
   {
@@ -543,12 +584,16 @@ export class Checks extends Context.Service<
    * they start, and the file it keeps it in, as a worker's checks do: the memory budget counts a
    * share for them (src/run/share.ts), and without one a check script sizes itself by the memory
    * free now (tutti-sri2). Where the run keeps none, as in --overnight's pre-flight, they get none.
+   * Where the layer is built with Strays, what a check that didn't pass left running in its folder
+   * is stopped (stoppingStrays), and said in the Log, where there is one.
    */
   static readonly layer = Layer.effect(
     Checks,
     Effect.gen(function* () {
       const config = yield* AppConfig
       const shares = yield* Shares
+      const strays = yield* Effect.serviceOption(Strays)
+      const logs = yield* Effect.serviceOption(Log)
       const context = yield* Effect.context<
         ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem
       >()
@@ -559,8 +604,14 @@ export class Checks extends Context.Service<
               share === null ? undefined : { ...share, file: shareFileOf(config.repo) },
             )
       return checksOf(config.settings.checks, (check, command, timeLimit, options) =>
-        Effect.flatMap(shareOf(check), (share) =>
-          runCheck(check, command, timeLimit, options, share),
+        stoppingStrays(
+          check,
+          options.cwd,
+          Effect.flatMap(shareOf(check), (share) =>
+            runCheck(check, command, timeLimit, options, share),
+          ),
+          strays,
+          logs,
         ).pipe(Effect.provideContext(context)),
       )
     }),
