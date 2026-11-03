@@ -124,6 +124,7 @@ import {
   setupLine,
   skippedLine,
   startFailure,
+  transientStart,
 } from "./sessionChecks.ts"
 import { kindOf, SessionKind, serversOf } from "./sessionKind.ts"
 import { stderrQuoted, withStderr } from "./sessionProcess.ts"
@@ -758,7 +759,12 @@ export const layer = (
                 .pipe(
                   Scope.provide(of),
                   Effect.mapError(
-                    (error) => new AgentStartFailed({ ticket, reason: error.reason }),
+                    (error) =>
+                      new AgentStartFailed({
+                        ticket,
+                        reason: error.reason,
+                        ...(transientStart(error.reason) ? { transient: true } : {}),
+                      }),
                   ),
                 )
               const opened: Live = {
@@ -791,10 +797,14 @@ export const layer = (
           )
           const reader = yield* read(opened).pipe(Effect.forkIn(of))
 
+          let unanswered = false
           const answer = yield* opened.claude.initialization.pipe(
             timeoutAwake({
               duration: startLimit,
-              orElse: () => Effect.fail(`no answer within ${Duration.format(startLimit)}`),
+              orElse: () => {
+                unanswered = true
+                return Effect.fail(`no answer within ${Duration.format(startLimit)}`)
+              },
             }),
             Effect.exit,
           )
@@ -820,16 +830,17 @@ export const layer = (
           const refused = (yield* Deferred.isDone(startupFailure))
             ? yield* Deferred.await(startupFailure)
             : undefined
-          const reason = startFailure(
-            refused,
-            causeMessage(answer.cause),
-            opened.claude.stderrTail(stderrQuoted),
-          )
+          const failure = causeMessage(answer.cause)
+          const reason = startFailure(refused, failure, opened.claude.stderrTail(stderrQuoted))
           yield* gone(opened, reason)
           return yield* new AgentStartFailed({
             ticket,
             reason,
-            ...(refused === undefined ? {} : { startupFailureReason: refused }),
+            ...(refused === undefined
+              ? unanswered || transientStart(failure)
+                ? { transient: true }
+                : {}
+              : { startupFailureReason: refused }),
           })
         })
 

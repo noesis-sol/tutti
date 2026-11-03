@@ -322,7 +322,12 @@ export const conclude = (
     }
     if (settled._tag === "Setup") return yield* setupProblem(worker.worktree, settled.problem)
     if (settled._tag === "Dropped") {
-      yield* workerGone({ ticket: id, worktree: path, why: settled.why })
+      yield* workerGone({
+        ticket: id,
+        worktree: path,
+        why: settled.why,
+        transient: settled.transient,
+      })
       yield* fit(id)
       return null
     }

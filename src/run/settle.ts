@@ -227,9 +227,10 @@ export type Settled = Data.TaggedEnum<{
   }
   /**
    * Its ticket is still in progress, its worker gone, and its session couldn't be resumed (`why`):
-   * it is dropped (WORKER_GONE).
+   * it is dropped (WORKER_GONE), its session kept for a later run where the resume failed in a way
+   * that may pass (`transient`).
    */
-  Dropped: { readonly why: string }
+  Dropped: { readonly why: string; readonly transient: boolean }
   /**
    * Its worker was ended over a setup problem its first system/init showed (`problem`), before it
    * did anything: the run stops (SETUP_PROBLEM).
@@ -653,7 +654,9 @@ export const settle = (
           // Resumed once in this run, told to carry on; gone again, it pauses (§ 4.8).
           const back = yield* resumeGone(id, state.why)
           if (back._tag === "Resumed") continue
-          if (back._tag === "Failed") return Settled.Dropped({ why: back.reason })
+          if (back._tag === "Failed") {
+            return Settled.Dropped({ why: back.reason, transient: back.transient })
+          }
           return Settled.Paused({
             gone: `${how(state)}; its session was resumed once in this run already, and the next run resumes it again`,
             left: how(state),

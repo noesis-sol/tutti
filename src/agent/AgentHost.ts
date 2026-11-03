@@ -163,6 +163,11 @@ export class AgentStartFailed extends Schema.TaggedError<AgentStartFailed>()("Ag
   reason: Schema.String,
   /** The CLI's `startup_failure_reason` (`cwd_unavailable`, `org_config_refused`, …), if it gave one. */
   startupFailureReason: Schema.optionalKey(Schema.String),
+  /**
+   * Whether it may start a little later: Claude Code couldn't be spawned (EAGAIN, ENOMEM), or didn't
+   * answer its initialize within startLimit, as on a machine short of memory.
+   */
+  transient: Schema.optionalKey(Schema.Boolean),
 }) {
   override get message(): string {
     return `${this.ticket}'s worker didn't start: ${this.reason}`

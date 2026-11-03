@@ -509,7 +509,12 @@ const takeUp = (
         )
         if (Result.isFailure(resumed)) {
           carried.set(id, "workerGone")
-          yield* workerGone({ ticket: id, worktree, why: resumed.failure.reason })
+          yield* workerGone({
+            ticket: id,
+            worktree,
+            why: resumed.failure.reason,
+            transient: resumed.failure.transient === true,
+          })
           return undefined
         }
         carried.set(id, "resumed")

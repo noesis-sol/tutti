@@ -79,6 +79,16 @@ export const launchFailed = "Claude Code couldn't be launched"
 /** Whether `message`, from the SDK, is a spawn that failed. */
 export const isLaunchFailure = (message: string): boolean => message.includes("failed to launch")
 
+// What a spawn short of the machine's resources fails with, which a little later may not.
+const shortOf = /\b(EAGAIN|ENOMEM|EMFILE|ENFILE)\b/
+
+/**
+ * Whether a start whose initialize failed with `message` (no startup_failure_reason given) may go a
+ * little later: Claude Code couldn't be spawned, or the machine was short of what a spawn takes.
+ */
+export const transientStart = (message: string): boolean =>
+  isLaunchFailure(message) || shortOf.test(message)
+
 /**
  * The reason a session didn't start, from its startup_failure_reason, if it sent one, and what
  * failed its initialize.

@@ -26,17 +26,21 @@
 // Resuming fails when the ticket has no saved session, its worktree is gone, the spawn fails, the
 // transcript is gone, or Claude Code reports a startup_failure_reason (cwd_unavailable, …): the
 // ticket is then warned about (WORKER_GONE), noted, and dropped, left for review, its record in
-// state.json forgotten.
-import { Data, Effect, Result, Schema } from "effect"
+// state.json forgotten. A failure that may pass (Claude Code not spawned, or no initialize answer
+// within its limit, as on a machine short of memory) is tried once more resumeRetry later; failing
+// again, its ticket is left for review all the same, but its record is kept, suspended, for a later
+// run to resume.
+import { Data, Duration, Effect, Result, Schema } from "effect"
 import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
+import { sleepAwake } from "../services/Wake.ts"
 import { leaveForReview } from "./aside.ts"
 import type { resumedWhy } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import type { HandBacks } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
-import { type Line, Log, line, Tag, ticketLine } from "./log.ts"
+import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { factsOf, type Lifetime, type TicketPhase } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
 import { goneText } from "./told.ts"
@@ -83,11 +87,22 @@ export type ResumeWhy = (typeof resumedWhy)[number]
 export class ResumeFailed extends Schema.TaggedError<ResumeFailed>()("ResumeFailed", {
   ticket: Schema.String,
   reason: Schema.String,
+  /** Whether it failed so on its try again too, a failure that may pass (AgentStartFailed's). */
+  transient: Schema.optionalKey(Schema.Boolean),
 }) {
   override get message(): string {
     return `${this.ticket}'s session could not be resumed: ${this.reason}`
   }
 }
+
+/**
+ * How long a resume that failed in a way that may pass waits, counted awake, before it is tried
+ * once more: long enough for the memory pressure that held Claude Code's start to ease.
+ */
+export const resumeRetry: Duration.Duration = Duration.seconds(30)
+
+/** The state.json reason a ticket whose session couldn't be resumed is suspended with, kept. */
+export const resumeFailedWhy = "its session could not be resumed"
 
 /** A resume of a ticket's session: what it is for, what it is sent, and what its line says. */
 export interface Resuming {
@@ -103,7 +118,8 @@ export interface Resuming {
  * Resumes the ticket's saved session in its worktree for `why`, sending it `message`
  * (client_composed), and records it: the RESUMED line, which starts with `what`, its `resumed`
  * record, and one more resume in state.json. The message's uuid. Fails when the ticket has no saved
- * session or the session doesn't start.
+ * session or the session doesn't start; a start that failed in a way that may pass is tried once
+ * more, resumeRetry later.
  */
 export const resume = ({
   ticket,
@@ -122,13 +138,31 @@ export const resume = ({
     if (session === undefined || worktree === undefined) {
       return yield* new ResumeFailed({ ticket, reason: "it has no session to resume" })
     }
-    const uuid = yield* host
-      .resume(
-        ticket,
-        { sessionId: session, cwd: worktree },
-        { text: message, from: "clientComposed" },
-      )
-      .pipe(Effect.mapError((error) => new ResumeFailed({ ticket, reason: error.reason })))
+    const once = host.resume(
+      ticket,
+      { sessionId: session, cwd: worktree },
+      { text: message, from: "clientComposed" },
+    )
+    const uuid = yield* once.pipe(
+      Effect.catchTag("AgentStartFailed", (error) =>
+        error.transient === true
+          ? Effect.andThen(
+              logs.write(
+                detail`${ticket}'s session ${session} could not be resumed (${error.reason}); trying again in ${Duration.format(resumeRetry)}`,
+              ),
+              Effect.andThen(sleepAwake(resumeRetry), once),
+            )
+          : Effect.fail(error),
+      ),
+      Effect.mapError(
+        (error) =>
+          new ResumeFailed({
+            ticket,
+            reason: error.reason,
+            ...(error.transient === true ? { transient: true } : {}),
+          }),
+      ),
+    )
     yield* Effect.ignore(store.resumed(ticket))
     const text = ticketLine(
       Tag.resumed,
@@ -143,8 +177,8 @@ export type GoneResume = Data.TaggedEnum<{
   Resumed: { readonly message: MessageUuid }
   /** It was resumed once in this run already. */
   Spent: Record<never, never>
-  /** It couldn't be resumed: why. */
-  Failed: { readonly reason: string }
+  /** It couldn't be resumed: why, and whether in a way that may pass (ResumeFailed's). */
+  Failed: { readonly reason: string; readonly transient: boolean }
 }>
 
 export const GoneResume = Data.taggedEnum<GoneResume>()
@@ -169,7 +203,12 @@ export const resumeGone = (
         what: line`${ticket}'s worker is gone (${why}) with the ticket in progress`,
       }),
     )
-    if (Result.isFailure(resumed)) return GoneResume.Failed({ reason: resumed.failure.reason })
+    if (Result.isFailure(resumed)) {
+      return GoneResume.Failed({
+        reason: resumed.failure.reason,
+        transient: resumed.failure.transient === true,
+      })
+    }
     yield* Effect.ignore(
       beads.update(ticket, {
         appendNotes: `tutti: its worker's session ended unexpectedly (${why}) with the ticket still in_progress; the session was resumed and told to carry on.`,
@@ -181,24 +220,33 @@ export const resumeGone = (
 /**
  * Drops the ticket, in progress with its worker gone and its session not resumed (`why`): warned
  * about (WORKER_GONE), noted, and left for review, no longer followed, and forgotten in state.json.
+ * One whose resume failed in a way that may pass (`transient`) keeps its record, suspended, so that
+ * a later run resumes its session.
  */
 export const workerGone = ({
   ticket,
   worktree,
   why,
+  transient = false,
 }: {
   readonly ticket: TicketId
   readonly worktree: string
   readonly why: string
+  readonly transient?: boolean
 }): Effect.Effect<void, never, Beads | Ledger | Log | Store> =>
   Effect.gen(function* () {
     const store = yield* Store
+    const next = transient
+      ? line`its session is kept, and the next run resumes it; or finish it by hand`
+      : line`reopen it to run it again (bd update ${ticket} --status open), or finish it by hand`
     yield* leaveForReview(ticket, {
       why: Tag.workerGone,
       detail: "in progress, its worker gone",
       text: ticketLine(
         Tag.workerGone,
-      )`${ticket} is in progress, but its worker is gone and its session could not be resumed (${why}); worktree ${worktree} left for review, no longer followed; reopen it to run it again (bd update ${ticket} --status open), or finish it by hand`,
+      )`${ticket} is in progress, but its worker is gone and its session could not be resumed (${why}); worktree ${worktree} left for review, no longer followed; ${next}`,
     })
-    yield* Effect.ignore(store.remove(ticket))
+    yield* Effect.ignore(
+      transient ? store.suspend(ticket, resumeFailedWhy, "Review") : store.remove(ticket),
+    )
   })
