@@ -18,7 +18,9 @@
 // A worker kept from settling by nothing but background tasks it left running, its turns over, has
 // them stopped after tasksLimit, or at once when its ticket is closed (stopLeftTasks), so that a dev
 // server or a watcher it started doesn't hold its slot all night. A background subagent, working,
-// isn't stopped with them: with nothing but agents' work left, the limit is agentTasksLimit.
+// isn't stopped with them: with nothing but agents' work left, the limit is agentTasksLimit. A
+// hand-back's wait for its worker to settle runs the same watcher (handback.ts), stopping the tasks
+// at once as the worker's turns end but leaving agents working.
 //
 // A worker that stops at the account's usage limit with its ticket deferred, as orchestra 0.8.1 has
 // it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
@@ -538,9 +540,27 @@ const keptOf = (state: WorkerState): Kept | undefined => {
  * own, and the worker settles after it. Tasks it starts again are stopped again, a limit after.
  */
 const stopLeftTasks = (id: TicketId) =>
+  stopLeft(
+    id,
+    Effect.gen(function* () {
+      const issue = yield* Effect.result((yield* Beads).show(id))
+      return Result.isSuccess(issue) && issue.success.status === "closed"
+    }),
+  )
+
+/**
+ * stopLeftTasks while a hand-back waits for the ticket's worker to settle (handback.ts' give). The
+ * ticket is closed throughout, so its being closed says nothing of the hand-back: the tasks are
+ * stopped at once as the worker's turns end, it having answered, but agents working beside them go
+ * on, and agents alone are stopped after agentTasksLimit, so that a subagent at the hand-back's work
+ * isn't cut short.
+ */
+export const stopHandBackTasks = (id: TicketId) => stopLeft<never>(id, null)
+
+/** stopLeftTasks, `closed` saying whether the ticket is closed; null in a hand-back. */
+const stopLeft = <R>(id: TicketId, closed: Effect.Effect<boolean, never, R> | null) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
-    const beads = yield* Beads
     const logs = yield* Log
     const kepts = host.state(id).pipe(Stream.map(keptOf))
     for (;;) {
@@ -557,19 +577,21 @@ const stopLeftTasks = (id: TicketId) =>
         Stream.runHead,
         Effect.as(true),
       )
-      const closed = yield* beads.show(id).pipe(
-        Effect.map((issue) => issue.status === "closed"),
-        Effect.orElseSucceed(() => false),
-      )
+      const isClosed = closed !== null && (yield* closed)
+      const atOnce = isClosed || (closed === null && !agents)
       const limit = agents ? agentTasksLimit : tasksLimit
-      const left = closed ? 0 : Duration.toMillis(limit) - (yield* awakeSince(since))
+      const left = atOnce ? 0 : Duration.toMillis(limit) - (yield* awakeSince(since))
       if (left > 0 && (yield* Effect.raceFirst(moved, Effect.as(sleepAwake(left), false)))) {
         continue
       }
-      const why = closed
+      const why = isClosed
         ? `${id} is closed and its worker's turns are over`
-        : `${id}'s worker's turns have been over for ${formatDuration(limit)}`
-      const stopped = yield* Effect.result(host.stopTasks(id, { leaveAgents: !closed && !agents }))
+        : atOnce
+          ? `${id}'s worker's turns in its hand-back are over`
+          : `${id}'s worker's turns have been over for ${formatDuration(limit)}`
+      const stopped = yield* Effect.result(
+        host.stopTasks(id, { leaveAgents: !isClosed && !agents }),
+      )
       yield* logs.write(
         Result.isSuccess(stopped)
           ? detail`${why}, but background tasks it left running kept it from settling; stopped them: ${stopped.success}`

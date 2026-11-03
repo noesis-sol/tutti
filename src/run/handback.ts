@@ -90,7 +90,7 @@ import type { Stuck } from "./overnightAside.ts"
 import { Move } from "./phase.ts"
 import { info, say } from "./say.ts"
 import { type Resuming, resume } from "./sessions.ts"
-import { namesTicket, untilSettled } from "./settle.ts"
+import { namesTicket, stopHandBackTasks, untilSettled } from "./settle.ts"
 import { type Fix, type SetUp, type SetUps, setUp, setupToResolve } from "./setup.ts"
 import { resolvePrompt } from "./told.ts"
 
@@ -906,11 +906,17 @@ const giveTo = (
       // the first of a resumed session, is over.
       taken = Effect.void
     }
+    // Background tasks the worker leaves running as its turns end are stopped, as in its settle.
+    const settled = Effect.scoped(
+      Effect.gen(function* () {
+        yield* taken
+        yield* Effect.forkScoped(stopHandBackTasks(id), { startImmediately: true })
+        yield* untilSettled(id)
+        return "settled" as const
+      }),
+    )
     const ended = yield* Effect.raceFirst(
-      Effect.raceFirst(
-        Effect.as(Effect.andThen(taken, untilSettled(id)), "settled" as const),
-        clock(handBack, limit, options),
-      ),
+      Effect.raceFirst(settled, clock(handBack, limit, options)),
       Effect.map(Deferred.await(stuck), (stuck) => ({ stuck })),
     )
     if (ended === "settled" || ended === "taken") return undefined

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The title line leaves a column empty at the pane's right edge after its banners, as the load line under it keeps one at its left, so `This week ────────  5%` and `PRESSURE` no longer touch the edge (§ 7.2; `src/ui/TitleLine.tsx`' `titleForms`; tutti-3j79). Every narrower form the line falls back to keeps it, so a form that fitted with no column spare now gives way one column sooner. `test/title-line-edge.test.ts` covers it.
+- A worker that leaves a dev server or a watcher running as its hand-back's turns end no longer holds the hand-back to `resolve_timeout` (§ 4.7; `src/run/settle.ts`' `stopHandBackTasks`, `src/run/handback.ts`' `give`; tutti-k5pd). The stop of leftover background tasks ran only in a worker's first settle, so a resolution or a fix it had finished waited out the hand-back's limit. Now its tasks are stopped at once as its turns in the hand-back end, logging which (`t-1's worker's turns in its hand-back are over, but background tasks it left running kept it from settling; stopped them: npm run dev`); agents working beside them go on, and agents alone are stopped only after 2 hours. `test/handback-left-tasks.test.ts` covers it.
 
 ## [0.6.5] - 2026-11-03
 
