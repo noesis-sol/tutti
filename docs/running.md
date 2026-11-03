@@ -831,7 +831,9 @@ and says so: `share: cores 5 → 3, memory 6.0 → 3.5 GB: workers allowed 2 →
 the event stream. Each worker's environment has `TUTTI_MEMORY_MB` (and `ORCHESTRA_MEMORY_MB`), the
 memory share in MB as its session started, beside `TUTTI_CORES`, and `TUTTI_SHARE_FILE`, the file's
 path, which a check script reads as it starts, so that a check started under pressure starts
-smaller ([Setup](setup.md#sizing-a-check-to-its-share)).
+smaller ([Setup](setup.md#sizing-a-check-to-its-share)). The merge check, and the early check that
+takes its slot, get the same variables as each starts, the share and the file the run keeps then:
+the budget counts a share for them too.
 
 ### Footprints
 

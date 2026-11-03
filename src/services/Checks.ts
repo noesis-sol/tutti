@@ -11,9 +11,10 @@
 // page. Interrupting a check kills its process group, and no result comes of it (§ 3.4).
 import { Context, Duration, Effect, type FileSystem, Layer, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
-import { BranchEnv } from "../agent/env.ts"
+import { BranchEnv, type CheckShare, checkShareEnv } from "../agent/env.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { Settings } from "../project/settings.ts"
+import { Shares, shareFileOf } from "../run/share.ts"
 import { exec } from "./exec.ts"
 
 export const checkKinds = ["setup", "fast", "full"] as const
@@ -430,22 +431,24 @@ export const resultOf = (
 
 /**
  * Runs `command` with `sh -c` in `options.cwd` within `timeLimit`, in the environment of commands
- * run on a branch's behalf (BranchEnv), the whole output going to `options.outputFile` (or
- * `options.outputFd`, when given).
+ * run on a branch's behalf (BranchEnv), with `share`'s variables where given (checkShareEnv), the
+ * whole output going to `options.outputFile` (or `options.outputFd`, when given).
  */
 export const runCheck = Effect.fn("runCheck")(function* (
   check: CheckKind,
   command: string,
   timeLimit: Duration.Input,
   options: RunOptions,
+  share?: CheckShare,
 ) {
   const output = new CheckOutput()
+  const branch = yield* BranchEnv
   const ran = yield* exec({
     command: "sh",
     args: ["-c", command],
     timeLimit,
     cwd: options.cwd,
-    baseEnv: yield* BranchEnv,
+    baseEnv: share === undefined ? branch : checkShareEnv(branch, share),
     outputFile: options.outputFile,
     ...(options.outputFd === undefined ? {} : { outputFd: options.outputFd }),
     onOutput: (chunk, from) => output.write(chunk, from),
@@ -520,16 +523,31 @@ export class Checks extends Context.Service<
     full(options: RunOptions): Effect.Effect<CheckResult, CheckError>
   }
 >()("tutti/services/Checks") {
-  /** The checks AppConfig's settings name, run in process groups of their own. */
+  /**
+   * The checks AppConfig's settings name, run in process groups of their own. The merge check, and
+   * the early check that takes its slot, get the share of the machine the run keeps (Shares) as
+   * they start, and the file it keeps it in, as a worker's checks do: the memory budget counts a
+   * share for them (src/run/share.ts), and without one a check script sizes itself by the memory
+   * free now (tutti-sri2). Where the run keeps none, as in --overnight's pre-flight, they get none.
+   */
   static readonly layer = Layer.effect(
     Checks,
     Effect.gen(function* () {
       const config = yield* AppConfig
+      const shares = yield* Shares
       const context = yield* Effect.context<
         ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem
       >()
+      const shareOf = (check: CheckKind): Effect.Effect<CheckShare | undefined> =>
+        check !== "fast"
+          ? Effect.succeed(undefined)
+          : Effect.map(shares.now, (share) =>
+              share === null ? undefined : { ...share, file: shareFileOf(config.repo) },
+            )
       return checksOf(config.settings.checks, (check, command, timeLimit, options) =>
-        runCheck(check, command, timeLimit, options).pipe(Effect.provideContext(context)),
+        Effect.flatMap(shareOf(check), (share) =>
+          runCheck(check, command, timeLimit, options, share),
+        ).pipe(Effect.provideContext(context)),
       )
     }),
   )

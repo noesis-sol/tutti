@@ -270,24 +270,39 @@ export const WorkerEnv = Context.Reference<Readonly<Record<string, string>>>(
   { defaultValue: () => workerEnv({ subscription: false, billing: "subscription" }) },
 )
 
+/** A check's share of the machine: its cores, and its memory and the file it is kept in. */
+export interface CheckShare {
+  readonly cores: number
+  readonly memory?: number
+  readonly file?: string
+}
+
+/**
+ * `env` with a check's `share` of the machine: its `cores` (coreVariables, after `env`'s GOFLAGS),
+ * and its `memory` and the `file` its current share is kept in, where it has them
+ * (memoryVariables). A worker's checks get it through their session's environment (sharedEnv), the
+ * merge check and the early check through their own (src/services/Checks.ts), so that check
+ * scripts size themselves by the share the memory budget counts for them (tutti-sri2).
+ */
+export const checkShareEnv = (
+  env: Readonly<Record<string, string>>,
+  share: CheckShare,
+): Record<string, string> => ({
+  ...env,
+  ...coreVariables(share.cores, env.GOFLAGS),
+  ...(share.memory === undefined ? {} : memoryVariables(share.memory, share.file)),
+})
+
 /**
  * `env`, a WorkerEnv, with a worker's share of the machine: Bash's timeouts for its merge check's
- * `checkTimeout`, its `cores` (coreVariables, after `env`'s GOFLAGS), and its `memory` and the
- * `file` its current share is kept in, where it has them (memoryVariables).
+ * `checkTimeout`, and its checks' share (checkShareEnv).
  */
 export const sharedEnv = (
   env: Readonly<Record<string, string>>,
-  share: {
-    readonly checkTimeout: Duration.Duration
-    readonly cores: number
-    readonly memory?: number
-    readonly file?: string
-  },
+  share: CheckShare & { readonly checkTimeout: Duration.Duration },
 ): Record<string, string> => ({
-  ...env,
+  ...checkShareEnv(env, share),
   ...bashTimeouts(share.checkTimeout),
-  ...coreVariables(share.cores, env.GOFLAGS),
-  ...(share.memory === undefined ? {} : memoryVariables(share.memory, share.file)),
 })
 
 /** The account probe's environment: a worker's, always without the key, to find the login (§ 4.13). */

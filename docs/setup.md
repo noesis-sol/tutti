@@ -378,7 +378,8 @@ machine ([The checks' share](running.md#the-checks-share)): `TUTTI_CORES`, its c
 `TUTTI_MEMORY_MB`, the memory its checks may use, in MB, both as they stood as its session started
 (`ORCHESTRA_CORES` and `ORCHESTRA_MEMORY_MB` too, for scripts written for orchestra), and
 `TUTTI_SHARE_FILE`, the file the run keeps the share in as it changes, a JSON line
-(`{"cores":3,"memory_mb":3584,"at":"…"}`). A check script that starts several processes, a test
+(`{"cores":3,"memory_mb":3584,"at":"…"}`). The merge check and the early check get the same
+variables, the share as each starts. A check script that starts several processes, a test
 runner's pool, Electron, a build's jobs, reads the file as it starts, or the variables where it
 can't, and starts no more processes than the cores, nor than fit in the memory at what one process
 takes:
