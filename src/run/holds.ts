@@ -524,9 +524,9 @@ export interface RunHolds {
   readonly machine: boolean
   /**
    * The run holds a free slot while its workers are at the workers memory pressure allows
-   * (pressureCap.ts); none when left out.
+   * (pressureCap.ts); none when left out or null.
    */
-  readonly pressure?: boolean
+  readonly pressure?: PressureHold | null
   /** Claude's API unavailable holds the run (apiOutage.ts); not when left out. */
   readonly api?: boolean
   /** The login check holds the run (loginCheck.ts); not when left out. */
@@ -540,6 +540,15 @@ export interface RunHolds {
    * holds nothing, but shows as a banner beside them; none once it is over.
    */
   readonly filing?: string | null
+}
+
+/** The pressure cap's hold. */
+export interface PressureHold {
+  /**
+   * When the cap is due to rise a step if the calm lasts, in epoch milliseconds; null while the
+   * memory is pressed, or nothing says it is calm.
+   */
+  readonly rises: number | null
 }
 
 export const noHolds: RunHolds = {
@@ -582,9 +591,12 @@ export const liftBlocked = (holds: RunHolds, ticket: TicketId): RunHolds =>
 export const withMachineHold = (holds: RunHolds, full: boolean): RunHolds =>
   holds.machine === full ? holds : { ...holds, machine: full }
 
-/** `holds` with the pressure cap's hold on (`full`) or off. */
-export const withPressureHold = (holds: RunHolds, full: boolean): RunHolds =>
-  (holds.pressure ?? false) === full ? holds : { ...holds, pressure: full }
+/** `holds` with the pressure cap's hold `hold`, or off (null). */
+export const withPressureHold = (holds: RunHolds, hold: PressureHold | null): RunHolds => {
+  const was = holds.pressure ?? null
+  const same = was === null || hold === null ? was === hold : was.rises === hold.rises
+  return same ? holds : { ...holds, pressure: hold }
+}
 
 /** `holds` with the API-outage hold on (`held`) or off. */
 export const withApiHold = (holds: RunHolds, held: boolean): RunHolds =>
@@ -619,6 +631,15 @@ export interface ShownHolds {
   readonly notice: string | null
 }
 
+/**
+ * The pressure cap's banner: `PRESSURE` while the memory is pressed, and once the pressure has
+ * passed, rising at `rises` if the calm lasts.
+ */
+const pressureBanner = (hold: PressureHold): RunHold =>
+  hold.rises === null
+    ? { word: pressureWord, resetsAt: null }
+    : { word: pressureWord, resetsAt: hold.rises, rising: true }
+
 export const shownHolds = (holds: RunHolds): ShownHolds => ({
   stopping: holds.stops.length > 0,
   holds: [
@@ -627,7 +648,7 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
     ...(holds.api === true ? [{ word: Tag.apiUnavailable, resetsAt: null }] : []),
     ...(holds.login === true ? [{ word: Tag.loginCheck, resetsAt: null }] : []),
     ...(holds.machine ? [{ word: machineWord, resetsAt: null }] : []),
-    ...(holds.pressure === true ? [{ word: pressureWord, resetsAt: null }] : []),
+    ...(holds.pressure == null ? [] : [pressureBanner(holds.pressure)]),
     ...(holds.filing == null ? [] : [{ word: holds.filing, resetsAt: null }]),
   ],
   usage: holds.usage.usage,

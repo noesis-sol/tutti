@@ -57,6 +57,11 @@ export interface RunHold {
   readonly resetsAt: number | null
   /** The run waits for it with nothing else running: its banner counts down to `resetsAt`. */
   readonly waiting?: true
+  /**
+   * What held the run has passed, and the hold waits out its time, the pressure cap's calm: its
+   * banner is drawn in notice and counts down to `resetsAt`, when it steps up (`· rising in 3m`).
+   */
+  readonly rising?: true
 }
 
 /** The account's usage (§ 4.12): how much of its limit is used, 0 to 1, and when it resets. */

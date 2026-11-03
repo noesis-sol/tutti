@@ -800,7 +800,8 @@ keep it high.
 
 It stops nothing: a worker at work goes on with its ticket, and the run starts or resumes no ticket
 until fewer workers run than it allows, with `PRESSURE` on the dashboard's title line while one
-waits for it. The merge queue isn't held, but while the memory is pressed no early check starts, nor
+waits for it: red while the memory is pressed, and amber once the pressure has passed, saying when
+the next step up is due if the calm lasts, `PRESSURE · rising in 3m`. The merge queue isn't held, but while the memory is pressed no early check starts, nor
 any check ahead of its turn on the merge train. Each step is a log line and a `pressure_cap` record:
 `HOLD: PRESSURE: workers allowed 4 → 3: memory pressure warn for 60 s`, then
 `workers allowed 3 → 4: memory pressure normal for 5 min`. The load line says the workers allowed

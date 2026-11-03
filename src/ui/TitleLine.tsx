@@ -32,7 +32,8 @@ type Form = "full" | "reset" | "short" | "word"
 
 /**
  * A banner's words at `now`: `usage 85% of the five-hour limit · resets 14:05 · overage`,
- * `BLOCKED`, `USAGE_LIMIT · resets 14:05`, and `· in 1h12m` after a hold the run waits for; a
+ * `BLOCKED`, `USAGE_LIMIT · resets 14:05`, and `· in 1h12m` after a hold the run waits for;
+ * `PRESSURE · rising in 3m` for a hold waiting out its time, without its time once it is due; a
  * reset on another day than `now`'s with its weekday and date, `resets Fri Oct 23 14:05`. In a
  * narrow pane the usage is `usage 85% · resets 14:05` or `usage 85%`, and a hold its word.
  */
@@ -51,6 +52,11 @@ const bannerText = (
     return `${percent}${of}${resets}${overage}`
   }
   if (form === "word") return banner.word
+  if (banner.rising === true) {
+    return banner.resetsAt !== null && banner.resetsAt > now
+      ? `${banner.word} · rising in ${countdown(banner.resetsAt, now)}`
+      : banner.word
+  }
   const left =
     banner.waiting === true && banner.resetsAt !== null && banner.resetsAt > now
       ? ` · in ${countdown(banner.resetsAt, now)}`
@@ -119,7 +125,8 @@ const windowSegments = (
 
 /**
  * A banner in its style: the usage `notice`, bold once the limit is reached, as the usage limit's
- * hold is; the account's windows `quiet`, a grey a step above faint; any other hold, such as
+ * hold is; the account's windows `quiet`, a grey a step above faint; a hold waiting out its time,
+ * what held the run passed (`PRESSURE · rising in 3m`), `notice`; any other hold, such as
  * `BLOCKED`, `needsYou` bold.
  */
 const bannerSegments = (banner: Banner, theme: Theme, now: number, form: Form): Segments => {
@@ -132,7 +139,9 @@ const bannerSegments = (banner: Banner, theme: Theme, now: number, form: Form): 
         : styles.deferred
       : banner.word === "USAGE_LIMIT"
         ? styles.testing
-        : styles.stop
+        : banner.rising === true
+          ? styles.deferred
+          : styles.stop
   return [seg(bannerText(banner, now, form), style)]
 }
 

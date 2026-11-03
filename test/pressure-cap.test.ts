@@ -222,10 +222,10 @@ describe("a reading's strain", () => {
 
 describe("what the run says of the cap", () => {
   test("the title line's hold, and the report's time below concurrent and lowest cap", () => {
-    expect(shownHolds(withPressureHold(noHolds, true)).holds).toEqual([
+    expect(shownHolds(withPressureHold(noHolds, { rises: null })).holds).toEqual([
       { word: "PRESSURE", resetsAt: null },
     ])
-    expect(shownHolds(withPressureHold(noHolds, false)).holds).toEqual([])
+    expect(shownHolds(withPressureHold(noHolds, null)).holds).toEqual([])
     expect(capEvidence({ below: 0, lowest: 4, concurrent: 4 })).toBeNull()
     expect(capEvidence({ below: 754_000, lowest: 2, concurrent: 4 })).toBe(
       "The workers allowed fell below concurrent (4) under memory pressure for 13 min in all; the lowest was 2.",

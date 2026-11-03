@@ -3,14 +3,22 @@
 // 3 → 4: …) with its pressure_cap record, and the readings go into events.jsonl as load records, a
 // minute apart and at each change of the memory pressure's level or of swapping. The ticket about to
 // start or resume waits while the run's workers are at the cap (HOLD: PRESSURE on the title line):
-// nothing running is interrupted, suspended or killed, and the merge queue is not capped. While the
+// nothing running is interrupted, suspended or killed, and the merge queue is not capped. Once the
+// pressure has passed, the hold says when the cap is due to rise if the calm lasts (PRESSURE ·
+// rising in 3m, in notice), kept at each reading; a reading pressed again drops it. While the
 // memory is pressed the optional checks (the early check, the train's checks ahead) start none.
 // pressure_cap false in .tutti/settings.json turns the cap off: the readings are still recorded.
 import { Clock, Effect, Ref, type SubscriptionRef } from "effect"
 import { EventStream } from "./eventstream.ts"
-import { withPressureHold } from "./holds.ts"
+import { type PressureHold, withPressureHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
-import { loadRecordEvery, type Pressure, type Reading, swappingPerMinute } from "./load.ts"
+import {
+  loadRecordEvery,
+  type Pressure,
+  pressureRaiseAfter,
+  type Reading,
+  swappingPerMinute,
+} from "./load.ts"
 import type { Log } from "./log.ts"
 import type { Room } from "./machineGate.ts"
 import {
@@ -61,6 +69,11 @@ interface Recorded {
   readonly swapping: boolean
 }
 
+/** The hold at `cap`: rising pressureRaiseAfter into its calm, if it is calm. */
+const holdAt = (cap: Cap): PressureHold => ({
+  rises: cap.calmSince === null ? null : cap.calmSince + pressureRaiseAfter,
+})
+
 /**
  * The run's pressure cap out of `concurrent`, off unless `on`; its hold on `holds`, the workers
  * allowed on `status`. A step up wakes the run (`wakeUp`), to fill the slot it gives.
@@ -82,11 +95,13 @@ export const make = (options: {
     // The time below concurrent: what ended, and since when it has been below now.
     const below = yield* Ref.make({ done: 0, since: null as number | null, lowest: concurrent })
 
+    // Whether the hold began or lifted.
     const holdPressure = (full: boolean) =>
-      Effect.map(
-        holds.changeHolds((now) => withPressureHold(now, full)),
-        (was) => (was.pressure ?? false) !== full,
-      )
+      Effect.gen(function* () {
+        const hold = full ? holdAt(yield* Ref.get(cap)) : null
+        const was = yield* holds.changeHolds((now) => withPressureHold(now, hold))
+        return (was.pressure != null) !== full
+      })
 
     // Says a step, shows the workers allowed, keeps the time below concurrent, and wakes the run
     // for a step up.
@@ -139,6 +154,10 @@ export const make = (options: {
           const next = stepCap(yield* Ref.get(cap), strain, reading.at, concurrent)
           yield* Ref.set(cap, next.cap)
           if (next.change !== null) yield* changed(next.change, reading.at)
+          // The hold, while on, says when the cap rises next, or that the memory is pressed now.
+          yield* holds.changeHolds((now) =>
+            now.pressure == null ? now : withPressureHold(now, holdAt(next.cap)),
+          )
         }
         yield* record(reading, (yield* Ref.get(cap)).cap)
       })
