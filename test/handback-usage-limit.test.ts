@@ -8,7 +8,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Fiber } from "effect"
+import { Duration, Effect, Fiber } from "effect"
 import { type HandBack, handBackOver, handBackTaken } from "../src/run/handback.ts"
 import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
@@ -195,6 +195,7 @@ interface Plan {
   readonly checks?: { readonly fast: ReadonlyArray<CheckFailed | ReturnType<typeof passed>> }
   /** Runs beside the run, before it is joined. */
   readonly during?: Effect.Effect<void, unknown, Env>
+  readonly usageLimitWait?: Duration.Duration
 }
 
 /** A whole run of a and b on main, two at a time, each worktree made in git first. */
@@ -209,6 +210,7 @@ const runs = (plan: Plan): Promise<Ran<Outcome> & Places> => {
           concurrent: 2,
           checks: { ...defaults.checks, fast: { ...defaults.checks.fast, command: check } },
         },
+        ...(plan.usageLimitWait === undefined ? {} : { usageLimitWait: plan.usageLimitWait }),
       },
       backlog: backlog().ticket("a").ticket("b").seeds,
       git: { dir: places.repo },
@@ -381,8 +383,9 @@ describe("the usage limit during a hand-back", () => {
     ])
   })
 
-  test("with the reset unknown, a run with only the hand-back left ends USAGE_LIMIT, exit 8", async () => {
+  test("with the reset unknown, a run with only the hand-back left ends USAGE_LIMIT, exit 8, the next try past --usage-limit-wait", async () => {
     const ran = await runs({
+      usageLimitWait: Duration.minutes(10),
       scripts: (world, places) => conflicting(world, places, limitedTurn([], null)),
     })
     expectClean(ran, 8)
@@ -398,7 +401,7 @@ describe("the usage limit during a hand-back", () => {
       resolvingLine,
       "USAGE_LIMIT: the five-hour limit is reached; no new tickets until it resets",
       "  b's worker is at the usage limit on its hand-back: it carries on once the limit lifts, the wait not counting toward the 20m",
-      "USAGE_LIMIT: the five-hour limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets",
+      `USAGE_LIMIT: the five-hour limit is reached and when it resets is unknown; it has held the run since ${resetLabel(0, 0)}, and its next try, at ${resetLabel(15 * 60_000, 0)}, is later than --usage-limit-wait (10m) allows; 1 worker waits for it; run tutti again once it resets`,
     ])
     expect(interrupted(ran)).toBe(false)
   })

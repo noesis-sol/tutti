@@ -262,6 +262,7 @@ interface Plan {
   readonly before?: Effect.Effect<void, unknown, Env>
   /** Runs beside the run, before it is joined. */
   readonly during?: (places: Places) => Effect.Effect<void, unknown, Env>
+  readonly usageLimitWait?: Duration.Duration
 }
 
 /** A whole run on main, each ticket's worktree made in git first, and where it ran. */
@@ -274,7 +275,11 @@ const runs = (plan: Plan): Promise<Ran<Outcome> & Places> => {
   }
   return scenario(
     {
-      config: { repo: places.repo, settings: { ...base, ...plan.settings?.(base) } },
+      config: {
+        repo: places.repo,
+        settings: { ...base, ...plan.settings?.(base) },
+        ...(plan.usageLimitWait === undefined ? {} : { usageLimitWait: plan.usageLimitWait }),
+      },
       backlog: plan.tickets.reduce((b, id) => b.ticket(id), backlog()).seeds,
       git: { dir: places.repo },
       worktrees: { root: places.root },
@@ -798,10 +803,11 @@ describe("the usage-limit hold", () => {
     expect(pathOf(ran, "a")).toEqual(["Queued", "Working", "ToMerge", "Merging", "Done"])
   })
 
-  test("a recorded rejection with no reset known ends the run USAGE_LIMIT, exit 8", async () => {
+  test("a recorded rejection with no reset known ends the run USAGE_LIMIT, exit 8, its next try past --usage-limit-wait", async () => {
     const ran = await runs({
       tickets: ["a", "b"],
       settings: () => ({ concurrent: 1 }),
+      usageLimitWait: Duration.minutes(10),
       scripts: () => ({ a: [fixture("result-429.jsonl")] }),
     })
     expectClean(ran, 8)
@@ -809,7 +815,7 @@ describe("the usage-limit hold", () => {
     expectLog(ran, [
       "[1] a dispatching: a",
       "USAGE_LIMIT: the account's usage limit is reached; no new tickets until it resets",
-      "USAGE_LIMIT: the account's usage limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets",
+      `USAGE_LIMIT: the account's usage limit is reached and when it resets is unknown; it has held the run since ${resetLabel(0, 0)}, and its next try, at ${resetLabel(15 * 60_000, 0)}, is later than --usage-limit-wait (10m) allows; 1 worker waits for it; run tutti again once it resets`,
     ])
     expectEvents(ran, ["usage_limit", "hold", "suspended", "stop", "end"])
     expect(ran.events.find((r) => r.kind === "stop")).toMatchObject({ detail: "USAGE_LIMIT" })

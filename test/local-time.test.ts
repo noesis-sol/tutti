@@ -191,7 +191,7 @@ describe("where the reset is shown", () => {
       )
       expect(
         String(
-          limitStop({ limit: "seven_day", resetsAt: at, now, wait: Duration.hours(6), waiting: 1 })
+          limitStop({ limit: "seven_day", reset: { at }, now, wait: Duration.hours(6), waiting: 1 })
             .text,
         ),
       ).toBe(

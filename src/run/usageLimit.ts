@@ -28,13 +28,14 @@
 //   gave, or tries again retryEvery later (`USAGE_LIMIT: a probe is refused for the five-hour limit
 //   still; it resets at 14:05, in 42m`); unanswered, it lifts on the clock as before.
 // - With nothing else running, the run waits for the reset, the title line counting down and the
-//   log saying the countdown every countdownEvery; for a reset that has passed, for the next try.
-//   It ends USAGE_LIMIT (exit 8) only when no reset was ever given or the reset is later than
-//   --usage-limit-wait. A worker at the limit on a hand-back counts as
-//   waiting once its hand-back waits for the limit (handBacks): kept for the reset, or on its turn
-//   that ended on it. A hand-back kept for the reset that the run's end overtakes is never sent: the
-//   end takes it back (unsent), aborts a conflict hand-back's rebase, for the next run to merge its
-//   ticket again, and names it in the closing line (neverHanded).
+//   log saying the countdown every countdownEvery; for a reset unknown (none given, or one passed),
+//   for the next try. It ends USAGE_LIMIT (exit 8) only when the reset is later than
+//   --usage-limit-wait, or, unknown, its next try is later than --usage-limit-wait after the hold
+//   began: a probe refused at every try holds the run no longer than that. A worker at the limit
+//   on a hand-back counts as waiting once its hand-back waits for the limit (handBacks): kept for
+//   the reset, or on its turn that ended on it. A hand-back kept for the reset that the run's end
+//   overtakes is never sent: the end takes it back (unsent), aborts a conflict hand-back's rebase,
+//   for the next run to merge its ticket again, and names it in the closing line (neverHanded).
 //
 // Overage in use is shown beside the usage line, and every change of a limit's status is a
 // usage_limit record.
@@ -144,18 +145,23 @@ export const holdNotice = (
     ...(waiting === 0 ? [] : [waitFor(waiting)]),
   ].join(" · ")
 
-/** The stop the run ends with when it can't wait for the reset (exit 8). */
+/**
+ * The stop the run ends with when it can't wait for the reset (exit 8): its reset later than
+ * --usage-limit-wait, or, unknown, its next try later than --usage-limit-wait after the hold began.
+ */
 export const limitStop = (s: {
   readonly limit: string | null
-  readonly resetsAt: number | null
+  /** The reset, known; or, unknown, when the hold began and when it is tried next. */
+  readonly reset: { readonly at: number } | { readonly since: number; readonly nextTry: number }
   readonly now: number
   readonly wait: Duration.Duration
   readonly waiting: number
 }): StopReason => {
+  const wait = formatDuration(s.wait)
   const reached =
-    s.resetsAt === null
-      ? `the ${limitName(s.limit)} limit is reached and when it resets is unknown`
-      : `the ${limitName(s.limit)} limit resets at ${resetLabel(s.resetsAt, s.now)}, in ${countdown(s.resetsAt, s.now)}, later than --usage-limit-wait (${formatDuration(s.wait)})`
+    "at" in s.reset
+      ? `the ${limitName(s.limit)} limit resets at ${resetLabel(s.reset.at, s.now)}, in ${countdown(s.reset.at, s.now)}, later than --usage-limit-wait (${wait})`
+      : `the ${limitName(s.limit)} limit is reached and when it resets is unknown; it has held the run since ${resetLabel(s.reset.since, s.now)}, and its next try, at ${resetLabel(s.reset.nextTry, s.now)}, is later than --usage-limit-wait (${wait}) allows`
   const who = s.waiting === 0 ? "" : `; ${waitFor(s.waiting)}`
   return stopFor(holdWord, `${reached}${who}; run tutti again once it resets`, {
     held: true,
@@ -178,8 +184,8 @@ export interface UsageLimitHold {
   /**
    * On each look of the run, `alone` saying whether nothing runs but workers waiting for the limit:
    * with the hold on and nothing else running, the run waits for the reset, the countdown shown
-   * and said. The stop to end the run with when the reset is unknown or later than
-   * --usage-limit-wait; null otherwise.
+   * and said. The stop to end the run with when the reset is later than --usage-limit-wait, or,
+   * unknown, its next try later than --usage-limit-wait after the hold began; null otherwise.
    */
   look(alone: boolean): Effect.Effect<StopReason | null>
   /**
@@ -680,15 +686,23 @@ export const make = (options: {
         const { limit } = s.hold
         const known = shownReset(s.hold.reset)
         const passed = s.hold.reset._tag === "Unknown" ? s.hold.reset.passed : null
-        // When it lifts, as the countdown says it: its reset, or the next try of one that passed.
-        const at = known ?? (passed === null ? null : liftTime(s.hold))
-        if (at === null || at - now > Duration.toMillis(wait)) {
-          return limitStop({ limit, resetsAt: known, now, wait, waiting: s.limited.size })
+        // When it lifts, as the countdown says it: its reset, or the next try of one unknown.
+        const at = known ?? liftTime(s.hold)
+        // A known reset is waited for when it comes within the wait; an unknown one is tried again,
+        // behind the probe, until the next try would be past the wait since the hold began, so that
+        // a probe refused at every try doesn't hold the run past it.
+        const { since } = s.hold
+        if (at - (known === null ? since : now) > Duration.toMillis(wait)) {
+          const reset = known === null ? { since, nextTry: at } : { at: known }
+          return limitStop({ limit, reset, now, wait, waiting: s.limited.size })
         }
+        const tries = `tutti tries again at ${resetLabel(at, now)}, in ${countdown(at, now)}`
         const until =
-          known === null
-            ? `the ${limitName(limit)} limit was to reset at ${resetLabel(passed ?? at, now)}; tutti tries again at ${resetLabel(at, now)}, in ${countdown(at, now)}`
-            : `the ${limitName(limit)} limit resets at ${resetLabel(at, now)}, in ${countdown(at, now)}`
+          known !== null
+            ? `the ${limitName(limit)} limit resets at ${resetLabel(at, now)}, in ${countdown(at, now)}`
+            : passed === null
+              ? `when the ${limitName(limit)} limit resets is unknown; ${tries}`
+              : `the ${limitName(limit)} limit was to reset at ${resetLabel(passed, now)}; ${tries}`
         if (s.waiting === null) {
           yield* update((each) => ({ ...each, waiting: now, said: now }))
           yield* logs.write(

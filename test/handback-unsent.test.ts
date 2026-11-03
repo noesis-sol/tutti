@@ -1,6 +1,6 @@
 // A hand-back kept for the usage limit's reset (usageLimit.ts) that the run's end overtakes: the run
-// ends USAGE_LIMIT, the reset unknown or later than --usage-limit-wait, or is quit, before it is
-// sent. Its rebase
+// ends USAGE_LIMIT, the reset or its next try later than --usage-limit-wait, or is quit, before it
+// is sent. Its rebase
 // is aborted, so that the next run merges its ticket again and hands its conflicts back, and the
 // closing line says it was never sent. Also give's path where the worker leaves the limit without its
 // hand-back as its session ends, and the hold's keep with the hold off.
@@ -9,10 +9,11 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Fiber, Option, Queue } from "effect"
+import { Duration, Effect, Fiber, Option, Queue } from "effect"
 import { reportOf, UsageLimits } from "../src/agent/UsageLimits.ts"
 import { UiCommand } from "../src/run/commands.ts"
 import { Ledger } from "../src/run/ledger.ts"
+import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { ScreenInputs } from "../src/run/screen.ts"
@@ -174,6 +175,7 @@ interface Plan {
   readonly during?: (screen: () => ScreenInputs | undefined) => Effect.Effect<void, unknown, Env>
   /** Whether the run has a dashboard, for `during` to quit it from. */
   readonly dashboard?: boolean
+  readonly usageLimitWait?: Duration.Duration
 }
 
 /** A whole run of `plan.tickets` on main, all at once, each worktree made in git first. */
@@ -190,6 +192,7 @@ const runs = async (plan: Plan): Promise<Ran<Outcome> & Places & Left> => {
           concurrent: plan.tickets.length,
           checks: { ...defaults.checks, fast: { ...defaults.checks.fast, command: check } },
         },
+        ...(plan.usageLimitWait === undefined ? {} : { usageLimitWait: plan.usageLimitWait }),
       },
       backlog: seeds,
       git: { dir: places.repo },
@@ -288,6 +291,8 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
     })
     const ran = await runs({
       tickets: ["a", "b", "c"],
+      // The reset unknown, its next try 15m after the hold began is later than the wait allows.
+      usageLimitWait: Duration.minutes(10),
       // a's check passes; the one on b rebased onto a fails; c's passes.
       checks: { fast: [passed("fast"), failing] },
       scripts: (world, places) => ({
@@ -326,7 +331,7 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
       "  b's worker is at the usage limit: it is handed its conflicts to resolve once the limit lifts, the wait not counting toward the 20m",
     ])
     expect(closing(ran)).toBe(
-      `USAGE_LIMIT: the five-hour limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets; ${neverHanded({ id: "b" as TicketId, mode: "resolving" })}`,
+      `USAGE_LIMIT: the five-hour limit is reached and when it resets is unknown; it has held the run since ${resetLabel(0, 0)}, and its next try, at ${resetLabel(15 * 60_000, 0)}, is later than --usage-limit-wait (10m) allows; 1 worker waits for it; run tutti again once it resets; ${neverHanded({ id: "b" as TicketId, mode: "resolving" })}`,
     )
     // Only the fix was sent: the conflicts never were, and the rebase is undone for the next run.
     expect(composed(ran)).toHaveLength(1)

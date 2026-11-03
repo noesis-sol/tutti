@@ -377,16 +377,18 @@ describe("the usage-limit hold", () => {
     )
   })
 
-  test("it ends USAGE_LIMIT (exit 8) when when the limit resets is unknown", async () => {
+  test("with the reset unknown, it ends USAGE_LIMIT (exit 8) when the next try is past --usage-limit-wait", async () => {
+    // The next try is 15m after the hold began: later than a 10m wait allows.
     const ran = await runs({
       tickets: ["t-1"],
+      usageLimitWait: Duration.minutes(10),
       scripts: () => ({ "t-1": [fixture("result-429.jsonl")] }),
     })
     expectExitCode(ran, 8)
     expectPhases(ran, { "t-1": "Stopped" })
     expectLog(ran, [
       "USAGE_LIMIT: the account's usage limit is reached; no new tickets until it resets",
-      "USAGE_LIMIT: the account's usage limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets",
+      `USAGE_LIMIT: the account's usage limit is reached and when it resets is unknown; it has held the run since ${resetsIn(0)}, and its next try, at ${resetsIn(900)}, is later than --usage-limit-wait (10m) allows; 1 worker waits for it; run tutti again once it resets`,
     ])
     const rejected = ran.events.find((r) => r.kind === "usage_limit")
     expect(rejected).toMatchObject({ status: "rejected", limit: "unknown" })
@@ -454,17 +456,17 @@ describe("what the hold says", () => {
       "usage limit (five-hour) · 1 worker waits for it",
     )
     expect(holdNotice(null, null, 0, 0)).toBe("usage limit (account's usage)")
-    expect(
-      String(
-        limitStop({ limit: null, resetsAt: null, now: 0, wait: Duration.hours(6), waiting: 0 })
-          .text,
-      ),
-    ).toBe(
-      "USAGE_LIMIT: the account's usage limit is reached and when it resets is unknown; run tutti again once it resets",
+    const unknown = limitStop({
+      limit: null,
+      reset: { since: 0, nextTry: 6.25 * 3_600_000 },
+      now: 6 * 3_600_000,
+      wait: Duration.hours(6),
+      waiting: 0,
+    })
+    expect(String(unknown.text)).toBe(
+      `USAGE_LIMIT: the account's usage limit is reached and when it resets is unknown; it has held the run since ${resetLabel(0, 6 * 3_600_000)}, and its next try, at ${resetLabel(6.25 * 3_600_000, 6 * 3_600_000)}, is later than --usage-limit-wait (6h) allows; run tutti again once it resets`,
     )
-    expect(
-      limitStop({ limit: null, resetsAt: null, now: 0, wait: Duration.hours(6), waiting: 0 }).code,
-    ).toBe(8)
+    expect(unknown.code).toBe(8)
     expect(countdown(3_600_000, 0)).toBe("1h")
     expect(countdown(61_000, 0)).toBe("2m")
     expect(countdown(0, 0)).toBe("1m")
