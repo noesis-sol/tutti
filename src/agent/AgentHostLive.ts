@@ -919,18 +919,16 @@ export const layer = (
           yield* Effect.forEach(
             tasks,
             (task) =>
-              session.claude
-                .stopTask(task)
-                .pipe(
-                  Effect.mapError((error) =>
-                    liveOf(sessions.get(ticket)) === session
-                      ? new AgentProtocol({ ticket, detail: `stop_task failed: ${error.reason}` })
-                      : new AgentGone({
-                          ticket,
-                          why: "its session ended as its tasks were stopped",
-                        }),
-                  ),
+              session.claude.stopTask(task).pipe(
+                Effect.mapError((error) =>
+                  liveOf(sessions.get(ticket)) === session
+                    ? new AgentProtocol({ ticket, detail: `stop_task failed: ${error.reason}` })
+                    : new AgentGone({
+                        ticket,
+                        why: "its session ended as its tasks were stopped",
+                      }),
                 ),
+              ),
             { concurrency: "unbounded", discard: true },
           )
           return tasks.map((task) => descriptions.get(task) ?? task)
