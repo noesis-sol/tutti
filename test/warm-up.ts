@@ -3,7 +3,13 @@
 // a load of ~30 (tutti-cje), and not those of the spawns after it; exec then fails that command
 // with CommandNotRun (src/services/exec.ts's LostExitGrace). A spawn in the preload itself doesn't
 // take that loss, one in a beforeAll does: this one takes it, if it comes.
-import { beforeAll } from "bun:test"
+//
+// It also collects the garbage after each file. bun test --parallel runs many files in each worker
+// process, each in a fresh global, and leaves the garbage of the files before to JavaScriptCore's
+// collector: over a whole-suite run at three processes the workers peaked at 1.3-1.7 GB, though no
+// file alone took over 620 MB; collected after each file, they peaked at 0.66-1.05 GB, and the
+// suite took 151-160 s, not 172-181 s (tutti-3cri, 2026-11-03).
+import { afterAll, beforeAll } from "bun:test"
 import { spawn } from "node:child_process"
 
 /** What waitForExit reads of a child: its 'exit' event, and the code or signal it exited with. */
@@ -46,4 +52,8 @@ beforeAll(async () => {
   })
   child.on("error", () => {})
   await waitForExit(child)
+})
+
+afterAll(() => {
+  Bun.gc(true)
 })

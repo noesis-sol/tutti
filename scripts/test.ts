@@ -43,7 +43,9 @@
 // and keeps its peak in .cache/test-memory.json (recordRun), whose high mark the next runs take. A
 // process's memory is that of the file it runs, not the files before: over a whole-suite run at
 // three processes each went up and down, peaks of 0.6-1.15 GB, one from 1149 MB to 55 MB within
-// 10 s (2026-11-03), so nothing caps the files a process runs, which bun 1.4.3 can't anyway.
+// 10 s (2026-11-03), so nothing caps the files a process runs, which bun 1.4.3 can't anyway. What
+// piled up was the files before's garbage, no file alone taking over 620 MB, which the preload,
+// test/warm-up.ts, now collects after each file (tutti-3cri).
 //
 // The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or

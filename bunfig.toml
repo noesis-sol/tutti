@@ -6,6 +6,7 @@
 [define]
 "process.env.NODE_ENV" = "\"production\""
 
-# One spawn before the first test, which Bun can lose (test/warm-up.ts).
+# One spawn before the first test, which Bun can lose, and a garbage collection after each file, as
+# a test process runs many (test/warm-up.ts).
 [test]
 preload = ["./test/warm-up.ts"]
