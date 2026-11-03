@@ -288,12 +288,14 @@ describe("processPeak", () => {
 const script = resolve(import.meta.dir, "../scripts/test.sh")
 
 // Runs scripts/test.sh on a fixture that passes, with `env` over the tests' own, and returns its
-// exit code and its output's first line.
+// exit code and its output's first line. The tests' own leave out TUTTI_TEST_PARALLEL, which CI
+// sets and which would take the cores share's place in the line.
 const firstLine = (env: Record<string, string>) => {
   const seen = join(mkdtempSync(join(tmpdir(), "tutti-test-memory-")), "seen.json")
+  const { TUTTI_TEST_PARALLEL: _, ...own } = testEnv
   const proc = Bun.spawnSync([script, "./test/fixtures/airtight/airtight.fixture.ts"], {
     cwd: resolve(import.meta.dir, ".."),
-    env: { ...testEnv, TUTTI_FIXTURE_AIRTIGHT: seen, ...env },
+    env: { ...own, TUTTI_FIXTURE_AIRTIGHT: seen, ...env },
     stdout: "pipe",
     stderr: "pipe",
   })
