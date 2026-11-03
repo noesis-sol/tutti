@@ -158,7 +158,7 @@ describe("frames", () => {
     expect(text).toMatchInlineSnapshot(`
       "
 
-       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket t…  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
       ╭───────────────┬───────────────┬─────────────┬────────────────────────────────╮
@@ -190,7 +190,7 @@ describe("frames", () => {
     expect(text).toMatchInlineSnapshot(`
       "
 
-       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                      usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                     usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
       ╭───────────────────────┬─────────────────────────────┬───────────────────────┬────────────────────────────────────────╮
@@ -228,7 +228,7 @@ describe("frames", () => {
     expect(text).toMatchInlineSnapshot(`
       "
 
-       Tutti  0.1.0   batch/2026-10-20 …  usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20…  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
        ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
@@ -300,8 +300,9 @@ describe("the title line", () => {
 
   test("the usage banner on the right, notice, and bold once the limit is reached", async () => {
     const below = await title({ usage: { utilization: 0.85, resetsAt: resets } })
-    expect(below.line).toEndWith(`18m40s${" ".repeat(35)}usage 85% · resets 14:05`)
-    expect(below.line).toHaveLength(100)
+    // A column empty at the pane's right edge, after the banner (tutti-3j79).
+    expect(below.line).toEndWith(`18m40s${" ".repeat(34)}usage 85% · resets 14:05`)
+    expect(below.line).toHaveLength(99)
     looksLike(below.frame, "usage 85%", "deferred")
     const reached = await title({ usage: { utilization: 1, resetsAt: null } })
     expect(reached.line).toEndWith("usage 100%")
@@ -323,13 +324,13 @@ describe("the title line", () => {
   test("a narrow pane cuts the branch and the time, then drops them, keeping the banners", async () => {
     const holds = [{ word: "BLOCKED", resetsAt: null }]
     expect((await title({ holds }, 60)).line).toBe(
-      ` Tutti  0.1.0   batch/2026-10-20 · 18m40s${" ".repeat(12)}BLOCKED`,
+      ` Tutti  0.1.0   batch/2026-10-20 · 18m40s${" ".repeat(11)}BLOCKED`,
     )
     const cut = await title(
       { holds, stopping: true, solo: { ticket: "tut-s1", running: true } },
       60,
     )
-    expect(cut.line).toBe(" Tutti  0.1.0  · stopping  · solo tut-s1 running     BLOCKED")
+    expect(cut.line).toBe(" Tutti  0.1.0  · stopping  · solo tut-s1 running    BLOCKED")
   })
 
   test("the run's time is drawn anew every 3 seconds", async () => {

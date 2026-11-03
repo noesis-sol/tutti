@@ -237,14 +237,17 @@ function* titleForms(
     ]
       .filter((segments) => segments.length > 0)
       .flatMap((segments, i) => (i === 0 ? segments : [seg("  "), ...segments]))
-  /** `head` and `side`, the banners, pushed to the right edge, or null if they don't fit. */
+  // With banners on the right the line ends a column short of the pane's edge, as the load line
+  // under it starts a column in from its left (tutti-3j79).
+  const inner = width - 1
+  /** `head` and `side`, the banners, pushed to the right, or null if they don't fit. */
   const laid = (head: Segments, side: Segments): Segments | null => {
     if (side.length === 0) return widthOf(head) <= width ? head : null
-    const gap = width - widthOf(head) - widthOf(side)
+    const gap = inner - widthOf(head) - widthOf(side)
     return gap >= 2 ? [...head, seg(" ".repeat(gap)), ...side] : null
   }
   const full = right("full", "full")
-  const room = width - widthOf(left) - 3 - (full.length === 0 ? 0 : widthOf(full) + 2)
+  const room = (full.length === 0 ? width : inner - widthOf(full) - 2) - widthOf(left) - 3
   if (badges !== null) {
     yield room >= widthOf([seg(where)])
       ? laid([...left, seg("   "), seg(where, styles.dim)], full)
@@ -262,13 +265,13 @@ function* titleForms(
   }
   for (const holdForm of ["full", "word"] as const) {
     const side = right(null, holdForm)
-    const states = width - widthOf(side) - 2
+    const states = inner - widthOf(side) - 2
     if (states >= widthOf(left.slice(0, 1))) {
       yield laid(cut(left, states), side) ?? []
       return
     }
   }
-  yield cut([...left.slice(0, 1), seg("  "), ...right(null, "word")], width)
+  yield cut([...left.slice(0, 1), seg("  "), ...right(null, "word")], inner)
 }
 
 /** The title line, a blank line above it. */

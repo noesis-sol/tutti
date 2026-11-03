@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The title line leaves a column empty at the pane's right edge after its banners, as the load line under it keeps one at its left, so `This week ────────  5%` and `PRESSURE` no longer touch the edge (§ 7.2; `src/ui/TitleLine.tsx`' `titleForms`; tutti-3j79). Every narrower form the line falls back to keeps it, so a form that fitted with no column spare now gives way one column sooner. `test/title-line-edge.test.ts` covers it.
+
 ## [0.6.5] - 2026-11-03
 
 - A card resolving its conflicts or fixing its check shows `⟳`, as its ticket's row does, not the spinner (§ 5.1, § 7.2, § 7.11; `src/run/runView.ts`' `motionOf`, `src/ui/marks.ts`' `Motion`, `src/ui/Card.tsx`' `cardMark`; tutti-n6xl): Current read `⣽ t-1  resolving` beside the row's `⟳ resolving`. The compact line and the worker view's line 1 draw it too; the card stays framed `live` while its worker works.

@@ -1232,7 +1232,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket t…  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
       ╭───────────────┬───────────────┬─────────────┬────────────────────────────────╮
@@ -1275,7 +1275,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                      usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                     usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
       ╭───────────────────────┬─────────────────────────────┬───────────────────────┬────────────────────────────────────────╮
@@ -1328,7 +1328,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       Tutti  0.1.0   batch/2026-10-20 …  usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20…  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
        ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
@@ -1478,7 +1478,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       Tutti  0.1.0   batch/2026-10-20 · 18m40s               usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s              usage 85% · resets 14:05
 
        ▶ 0 of 3 workers
       ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
