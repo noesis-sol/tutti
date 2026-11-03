@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.6.7] - 2026-11-03
 
 - A run on battery winds down at 10% rather than taking on new tickets until the Mac sleeps under it (§ 5 item 16; `src/run/battery.ts`' `windDownAt`, `watchBattery`'s `windDown`, `src/run/run.ts`; tutti-epza.21): discharging to 10%, it starts no new tickets, those under way finish and merge, and the run ends `DRAINED`; the BATTERY line says `the run winds down`, the DRAIN line `asked by the battery at 9%`, and the notification `Battery 9% left · the run winds down; plug in to finish what runs`. Plugging in doesn't take the wind-down back.
 - An unattended run no longer waits on an MCP server's form or a misshapen question nobody can answer (§ 4.5; `src/agent/Attention.ts`' `tuttiAnswer`, `formDecline`, `reshapeDenial`; tutti-epza.22): a form elicitation took only deny through `tutti answer`, and an `AskUserQuestion` call whose input didn't decode came as a permission request `--auto-answer` never answers, so both waited for `BLOCKED`. Now, under `--auto-answer` or `--overnight`, tutti declines the form and denies the question, telling the worker to ask again in AskUserQuestion's shape, once each has waited as long as a question does, in nobody's name, each said in the log. `tutti answer` still takes only deny for a form, its fields being the screen's to read. `test/unattended-requests.test.ts` covers it.
