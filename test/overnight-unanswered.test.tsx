@@ -88,6 +88,8 @@ const quietNight: Night = {
   processes: Effect.succeed([]),
   disk: () => Effect.succeed({ free: 100 * gb, where: "/work" }),
   otherRuns: Effect.succeed([]),
+  // No user settings file: its ask rules are none.
+  claudeSettings: "/nonexistent/.claude/settings.json",
   probeAccount: (config) =>
     Effect.succeed({
       ...TestAccount.accountProbe(config),

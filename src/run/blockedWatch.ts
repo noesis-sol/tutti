@@ -4,7 +4,9 @@
 // the hold is lifted. Each request is looked at again as it reaches its time, and every request
 // open at each change, which wakes the run too: a worker that asks, or is answered, may end it or
 // keep it open (D19). In an overnight run, a ticket whose fiber follows its worker, or whose
-// hand-back waits on it, is given BLOCKED instead, and set aside (overnightAside.ts).
+// hand-back waits on it, is given BLOCKED instead, and set aside (overnightAside.ts); another
+// ticket's requests (its worker past its work, its session still open, or one you steered) are
+// denied in nobody's name, nobody being there to answer, and the run goes on (tutti-epza.10).
 import { Duration, Effect, Ref, Semaphore, Stream } from "effect"
 import { Attention, type AttentionRequest } from "../agent/Attention.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
@@ -12,7 +14,7 @@ import type { EventStream } from "./eventstream.ts"
 import { blockedAt, blockedLifted, blockedStop, blockedTickets, liftBlocked } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
 import type { Log } from "./log.ts"
-import { blockedStuck, type OvernightAside } from "./overnightAside.ts"
+import { blockedDenied, blockedStuck, type OvernightAside } from "./overnightAside.ts"
 import { sayer } from "./say.ts"
 import type { Wake } from "./wakes.ts"
 
@@ -36,7 +38,7 @@ export const make = (options: {
 }): Effect.Effect<BlockedWatch, never, Attention | Log | EventStream> =>
   Effect.gen(function* () {
     const attention = yield* Attention
-    const { say } = yield* sayer
+    const { say, warn } = yield* sayer
     const { holds, wakeUp, watch } = options
     const oneLook = yield* Semaphore.make(1)
     // How long, in ms, the request has yet to wait, awake, before it holds the run.
@@ -65,6 +67,11 @@ export const make = (options: {
           const aside = options.overnight
           if (aside !== undefined && oldest !== undefined) {
             if (yield* aside.offer(trip.ticket, blockedStuck(oldest))) continue
+            // No fiber follows it (a worker past its work, or steered): its requests are denied,
+            // rather than stop the night for them (tutti-epza.10).
+            yield* warn(blockedDenied(trip.ticket, oldest), trip.ticket)
+            yield* aside.deny(trip.ticket)
+            continue
           }
           yield* holds.stopped(blockedStop(trip.ticket, trip.what))
         }

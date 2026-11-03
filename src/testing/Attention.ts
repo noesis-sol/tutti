@@ -6,6 +6,7 @@ import {
   type Answer,
   Attention,
   type AutoAnswerOptions,
+  type DenyOptions,
   make,
   type Policy,
 } from "../agent/Attention.ts"
@@ -36,11 +37,13 @@ export const denyAll: Policy = (request): Answer =>
 
 /**
  * The test layer, answering by `policy`; by default every request waits for the test. With
- * `autoAnswer`, a question the policy leaves open is answered as --auto-answer does.
+ * `autoAnswer`, a question the policy leaves open is answered as --auto-answer does, and with
+ * `denyPermissions`, a permission request denied as an overnight run does.
  */
 export const layer = (
   policy: Policy = waitForTest,
   autoAnswer?: AutoAnswerOptions,
+  denyPermissions?: DenyOptions,
 ): Layer.Layer<Attention, never, Log | EventStream> =>
   Layer.effect(
     Attention,
@@ -49,6 +52,7 @@ export const layer = (
       return yield* make({
         policy,
         ...(autoAnswer === undefined ? {} : { autoAnswer }),
+        ...(denyPermissions === undefined ? {} : { denyPermissions }),
         ids: Effect.map(
           Ref.updateAndGet(drawn, (n) => n + 1),
           (n) => `r${n}`,

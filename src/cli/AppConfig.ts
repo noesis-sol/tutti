@@ -54,6 +54,12 @@ export const defaultUsageLimitWait: Duration.Duration = Duration.hours(6)
 /** The free disk, in GB, --overnight's pre-flight wants by default where the worktrees go. */
 export const defaultOvernightFreeDisk = 20
 
+/**
+ * How long a worker's permission request waits, with the machine awake, before an overnight run
+ * denies it in nobody's name, its turn going on with the refusal (Attention's denyPermissions).
+ */
+export const overnightDenyAfter: Duration.Duration = Duration.seconds(30)
+
 /** The worker prompt, relative to the project's top (§ 9.1). */
 export const workerPromptFile = join(".tutti", "worker-prompt.md")
 
@@ -157,6 +163,11 @@ export interface AppConfigValue {
    * Chosen for each run (src/run/autoAnswer.ts).
    */
   readonly autoAnswer: Duration.Duration | null
+  /**
+   * How long a worker's permission request waits before tutti denies it, nobody being there to
+   * answer: overnightDenyAfter in an overnight run, null, never, in another (tutti-epza.10).
+   */
+  readonly denyPermissions: Duration.Duration | null
   /**
    * An overnight run (--overnight): the current tickets, as with --tickets, once the pre-flight
    * (src/run/overnight.ts) has cleared it; it keeps the machine awake whatever keep_awake says, and
@@ -482,6 +493,7 @@ export const resolveAll = (
     retiredNotes,
     // --overnight turns it on; its own flag or variable, given, says otherwise.
     autoAnswer: pick("autoAnswer", overnight ? Duration.zero : null),
+    denyPermissions: overnight ? overnightDenyAfter : null,
     overnight,
     forceOvernight,
     overnightFreeDisk: pick("overnightFreeDisk", defaultOvernightFreeDisk),

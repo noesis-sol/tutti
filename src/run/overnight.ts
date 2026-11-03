@@ -21,7 +21,12 @@ import { Clock, Duration, Effect, type FileSystem, Option, Result } from "effect
 import type { ChildProcessSpawner } from "effect/process"
 import type { AccountProbe } from "../agent/Account.ts"
 import { UsageProbe } from "../agent/UsageProbe.ts"
-import { type AppConfigValue, defaultUsageLimitWait, workerPromptFile } from "../cli/AppConfig.ts"
+import {
+  type AppConfigValue,
+  defaultUsageLimitWait,
+  overnightDenyAfter,
+  workerPromptFile,
+} from "../cli/AppConfig.ts"
 import { templateNotes } from "../init/templates.ts"
 import { updateTemplates } from "../init/update.ts"
 import { O } from "../native/libc.ts"
@@ -36,6 +41,7 @@ import { marks } from "../ui/marks.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
 import { answerLimit, notAskedText, unansweredText, within } from "./answerLimit.ts"
+import { askRulesFound, workerSettingsFiles } from "./askRules.ts"
 import type { BatteryReading } from "./battery.ts"
 import { howFailed, saidOf } from "./check.ts"
 import { type KeepAwakePlan, lidNote } from "./keepAwake.ts"
@@ -103,6 +109,8 @@ export interface Night {
    * of the account and the permission mode it puts in effect; why, where it can't say.
    */
   readonly probeAccount: (config: AppConfigValue) => Effect.Effect<AccountProbe, string, Machine>
+  /** The user's Claude settings file, whose ask rules the workers load (askRules.ts). */
+  readonly claudeSettings: string
 }
 
 /** What the live readings run on. */
@@ -800,6 +808,10 @@ export const checks = (started: Started, night: Night, say: Say, puts: boolean) 
       limitCheck(config),
       concurrencyCheck(config, night.cores),
       permissionCheck(account, night.probeAccount),
+      yield* askRulesFound(
+        workerSettingsFiles(night.claudeSettings, config.repo),
+        config.denyPermissions ?? overnightDenyAfter,
+      ),
       loginCheck(account),
       usageNow,
       usageWaitCheck(config),

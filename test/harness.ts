@@ -250,10 +250,11 @@ export const environment = (
   return host.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
-        // --auto-answer's, as main.ts gives the live layer it.
+        // --auto-answer's and --overnight's denial, as main.ts gives the live layer them.
         attentionLayer(
           setup.policy ?? allowAll,
           config.autoAnswer === null ? undefined : { after: config.autoAnswer },
+          config.denyPermissions === null ? undefined : { after: config.denyPermissions },
         ),
         transcriptsLayer(),
         usageLayer,

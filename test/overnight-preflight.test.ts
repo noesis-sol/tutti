@@ -88,6 +88,8 @@ const quietNight: Night = {
   processes: Effect.succeed([]),
   disk: () => Effect.succeed({ free: 100 * gb, where: "/work" }),
   otherRuns: Effect.succeed([]),
+  // No user settings file: its ask rules are none.
+  claudeSettings: "/nonexistent/.claude/settings.json",
   // Claude Code puts the mode asked for in effect.
   probeAccount: (config) =>
     Effect.succeed({
@@ -174,11 +176,12 @@ describe("an overnight pre-flight", () => {
       config: goodConfig(repo),
     })
     expect(cleared._tag).toBe("Cleared")
-    expect(printed).toContain("◆ Overnight pre-flight: 16 passed")
+    expect(printed).toContain("◆ Overnight pre-flight: 17 passed")
     expect(checklist(printed)).toEqual([
       "  ✓ no ticket limit",
       "  ✓ 2 tickets at a time",
       "  ✓ workers start in auto permission mode, which doesn't stop to ask",
+      "  ✓ no permissions.ask rules in the settings workers load",
       "  ✓ claude is logged in (maintainer@example.com, Claude Max)",
       "  ✓ the account isn't at its usage limit now",
       "  ✓ the run waits up to 6h for the account's usage limit to reset",
@@ -202,7 +205,7 @@ describe("an overnight pre-flight", () => {
     expect(printed).toContain("◆ Ran the merge check on main")
     // The probe asks at the workers' model: Claude Code's own, as the settings give none.
     expect(models).toEqual([null])
-    expect(logged).toContain("overnight pre-flight: 16 passed")
+    expect(logged).toContain("overnight pre-flight: 17 passed")
     expect(logged).toContain("overnight pre-flight: passed: no ticket limit")
   })
 
@@ -214,7 +217,7 @@ describe("an overnight pre-flight", () => {
     })
     expect(cleared).toEqual({ _tag: "Refused", failed: 2 })
     expect(asked).toEqual([])
-    expect(printed).toContain("◆ Overnight pre-flight: 2 failed, 14 passed")
+    expect(printed).toContain("◆ Overnight pre-flight: 2 failed, 15 passed")
     expect(checklist(printed)).toContain(
       "  ✗ --limit 10 is set: the run would stop after 10 tickets",
     )
@@ -382,7 +385,7 @@ describe("an overnight pre-flight", () => {
     expect(lines).toContain(
       "  ! no ticket is ready, and 1 more waits only on questions, to be ready once it is answered: unless they are answered first (bd human respond), the run would end at once",
     )
-    expect(printed).toContain("◆ Overnight pre-flight: 2 warnings, 14 passed")
+    expect(printed).toContain("◆ Overnight pre-flight: 2 warnings, 15 passed")
   })
 
   test("with none ready but some waiting on questions put to you first, passes", async () => {

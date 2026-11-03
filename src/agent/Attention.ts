@@ -19,6 +19,12 @@
 // being on its way: only should that not have come blockedAfter past its time (`blocksAfter`,
 // tutti-epza.8). A permission request is never answered so, the safety check's holds included.
 //
+// An overnight run (Options.denyPermissions) denies a permission request itself, in nobody's name,
+// once it has waited 30 s with the machine awake (AppConfig's overnightDenyAfter): its worker's turn goes on
+// with the refusal, rather than hold its slot for blockedAfter and be set aside (tutti-epza.10).
+// Such a request holds the run with BLOCKED only should that denial not have come blockedAfter
+// past its time, as an auto-answered question does.
+//
 // Every request and answer is a PERMISSION or QUESTION log line and an `attention` or
 // `attention_answered` event, and is tallied per ticket. So is each call Claude Code denied without
 // asking (`permission_denied`): a DENIED line and a `denied` event, tallied by what denied it.
@@ -62,6 +68,10 @@ export const askUserQuestion = "AskUserQuestion"
 
 /** How long a request may wait before the run holds with BLOCKED (§ 4.3). */
 export const blockedAfter = Duration.minutes(4)
+
+/** Why an overnight run denies a permission request, after tuttiDenialMessage in its message. */
+export const overnightDenial =
+  "the run is an overnight one: go on without it, or, if the ticket can't, say on it what it needs for the morning"
 
 /** A question of AskUserQuestion's, its text sanitised for showing. */
 export interface Question {
@@ -479,7 +489,8 @@ export class Attention extends Context.Service<
     readonly open: Stream.Stream<ReadonlyArray<AttentionRequest>>
     /**
      * How long `request` may wait, with the machine awake, before it holds the run with BLOCKED:
-     * blockedAfter, or for a question --auto-answer answers after a time, blockedAfter past it.
+     * blockedAfter, or for a question --auto-answer answers after a time, or a permission request
+     * an overnight run denies after one, blockedAfter past it.
      */
     blocksAfter(request: AttentionRequest): Duration.Duration
     /** The ticket's worker's open requests, oldest first: now, then on each change. */
@@ -506,9 +517,12 @@ export class Attention extends Context.Service<
     refuse(ticket: TicketId): Effect.Effect<void>
   }
 >()("tutti/agent/Attention") {
-  /** The live service: requests wait for a person, or with `autoAnswer`, questions for tutti. */
+  /**
+   * The live service: requests wait for a person, or with `autoAnswer`, questions for tutti, and
+   * with `denyPermissions`, permission requests for its denial.
+   */
   static readonly layer = (
-    options: Pick<Options, "autoAnswer"> = {},
+    options: Pick<Options, "autoAnswer" | "denyPermissions"> = {},
   ): Layer.Layer<Attention, never, Log | EventStream> =>
     Layer.effect(
       Attention,
@@ -527,11 +541,21 @@ export interface AutoAnswerOptions {
   readonly answers?: (ticket: TicketId) => boolean
 }
 
+/** --overnight, for permission requests: how long one waits before tutti denies it. */
+export interface DenyOptions {
+  /** Counted with the machine awake (Wake.ts). */
+  readonly after: Duration.Duration
+  /** Whether the ticket's requests are denied so; every ticket's when absent. */
+  readonly denies?: (ticket: TicketId) => boolean
+}
+
 /** What `make` takes; the test layer sets the policy and the IDs. */
 export interface Options {
   readonly policy?: Policy
   /** --auto-answer: questions answered with their recommended options; none when absent. */
   readonly autoAnswer?: AutoAnswerOptions
+  /** --overnight: permission requests denied by tutti once they have waited; none when absent. */
+  readonly denyPermissions?: DenyOptions
   /** Draws a request's ID; by default 8 random hex digits. */
   readonly ids?: Effect.Effect<string>
 }
@@ -607,16 +631,28 @@ export const make = (
         (auto.answers === undefined || auto.answers(request.ticket))
       )
     }
+    // Whether an overnight run denies the request, a permission request of a ticket it denies.
+    const tuttiDenies = (request: AttentionRequest) => {
+      const deny = options.denyPermissions
+      return (
+        deny !== undefined &&
+        request.kind._tag === "Permission" &&
+        (deny.denies === undefined || deny.denies(request.ticket))
+      )
+    }
     // Whether it answers it at once: the request's record then doesn't notify (notices.ts).
     const answersAtOnce = (request: AttentionRequest) =>
       autoAnswers(request) && Duration.isZero(options.autoAnswer?.after ?? Duration.zero)
     // A question it answers after a time holds the run only should its answer not have come by
     // blockedAfter past that time: holding it before, an overnight run would set the ticket aside
     // and a plain one end with it, the answer never given (tutti-epza.8).
+    // So does a permission request an overnight run denies after a time (tutti-epza.10).
     const blocksAfter = (request: AttentionRequest) =>
       autoAnswers(request)
         ? Duration.sum(blockedAfter, options.autoAnswer?.after ?? Duration.zero)
-        : blockedAfter
+        : tuttiDenies(request)
+          ? Duration.sum(blockedAfter, options.denyPermissions?.after ?? Duration.zero)
+          : blockedAfter
 
     const asked = (request: AttentionRequest) =>
       Effect.gen(function* () {
@@ -835,28 +871,34 @@ export const make = (
           Deferred.await(done),
           Effect.andThen(aborted(signal), Effect.andThen(cancel(request.id), Deferred.await(done))),
         )
-        // --auto-answer: a question's recommended options once it has waited; an answer from a
-        // person first wins, and this one is refused NotOpen.
-        const auto = options.autoAnswer
+        // --auto-answer: a question's recommended options once it has waited; --overnight: a
+        // permission request's denial, in nobody's name. An answer from a person first wins, and
+        // tutti's is refused NotOpen.
         const kind = request.kind
+        const tuttis: { after: Duration.Duration; answer: Answer; via: Via } | undefined =
+          options.autoAnswer !== undefined && autoAnswers(request) && kind._tag === "Question"
+            ? {
+                after: options.autoAnswer.after,
+                answer: { _tag: "Choose", answers: recommendedChoices(kind.questions) },
+                via: "auto_answer",
+              }
+            : options.denyPermissions !== undefined && tuttiDenies(request)
+              ? {
+                  after: options.denyPermissions.after,
+                  answer: { _tag: "Deny", reason: overnightDenial, byTutti: true },
+                  via: "overnight",
+                }
+              : undefined
         const answering =
-          auto !== undefined && autoAnswers(request) && kind._tag === "Question"
-            ? Effect.raceFirst(
+          tuttis === undefined
+            ? outcome
+            : Effect.raceFirst(
                 outcome,
-                sleepAwake(auto.after).pipe(
-                  Effect.andThen(
-                    Effect.ignore(
-                      answer(
-                        request.id,
-                        { _tag: "Choose", answers: recommendedChoices(kind.questions) },
-                        "auto_answer",
-                      ),
-                    ),
-                  ),
+                sleepAwake(tuttis.after).pipe(
+                  Effect.andThen(Effect.ignore(answer(request.id, tuttis.answer, tuttis.via))),
                   Effect.andThen(Deferred.await(done)),
                 ),
               )
-            : outcome
         return yield* answering.pipe(Effect.onInterrupt(() => cancel(request.id)))
       })
 

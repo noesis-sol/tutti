@@ -74,6 +74,14 @@ export const blockedStuck = (request: AttentionRequest): Stuck => ({
   what: describe(request),
 })
 
+/**
+ * The line of a ticket no fiber follows whose request BLOCKED would stop an overnight run for,
+ * `request` its worker's oldest open one: its requests are denied instead (blockedWatch.ts), each
+ * one's own line saying what it asked.
+ */
+export const blockedDenied = (id: TicketId, request: AttentionRequest) =>
+  detail`${id}: its worker was blocked on ${requestWords(request)} for over ${formatDuration(blockedAfter)} -> denied, the run being an overnight one, with nobody there to answer`
+
 /** TICKET_LIMIT's Stuck, its worker still going after `limit` (`2h`). */
 export const limitStuck = (limit: string): Stuck => ({
   why: "TICKET_LIMIT",

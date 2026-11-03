@@ -388,6 +388,11 @@ What warns:
   merge checks would time out while it sleeps: set the machine not to sleep. `--overnight` keeps
   it awake whatever `keep_awake` says, so this is the only thing the check asks.
 - **On battery**, with its level and what a closed lid does.
+- **`permissions.ask` rules** in the Claude settings the workers load (`~/.claude/settings.json`,
+  or `$CLAUDE_CONFIG_DIR/settings.json`, and the project's `.claude/settings.json` and
+  `.claude/settings.local.json`), naming each file and its first three rules: such a rule makes a
+  worker ask even in auto mode, and overnight each such request is denied after 30 seconds (below).
+  Move the rules a ticket needs to `permissions.allow` for the night.
 - **A worker prompt or verifier older than tutti's templates**. Fix: bring them up to date as
   `tutti init --update` does and commit that on the base; the run's workers then follow the prompt
   committed (`git show` reads the change).
@@ -437,7 +442,14 @@ There is no overnight badge: the title line's ` keep awake ` and ` auto-answer `
 turned on. Unlike orchestra's, the pre-flight doesn't fetch the base from its upstream: tutti's runs
 never fetch.
 
-An overnight run has nobody to answer it until the morning, so a ticket that needs you doesn't hold
+An overnight run has nobody to answer it until the morning. A worker's permission request is
+denied by tutti once it has waited 30 seconds with the machine awake, in nobody's name (`PERMISSION:
+tut-3's worker: Bash(git push) denied (…), by tutti, the run being an overnight one`), and its turn
+goes on with the refusal, told to do without it or say on its ticket what it needs. A request of a
+ticket whose worker tutti no longer follows (its work done and its session still open, or a worker
+you steered) is denied at 4 minutes rather than stop the run (`tut-3: its worker was blocked on a
+question for over 4m -> denied, the run being an overnight one, with nobody there to answer`).
+Otherwise a ticket that needs you doesn't hold
 the run ([Holds and stops](#holds-and-stops)): a worker idle with its ticket in progress
 (`PAUSED`), one blocked on a request for 4 minutes (`BLOCKED`), and one still going after the
 ticket limit (`TICKET_LIMIT`) each have their ticket set aside instead, and the run goes on with the

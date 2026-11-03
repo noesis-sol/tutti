@@ -67,6 +67,7 @@ import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./prin
 import { screenOut } from "./print/screenOut.ts"
 import { currentHome } from "./project/userConfig.ts"
 import { talkQuestion } from "./run/answerTalk.ts"
+import { claudeUserSettingsFile } from "./run/askRules.ts"
 import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import {
@@ -251,16 +252,25 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
   ).pipe(Layer.provideMerge(OrganCost.layer), Layer.provideMerge(organHold))
   // Attention's records notify too: it is given the EventStream that notifies (notices.ts). With
   // --auto-answer it answers the workers' questions, not the --feature interview's, which is you.
-  const attention = Attention.layer(
-    config.autoAnswer === null
+  // An overnight run denies the workers' permission requests once they have waited (tutti-epza.10).
+  const attention = Attention.layer({
+    ...(config.autoAnswer === null
       ? {}
       : {
           autoAnswer: {
             after: config.autoAnswer,
             answers: (ticket) => ticket !== interviewWorker,
           },
-        },
-  )
+        }),
+    ...(config.denyPermissions === null
+      ? {}
+      : {
+          denyPermissions: {
+            after: config.denyPermissions,
+            denies: (ticket) => ticket !== interviewWorker,
+          },
+        }),
+  })
   return Layer.mergeAll(host, organs).pipe(
     Layer.provideMerge(attention),
     // Merged worktrees' folders, deleted in the background (trash.ts), what was left running in
@@ -385,6 +395,7 @@ const overnight = (
           processes: listNamed,
           disk: freeDisk,
           otherRuns: otherRuns(config.runs),
+          claudeSettings: yield* claudeUserSettingsFile,
           // As the startup checks probe the login, under the configuration a fix leaves.
           probeAccount: (fixed) =>
             Effect.scoped(
