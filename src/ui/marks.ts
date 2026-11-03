@@ -89,13 +89,20 @@ export interface Shown {
   readonly faint: boolean
 }
 
-/** What a card shows in place of the spinner when its worker isn't at work (§ 5.1). */
-export type Motion = "spinner" | "toMerge" | "merging" | "idle"
+/**
+ * What a card shows in place of the spinner when its worker isn't at work, or is at work on its
+ * merge again, resolving or fixing, as its row shows it (§ 5.1).
+ */
+export type Motion = "spinner" | "toMerge" | "merging" | "reworking" | "idle"
 
-/** The tone of a card's mark: the spinner `picked`, ◼ `toMerge`, ◆ `merging`, • `done`. */
+/**
+ * The tone of a card's mark: the spinner `picked`, ◼ `toMerge`, ◆ `merging`, ⟳ `deferred` as its
+ * row's, • `done`.
+ */
 export const motionTones: { readonly [M in Motion]: Tone } = {
   spinner: "picked",
   toMerge: "toMerge",
   merging: "merging",
+  reworking: "deferred",
   idle: "done",
 }

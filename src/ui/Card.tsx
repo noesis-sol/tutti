@@ -22,7 +22,7 @@ import { memo, useCallback, useMemo } from "react"
 import type { FullCheckRun } from "../run/fullcheck.ts"
 import { pad } from "../run/localTime.ts"
 import { activityRows } from "../run/phase.ts"
-import type { Card, ShownRequest } from "../run/runView.ts"
+import { type Card, isAtWork, type ShownRequest } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { attentionInside, attentionLines } from "./AttentionCard.tsx"
 import { clickable } from "./click.ts"
@@ -89,20 +89,23 @@ export const waitsForYou = (card: Card): boolean =>
 /** The look of a card's status (§ 7.11's Statuses), its tone as RunView worked it out. */
 export const statusLook = (card: Card, theme: Theme): Look => lookOf(card.tone, theme)
 
-/** The card's mark: the spinner's frame `spin` while its worker works, else its static mark. */
+/**
+ * The card's mark: the spinner's frame `spin` while its worker works, else its static mark, ⟳ while
+ * it resolves or fixes as its row's.
+ */
 export const cardMark = (card: Card, theme: Theme, spin: string): Segment =>
   seg(
     card.motion === "spinner" ? spin : marks[card.motion],
     lookOf(motionTones[card.motion], theme),
   )
 
+/** Whether the card's worker works: its spinner turns, or it resolves or fixes at work. */
+const runs = (card: Card): boolean =>
+  card.motion === "spinner" || (card.motion === "reworking" && isAtWork(card.state))
+
 /** The card's frame: `needsYou` when it waits for you, `live` while its worker works. */
 const frameOf = (card: Card, theme: Theme): Look =>
-  waitsForYou(card)
-    ? theme.look("needsYou")
-    : card.motion === "spinner"
-      ? theme.look("live")
-      : theme.look("frame")
+  waitsForYou(card) ? theme.look("needsYou") : runs(card) ? theme.look("live") : theme.look("frame")
 
 /** `steered` beside a status, `emphasis`, when you steered the card's worker. */
 const steeredOf = (card: Card, theme: Theme): Segments =>
@@ -291,7 +294,7 @@ export const compactLines = (
 ): ReadonlyArray<Segments> => {
   const frame = cards.some(waitsForYou)
     ? theme.look("needsYou")
-    : cards.some((card) => card.motion === "spinner")
+    : cards.some(runs)
       ? theme.look("live")
       : theme.look("frame")
   const shown = compactShown(cards, options.highlighted, options.lines ?? cards.length + 2)

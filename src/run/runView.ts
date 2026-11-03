@@ -794,13 +794,17 @@ export const statusTone = (
   return activity === "starting" ? "dim" : activityRows[activity].tone
 }
 
+/** Whether a worker in `state`, none while its session opens, is at work: its card framed `live`. */
+export const isAtWork = (state: WorkerState | null | undefined): boolean =>
+  state === undefined ||
+  state === null ||
+  state._tag === "Starting" ||
+  state._tag === "Working" ||
+  state._tag === "Retrying"
+
 /** Whether a worker in `state` with `requests` open is at work, so its card's spinner turns. */
 const working = (state: WorkerState | undefined, requests: ReadonlyArray<AttentionRequest>) =>
-  requests.length === 0 &&
-  (state === undefined ||
-    state._tag === "Starting" ||
-    state._tag === "Working" ||
-    state._tag === "Retrying")
+  requests.length === 0 && isAtWork(state)
 
 const motionOf = (
   phase: TicketPhase,
@@ -809,6 +813,8 @@ const motionOf = (
 ): Motion => {
   if (phase._tag === "ToMerge") return "toMerge"
   if (phase._tag === "Merging") return "merging"
+  // ⟳, as its row: the card's status says its worker resolves or fixes, its frame whether it works.
+  if (phase._tag === "Resolving" || phase._tag === "Fixing") return "reworking"
   return working(state, requests) ? "spinner" : "idle"
 }
 
