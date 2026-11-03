@@ -2,9 +2,9 @@
 // use, kept live. A test runner left alone starts a process per core, each of a gigabyte or more:
 // at concurrency 2 on a 16 GB, 10-core Mac one worker's whole-suite check took 7.7 GB, swap filled
 // and the memory pressure went to warn. So beside its share of the cores, each worker gets a share
-// of the memory checks may use (budgetOf): the machine's memory less what tutti doesn't own and a
-// reserve (load.ts' memoryReserve), divided among the workers allowed now, the machine's other
-// runs' workers, and one more for the merge check (src/agent/env.ts' memoryShare).
+// of the memory checks may use (budgetOf): the memory available and what the checks hold already,
+// less a reserve (load.ts' memoryReserve), divided among the workers allowed now, the machine's
+// other runs' workers, and one more for the merge check (src/agent/env.ts' memoryShare).
 //
 // The share follows the run: each load reading (load.ts, every loadEvery) works it out again from
 // the workers the pressure cap allows (pressureCap.ts), the other runs' workers and the readings,
@@ -45,8 +45,8 @@ export interface Budget {
   /** In bytes; at least 0. */
   readonly bytes: number
   /**
-   * What it is made of, as the START block says it: `16.0 GB less 5.4 GB wired, 2.3 GB compressed,
-   * 4.1 GB outside the checks and the 2.0 GB reserve`.
+   * What it is made of, as the START block says it: `5.2 GB available and 2.4 GB in checks, less
+   * the 2.0 GB reserve`.
    */
   readonly words: string
 }
@@ -56,31 +56,21 @@ export const gigabytes = (bytes: number): string => (bytes / 1024 ** 3).toFixed(
 
 /**
  * The memory checks may use, from `reading` (null before there is one), on a machine of `total`
- * bytes: on macOS its memory less the wired pages, the compressor's (every process's compressed
- * memory, which ps can't place, counted as not the checks') and the resident memory of every
- * process but the checks, the workers' Claude Code and tutti's own included; on Linux the memory
- * available and the checks' own; less memoryReserve. Without the readings, half the machine's
- * memory less the reserve, as a run's share of the cores is half of them without one.
+ * bytes: the memory available (load.ts' Memory: on macOS the free, inactive, speculative and
+ * purgeable pages, on Linux MemAvailable) and the checks' own resident memory, no more than the
+ * machine's, less memoryReserve. Without the readings, half the machine's memory less the reserve,
+ * as a run's share of the cores is half of them without one.
  */
 export const budgetOf = (reading: Reading | null, total: number = totalmem()): Budget => {
   const reserve = `the ${gigabytes(memoryReserve)} GB reserve`
   const of = (bytes: number, words: string): Budget => ({ bytes: Math.max(bytes, 0), words })
   const memory = reading?.memory
   const machine = reading?.kernel.memory
-  if (reading !== null && memory !== undefined && reading.kernel.available >= 0) {
-    const { available } = reading.kernel
-    const all = machine?.total ?? total
+  if (memory !== undefined && machine !== undefined && machine.available >= 0) {
+    const { available } = machine
     return of(
-      Math.min(available + memory.checks, all) - memoryReserve,
+      Math.min(available + memory.checks, machine.total) - memoryReserve,
       `${gigabytes(available)} GB available and ${gigabytes(memory.checks)} GB in checks, less ${reserve}`,
-    )
-  }
-  if (memory !== undefined && machine !== undefined) {
-    return of(
-      machine.total - machine.wired - machine.compressed - memory.others - memoryReserve,
-      `${gigabytes(machine.total)} GB less ${gigabytes(machine.wired)} GB wired, ` +
-        `${gigabytes(machine.compressed)} GB compressed, ${gigabytes(memory.others)} GB outside ` +
-        `the checks and ${reserve}`,
     )
   }
   return of(
@@ -186,7 +176,7 @@ export const shareChangeLine = (change: ShareChange): Line => {
 
 /**
  * The START block's note on the share: the memory budget, what it is made of, and how it is
- * divided, `share: memory budget 6.3 GB (16.0 GB less …), divided among 3 (2 workers allowed and
+ * divided, `share: memory budget 6.3 GB (5.9 GB available …), divided among 3 (2 workers allowed and
  * the merge check): 2.1 GB a check, 5 cores a worker; kept live in .tutti/run/share.json`.
  */
 export const shareNote = (budget: Budget, machine: Machine, division: Division): string => {

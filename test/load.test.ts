@@ -105,7 +105,7 @@ describe("the kernel's figures", () => {
       load1: 3.1,
       cores: 8,
       available: 8192000 * kb,
-      memory: { total: 16384000 * kb, wired: 0, compressed: 0 },
+      memory: { total: 16384000 * kb, available: 8192000 * kb },
     })
     const stalled = (some: number, full: number) =>
       parseLinux({

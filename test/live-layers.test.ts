@@ -73,7 +73,10 @@ const sysctl = "1\n{ 9.80 8.12 7.40 }\n10\n17179869184\n"
 const vmstat = [
   "Mach Virtual Memory Statistics: (page size of 16384 bytes)",
   "Pages free:                                5000.",
+  "Pages inactive:                            200000.",
+  "Pages speculative:                           1000.",
   "Pages wired down:                          351930.",
+  "Pages purgeable:                              500.",
   "Pages occupied by compressor:              151496.",
   "Swapins:                                  8873329.",
   "Swapouts:                                 9000001.",
@@ -110,7 +113,7 @@ describe("the live load", () => {
       load1: 9.8,
       cores: 10,
       available: -1,
-      memory: { total: 17179869184, wired: 351930 * 16384, compressed: 151496 * 16384 },
+      memory: { total: 17179869184, available: (5000 + 200000 + 1000 + 500) * 16384 },
     })
     expect(argsOf(dir, "sysctl")).toEqual([
       "-n",
@@ -185,7 +188,7 @@ describe("the live load", () => {
       load1: 2.5,
       cores: 8,
       available: 8192000 * 1024,
-      memory: { total: 16384000 * 1024, wired: 0, compressed: 0 },
+      memory: { total: 16384000 * 1024, available: 8192000 * 1024 },
     })
   })
 

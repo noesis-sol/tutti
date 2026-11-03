@@ -813,15 +813,14 @@ the workers at `concurrent`; the `START` line says `pressure cap: on` or `off`.
 
 Each worker's checks get a share of the machine's memory as well as its cores, as a test runner left
 alone starts a process per core, each of a gigabyte or more. The **memory budget** is what checks may
-use: on macOS the machine's memory less the wired pages, the compressor's and the resident memory of
-every process but the checks (tutti itself and the workers' Claude Code included); on Linux the
-memory available and what the checks hold; less a 2 GB reserve. It is divided among the workers
+use: the memory available, on macOS `vm_stat`'s free, inactive, speculative and purgeable pages and
+on Linux `MemAvailable`, and what the checks hold already, less a 2 GB reserve. It is divided among the workers
 allowed now (the pressure cap), the other runs' workers (no more than `--machine-workers`) and one
 more for the merge check, whose slot the early check takes, at least 1 GB a check so that one can
 always run, one process at a time. The `START` block says the budget and how it is divided:
 
 ```
-share: memory budget 6.3 GB (16.0 GB less 5.4 GB wired, 2.3 GB compressed, 2.0 GB outside the checks and the 2.0 GB reserve), divided among 3 (2 workers allowed and the merge check): 2.1 GB a check, 5 cores a worker; kept live in .tutti/run/share.json
+share: memory budget 6.3 GB (5.9 GB available and 2.4 GB in checks, less the 2.0 GB reserve), divided among 3 (2 workers allowed and the merge check): 2.1 GB a check, 5 cores a worker; kept live in .tutti/run/share.json
 ```
 
 The share follows the run. Each load reading works it out again, and where the workers allowed or

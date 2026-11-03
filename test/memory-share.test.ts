@@ -31,6 +31,7 @@ import {
   memoryStep,
   newSampler,
   parseDarwin,
+  parseLinux,
   parseProcesses,
   type Reading,
   sample,
@@ -40,6 +41,7 @@ import {
   budgetOf,
   changeOf,
   type Division,
+  gigabytes,
   type Kept,
   makeShareKeeper,
   type Share,
@@ -154,27 +156,53 @@ describe("the variables", () => {
 })
 
 describe("the machine's memory", () => {
+  // vm_stat on the 16 GB Mac under a run (tutti-lt2x), its 16 KB pages.
   const vmstat = [
     "Mach Virtual Memory Statistics: (page size of 16384 bytes)",
-    "Pages free:                                     8176.",
-    "Pages wired down:                             351930.",
-    "Pages occupied by compressor:                 151496.",
+    "Pages free:                                     3847.",
+    "Pages active:                                 220310.",
+    "Pages inactive:                               217875.",
+    "Pages speculative:                              1063.",
+    "Pages throttled:                                   0.",
+    "Pages wired down:                             355049.",
+    "Pages purgeable:                                1223.",
+    "File-backed pages:                            130132.",
+    "Anonymous pages:                              309116.",
+    "Pages occupied by compressor:                 208995.",
   ].join("\n")
 
-  test("macOS: hw.memsize, and vm_stat's wired pages and the compressor's", () => {
+  test("macOS: hw.memsize, and vm_stat's free, inactive, speculative and purgeable pages", () => {
     expect(parseDarwin("1\n{ 1.00 1.00 1.00 }\n10\n17179869184\n", vmstat)?.memory).toEqual({
       total: 17179869184,
-      wired: 351930 * 16384,
-      compressed: 151496 * 16384,
+      available: (3847 + 217875 + 1063 + 1223) * 16384,
     })
   })
 
   test("macOS: not known without hw.memsize, the page size or the counts", () => {
     expect(parseDarwin("1\n{ 1.00 1.00 1.00 }\n10\n", vmstat)?.memory).toBeUndefined()
-    expect(parseDarwin("1\n{ 1 1 1 }\n10\n17179869184\n", "Pages wired down: 1.")?.memory).toBe(
-      undefined,
-    )
+    expect(parseDarwin("1\n{ 1 1 1 }\n10\n17179869184\n", "Pages free: 1.")?.memory).toBe(undefined)
+    const noPurgeable = vmstat.replace(/^Pages purgeable:.*$/m, "")
+    expect(parseDarwin("1\n{ 1 1 1 }\n10\n17179869184\n", noPurgeable)?.memory).toBeUndefined()
     expect(parseDarwin("1\n{ 1 1 1 }\n10\nlots\n", vmstat)?.memory).toBeUndefined()
+  })
+
+  test("Linux: MemTotal, and MemAvailable as what programs could be given", () => {
+    const kernel = parseLinux({
+      loadavg: "1.00 1.00 1.00 1/100 1",
+      pressure: "",
+      meminfo: "MemTotal:       16384000 kB\nMemFree:  100 kB\nMemAvailable:    6000000 kB\n",
+      vmstat: "",
+      cores: 8,
+    })
+    expect(kernel?.memory).toEqual({ total: 16384000 * 1024, available: 6000000 * 1024 })
+    const old = parseLinux({
+      loadavg: "1.00 1.00 1.00 1/100 1",
+      pressure: "",
+      meminfo: "MemTotal:       16384000 kB\n",
+      vmstat: "",
+      cores: 8,
+    })
+    expect(old?.memory).toEqual({ total: 16384000 * 1024, available: -1 })
   })
 
   test("the listing parts the checks' memory from the rest", () => {
@@ -194,10 +222,7 @@ describe("the machine's memory", () => {
       roots: new Map([["t-1", 200]]),
       self: 100,
     })
-    expect(reading.memory).toEqual({
-      checks: (524288 + 262144) * 1024,
-      others: (1000 + 50000 + 1048576 + 100000) * 1024,
-    })
+    expect(reading.memory).toEqual({ checks: (524288 + 262144) * 1024 })
     const none = sample({
       sampler: newSampler,
       now: 0,
@@ -230,22 +255,38 @@ const reading = (kernel: Kernel, memory?: Reading["memory"]): Reading => ({
 })
 
 describe("the memory budget", () => {
-  test("macOS: the memory less wired, compressed, what isn't the checks' and the reserve", () => {
+  test("the memory available and the checks' own, less the reserve", () => {
     const budget = budgetOf(
-      reading(macKernel({ total: 16 * gb, wired: 5 * gb, compressed: 2 * gb }), {
-        checks: 3 * gb,
-        others: 4 * gb,
-      }),
+      reading(macKernel({ total: 16 * gb, available: 4 * gb }), { checks: 3 * gb }),
     )
-    expect(budget.bytes).toBe(16 * gb - 5 * gb - 2 * gb - 4 * gb - memoryReserve)
-    expect(budget.words).toBe(
-      "16.0 GB less 5.0 GB wired, 2.0 GB compressed, 4.0 GB outside the checks and the 2.0 GB reserve",
-    )
+    expect(budget.bytes).toBe(4 * gb + 3 * gb - memoryReserve)
+    expect(budget.words).toBe("4.0 GB available and 3.0 GB in checks, less the 2.0 GB reserve")
   })
 
-  test("Linux: the memory available and the checks' own, less the reserve", () => {
-    const linux = { ...macKernel({ total: 32 * gb, wired: 0, compressed: 0 }), available: 6 * gb }
-    const budget = budgetOf(reading(linux, { checks: 2 * gb, others: 20 * gb }))
+  test("macOS under a run: no longer nothing, as shared pages count once (tutti-lt2x)", () => {
+    // The vm_stat above, the run's checks holding 2.2 GB: wired 5.4 GB, the compressor 3.2 GB and
+    // 7.3 GB of resident memory outside the checks left nothing of the 16 GB.
+    const kernel = parseDarwin(
+      "1\n{ 1.00 1.00 1.00 }\n10\n17179869184\n",
+      [
+        "Mach Virtual Memory Statistics: (page size of 16384 bytes)",
+        "Pages free:                                     3847.",
+        "Pages inactive:                               217875.",
+        "Pages speculative:                              1063.",
+        "Pages wired down:                             355049.",
+        "Pages purgeable:                                1223.",
+        "Pages occupied by compressor:                 208995.",
+      ].join("\n"),
+    )
+    if (kernel === undefined) throw new Error("vm_stat unread")
+    const budget = budgetOf(reading(kernel, { checks: 2.2 * gb }))
+    expect(gigabytes(budget.bytes)).toBe("3.6")
+    expect(budget.words).toBe("3.4 GB available and 2.2 GB in checks, less the 2.0 GB reserve")
+  })
+
+  test("Linux: MemAvailable, as the kernel's memory says it", () => {
+    const linux = { ...macKernel({ total: 32 * gb, available: 6 * gb }), available: 6 * gb }
+    const budget = budgetOf(reading(linux, { checks: 2 * gb }))
     expect(budget.bytes).toBe(6 * gb + 2 * gb - memoryReserve)
     expect(budget.words).toBe("6.0 GB available and 2.0 GB in checks, less the 2.0 GB reserve")
   })
@@ -253,30 +294,34 @@ describe("the memory budget", () => {
   test("without the readings: half the machine's memory less the reserve", () => {
     expect(budgetOf(null, 16 * gb).bytes).toBe(8 * gb - memoryReserve)
     expect(budgetOf(reading(macKernel()), 16 * gb).bytes).toBe(8 * gb - memoryReserve)
-    expect(budgetOf(reading(macKernel(), { checks: 0, others: 0 }), 16 * gb).bytes).toBe(
+    expect(budgetOf(reading(macKernel(), { checks: 0 }), 16 * gb).bytes).toBe(
       8 * gb - memoryReserve,
     )
+    const unread = macKernel({ total: 16 * gb, available: -1 })
+    expect(budgetOf(reading(unread, { checks: gb }), 16 * gb).words).toStartWith("half of 16.0 GB")
   })
 
-  test("is never below none, however much else the machine holds", () => {
+  test("is never below none nor past the machine, and what the checks hold is theirs", () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 1, max: 256 }),
         fc.integer({ min: 0, max: 256 }),
         fc.integer({ min: 0, max: 256 }),
-        fc.integer({ min: 0, max: 256 }),
-        fc.integer({ min: 0, max: 256 }),
-        (total, wired, compressed, checks, others) => {
-          const mac = reading(
-            macKernel({ total: total * gb, wired: wired * gb, compressed: compressed * gb }),
-            { checks: checks * gb, others: others * gb },
-          )
-          const budget = budgetOf(mac).bytes
+        (total, available, checks) => {
+          const kernel = macKernel({
+            total: total * gb,
+            available: Math.min(available, total) * gb,
+          })
+          const budget = budgetOf(reading(kernel, { checks: checks * gb })).bytes
           expect(budget).toBeGreaterThanOrEqual(0)
           expect(budget).toBeLessThanOrEqual(Math.max(total * gb - memoryReserve, 0))
-          // What the checks hold is theirs: it never lowers the budget on macOS.
-          const more = reading(mac.kernel, { checks: (checks + 1) * gb, others: others * gb })
-          expect(budgetOf(more).bytes).toBe(budget)
+          // A check that takes a page the kernel had spare leaves the budget as it was.
+          if (available === 0) return
+          const taken = macKernel({
+            total: total * gb,
+            available: (Math.min(available, total) - 1) * gb,
+          })
+          expect(budgetOf(reading(taken, { checks: (checks + 1) * gb })).bytes).toBe(budget)
         },
       ),
     )
@@ -361,15 +406,12 @@ describe("the share file", () => {
 describe("the START block's note", () => {
   test("says the budget, what it is made of and how it is divided", () => {
     const budget = budgetOf(
-      reading(macKernel({ total: 16 * gb, wired: 5 * gb, compressed: 2 * gb }), {
-        checks: 0,
-        others: 3 * gb,
-      }),
+      reading(macKernel({ total: 16 * gb, available: 5 * gb }), { checks: gb }),
     )
     expect(shareNote(budget, machine, { budget: 0, allowed: 2, others: 0 })).toBe(
-      "share: memory budget 4.0 GB (16.0 GB less 5.0 GB wired, 2.0 GB compressed, 3.0 GB outside " +
-        "the checks and the 2.0 GB reserve), divided among 3 (2 workers allowed and the merge " +
-        "check): 1.3 GB a check, 5 cores a worker; kept live in .tutti/run/share.json",
+      "share: memory budget 4.0 GB (5.0 GB available and 1.0 GB in checks, less the 2.0 GB " +
+        "reserve), divided among 3 (2 workers allowed and the merge check): 1.3 GB a check, 5 " +
+        "cores a worker; kept live in .tutti/run/share.json",
     )
     expect(
       shareNote(budget, { cores: 8, limit: 0 }, { budget: 0, allowed: 1, others: 2 }),
@@ -382,11 +424,8 @@ const readShare = (repo: string): { cores: number; memory_mb: number; at: string
   JSON.parse(readFileSync(join(repo, shareFile), "utf8"))
 
 describe("the run's share keeper", () => {
-  const mac = (others: number) =>
-    reading(macKernel({ total: 16 * gb, wired: 4 * gb, compressed: 1 * gb }), {
-      checks: 0,
-      others: others * gb,
-    })
+  const mac = (available: number) =>
+    reading(macKernel({ total: 16 * gb, available: available * gb }), { checks: 0 })
 
   const keep = <A>(
     body: (options: {
@@ -429,19 +468,19 @@ describe("the run's share keeper", () => {
   test("takes the first reading's share without a word, then says each change", async () => {
     const records = await keep(({ repo, allowed, keeper }) =>
       Effect.gen(function* () {
-        // 16 less 4 wired, 1 compressed, 2 others and the 2 reserve: 7 GB among 3.
-        yield* keeper.read(mac(2))
+        // 9 GB available less the 2 reserve: 7 GB among 3.
+        yield* keeper.read(mac(9))
         expect(readShare(repo).memory_mb).toBe(Math.floor((7 * 1024) / 3))
         // The cap falls: 7 GB among 2.
         yield* Ref.set(allowed, 1)
-        yield* keeper.read(mac(2))
+        yield* keeper.read(mac(9))
         expect(readShare(repo)).toMatchObject({ cores: 10, memory_mb: Math.floor((7 * 1024) / 2) })
         expect(yield* (yield* Shares).now).toEqual({ cores: 10, memory: 3584 })
         // The readings move the budget by 3 GB: 4 GB among 2.
-        yield* keeper.read(mac(5))
+        yield* keeper.read(mac(6))
         expect(readShare(repo).memory_mb).toBe(2048)
         // A little more held elsewhere moves nothing.
-        yield* keeper.read(mac(5.25))
+        yield* keeper.read(mac(5.75))
         expect(readShare(repo).memory_mb).toBe(2048)
         return yield* (yield* Captured).records
       }),
@@ -457,7 +496,7 @@ describe("the run's share keeper", () => {
   test("follows the cap without a reading, as the load stops being read", async () => {
     await keep(({ repo, allowed, keeper }) =>
       Effect.gen(function* () {
-        yield* keeper.read(mac(2))
+        yield* keeper.read(mac(9))
         yield* Ref.set(allowed, 3)
         yield* keeper.refresh
         expect(readShare(repo)).toMatchObject({ cores: 3, memory_mb: Math.floor((7 * 1024) / 4) })
@@ -480,8 +519,8 @@ describe("the run's share keeper", () => {
           others: Effect.succeed(0),
           total: 16 * gb,
         })
-        yield* keeper.read(mac(2))
-        yield* keeper.read(mac(6))
+        yield* keeper.read(mac(9))
+        yield* keeper.read(mac(5))
         expect((yield* (yield* Shares).now)?.memory).toBe(Math.floor((3 * 1024) / 2))
         return yield* texts
       }).pipe(Effect.provide(Layer.mergeAll(logLayer(), eventsLayer(), shares))),

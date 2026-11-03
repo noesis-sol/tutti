@@ -51,7 +51,7 @@ export const criticalStep = 2
 export const loadRecordEvery = 60_000
 
 // The checks' memory share (share.ts): tune it here.
-/** The memory the budget leaves for the machine to breathe in, beside what tutti doesn't own. */
+/** The memory the budget leaves for the machine to breathe in, beside what the checks may take. */
 export const memoryReserve = 2 * 1024 ** 3
 /** The least memory share a check gets, however short the machine: enough to run one process. */
 export const memoryFloor = 1024 ** 3
@@ -87,12 +87,15 @@ export interface Kernel {
 export interface Memory {
   /** All of it: macOS's hw.memsize, Linux's MemTotal. */
   readonly total: number
-  /** What the kernel keeps for itself, which no process's resident memory counts: macOS's wired
-   * pages; 0 on Linux, whose MemAvailable leaves it out already. */
-  readonly wired: number
-  /** The pages macOS's compressor occupies, every process's compressed memory, which no
-   * resident memory counts either; 0 on Linux. */
-  readonly compressed: number
+  /**
+   * What programs could be given now without pressing the others: on macOS vm_stat's free,
+   * inactive, speculative and purgeable pages, which the kernel hands out, drops or compresses
+   * before it touches what is in use (scripts/test.ts' darwinAvailable counts the same); on Linux
+   * MemAvailable, -1 where /proc/meminfo hasn't it. Not the processes' resident memory summed, which
+   * counts each shared page once per process that maps it: on a 16 GB Mac under a run, 7.6-8.3 GB
+   * of it against 4.6-5.3 GB of pages in use (tutti-lt2x).
+   */
+  readonly available: number
 }
 
 /** A Kernel that says nothing. */
@@ -125,10 +128,9 @@ export interface Reading {
   readonly check: number
   /**
    * The resident memory of the checks, in bytes: what tutti runs besides its workers and each
-   * worker's processes but its Claude Code itself; and that of every other process, tutti's own and
-   * the workers' Claude Code included. Left out without a listing.
+   * worker's processes but its Claude Code itself. Left out without a listing.
    */
-  readonly memory?: { readonly checks: number; readonly others: number }
+  readonly memory?: { readonly checks: number }
   readonly kernel: Kernel
   /** The pages swapped in and out a minute since the reading before; -1 before there are two. */
   readonly swapping: number
@@ -244,17 +246,25 @@ const pageSize = (vmstat: string): number | undefined => {
   return size === undefined ? undefined : Number(size)
 }
 
+/** The vm_stat pages a program could be given now (Memory's available). */
+const availablePages = [
+  "Pages free:",
+  "Pages inactive:",
+  "Pages speculative:",
+  "Pages purgeable:",
+] as const
+
 /**
- * The machine's memory from hw.memsize's `total` (`17179869184`) and vm_stat's wired pages and the
- * compressor's; undefined where any of them can't be read.
+ * The machine's memory from hw.memsize's `total` (`17179869184`) and vm_stat's free, inactive,
+ * speculative and purgeable pages; undefined where any of them can't be read.
  */
 const darwinMemory = (total: string | undefined, vmstat: string): Memory | undefined => {
   const page = pageSize(vmstat)
-  const wired = counter(vmstat, "Pages wired down:")
-  const compressed = counter(vmstat, "Pages occupied by compressor:")
+  const pages = availablePages.map((name) => counter(vmstat, name))
   if (total === undefined || !/^\d+$/.test(total)) return undefined
-  if (page === undefined || wired === undefined || compressed === undefined) return undefined
-  return { total: Number(total), wired: wired * page, compressed: compressed * page }
+  if (page === undefined || pages.some((count) => count === undefined)) return undefined
+  const available = pages.reduce((sum: number, count) => sum + (count ?? 0), 0) * page
+  return { total: Number(total), available }
 }
 
 /**
@@ -334,7 +344,7 @@ export const parseLinux = (files: {
     load1,
     cores: files.cores,
     available,
-    ...(total === undefined ? {} : { memory: { total: total * 1024, wired: 0, compressed: 0 } }),
+    ...(total === undefined ? {} : { memory: { total: total * 1024, available } }),
   }
 }
 
@@ -419,8 +429,7 @@ export const sample = (options: {
   const { levels, overSince } = levelsOf(sampler, kernel, swapping, now)
   let memory: Reading["memory"]
   if (processes !== undefined) {
-    const checks = memoryOf(processes, theirs) - sessions + check
-    memory = { checks, others: memoryOf(processes, processes.keys()) - checks }
+    memory = { checks: memoryOf(processes, theirs) - sessions + check }
   }
   return {
     reading: {
