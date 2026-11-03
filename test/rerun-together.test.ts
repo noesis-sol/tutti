@@ -129,7 +129,8 @@ describe("scripts/test.ts reruns", () => {
     for (const [name, value] of Object.entries(testEnv)) {
       if (value !== undefined && name !== "TUTTI_TEST_PARALLEL") env[name] = value
     }
-    if (cores !== undefined) env.TUTTI_CORES = cores
+    // Memory enough for the cores, whatever the machine has free (tutti-epza.19).
+    if (cores !== undefined) Object.assign(env, { TUTTI_CORES: cores, TUTTI_MEMORY_MB: "65536" })
     const proc = Bun.spawnSync(["bun", runner], { cwd: dir, env, stdout: "pipe", stderr: "pipe" })
     return { dir, code: proc.exitCode, out: proc.stdout.toString() }
   }
