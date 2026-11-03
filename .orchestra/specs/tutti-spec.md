@@ -2121,7 +2121,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | | SIGTERM, SIGHUP | Changed: quit now, sessions suspended |
 | | Ctrl+Z | Changed: disabled (D18) |
 | | a run ends while workers wait on you | Changed: the dashboard waits for you (D19) |
-| | environment hold, reopen, probe, exit 7 | Kept (§4.9) |
+| | environment hold, reopen, probe, exit 7 | Changed: each hold probed, the wait doubling up to an hour; the probe runs the setup in a new worktree; each ticket once in a row (§4.9) |
 | | usage limits | New: the usage-limit hold, exit 8 (§4.12) |
 | | carry-over through `state.json` | Changed: resume sessions (§4.8) |
 | | exit codes | Kept, but 4 no longer covers terminals (no `TERMINAL_FAILED`; the Agent SDK failing to start sessions is `ENVIRONMENT`, exit 7); 8 is new |
