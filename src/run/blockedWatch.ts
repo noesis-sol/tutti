@@ -8,7 +8,7 @@
 // ticket's requests (its worker past its work, its session still open, or one you steered) are
 // denied in nobody's name, nobody being there to answer, and the run goes on (tutti-epza.10).
 import { Duration, Effect, Ref, Semaphore, Stream } from "effect"
-import { Attention, type AttentionRequest } from "../agent/Attention.ts"
+import { Attention, type AttentionRequest, overnightDenial } from "../agent/Attention.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import type { EventStream } from "./eventstream.ts"
 import { blockedAt, blockedLifted, blockedStop, blockedTickets, liftBlocked } from "./holds.ts"
@@ -68,9 +68,9 @@ export const make = (options: {
           if (aside !== undefined && oldest !== undefined) {
             if (yield* aside.offer(trip.ticket, blockedStuck(oldest))) continue
             // No fiber follows it (a worker past its work, or steered): its requests are denied,
-            // rather than stop the night for them (tutti-epza.10).
+            // rather than stop the night for them, its worker told to go on without (tutti-epza.10).
             yield* warn(blockedDenied(trip.ticket, oldest), trip.ticket)
-            yield* aside.deny(trip.ticket)
+            yield* aside.deny(trip.ticket, overnightDenial)
             continue
           }
           yield* holds.stopped(blockedStop(trip.ticket, trip.what))

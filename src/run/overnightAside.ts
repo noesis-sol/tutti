@@ -124,8 +124,11 @@ export interface OvernightAside {
   follow(ticket: TicketId, stuck: Deferred.Deferred<Stuck>): Effect.Effect<void, never, Scope.Scope>
   /** Gives `ticket`'s fiber BLOCKED's `stuck`: whether a fiber follows it, which sets it aside. */
   offer(ticket: TicketId, stuck: Stuck): Effect.Effect<boolean>
-  /** Denies `ticket`'s open requests, in nobody's name. */
-  deny(ticket: TicketId): Effect.Effect<void>
+  /**
+   * Denies `ticket`'s open requests, in nobody's name: `reason` the worker is told, by default that
+   * the run sets its ticket aside.
+   */
+  deny(ticket: TicketId, reason?: string): Effect.Effect<void>
 }
 
 /** The register, over the run's Attention. */
@@ -151,9 +154,11 @@ export const make: Effect.Effect<OvernightAside, never, Attention> = Effect.gen(
         yield* Deferred.succeed(fiber, stuck)
         return true
       }),
-    deny: (ticket) =>
+    deny: (
+      ticket,
+      reason = "the run is an overnight one, and sets its ticket aside for the morning",
+    ) =>
       Effect.gen(function* () {
-        const reason = "the run is an overnight one, and sets its ticket aside for the morning"
         for (const request of yield* attention.current) {
           if (request.ticket !== ticket) continue
           const answer =

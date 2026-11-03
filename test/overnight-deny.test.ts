@@ -260,7 +260,7 @@ describe("BLOCKED in an overnight run, for a ticket no fiber follows", () => {
     expect(seen.held).toEqual([])
     expect(seen.result).toMatchObject({
       behavior: "deny",
-      message: `${tuttiDenialMessage}: the run is an overnight one, and sets its ticket aside for the morning`,
+      message: `${tuttiDenialMessage}: ${overnightDenial}`,
     })
     expect(seen.records).toContainEqual(
       expect.objectContaining({
