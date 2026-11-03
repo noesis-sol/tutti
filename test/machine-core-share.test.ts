@@ -195,6 +195,7 @@ describe("the run", () => {
         const agents = yield* AgentHost
         const recording: OtherWorkersValue = {
           others: Ref.get(count),
+          runs: Effect.succeed([]),
           set: (n) =>
             Effect.gen(function* () {
               const known = yield* Effect.orElseSucceed(agents.current("a" as TicketId), () => null)

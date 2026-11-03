@@ -227,30 +227,39 @@ export interface Machine {
   readonly look: Effect.Effect<ReadonlyArray<Seen>>
   /** The workers running in the other runs, as last read. */
   readonly others: Effect.Effect<number>
+  /** The other runs' processes, as last read: their checks' memory counts in the budget (share.ts). */
+  readonly runs: Effect.Effect<ReadonlyArray<number>>
 }
 
 /**
  * The workers running in the machine's other runs, as the run last read them (Machine.others), for
  * each worker's share of the cores as it starts (src/agent/env.ts's coreShare, AgentHostLive): the
  * run sets it each time it reads them, and a worker keeps the share it started with, as orchestra
- * 0.9.0's do.
+ * 0.9.0's do. With them, the other runs' processes (Machine.runs), whose checks' memory the
+ * checks' budget counts (share.ts' budgetOf).
  */
 export interface OtherWorkersValue {
   readonly others: Effect.Effect<number>
-  set(others: number): Effect.Effect<void>
+  readonly runs: Effect.Effect<ReadonlyArray<number>>
+  set(others: number, runs?: ReadonlyArray<number>): Effect.Effect<void>
 }
 
 /** The other runs' workers the run last read; none unless a layer provides them (otherWorkers). */
 export const OtherWorkers = Context.Reference<OtherWorkersValue>("tutti/run/machine/OtherWorkers", {
-  defaultValue: () => ({ others: Effect.succeed(0), set: () => Effect.void }),
+  defaultValue: () => ({
+    others: Effect.succeed(0),
+    runs: Effect.succeed([]),
+    set: () => Effect.void,
+  }),
 })
 
 /** OtherWorkers kept in memory, for the run to set and its AgentHost to read. */
 export const otherWorkers: Layer.Layer<never> = Layer.effect(
   OtherWorkers,
-  Effect.map(Ref.make(0), (count) => ({
-    others: Ref.get(count),
-    set: (others: number) => Ref.set(count, others),
+  Effect.map(Ref.make<readonly [number, ReadonlyArray<number>]>([0, []]), (kept) => ({
+    others: Effect.map(Ref.get(kept), ([others]) => others),
+    runs: Effect.map(Ref.get(kept), ([, runs]) => runs),
+    set: (others: number, runs: ReadonlyArray<number> = []) => Ref.set(kept, [others, runs]),
   })),
 )
 
@@ -377,6 +386,7 @@ export const make = (options: {
     const written = yield* Ref.make(false)
     const seen = yield* Ref.make<ReadonlyMap<string, Registration>>(new Map())
     const others = yield* Ref.make(0)
+    const runs = yield* Ref.make<ReadonlyArray<number>>([])
     // When each PID's process started, and when that was read (wall-clock time): read again once
     // startsKept has passed, so that a PID taken by another process between two looks is found out.
     const starts = new Map<number, { readonly start: number | null; readonly at: number }>()
@@ -436,6 +446,7 @@ export const make = (options: {
         // No folder yet, or one removed under the runs: the run's own file is written again, the
         // folder with it, and the runs last seen are heard of again once it can be read.
         yield* Ref.set(others, 0)
+        yield* Ref.set(runs, [])
         yield* Ref.set(written, false)
         return []
       }
@@ -461,6 +472,10 @@ export const make = (options: {
         others,
         [...now.values()].reduce((sum, reg) => sum + reg.running, 0),
       )
+      yield* Ref.set(
+        runs,
+        [...now.values()].map((reg) => reg.pid),
+      )
       const shared = now.size
       const ended = [...before]
         .filter(([name]) => !now.has(name))
@@ -481,5 +496,6 @@ export const make = (options: {
         }),
       look: oneLook.withPermits(1)(look),
       others: Ref.get(others),
+      runs: Ref.get(runs),
     }
   })

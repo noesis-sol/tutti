@@ -128,9 +128,10 @@ export interface Reading {
   readonly check: number
   /**
    * The resident memory of the checks, in bytes: what tutti runs besides its workers and each
-   * worker's processes but its Claude Code itself. Left out without a listing.
+   * worker's processes but its Claude Code itself; and `others`, the machine's other runs'
+   * checks (othersChecks), where there are other runs. Left out without a listing.
    */
-  readonly memory?: { readonly checks: number }
+  readonly memory?: { readonly checks: number; readonly others?: number }
   readonly kernel: Kernel
   /** The pages swapped in and out a minute since the reading before; -1 before there are two. */
   readonly swapping: number
@@ -206,21 +207,52 @@ const memoryOf = (all: Processes, pids: Iterable<number>): number => {
   return sum
 }
 
-/** The memory of every process below `self`, itself not counted, nor `skip` and what is below them. */
-export const below = (all: Processes, self: number, skip: ReadonlySet<number>): number => {
+/** Every process below `self`, itself not counted, nor `skip` and what is below them. */
+const under = (all: Processes, self: number, skip: ReadonlySet<number>): ReadonlySet<number> => {
   const children = childrenOf(all)
   const seen = new Set<number>([self, ...skip])
-  let sum = 0
+  const found = new Set<number>()
   const walk = (pid: number) => {
     for (const child of children.get(pid) ?? []) {
       if (seen.has(child)) continue
       seen.add(child)
-      sum += all.get(child)?.memory ?? 0
+      found.add(child)
       walk(child)
     }
   }
   walk(self)
-  return sum
+  return found
+}
+
+/** The memory of every process below `self`, itself not counted, nor `skip` and what is below them. */
+export const below = (all: Processes, self: number, skip: ReadonlySet<number>): number =>
+  memoryOf(all, under(all, self, skip))
+
+/**
+ * The memory of the checks of the machine's other runs, whose processes are `runs`, in bytes, as
+ * one of them counts its own (sample): what is below each of the run's children, a worker's Claude
+ * Code or a command it runs, by treeOf, but not the children themselves, nor the run's process, nor
+ * any of `counted` (this run's own, should one run inside the other). Measured on a run of 3
+ * workers, it came within 10 MB of the run's own figure, 2.3 to 2.7 GB (tutti-0l05): a check's own
+ * shell is a few MB, and what it runs is below it.
+ */
+export const othersChecks = (
+  all: Processes,
+  runs: ReadonlyArray<number>,
+  counted: ReadonlySet<number>,
+): number => {
+  const children = childrenOf(all)
+  const theirs = new Set<number>()
+  for (const run of runs) {
+    if (counted.has(run)) continue
+    const own = new Set<number>([run, ...(children.get(run) ?? [])])
+    for (const child of children.get(run) ?? []) {
+      for (const pid of treeOf(all, child)) {
+        if (!own.has(pid) && !counted.has(pid)) theirs.add(pid)
+      }
+    }
+  }
+  return memoryOf(all, theirs)
 }
 
 /**
@@ -397,7 +429,8 @@ export const pressing = (levels: Levels): boolean =>
 /**
  * A reading at `now` from a listing (undefined: every worker unknown and nothing of tutti's own) and
  * the kernel's figures (undefined: no pressure or load), for the workers whose Claude Code is each
- * of `roots`, by ticket, and tutti's process `self`; and the sampler to take the next with.
+ * of `roots`, by ticket, and tutti's process `self`, beside the machine's other runs, whose
+ * processes are `runs` (none where left out); and the sampler to take the next with.
  */
 export const sample = (options: {
   readonly sampler: Sampler
@@ -406,6 +439,7 @@ export const sample = (options: {
   readonly kernel: Kernel | undefined
   readonly roots: ReadonlyMap<string, number>
   readonly self: number
+  readonly runs?: ReadonlyArray<number>
 }): { readonly reading: Reading; readonly sampler: Sampler } => {
   const { sampler, now, processes } = options
   const workers = new Map<string, number>()
@@ -418,7 +452,9 @@ export const sample = (options: {
     workers.set(ticket, tree.size === 0 ? unknownMemory : memoryOf(processes ?? new Map(), tree))
     sessions += processes?.get(root)?.memory ?? 0
   }
-  const check = processes === undefined ? 0 : below(processes, options.self, theirs)
+  const besides =
+    processes === undefined ? new Set<number>() : under(processes, options.self, theirs)
+  const check = memoryOf(processes ?? new Map(), besides)
   const kernel = options.kernel ?? unknownKernel
   let swapping = -1
   let last = sampler.last
@@ -431,7 +467,15 @@ export const sample = (options: {
   const { levels, overSince } = levelsOf(sampler, kernel, swapping, now)
   let memory: Reading["memory"]
   if (processes !== undefined) {
-    memory = { checks: memoryOf(processes, theirs) - sessions + check }
+    const checks = memoryOf(processes, theirs) - sessions + check
+    const runs = options.runs ?? []
+    memory =
+      runs.length === 0
+        ? { checks }
+        : {
+            checks,
+            others: othersChecks(processes, runs, new Set([options.self, ...theirs, ...besides])),
+          }
   }
   return {
     reading: {
@@ -517,11 +561,13 @@ export const Load = Context.Reference<LoadSource | null>("tutti/run/load/Load", 
 
 /**
  * Reads the machine's load from `source` now and every loadEvery after, forever, and gives each
- * reading to `show`: the workers' roots, by ticket, are `roots`' as each reading starts.
+ * reading to `show`: the workers' roots, by ticket, are `roots`' as each reading starts, and the
+ * machine's other runs' processes `runs`' (none where left out).
  */
 export const watchLoad = (options: {
   readonly source: LoadSource
   readonly roots: Effect.Effect<ReadonlyMap<string, number>>
+  readonly runs?: Effect.Effect<ReadonlyArray<number>>
   readonly self: number
   readonly show: (reading: Reading) => Effect.Effect<void>
 }): Effect.Effect<never, never, ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem> =>
@@ -529,10 +575,11 @@ export const watchLoad = (options: {
     let sampler = newSampler
     for (;;) {
       const roots = yield* options.roots
+      const runs = options.runs === undefined ? [] : yield* options.runs
       const processes = yield* options.source.processes
       const kernel = yield* options.source.kernel
       const now = yield* Clock.currentTimeMillis
-      const next = sample({ sampler, now, processes, kernel, roots, self: options.self })
+      const next = sample({ sampler, now, processes, kernel, roots, self: options.self, runs })
       sampler = next.sampler
       yield* options.show(next.reading)
       yield* Effect.sleep(loadEvery)

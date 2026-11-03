@@ -105,7 +105,7 @@ export const make = (options: {
         if (last !== undefined) {
           yield* showOn(status, "shared")(last.shared)
         }
-        yield* otherWorkers.set(yield* machine.others)
+        yield* otherWorkers.set(yield* machine.others, yield* machine.runs)
         return !(yield* atCap(own)) && (yield* holdMachine(false))
       })
     const room = (own: number) =>

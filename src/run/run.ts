@@ -961,6 +961,7 @@ const runFrom = (
         watchLoad({
           source: loadSource,
           roots: host.processes,
+          runs: otherWorkers.runs,
           self: process.pid,
           show: (load) =>
             Effect.asVoid(

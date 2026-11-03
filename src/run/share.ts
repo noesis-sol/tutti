@@ -3,8 +3,10 @@
 // at concurrency 2 on a 16 GB, 10-core Mac one worker's whole-suite check took 7.7 GB, swap filled
 // and the memory pressure went to warn. So beside its share of the cores, each worker gets a share
 // of the memory checks may use (budgetOf): the memory available and what the checks hold already,
-// less a reserve (load.ts' memoryReserve), divided among the workers allowed now, the machine's
-// other runs' workers, and one more for the merge check (src/agent/env.ts' memoryShare).
+// the machine's other runs' with them, less a reserve (load.ts' memoryReserve), divided among the
+// workers allowed now, the machine's other runs' workers, and one more for the merge check
+// (src/agent/env.ts' memoryShare). The other runs' checks are counted in as their workers are
+// counted among, or each run's share would be cut twice for them (tutti-0l05).
 //
 // The share follows the run: each load reading (load.ts, every loadEvery) works it out again from
 // the workers the pressure cap allows (pressureCap.ts), the other runs' workers and the readings,
@@ -46,7 +48,8 @@ export interface Budget {
   readonly bytes: number
   /**
    * What it is made of, as the START block says it: `5.2 GB available and 2.4 GB in checks, less
-   * the 2.0 GB reserve`.
+   * the 2.0 GB reserve`, or with other runs, `5.2 GB available, 2.4 GB in checks and 1.1 GB in
+   * other runs' checks, less the 2.0 GB reserve`.
    */
   readonly words: string
 }
@@ -57,8 +60,8 @@ export const gigabytes = (bytes: number): string => (bytes / 1024 ** 3).toFixed(
 /**
  * The memory checks may use, from `reading` (null before there is one), on a machine of `total`
  * bytes: the memory available (load.ts' Memory: on macOS the free, inactive, speculative and
- * purgeable pages, on Linux MemAvailable) and the checks' own resident memory, no more than the
- * machine's, less memoryReserve. Without the readings, half the machine's memory less the reserve,
+ * purgeable pages, on Linux MemAvailable) and the checks' own resident memory, the machine's other
+ * runs' checks' too where the reading has them, no more than the machine's, less memoryReserve. Without the readings, half the machine's memory less the reserve,
  * as a run's share of the cores is half of them without one.
  */
 export const budgetOf = (reading: Reading | null, total: number = totalmem()): Budget => {
@@ -68,9 +71,13 @@ export const budgetOf = (reading: Reading | null, total: number = totalmem()): B
   const machine = reading?.kernel.memory
   if (memory !== undefined && machine !== undefined && machine.available >= 0) {
     const { available } = machine
+    const others = memory.others
+    const checks = `${gigabytes(memory.checks)} GB in checks`
     return of(
-      Math.min(available + memory.checks, machine.total) - memoryReserve,
-      `${gigabytes(available)} GB available and ${gigabytes(memory.checks)} GB in checks, less ${reserve}`,
+      Math.min(available + memory.checks + (others ?? 0), machine.total) - memoryReserve,
+      others === undefined
+        ? `${gigabytes(available)} GB available and ${checks}, less ${reserve}`
+        : `${gigabytes(available)} GB available, ${checks} and ${gigabytes(others)} GB in other runs' checks, less ${reserve}`,
     )
   }
   return of(
