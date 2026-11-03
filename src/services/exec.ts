@@ -11,6 +11,8 @@
 // Bun's node:child_process can lose a command's exit and its output (tutti-cje): exec stops waiting
 // for them a grace after the group has gone, and fails with CommandNotRun. A process that left the
 // group can hold its output open: exec reads it for a grace after the leader has exited, then stops.
+// The file a command's output goes to holds at most its first and last bytes (OutputFileBounds), so
+// a check that prints in a loop until its time limit can't fill the disk.
 import type { ChildProcess as Reaper } from "node:child_process"
 import { writeSync } from "node:fs"
 import { constants } from "node:os"
@@ -128,6 +130,20 @@ const nativeWait = (done: () => boolean, ms: number): Effect.Effect<void> =>
 /** How much of each of stdout and stderr is kept in memory, unless the command says otherwise. */
 export const defaultMaxOutputBytes = 16 * 1024 * 1024
 
+/** How much of a command's output its file holds, unless the command says otherwise. */
+export interface FileBounds {
+  /** The bytes at its start, written as they come. */
+  readonly head: number
+  /** The bytes at its end, held in memory past `head` and written, after a fileCutNote, at its end. */
+  readonly tail: number
+}
+
+export const OutputFileBounds: FileBounds = { head: 2 * 1024 * 1024, tail: 8 * 1024 * 1024 }
+
+/** The line a file whose output ran past its bounds holds between its head and its tail. */
+export const fileCutNote = (left: number, bounds: FileBounds): string =>
+  `\n[tutti left out ${left} bytes of this output here: its file keeps the first ${bounds.head} and the last ${bounds.tail}]\n`
+
 export interface Command {
   readonly command: string
   readonly args: ReadonlyArray<string>
@@ -150,6 +166,8 @@ export interface Command {
    * through the symlink guard (§ 9.1), so no path is opened. exec writes to it and leaves it open.
    */
   readonly outputFd?: number
+  /** How much of the output `outputFile` or `outputFd` holds: OutputFileBounds, unless given. */
+  readonly fileBounds?: FileBounds
   /** Called with each chunk of stdout and stderr as it comes, before it reaches the file. */
   readonly onOutput?: (chunk: Uint8Array, from: "stdout" | "stderr") => void
   /** The bytes of stdout and of stderr kept in the result; past this, only the last ones. */
@@ -237,6 +255,11 @@ class Tail {
 
   constructor(private readonly max: number) {}
 
+  /** How many bytes it holds. */
+  get length(): number {
+    return this.size
+  }
+
   push(chunk: Uint8Array): void {
     this.chunks.push(chunk)
     this.size += chunk.length
@@ -255,8 +278,44 @@ class Tail {
     }
   }
 
+  bytes(): Uint8Array {
+    return Buffer.concat(this.chunks)
+  }
+
   text(): string {
     return Buffer.concat(this.chunks).toString("utf8")
+  }
+}
+
+/**
+ * What of a command's output goes to its file: its first `head` bytes as they come, then its last
+ * `tail`, held until its end, after a note of how many bytes were left out between them.
+ */
+export class CappedFile {
+  private written = 0
+  private total = 0
+  private readonly tail: Tail
+
+  constructor(private readonly bounds: FileBounds) {
+    this.tail = new Tail(bounds.tail)
+  }
+
+  /** The part of `chunk` to write now; the rest is held for the end. */
+  take(chunk: Uint8Array): Uint8Array {
+    this.total += chunk.length
+    const room = this.bounds.head - this.written
+    const now = room >= chunk.length ? chunk : chunk.subarray(0, Math.max(0, room))
+    this.written += now.length
+    if (now.length < chunk.length) this.tail.push(chunk.subarray(now.length))
+    return now
+  }
+
+  /** What to write once the output has ended: what was held, after the note when some was left out. */
+  end(): Uint8Array {
+    const left = this.total - this.written - this.tail.length
+    const held = this.tail.bytes()
+    if (left === 0) return held
+    return Buffer.concat([Buffer.from(fileCutNote(left, this.bounds)), held])
   }
 }
 
@@ -384,11 +443,24 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
           stderr: stderr.text(),
           ...(loadedFor === undefined ? {} : { loaded: loadedFor }),
         })
+      const fd = command.outputFd
+      const write = (chunk: Uint8Array) => {
+        if (chunk.length === 0) return Effect.void
+        if (fd !== undefined) return writeAllTo(fd, chunk)
+        return file === undefined ? Effect.void : file.writeAll(chunk)
+      }
+      const capped =
+        fd === undefined && file === undefined
+          ? undefined
+          : new CappedFile(command.fileBounds ?? OutputFileBounds)
+      // Added before the reading starts, so the end of the output reaches the file however exec ends.
+      if (capped !== undefined) {
+        yield* Effect.addFinalizer(() => Effect.ignore(Effect.suspend(() => write(capped.end()))))
+      }
       const take = (tail: Tail, chunk: Uint8Array, from: "stdout" | "stderr") => {
         tail.push(chunk)
         command.onOutput?.(chunk, from)
-        if (command.outputFd !== undefined) return writeAllTo(command.outputFd, chunk)
-        return file === undefined ? Effect.void : file.writeAll(chunk)
+        return capped === undefined ? Effect.void : write(capped.take(chunk))
       }
       const reading = yield* Stream.merge(
         Stream.map(handle.stdout, (chunk) => [stdout, chunk, "stdout"] as const),
