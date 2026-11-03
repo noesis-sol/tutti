@@ -18,7 +18,17 @@
 // keeps the commit of each ticket's branch its check last passed on (Passes), so a branch checked
 // as its worker fixed it, or resolved its rebase, isn't checked again while it stays on top.
 import { join } from "node:path"
-import { Clock, Data, Effect, Predicate, Ref, Result, type Schema, type Scope } from "effect"
+import {
+  Clock,
+  Data,
+  Duration,
+  Effect,
+  Predicate,
+  Ref,
+  Result,
+  type Schema,
+  type Scope,
+} from "effect"
 import type { AppConfig } from "../cli/AppConfig.ts"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -28,6 +38,7 @@ import {
   type CheckPassed,
   type CheckResult,
   Checks,
+  type CheckTimedOut,
   checkLogName,
   OutputBounds,
   type RunOptions,
@@ -166,6 +177,10 @@ export const recordedKeeping = <R>(
     return { ran, kept }
   })
 
+/** RunOptions' `loaded`, where it is given. */
+export const loadedOf = (loaded: Effect.Effect<boolean> | undefined): Pick<RunOptions, "loaded"> =>
+  loaded === undefined ? {} : { loaded }
+
 /** The ticket a check is for. */
 export interface CheckedTicket {
   readonly id: TicketId
@@ -191,11 +206,31 @@ export const howFailed = (error: CheckError): string => {
     case "CheckFailed":
       return "fails"
     case "CheckTimedOut":
-      return `did not finish within ${formatDuration(error.timeLimit)}`
+      return `did not finish within ${formatDuration(error.timeLimit)}${loadAdded(error)}`
     case "CheckNotRun":
       return line`could not be run (${error.reason})`
   }
 }
+
+/**
+ * The time the machine's load added to a check's time limit, for a line: ` (and 12m more for the
+ * machine's load)`; "" for less than a second.
+ */
+const loadAdded = (error: CheckTimedOut): string => {
+  const seconds = error.loaded === undefined ? 0 : Math.round(Duration.toSeconds(error.loaded))
+  return seconds < 1
+    ? ""
+    : ` (and ${formatDuration(Duration.seconds(seconds))} more for the machine's load)`
+}
+
+/**
+ * Whether the machine's load stretched the time limit of a check that timed out: it was loaded
+ * while it ran, so that it may pass on a run of its own once the load has eased (merge.ts's Check).
+ */
+export const timedOutLoaded = (error: CheckError): boolean =>
+  error._tag === "CheckTimedOut" &&
+  error.loaded !== undefined &&
+  Duration.toMillis(error.loaded) > 0
 
 /** What the check said of its failure: the lines saying what failed, else its last maxSaid lines. */
 export const saidOf = (error: CheckError): ReadonlyArray<string> =>
@@ -372,12 +407,13 @@ export const runMergeCheck = (
   ticket: CheckedTicket,
   suite: CheckSuite = "merge",
   before?: ReadonlyArray<StatusEntry>,
+  loaded?: Effect.Effect<boolean>,
 ): Effect.Effect<
   Checked,
   never,
   AppConfig | Checks | Git | Worktrees | Store | Log | EventStream
 > =>
-  Effect.tap(checkOnce(ticket, { suite, before }), (checked) =>
+  Effect.tap(checkOnce(ticket, { suite, before, loaded }), (checked) =>
     checked._tag === "Failed" ? Effect.void : clearUnchecked(ticket.id),
   )
 
@@ -393,6 +429,8 @@ export const checkOnce = (
     readonly suite: CheckSuite
     readonly train?: boolean
     readonly before?: ReadonlyArray<StatusEntry> | undefined
+    /** Whether the machine is loaded now, for the check's time limit (Checks' RunOptions). */
+    readonly loaded?: Effect.Effect<boolean> | undefined
   } = { suite: "merge" },
 ): Effect.Effect<Checked, never, AppConfig | Checks | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
@@ -404,12 +442,16 @@ export const checkOnce = (
         const { ran, kept } = yield* recordedKeeping(
           how.suite,
           ticket.id,
-          noteWritten(ticket.worktree, checks.fast({ cwd: ticket.worktree, ...to }), {
-            before: how.before,
-            read: (after) => {
-              status = after
+          noteWritten(
+            ticket.worktree,
+            checks.fast({ cwd: ticket.worktree, ...to, ...loadedOf(how.loaded) }),
+            {
+              before: how.before,
+              read: (after) => {
+                status = after
+              },
             },
-          }),
+          ),
           {
             ...(how.train === true ? { train: true } : {}),
             keep: { worktree: ticket.worktree, name: checkLogName },

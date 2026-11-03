@@ -1,5 +1,7 @@
 // Checks (§ 3.3): runs the project's setup command, check_fast and check_full in a folder, each
-// through exec (a process group of its own) within its time limit from AppConfig. The whole output
+// through exec (a process group of its own) within its time limit from AppConfig, the time the
+// machine is loaded left out of it, up to the limit again, where the caller says (`loaded`), so
+// that a check on a loaded machine isn't cut short at the limit it has unloaded. The whole output
 // goes to a file the caller names (check.log or setup.log in a worktree's .tutti/run/, § 9.1), or to
 // a descriptor the caller opened for it through the symlink guard; in
 // memory, only what is said of it is kept, each part bounded, as orchestra keeps it: its last lines,
@@ -352,6 +354,11 @@ export class CheckTimedOut extends Schema.TaggedError<CheckTimedOut>()("CheckTim
   command: Schema.String,
   timeLimit: Schema.Duration,
   outputFile: Schema.String,
+  /**
+   * The time the machine's load added to its time limit (RunOptions' `loaded`); absent where none
+   * was asked.
+   */
+  loaded: Schema.optionalKey(Schema.Duration),
   ...saidFields,
 }) {
   override get message(): string {
@@ -397,6 +404,11 @@ export interface RunOptions {
    * and `outputFile` is not opened, so no link left in its place can send the output elsewhere.
    */
   readonly outputFd?: number
+  /**
+   * Whether the machine is loaded now: the time it is doesn't count toward the time limit, up to
+   * the limit again, as a hand-back's (exec's `loaded`). Without it, all of the time awake counts.
+   */
+  readonly loaded?: Effect.Effect<boolean>
 }
 
 export interface SetupOptions extends RunOptions {
@@ -451,6 +463,7 @@ export const runCheck = Effect.fn("runCheck")(function* (
     baseEnv: share === undefined ? branch : checkShareEnv(branch, share),
     outputFile: options.outputFile,
     ...(options.outputFd === undefined ? {} : { outputFd: options.outputFd }),
+    ...(options.loaded === undefined ? {} : { loaded: options.loaded }),
     onOutput: (chunk, from) => output.write(chunk, from),
     // What is said of the output is kept by CheckOutput; exec need hold none of it.
     maxOutputBytes: 0,
@@ -464,6 +477,7 @@ export const runCheck = Effect.fn("runCheck")(function* (
             command,
             timeLimit: error.timeLimit,
             outputFile: options.outputFile,
+            ...(error.loaded === undefined ? {} : { loaded: error.loaded }),
             ...output.summary(),
           }),
         )

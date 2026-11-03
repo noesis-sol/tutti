@@ -13,13 +13,15 @@
 //   worktree with uncommitted changes set aside, DIRTY_WORKTREE, as they would be checked but not
 //   merged), so that no ticket reaches the base unchecked, as orchestra 0.8.5 has it; one whose
 //   commits change nothing needs none. A rebase interrupted is aborted, putting the branch back; a
-//   setup or check interrupted is killed. The commit checked is the branch's as its setup starts:
-//   one made meanwhile, as its worker's, is checked too before the merge goes on. A setup or check
-//   that passes but leaves uncommitted changes to tracked files (a lockfile rewritten, files
-//   formatted) sets the ticket aside, DIRTY_WORKTREE: it passed on files that won't merge, and git
-//   would refuse to remove the worktree after the merge. With no check command, a branch on top of
-//   the base merges unchecked, but a worktree with uncommitted changes is still set aside,
-//   DIRTY_WORKTREE.
+//   setup or check interrupted is killed. Their time limits leave out the time the machine is
+//   loaded, up to the limit again, and one that times out while it was loaded runs once more before
+//   the ticket is set aside, as the load may have eased. The commit checked is the branch's as its
+//   setup starts: one made meanwhile, as its worker's, is checked too before the merge goes on. A
+//   setup or check that passes but leaves uncommitted changes to tracked files (a lockfile
+//   rewritten, files formatted) sets the ticket aside, DIRTY_WORKTREE: it passed on files that won't
+//   merge, and git would refuse to remove the worktree after the merge. With no check command, a
+//   branch on top of the base merges unchecked, but a worktree with uncommitted changes is still set
+//   aside, DIRTY_WORKTREE.
 // - FastForward (fastForward), the step from the fast-forward to the end of its notes, which the
 //   merge queue runs protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE,
 //   GIT_FAILED), the base fast-forwarded to the commit checked, the branch still at it
@@ -90,6 +92,7 @@ import {
   type Passes,
   runMergeCheck,
   saidOf,
+  timedOutLoaded,
   uncheckedMark,
 } from "./check.ts"
 import {
@@ -161,8 +164,9 @@ export interface MergeOptions {
   readonly atReset: AtReset
   /**
    * Whether the machine is loaded now: the run holds at --machine-workers, or its last load reading
-   * has it pressed (load.ts's pressing). A hand-back's time limit leaves out the time it is, up to
-   * the limit again (handback.ts's give). Without it, the machine is never loaded.
+   * has it pressed (load.ts's pressing). A hand-back's time limit, and a check's or setup's, leave
+   * out the time it is, up to the limit again (handback.ts's give, Checks' RunOptions). Without it,
+   * the machine is never loaded.
    */
   readonly loaded: Effect.Effect<boolean>
   /**
@@ -515,6 +519,8 @@ export type Step = Data.TaggedEnum<{
     readonly now: Sha | undefined
     /** Its worktree's status as the merge read it just before, nothing having run in it since. */
     readonly before: ReadonlyArray<StatusEntry> | undefined
+    /** The check runs again after one that timed out on the loaded machine: no more after it. */
+    readonly again?: boolean
   }
   Confirm: { readonly onto: Sha; readonly at: Sha }
   FastForward: { readonly onto: Sha; readonly at: Sha }
@@ -849,7 +855,7 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
  */
 const check = (
   turn: Turn,
-  { fork, onto, head, onTop, carried, now, before }: StepOf<"Check">,
+  { fork, onto, head, onTop, carried, now, before, again = false }: StepOf<"Check">,
 ): Next =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -877,6 +883,23 @@ const check = (
     const failed = (failure: CheckFailure) =>
       Effect.gen(function* () {
         const { error, output, kept } = failure
+        // A check the machine's load stretched may pass on a run of its own: once, before it is set
+        // aside, as it did not finish, so there is no failure to show its worker.
+        if (!again && timedOutLoaded(error)) {
+          yield* log.write(
+            detail`${id}: ${failedHow(error)} on ${branchOn(branch, options.base, onTop)} while the machine was loaded; checking it once more before setting it aside`,
+          )
+          return Step.Check({
+            fork,
+            onto,
+            head,
+            onTop,
+            carried,
+            now: at,
+            before: undefined,
+            again: true,
+          })
+        }
         const stop: CheckStop = {
           ticket,
           onto,
@@ -943,7 +966,12 @@ const check = (
     const rechecking = (yield* ledger.current).tickets.get(id)?.rechecking === true
     // The worktree as the setup left it, or as read before it when none ran.
     const start = setup._tag === "Passed" ? setup.after : before
-    const checked = yield* runMergeCheck(ticket, rechecking ? "recheck" : "merge", start)
+    const checked = yield* runMergeCheck(
+      ticket,
+      rechecking ? "recheck" : "merge",
+      start,
+      options.loaded,
+    )
     // What merges is the commit checked: changes the setup or check left would pass unmerged.
     const dirty =
       checked._tag !== "Failed" &&

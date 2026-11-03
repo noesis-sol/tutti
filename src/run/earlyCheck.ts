@@ -6,8 +6,11 @@
 // branch, as the full check runs (never in the worker's worktree, nor in the main checkout), the
 // setup first, and keeps a pass by the rebased tree and the base's commit. At the ticket's turn, a
 // rebase that gives the same tree on the same base merges with no second check (merge.ts's Check
-// step), waiting for the early check if it still runs; the base moved on since, or a different tree,
-// takes the merge check as ever (a miss).
+// step), waiting for the early check if it still runs, though no longer than a fresh check takes
+// (the median of the last early checks that passed): one still running then is cancelled, a miss,
+// and the merge runs its own; the base moved on since, or a different tree, takes the merge check
+// as ever (a miss). Its setup's and check's time limits leave out the time the machine is loaded,
+// as a merge check's do.
 //
 // The check slot: checks run side by side slow each other 1.1x-2.3x, so an early check starts only
 // while no other check runs (a merge's, a train's, a fix's, the checks gate's, another early check),
@@ -48,8 +51,16 @@ import { type CheckError, Checks, checkLogName, setupLogName } from "../services
 import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
+import { sleepAwake } from "../services/Wake.ts"
 import { branchOf, Worktrees } from "../services/Worktrees.ts"
-import { failedHow, flakyWarnings, outputKept, outputTo, recordedKeeping } from "./check.ts"
+import {
+  failedHow,
+  flakyWarnings,
+  loadedOf,
+  outputKept,
+  outputTo,
+  recordedKeeping,
+} from "./check.ts"
 import { tenths } from "./events.ts"
 import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
@@ -57,6 +68,7 @@ import { leftWarning, removeLeftWorktrees, worktreeWhy } from "./fullcheck.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, type Log, line, ticketLine } from "./log.ts"
 import { say, warn } from "./say.ts"
+import { median } from "./scorecard.ts"
 
 /** How the early check's worktrees' folder names start, under the worktrees' folder. */
 export const earlyFolderPrefix = "early-check-"
@@ -66,6 +78,9 @@ const whose = "an early check's"
 
 /** How often an early check under way looks whether its ticket's branch has moved on. */
 export const branchPoll = "5 seconds"
+
+/** How many of the last early checks that passed say how long a fresh check takes (freshTakes). */
+export const freshOf = 5
 
 /** The phases a ticket keeps its early check in: Working, and on its way through the merge queue. */
 const keptIn: ReadonlySet<string> = new Set(["Working", "ToMerge", "Merging"])
@@ -79,6 +94,13 @@ const earlyLine = (id: TicketId, text: Line): Line => ticketLine(earlyTag)`${id}
 /** A time to the second, for a line: `1m20s`, `0s`. */
 const took = (seconds: number): string =>
   seconds < 1 ? "0s" : formatDuration(Duration.seconds(Math.floor(seconds)))
+
+/**
+ * How long, in seconds, a fresh check takes, by the times of the last early checks that passed:
+ * their median; undefined before any passed.
+ */
+export const freshTakes = (times: ReadonlyArray<number>): number | undefined =>
+  times.length === 0 ? undefined : median(times)
 
 /** How an early check ended. */
 export type Ended = Data.TaggedEnum<{
@@ -173,6 +195,11 @@ export interface EarlyOptions {
    * as one is optional. Never without it.
    */
   readonly held?: Effect.Effect<boolean>
+  /**
+   * Whether the machine is loaded now: the time it is doesn't count toward an early check's time
+   * limit, up to the limit again, as a merge check's (Checks' RunOptions). Never without it.
+   */
+  readonly loaded?: Effect.Effect<boolean>
 }
 
 type Env =
@@ -210,6 +237,8 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
     // The slot's decisions, one at a time; no early check's own fiber takes it, so a decision may
     // wait for one it cancels.
     const lock = yield* Semaphore.make(1)
+    // How long, in seconds, each of the last freshOf early checks that passed took.
+    const passTimes = yield* Ref.make<ReadonlyArray<number>>([])
     const runs = yield* fibers.make<void, never>("early checks")
     const cleanups = yield* fibers.make<void, never>("early checks' worktrees")
 
@@ -281,7 +310,13 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
                 recordedKeeping(
                   "setup",
                   id,
-                  checks.setup({ cwd: path, ...to, before: "fast", command: setup }),
+                  checks.setup({
+                    cwd: path,
+                    ...to,
+                    before: "fast",
+                    command: setup,
+                    ...loadedOf(options.loaded),
+                  }),
                   { early: true, keep: { worktree: path, name: setupLogName } },
                 ),
                 (ran) => ({ ...ran, output: to.outputFile }),
@@ -295,9 +330,14 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
         const checked = yield* Effect.scoped(
           Effect.flatMap(outputTo({ id, worktree: path }, checkLogName, whose), (to) =>
             Effect.map(
-              recordedKeeping("early", id, checks.fast({ cwd: path, ...to }), {
-                keep: { worktree: path, name: checkLogName },
-              }),
+              recordedKeeping(
+                "early",
+                id,
+                checks.fast({ cwd: path, ...to, ...loadedOf(options.loaded) }),
+                {
+                  keep: { worktree: path, name: checkLogName },
+                },
+              ),
               (ran) => ({ ...ran, output: to.outputFile }),
             ),
           ),
@@ -442,6 +482,9 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
             base: early.onto,
             text: earlyLine(early.ticket, line`not run: ${ended.why}`),
           })
+        }
+        if (ended._tag === "Passed") {
+          yield* Ref.update(passTimes, (all) => [...all, ended.seconds].slice(-freshOf))
         }
         yield* Deferred.succeed(early.ended, ended)
       }).pipe(
@@ -598,7 +641,22 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
           return false
         }
         const waiting = yield* Clock.currentTimeMillis
-        const ended = yield* Deferred.await(early.ended)
+        // Waited for no longer than a fresh check takes: one still running then is slower than the
+        // merge's own check would be, as on a loaded machine, or stuck.
+        const fresh = freshTakes(yield* Ref.get(passTimes))
+        const ended = yield* fresh === undefined
+          ? Deferred.await(early.ended)
+          : Effect.raceFirst(
+              Deferred.await(early.ended),
+              Effect.as(sleepAwake(Duration.seconds(fresh)), undefined),
+            )
+        if (ended === undefined) {
+          const ran = tenths((yield* Clock.currentTimeMillis) - early.began)
+          const why = line`it still ran after ${took(ran)}, and a fresh check takes ${took(fresh ?? 0)}`
+          yield* cancel(early, why)
+          yield* miss(early, why)
+          return false
+        }
         const waited = tenths((yield* Clock.currentTimeMillis) - waiting)
         if (ended._tag !== "Passed") {
           yield* miss(early, unpassed(ended))

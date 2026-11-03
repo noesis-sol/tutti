@@ -67,6 +67,7 @@ import {
   failedHow,
   markHandedBack,
   runMergeCheck,
+  timedOutLoaded,
 } from "./check.ts"
 import type { Carried } from "./checkback.ts"
 import { holdingSlot } from "./earlyCheck.ts"
@@ -1009,12 +1010,13 @@ export const carryIfBaseMoved = (
  * The setup, if need be, and the merge's check on the branch its worker left after a hand-back,
  * its `fix`, in place: the commit checked, its branch's as the setup starts (undefined when git
  * couldn't say), so that one its worker makes while it runs is checked before it merges, and how it
- * went, that commit kept in the memory's passes when it passed.
+ * went, that commit kept in the memory's passes when it passed. A check, or setup, that timed out
+ * while the machine was loaded runs once more, as the merge's does (merge.ts's Check).
  */
 export const checkWithFix = (
   stop: Stopped,
   fix: Fix,
-  options: MergeTarget & Pick<MergeOptions, "early">,
+  options: MergeTarget & Pick<MergeOptions, "early"> & Partial<Pick<MergeOptions, "loaded">>,
   memory: MergeMemory,
 ): Effect.Effect<
   { readonly at: Sha | undefined; readonly checked: SetUp | Checked },
@@ -1023,10 +1025,11 @@ export const checkWithFix = (
 > =>
   Effect.gen(function* () {
     const at = yield* branchHead(stop.ticket, options)
+    const { id, branch } = stop.ticket
     // Its setup and check hold the early checks' slot (earlyCheck.ts).
-    const checked = yield* holdingSlot(
+    const once = holdingSlot(
       options.early,
-      line`${stop.ticket.branch}'s check after its worker's ${fix.what}`,
+      line`${branch}'s check after its worker's ${fix.what}`,
       Effect.gen(function* () {
         const setup = yield* setUp(stop.ticket, options, memory.setUps, {
           fork: stop.fork,
@@ -1035,9 +1038,24 @@ export const checkWithFix = (
         })
         return setup._tag === "Failed"
           ? setup
-          : yield* runMergeCheck(stop.ticket, fix.what === "fix" ? "fix" : "merge")
+          : yield* runMergeCheck(
+              stop.ticket,
+              fix.what === "fix" ? "fix" : "merge",
+              undefined,
+              options.loaded,
+            )
       }),
     )
+    const first = yield* once
+    const checked =
+      first._tag === "Failed" && timedOutLoaded(first.error)
+        ? yield* Effect.andThen(
+            (yield* Log).write(
+              detail`${id}: ${failedHow(first.error)} on ${branch} after its worker's ${fix.what}, while the machine was loaded; checking it once more`,
+            ),
+            once,
+          )
+        : first
     if (checked._tag !== "Failed") yield* notePass(stop.ticket, memory.passes, at)
     return { at, checked }
   })

@@ -492,7 +492,11 @@ export const make = (
             const checked =
               setup._tag === "Failed"
                 ? Checked.Failed({ error: setup.error, output: setup.output, kept: setup.kept })
-                : yield* checkOnce(checking.ticket, { suite: "merge", train: true })
+                : yield* checkOnce(checking.ticket, {
+                    suite: "merge",
+                    train: true,
+                    loaded: options.loaded,
+                  })
             return { setup, checking, checked }
           }),
         )

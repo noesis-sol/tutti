@@ -129,6 +129,36 @@ export const sleepAwake = (duration: Duration.Input): Effect.Effect<void> =>
   })
 
 /**
+ * Sleeps as sleepAwake does, but the time the machine is loaded (`loaded`, sampled every `every`,
+ * each sample standing for the time up to the next) is left out too, up to `duration` again, as a
+ * hand-back's time limit leaves it out (handback.ts's clock). Gives the time it left out, in ms.
+ */
+export const sleepAwakeUnloaded = (
+  duration: Duration.Input,
+  loaded: Effect.Effect<boolean>,
+  every: Duration.Input,
+): Effect.Effect<number> =>
+  Effect.gen(function* () {
+    const most = Duration.toMillis(Duration.fromInputUnsafe(duration))
+    if (!Number.isFinite(most)) return yield* Effect.never
+    const step = Duration.toMillis(Duration.fromInputUnsafe(every))
+    let left = most
+    let extra = 0
+    let spare = false
+    let since = yield* Clock.currentTimeMillis
+    for (;;) {
+      const spent = yield* awakeSince(since)
+      since = yield* Clock.currentTimeMillis
+      const added = spare ? Math.min(spent, most - extra) : 0
+      extra += added
+      left = Math.max(0, left - (spent - added))
+      if (left === 0) return extra
+      spare = extra < most && (yield* loaded)
+      yield* Effect.sleep(Duration.millis(Math.min(spare ? most - extra : left, step)))
+    }
+  })
+
+/**
  * Effect.timeoutOrElse, its time counted awake (sleepAwake): `orElse` once `self` has gone on for
  * `duration` with the machine awake, `self` interrupted.
  */

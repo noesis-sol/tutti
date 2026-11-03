@@ -520,6 +520,11 @@ const runFrom = (
     // Whether the machine's last load reading has it pressed (load.ts's pressing): with machineFull,
     // the time a hand-back's limit leaves out (handback.ts).
     const pressed = yield* Ref.make(false)
+    // Whether the machine is loaded: the time it is, a hand-back's limit and a check's leave out.
+    const machineLoaded = Effect.map(
+      Effect.all([machineFull, Ref.get(pressed)]),
+      ([full, hard]) => full || hard,
+    )
     // The workers memory pressure allows (pressureGate.ts): the ticket about to start or resume
     // waits while the run's workers are at them, and the optional checks start none while the
     // memory is pressed.
@@ -541,6 +546,7 @@ const runFrom = (
       base,
       setup: Effect.map(setUps.now, (setup) => setup.command),
       held: pressure.pressed,
+      loaded: machineLoaded,
     })
     const queue = yield* makeQueue(
       {
@@ -557,10 +563,7 @@ const runFrom = (
           Effect.all([machineFull, pressure.pressed]),
           ([full, hard]) => full || hard,
         ),
-        loaded: Effect.map(
-          Effect.all([machineFull, Ref.get(pressed)]),
-          ([full, hard]) => full || hard,
-        ),
+        loaded: machineLoaded,
         ...overnight,
       },
       (where, defect) =>

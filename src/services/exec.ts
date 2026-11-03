@@ -33,7 +33,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { withoutGitLocal } from "./gitEnv.ts"
 import { descendantGroups, killTree, ownGroup, processAlive, processTable } from "./processTree.ts"
 import { startReaper, stopReaper } from "./reaper.ts"
-import { sleepAwake } from "./Wake.ts"
+import { sleepAwake, sleepAwakeUnloaded } from "./Wake.ts"
 
 /** orchestra's limits: 30 s for a read, 2 min for a git write or a `bd` update. Checks pass their own. */
 export const TimeLimit = {
@@ -155,7 +155,19 @@ export interface Command {
   /** The bytes of stdout and of stderr kept in the result; past this, only the last ones. */
   readonly maxOutputBytes?: number
   readonly killGrace?: Duration.Input
+  /**
+   * Whether the machine is loaded now: the time it is, sampled every loadSampleEvery, doesn't count
+   * toward `timeLimit`, up to `timeLimit` again (Wake.ts's sleepAwakeUnloaded). Without it, all of
+   * the time awake counts.
+   */
+  readonly loaded?: Effect.Effect<boolean>
 }
+
+/**
+ * How often a command's time limit samples whether the machine is loaded: as often as the run reads
+ * it (load.ts's loadEvery).
+ */
+export const loadSampleEvery: Duration.Duration = Duration.seconds(5)
 
 export interface Output {
   readonly exitCode: number
@@ -196,6 +208,8 @@ export class CommandTimedOut extends Schema.TaggedError<CommandTimedOut>()("Comm
   command: Schema.String,
   timeLimit: Schema.Duration,
   stderr: Schema.String,
+  /** The time the machine's load added to its time limit, where the command was given `loaded`. */
+  loaded: Schema.optionalKey(Schema.Duration),
 }) {}
 
 /** The command didn't start, or its output couldn't be read or written to its file. */
@@ -343,7 +357,14 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       // A leader still running at the limit has timed out, whatever code it exits with once killed.
       // One whose group has gone has ended, its exit lost.
       let timedOut = false
-      yield* Effect.interruptible(sleepAwake(timeLimit)).pipe(
+      let loadedFor: Duration.Duration | undefined
+      const limit =
+        command.loaded === undefined
+          ? sleepAwake(timeLimit)
+          : Effect.map(sleepAwakeUnloaded(timeLimit, command.loaded, loadSampleEvery), (ms) => {
+              loadedFor = Duration.millis(ms)
+            })
+      yield* Effect.interruptible(limit).pipe(
         Effect.andThen(handle.isRunning),
         Effect.flatMap((running) => {
           timedOut = running && processAlive(-leader)
@@ -355,6 +376,14 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
 
       const stdout = new Tail(max)
       const stderr = new Tail(max)
+      // What the command's time limit gave out, for CommandTimedOut.
+      const timedOutError = () =>
+        new CommandTimedOut({
+          command: shown,
+          timeLimit,
+          stderr: stderr.text(),
+          ...(loadedFor === undefined ? {} : { loaded: loadedFor }),
+        })
       const take = (tail: Tail, chunk: Uint8Array, from: "stdout" | "stderr") => {
         tail.push(chunk)
         command.onOutput?.(chunk, from)
@@ -377,9 +406,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       if (exit === undefined) {
         // The output went with the exit: what came of it is no result.
         lost = true
-        if (timedOut) {
-          return yield* new CommandTimedOut({ command: shown, timeLimit, stderr: stderr.text() })
-        }
+        if (timedOut) return yield* timedOutError()
         return yield* new CommandNotRun({
           command: shown,
           reason: "its process group ended, but its exit and the end of its output never came",
@@ -402,9 +429,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       }
 
       const exitCode = Exit.isSuccess(exit) ? exit.value : signalExitCode(exit.cause)
-      if (timedOut) {
-        return yield* new CommandTimedOut({ command: shown, timeLimit, stderr: stderr.text() })
-      }
+      if (timedOut) return yield* timedOutError()
       return {
         exitCode,
         stdout: stdout.text(),

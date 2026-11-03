@@ -55,13 +55,20 @@ import {
   writeRunFile,
 } from "../services/Worktrees.ts"
 import { gitReads } from "./branch.ts"
-import { type CheckFailure, howFailed, outputKept, outputTo, recordedKeeping } from "./check.ts"
+import {
+  type CheckFailure,
+  howFailed,
+  loadedOf,
+  outputKept,
+  outputTo,
+  recordedKeeping,
+} from "./check.ts"
 import { noteWritten } from "./checkWrote.ts"
 import type { EventStream } from "./eventstream.ts"
 import { settingsGlobMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
-import type { FinishedTicket, MergeTarget } from "./merge.ts"
+import type { FinishedTicket, MergeOptions, MergeTarget } from "./merge.ts"
 import { Detail, Move } from "./phase.ts"
 import { sameRequires } from "./requires.ts"
 import { warn } from "./say.ts"
@@ -294,7 +301,7 @@ export interface SetUpOf {
  */
 export const setUp = (
   ticket: FinishedTicket,
-  options: MergeTarget,
+  options: MergeTarget & Partial<Pick<MergeOptions, "loaded">>,
   setUps: SetUps,
   { fork, onto, fix, ahead = false, at, before }: SetUpOf,
 ): Effect.Effect<SetUp, never, AppConfig | Checks | Git | Worktrees | Ledger | Log | EventStream> =>
@@ -350,7 +357,13 @@ export const setUp = (
           ticket.id,
           noteWritten(
             ticket.worktree,
-            checks.setup({ cwd: ticket.worktree, ...to, before: "fast", command }),
+            checks.setup({
+              cwd: ticket.worktree,
+              ...to,
+              before: "fast",
+              command,
+              ...loadedOf(options.loaded),
+            }),
             {
               before,
               read: (status) => {
