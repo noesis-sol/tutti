@@ -1,11 +1,12 @@
-// The Attention service (§ 4.5): where a worker waits on a person. `request(ticket, fibers)` gives a
-// session's canUseTool callback and `elicitation(ticket, fibers)` its onElicitation, their calls
-// fibers of the session's FiberSet (callbacks.ts), which closing it interrupts. Each call becomes an
-// AttentionRequest in its worker's queue, oldest first, and the callback awaits a Deferred that an
-// answer, from the screen or `tutti answer`, resolves. Answers map to the SDK's results exactly as
-// § 4.5's table says; a request whose signal aborts is removed, and an answer to a request that is
-// no longer open is refused with NotOpen, for the caller's toast. So is one to a request of a session
-// whose ticket the run's end has stopped (`refuse`): its fiber no longer watches its worker.
+// The Attention service (§ 4.5): where a worker waits on a person. `request(ticket, fibers)` gives
+// a session's canUseTool callback and `elicitation(ticket, fibers)` its onElicitation, their calls
+// fibers of the session's FiberSet (callbacks.ts), which closing it interrupts. Each call becomes
+// an AttentionRequest in its worker's queue, oldest first, and the callback awaits a Deferred that
+// an answer, from the screen or `tutti answer`, resolves. Answers map to the SDK's results exactly
+// as § 4.5's table says; a request whose signal aborts is removed, and an answer to a request that
+// is no longer open is refused with NotOpen, for the caller's toast. So is one to a request of a
+// session whose ticket the run's end has stopped (`refuse`): its fiber no longer watches its
+// worker.
 //
 // Allow for this run passes the request's `addRules` suggestions with their destination rewritten
 // to `session`, and keeps their rules for the run: a later request from any worker whose suggested
@@ -20,10 +21,10 @@
 // tutti-epza.8). A permission request is never answered so, the safety check's holds included.
 //
 // An overnight run (Options.denyPermissions) denies a permission request itself, in nobody's name,
-// once it has waited 30 s with the machine awake (AppConfig's overnightDenyAfter): its worker's turn goes on
-// with the refusal, rather than hold its slot for blockedAfter and be set aside (tutti-epza.10).
-// Such a request holds the run with BLOCKED only should that denial not have come blockedAfter
-// past its time, as an auto-answered question does.
+// once it has waited 30 s with the machine awake (AppConfig's overnightDenyAfter): its worker's
+// turn goes on with the refusal, rather than hold its slot for blockedAfter and be set aside
+// (tutti-epza.10). Such a request holds the run with BLOCKED only should that denial not have come
+// blockedAfter past its time, as an auto-answered question does.
 //
 // Every request and answer is a PERMISSION or QUESTION log line and an `attention` or
 // `attention_answered` event, and is tallied per ticket. So is each call Claude Code denied without
