@@ -1,20 +1,17 @@
 // The pressure cap: the workers a run allows under memory pressure. The workers allowed are the least
 // of concurrent, the machine's cap (HOLD: MACHINE, machine.ts) and this cap, which starts at
-// concurrent. It falls a step after the kernel's memory pressure has been at warn or worse, or
-// swapping under way, for pressureLowerAfter (two steps at critical), and again each further such
-// time it lasts; it rises a step after pressureRaiseAfter with the pressure normal and no swapping,
-// and again each further such time, up to concurrent. Never below 1, so the run keeps going. The load
-// average is no trigger: it counts threads waiting (238.6 on 10 cores while the processes used 6.3),
-// and a run's own checks keep it high. Like a stop, a lowered cap never interrupts a worker: it only
+// concurrent. It falls a step after the kernel's memory pressure has been at warn or worse for
+// pressureLowerAfter (two steps at critical), and again each further such time it lasts; it rises a
+// step after pressureRaiseAfter with the pressure normal, and again each further such time, up to
+// concurrent. Never below 1, so the run keeps going. The kernel's pressure level alone moves it.
+// Swapping doesn't: with gigabytes in swap, touching old pages swaps them in at hundreds of
+// thousands of pages a minute long after the pressure has passed (tutti-epza.14), so it would keep
+// the cap at 1 all night; it stays a figure on the load line and in the load records. Nor does the
+// load average: it counts threads waiting (238.6 on 10 cores while the processes used 6.3), and a
+// run's own checks keep it high. Like a stop, a lowered cap never interrupts a worker: it only
 // keeps the run from dispatching or resuming until fewer workers run than it allows
 // (pressureGate.ts, HOLD: PRESSURE). The times and steps are load.ts's, beside its thresholds.
-import {
-  criticalStep,
-  pressureLowerAfter,
-  pressureRaiseAfter,
-  type Reading,
-  swappingPerMinute,
-} from "./load.ts"
+import { criticalStep, pressureLowerAfter, pressureRaiseAfter, type Reading } from "./load.ts"
 import { type Line, line, Tag, tagged } from "./log.ts"
 
 /** The word of the hold at the pressure cap, on the dashboard's title line while it holds. */
@@ -22,22 +19,20 @@ export const holdWord = "PRESSURE"
 
 /**
  * What a reading says of the machine's memory, for the cap: the kernel's pressure at critical or
- * warn, swapping under way, calm (the pressure normal and no swapping), or unknown, which moves the
- * cap neither way.
+ * warn, calm (the pressure normal), or unknown, which moves the cap neither way. Swapping, however
+ * heavy, is none of them.
  */
-export type Strain = "critical" | "warn" | "swapping" | "calm" | "unknown"
+export type Strain = "critical" | "warn" | "calm" | "unknown"
 
-/** `reading`'s strain. */
+/** `reading`'s strain: its kernel's memory pressure alone. */
 export const strainOf = (reading: Reading): Strain => {
   const { pressure } = reading.kernel
   if (pressure === "critical" || pressure === "warn") return pressure
-  if (reading.swapping >= swappingPerMinute) return "swapping"
   return pressure === "normal" ? "calm" : "unknown"
 }
 
 /** Whether `strain` presses the machine's memory: what lowers the cap, and holds the optional checks. */
-export const pressedBy = (strain: Strain): boolean =>
-  strain === "critical" || strain === "warn" || strain === "swapping"
+export const pressedBy = (strain: Strain): boolean => strain === "critical" || strain === "warn"
 
 /** The cap, and since when what moves it has lasted. */
 export interface Cap {
@@ -70,9 +65,7 @@ export const lasted = (ms: number): string =>
 
 /** What `strain`, lasting `ms`, is said as. */
 const strainWords = (strain: Strain, ms: number): string =>
-  strain === "swapping"
-    ? `swapping for ${lasted(ms)}`
-    : `memory pressure ${strain === "calm" ? "normal" : strain} for ${lasted(ms)}`
+  `memory pressure ${strain === "calm" ? "normal" : strain} for ${lasted(ms)}`
 
 /**
  * The cap after a reading of `strain` at `now`, out of `concurrent`, and the step it took, if any.

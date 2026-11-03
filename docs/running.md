@@ -785,11 +785,13 @@ share as it starts and keeps it.
 
 On a machine short of memory, the run lowers how many workers it allows, and raises it again once
 the pressure has passed. It reads the machine's load every 5 seconds, with the dashboard or plain
-output: after the kernel's memory pressure has been at `warn` or worse, or the machine swapping, for
-60 seconds, it allows one worker fewer (two fewer at `critical`), and one fewer again each further 60
-seconds it lasts, never fewer than one; after 5 minutes with the pressure `normal` and no swapping,
-it allows one more, and again each further 5 minutes, up to `concurrent`. The load average doesn't
-count: it counts threads waiting, and the run's own checks keep it high.
+output: after the kernel's memory pressure has been at `warn` or worse for 60 seconds, it allows one
+worker fewer (two fewer at `critical`), and one fewer again each further 60 seconds it lasts, never
+fewer than one; after 5 minutes with the pressure `normal`, it allows one more, and again each
+further 5 minutes, up to `concurrent`. Swapping doesn't count: with gigabytes in swap, the machine
+goes on swapping old pages in long after the pressure has passed, so the load line shows it without
+the cap heeding it. Nor does the load average: it counts threads waiting, and the run's own checks
+keep it high.
 
 It stops nothing: a worker at work goes on with its ticket, and the run starts or resumes no ticket
 until fewer workers run than it allows, with `PRESSURE` on the dashboard's title line while one

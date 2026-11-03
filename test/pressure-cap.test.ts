@@ -1,6 +1,7 @@
 // The pressure cap (src/run/pressureCap.ts, pressureGate.ts): the workers a run allows fall a step
-// after the memory pressure has been at warn or worse, or swapping under way, for 60 s (two at
-// critical), and rise a step after 5 minutes of calm, up to concurrent; never below 1. A lowered cap
+// after the memory pressure has been at warn or worse for 60 s (two at critical), and rise a step
+// after 5 minutes of it normal, however much the machine swaps, up to concurrent; never below 1.
+// A lowered cap
 // holds dispatch and resuming (HOLD: PRESSURE) without touching a running worker; each step is a log
 // line and a pressure_cap record, and the readings go into events.jsonl as load records. The plain
 // mode reads the machine too, and the dashboard's load line says the workers allowed.
@@ -100,15 +101,12 @@ describe("the cap's steps", () => {
     ])
   })
 
-  test("fall by two at critical, and for swapping as for warn", () => {
+  test("fall by two at critical", () => {
     expect(after(times(minute, "critical"), 4).changes).toEqual([
       "60s HOLD: PRESSURE: workers allowed 4 → 2: memory pressure critical for 60 s",
     ])
-    expect(after(times(minute, "swapping"), 4).changes).toEqual([
-      "60s HOLD: PRESSURE: workers allowed 4 → 3: swapping for 60 s",
-    ])
-    // A stretch is pressed whichever way: warn, then swapping, then critical, lowers at 60 s.
-    const mixed = [...times(4, "warn"), ...times(4, "swapping"), ...times(minute - 8, "critical")]
+    // A stretch is pressed whichever level: warn, then critical, lowers at 60 s.
+    const mixed = [...times(4, "warn"), ...times(minute - 4, "critical")]
     expect(after(mixed, 4).cap).toBe(2)
   })
 
@@ -172,14 +170,52 @@ const reading = (kernel: Partial<Kernel>, swapping = 0): Reading => ({
 })
 
 describe("a reading's strain", () => {
-  test("is the memory pressure, then swapping, never the load average", () => {
+  test("is the memory pressure alone, never swapping nor the load average", () => {
     expect(strainOf(reading({ pressure: "critical" }))).toBe("critical")
     expect(strainOf(reading({ pressure: "warn" }, 5000))).toBe("warn")
-    expect(strainOf(reading({ pressure: "normal" }, 600))).toBe("swapping")
     expect(strainOf(reading({ pressure: "normal" }, 599))).toBe("calm")
     expect(strainOf(reading({ pressure: "normal", load1: 238.6 }))).toBe("calm")
     expect(strainOf(reading({ pressure: "unknown" }))).toBe("unknown")
-    expect(strainOf(reading({ pressure: "unknown" }, 900))).toBe("swapping")
+    // Gigabytes in swap: touching old pages swaps them in long after the pressure has passed.
+    expect(strainOf(reading({ pressure: "normal" }, 144_056))).toBe("calm")
+    expect(strainOf(reading({ pressure: "unknown" }, 900))).toBe("unknown")
+  })
+
+  test("normal with heavy swapping raises the cap, and lowers it never", () => {
+    const calm = pressureRaiseAfter / 5_000
+    const low = { cap: 1, pressedSince: null, calmSince: null }
+    const swapping = Array.from({ length: calm + 1 }, () =>
+      strainOf(reading({ pressure: "normal" }, 320_000)),
+    )
+    expect(after(swapping, 2, 5_000, low)).toEqual({
+      cap: 2,
+      changes: ["300s workers allowed 1 → 2: memory pressure normal for 5 min"],
+    })
+    expect(after(swapping, 4).cap).toBe(4)
+  })
+
+  test("normal with heavy swapping holds no optional check", async () => {
+    const pressed = await Effect.runPromise(
+      Effect.gen(function* () {
+        const status = yield* SubscriptionRef.make<Status>(emptyStatus)
+        const holds = yield* makeHoldsGate({ status, notices: [], wakeUp: Effect.void })
+        const gate = yield* makePressureGate({
+          concurrent: 2,
+          on: true,
+          holds,
+          status,
+          wakeUp: Effect.void,
+        })
+        yield* gate.read({ ...reading({ pressure: "normal" }, 320_000), at: 0 })
+        const swapping = yield* gate.pressed
+        yield* gate.read({ ...reading({ pressure: "warn" }, 320_000), at: 5_000 })
+        return { swapping, warn: yield* gate.pressed }
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(ledgerLayer().pipe(Layer.provideMerge(TestClock.layer()))),
+      ),
+    )
+    expect(pressed).toEqual({ swapping: false, warn: true })
   })
 })
 
