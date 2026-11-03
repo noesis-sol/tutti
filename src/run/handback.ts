@@ -14,7 +14,7 @@
 // The hand-back is a client_composed message with orchestra's instructions. It is under way from
 // its push until its send is no longer outstanding and the worker has settled, within
 // resolve_timeout from the push, the time its worker waits at the account's usage limit left out, as
-// orchestra 0.8.0 has it, and the time the machine is loaded, up to resolve_timeout again, as
+// orchestra 0.8.0 has it, and the time it waits for Claude's API to answer again (apiOutage.ts), and the time the machine is loaded, up to resolve_timeout again, as
 // orchestra 0.9.0 has it; the reset tells it to carry on with the hand-back (usageLimit.ts). A worker
 // at the limit already is handed it once the limit lifts, as orchestra 0.8.0 has it: the usage-limit
 // hold keeps the hand-back and sends it at the reset as the worker's carry-on, the wait not counting
@@ -627,6 +627,9 @@ const whenState = (
 
 const isLimited = (state: WorkerState) => state._tag === "UsageLimited"
 
+/** Whether the worker waits for Claude's API to answer again (apiOutage.ts). */
+const isOut = (state: WorkerState) => state._tag === "ApiUnavailable"
+
 /**
  * What a hand-back's give reads of the run: its atReset, whether the machine is loaded, and an
  * overnight run's register.
@@ -640,7 +643,7 @@ interface Late {
 
 /**
  * The hand-back's clock: `limit` of the time its worker isn't at the account's usage limit, as
- * orchestra 0.8.0 counts it, and of that, the time the machine is loaded (`options.loaded`, sampled
+ * orchestra 0.8.0 counts it, nor waiting for Claude's API to answer again (apiOutage.ts), and of that, the time the machine is loaded (`options.loaded`, sampled
  * every loadEvery) left out too, up to `limit` again, as orchestra 0.9.0 has it. Each time the
  * worker is seen at the limit, git is asked whether it has done what it was asked, its turn having
  * ended on the limit as it finished (a turn that has ended can't change git): "taken" when it has.
@@ -685,12 +688,26 @@ const clock = (
     for (;;) {
       since = yield* Clock.currentTimeMillis
       spare = false
-      const limited = yield* Effect.raceFirst(
-        Effect.as(runsOut, false),
-        Effect.as(whenState(id, isLimited), true),
-      )
-      if (!limited) return { loaded: Duration.seconds(Math.round(extra / 1000)) }
+      const held = yield* Effect.raceAll([
+        Effect.as(runsOut, "late" as const),
+        Effect.as(whenState(id, isLimited), "limit" as const),
+        Effect.as(whenState(id, isOut), "outage" as const),
+      ])
+      if (held === "late") return { loaded: Duration.seconds(Math.round(extra / 1000)) }
       yield* count
+      if (held === "outage") {
+        if (yield* handBack.done) {
+          yield* logs.write(
+            detail`${id}'s worker waits for Claude's API, but ${doneWords(handBack.mode)}: ${branch} is taken as it is, without waiting for the API`,
+          )
+          return "taken"
+        }
+        yield* logs.write(
+          detail`${id}'s worker waits for Claude's API on its hand-back: it carries on once the API answers, the wait not counting toward the ${formatDuration(limit)}`,
+        )
+        yield* whenState(id, (state) => !isOut(state))
+        continue
+      }
       if (yield* handBack.done) {
         yield* logs.write(
           detail`${id}'s worker is at the usage limit, but ${doneWords(handBack.mode)}: ${branch} is taken as it is, without waiting for the limit to lift`,

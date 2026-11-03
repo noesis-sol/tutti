@@ -1169,7 +1169,8 @@ triaged or counted toward the environment hold, nor its wait toward the ticket l
   answer either (API Error: 529 Overloaded); tutti asks it again in 2m`.
 - **Once a probe is answered**, the hold lifts (`API_UNAVAILABLE: lifted: Claude's API answered a
   probe 7m after the hold`), each waiting worker you haven't steered is told to carry on where it
-  left off, and the run takes tickets again. Another outage later holds it again, its probes from a
+  left off, a hand-back's included, whose 20 minutes don't count the wait, and the run takes
+  tickets again. Another outage later holds it again, its probes from a
   minute afresh.
 
 A 429 is the usage limit, above, not an outage.

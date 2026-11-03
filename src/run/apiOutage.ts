@@ -17,9 +17,13 @@
 //   client_composed message to carry on where it left off, but one whose hand-back was taken from
 //   git (ToMerge, Merging, Done), which is told nothing, and the run takes tickets again.
 //
-// The environment probe's session and the feature interview's, which you drive, are left out.
+// The environment probe's session, the feature interview's, which you drive, and the spec's
+// breakdown, which ends on it as on a failed turn (breakdown.ts), are left out: no hold runs before
+// the run to carry them on. A worker whose ticket has gone on since, its hand-back ended or set
+// aside, isn't told to carry on either.
 import { Clock, Duration, Effect, FiberSet, Ref, type Scope, Semaphore, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
+import { breakdownWorker } from "../agent/breakdown.ts"
 import { interviewWorker } from "../agent/inView.ts"
 import { UsageProbe } from "../agent/UsageProbe.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
@@ -72,8 +76,12 @@ export interface ApiOutage {
 /** A worker waiting for the API: its error, as its turn's result said it. */
 type Waiting = ReadonlyMap<TicketId, string>
 
-/** Whether the hold looks after the worker `ticket`: not the environment probe's nor the interview's. */
-const followed = (ticket: TicketId): boolean => ticket !== probeWorker && ticket !== interviewWorker
+/**
+ * Whether the hold looks after the worker `ticket`: not the environment probe's, the interview's or
+ * the breakdown's.
+ */
+const followed = (ticket: TicketId): boolean =>
+  ticket !== probeWorker && ticket !== interviewWorker && ticket !== breakdownWorker
 
 /**
  * The run's API-outage hold. `show` puts its banner on (true) or off; `wakeUp` wakes the run, which
@@ -132,6 +140,18 @@ export const make = (options: {
         if (phase === "ToMerge" || phase === "Merging" || phase === "Done") {
           yield* logs.write(
             detail`${ticket}: Claude's API answers again; its hand-back was taken from git, so tutti tells its worker nothing`,
+          )
+          continue
+        }
+        // Its ticket went on without it meanwhile: set aside, or its hand-back ended.
+        if (
+          phase !== undefined &&
+          phase !== "Working" &&
+          phase !== "Resolving" &&
+          phase !== "Fixing"
+        ) {
+          yield* logs.write(
+            detail`${ticket}: Claude's API answers again; its ticket is ${phase} now, so tutti tells its worker nothing`,
           )
           continue
         }

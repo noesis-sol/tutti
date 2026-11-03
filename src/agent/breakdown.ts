@@ -468,7 +468,10 @@ const openBreakdown = (setup: {
           const why = state._tag === "Gone" ? state.why : "its session was closed"
           return Option.some(BreakdownEnd.Failed({ why, state: filed }))
         }
-        const turnOver = state._tag === "Idle" || state._tag === "Failed"
+        // Claude's API unavailable ends it as a failed turn does: before the run, no hold tells it
+        // to carry on (apiOutage.ts leaves the breakdown out).
+        const turnOver =
+          state._tag === "Idle" || state._tag === "Failed" || state._tag === "ApiUnavailable"
         if (state._tag === "UsageLimited") {
           // Told to carry on, it stays UsageLimited until its turn starts.
           if ((yield* Ref.get(limit)) !== "free") return Option.none()
@@ -539,7 +542,7 @@ const openBreakdown = (setup: {
             return Option.some(
               BreakdownEnd.Failed({
                 why:
-                  state._tag === "Failed"
+                  state._tag === "Failed" || state._tag === "ApiUnavailable"
                     ? `its turn ended on an error: ${state.error}`
                     : "its turn ended without handing the tree to file_breakdown",
                 state: filed,
