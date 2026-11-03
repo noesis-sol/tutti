@@ -18,6 +18,9 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   command you hold your place in the run doing nothing, and your ticket can't merge until the
   command ends. tutti sets Bash's default timeout to as long as the merge check may take, so pass
   Bash no timeout of your own: a shorter one moves the check to the background when it runs out.
+- Leave nothing running when you end your turn: no dev server, watcher or watch-mode test, nor any
+  other command in the background. While one runs your ticket can't merge, and tutti stops it,
+  at once when your ticket is closed, else 30 minutes after your turn ended.
 - Where the project has test suites, a ticket that changes behaviour adds or updates tests for it,
   in those suites and their frameworks. Never add a new test framework: setting one up is a ticket
   of its own.

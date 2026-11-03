@@ -15,12 +15,16 @@
 // dropped (WORKER_GONE). One the host ended over a setup problem its first system/init showed (§ 4.1)
 // is neither read nor resumed: it stopped before it did anything, and the run stops (work.ts).
 //
+// A worker kept from settling by nothing but background tasks it left running, its turns over, has
+// them stopped after tasksLimit, or at once when its ticket is closed (stopLeftTasks), so that a dev
+// server or a watcher it started doesn't hold its slot all night.
+//
 // A worker that stops at the account's usage limit with its ticket deferred, as orchestra 0.8.1 has
 // it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
 // worker carries on after the reset, rather than the ticket being set aside as deferred.
 import { Data, Duration, Effect, Option, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
-import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
+import { settled as isSettled, tasksOnlySince, WorkerState } from "../agent/WorkerState.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
   Beads,
@@ -61,6 +65,13 @@ export const nudges = 2
  * the machine sleeps not counted (Wake.ts).
  */
 export const idleGrace: Duration.Duration = Duration.minutes(10)
+
+/**
+ * How long nothing but live background tasks may keep a worker from settling, its turns over,
+ * before tutti stops them, the time the machine sleeps not counted: a Monitor watch's own life
+ * (§ 4.2). A worker whose ticket is closed has them stopped at once.
+ */
+export const tasksLimit: Duration.Duration = Duration.minutes(30)
 
 /** The label of a ticket closed but not merged, which still holds the tickets it blocks (§ 4.8). */
 export const unmergedLabel = "unmerged"
@@ -496,6 +507,54 @@ const undeferAtLimit = (id: TicketId) =>
     )
   })
 
+/**
+ * Watches the ticket's worker: once nothing but live background tasks has kept it from settling
+ * (a dev server, a watch-mode test, a command Claude Code moved to the background at its timeout)
+ * for tasksLimit, or at once when its ticket is closed, they are stopped, and the log says which.
+ * The CLI reports each stopped task in a turn of its own, and the worker settles after it. Tasks it
+ * starts again are stopped again, a tasksLimit after.
+ */
+const stopLeftTasks = (id: TicketId) =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const beads = yield* Beads
+    const logs = yield* Log
+    const sinces = host.state(id).pipe(Stream.map(tasksOnlySince))
+    for (;;) {
+      const found = yield* sinces.pipe(
+        Stream.filter((since): since is number => since !== undefined),
+        Stream.runHead,
+      )
+      if (Option.isNone(found)) return
+      const since = found.value
+      // Until the worker is no longer kept so since `since`: a turn ran, or its tasks ended.
+      const moved = sinces.pipe(
+        Stream.filter((each) => each !== since),
+        Stream.runHead,
+        Effect.as(true),
+      )
+      const closed = yield* beads.show(id).pipe(
+        Effect.map((issue) => issue.status === "closed"),
+        Effect.orElseSucceed(() => false),
+      )
+      const left = closed ? 0 : Duration.toMillis(tasksLimit) - (yield* awakeSince(since))
+      if (left > 0 && (yield* Effect.raceFirst(moved, Effect.as(sleepAwake(left), false)))) {
+        continue
+      }
+      const why = closed
+        ? `${id} is closed and its worker's turns are over`
+        : `${id}'s worker's turns have been over for ${formatDuration(tasksLimit)}`
+      const stopped = yield* Effect.result(host.stopTasks(id))
+      yield* logs.write(
+        Result.isSuccess(stopped)
+          ? detail`${why}, but background tasks it left running kept it from settling; stopped them: ${stopped.success}`
+          : detail`${why}, but background tasks it left running kept it from settling; tutti could not stop them: ${stopped.failure.message}`,
+      )
+      // The stopped tasks' report comes in a turn; one that didn't stop is tried again.
+      yield* Effect.raceFirst(moved, Effect.as(sleepAwake(tasksLimit), false))
+    }
+  }).pipe(Effect.ignore)
+
 /** How the worker settled, for the log. */
 const how = (state: WorkerState): string => {
   switch (state._tag) {
@@ -523,6 +582,7 @@ export const settle = (
       const logs = yield* Log
       const id = worker.ticket
       yield* Effect.forkScoped(undeferAtLimit(id), { startImmediately: true })
+      yield* Effect.forkScoped(stopLeftTasks(id), { startImmediately: true })
       let told = 0
       for (;;) {
         const state = yield* untilSettled(id)

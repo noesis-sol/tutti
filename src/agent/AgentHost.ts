@@ -220,6 +220,12 @@ export class AgentHost extends Context.Service<
      */
     interrupt(ticket: TicketId): Effect.Effect<Receipt, AgentGone | AgentProtocol>
     /**
+     * Stops the worker's live background tasks that count (§ 4.2), each with a `stop_task` control
+     * request, without interrupting anything else: what they were, each by its description, else
+     * its ID. None when it has none live.
+     */
+    stopTasks(ticket: TicketId): Effect.Effect<ReadonlyArray<string>, AgentGone | AgentProtocol>
+    /**
      * Closes the worker's session on purpose, keeping its ID for a resume: its state is Closed.
      * A session still starting is cancelled, its start failing; one closing or gone is waited for,
      * until its Claude Code has exited. Nothing happens when it has no session.

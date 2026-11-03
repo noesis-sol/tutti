@@ -20,9 +20,10 @@
 // script's first step, Initialize, gives their answers. An interrupt cancels the sends still queued
 // (§ 4.8): all of them in its answer when it is asked to cancel them (interrupt_cancel_queued_v1),
 // else each that a cancel_async_message asks for, the AwaitInterrupt step waiting till each has
-// been asked. What the session is sent is recorded, in order: its messages as the SDK gets them,
-// cancel_async_message requests and their answers, and the answers to its permission requests and
-// elicitations.
+// been asked. A stop_task request is waited for by AwaitStopTask; the script says what follows it.
+// What the session is sent is recorded, in order: its messages as the SDK gets them,
+// cancel_async_message and stop_task requests and their answers, and the answers to its permission
+// requests and elicitations.
 import type {
   CanUseTool,
   ElicitationRequest,
@@ -89,6 +90,11 @@ export type Step = Data.TaggedEnum<{
   Coalesce: Record<never, never>
   /** Waits for an interrupt not yet waited for, and the cancel_async_messages that follow it. */
   AwaitInterrupt: Record<never, never>
+  /**
+   * Waits for a stop_task request not yet waited for; the steps after it send what the CLI does
+   * as the task stops (its task_notification, the live set without it).
+   */
+  AwaitStopTask: Record<never, never>
   Sleep: { readonly duration: Duration.Input }
   /**
    * The session answers getContextUsage() with `answer` from now on, as the live host asks it after
@@ -137,6 +143,8 @@ export type Sent = Data.TaggedEnum<{
     readonly uuid: string
     readonly cancelled: boolean | null
   }
+  /** A `stop_task` request, for the background task `task`. */
+  StopTask: { readonly ticket: TicketId; readonly task: string }
   /**
    * The interrupt's receipt, with the messages cancel_async_message cancelled under `cancelled`.
    */
@@ -216,6 +224,7 @@ const playing = (
     const out = yield* Queue.unbounded<Out, Cause.Done>()
     const inbox = yield* Queue.unbounded<SDKUserMessage>()
     const interrupts = yield* Queue.unbounded<void>()
+    const stops = yield* Queue.unbounded<string>()
     // The uuids of the messages sent and not yet taken by a Wait: an interrupt's still_queued.
     const queued = yield* Ref.make<ReadonlyArray<string>>([])
     // The uuids of the messages taken by a Wait since the last result: the next one's sends.
@@ -427,6 +436,7 @@ const playing = (
               state.asked === undefined ? Effect.void : Deferred.await(state.asked),
             ),
           ),
+        AwaitStopTask: () => Effect.asVoid(Queue.take(stops)),
         Sleep: ({ duration }) => Effect.sleep(duration),
         Context: ({ answer }) =>
           Effect.sync(() => {
@@ -548,6 +558,11 @@ const playing = (
           yield* askedFor(uuid)
           if (answer === null) return yield* failed("cancel_async_message refused")
           return answer
+        }),
+      stopTask: (task) =>
+        Effect.gen(function* () {
+          yield* scripted.record(Sent.StopTask({ ticket, task }))
+          yield* Queue.offer(stops, task)
         }),
       abort: kill,
       kill,

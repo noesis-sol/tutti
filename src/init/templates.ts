@@ -133,6 +133,12 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     what: "a fix committed after the third round before deferring gets one more round from the run",
     marker: "the run takes the ticket back once",
   },
+  {
+    version: 11,
+    section: "",
+    what: "a worker leaves no dev server, watcher or other background command running as it ends its turn, as tutti stops them",
+    marker: "Leave nothing running when you end your turn",
+  },
 ]
 
 /** The changes to the verifier's template, verifier.md. */

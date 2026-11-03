@@ -288,6 +288,7 @@ export const wait: Step = Step.Wait()
 export const fold: Step = Step.Fold()
 export const coalesce: Step = Step.Coalesce()
 export const awaitInterrupt: Step = Step.AwaitInterrupt()
+export const awaitStopTask: Step = Step.AwaitStopTask()
 export const sleep = (duration: Duration.Input): Step => Step.Sleep({ duration })
 export const context = (answer: object): Step => Step.Context({ answer })
 export const run = (effect: Effect.Effect<void>): Step => Step.Do({ effect })
@@ -368,17 +369,24 @@ export const apiRetry = (attempt: number, status: number | null = 529, max = 10)
     error: "overloaded",
   })
 
-/** `background_tasks_changed`: the live tasks, replacing the set; ambient ones don't count. */
+/**
+ * `background_tasks_changed`: the live tasks, replacing the set; ambient ones don't count. A task's
+ * description is its ID unless given.
+ */
 export const backgroundTasks = (
-  ...tasks: ReadonlyArray<{ readonly id: string; readonly ambient?: boolean }>
+  ...tasks: ReadonlyArray<{
+    readonly id: string
+    readonly ambient?: boolean
+    readonly description?: string
+  }>
 ) =>
   emit({
     type: "system",
     subtype: "background_tasks_changed",
-    tasks: tasks.map(({ id, ambient }) => ({
+    tasks: tasks.map(({ id, ambient, description }) => ({
       task_id: id,
       task_type: "local_bash",
-      description: id,
+      description: description ?? id,
       ...(ambient === undefined ? {} : { ambient }),
     })),
   })
@@ -399,6 +407,25 @@ export const taskEnds = (
     status: "completed",
     output_file: `/tmp/tasks/${id}.output`,
     summary: `Background command "${id}" completed`,
+  }),
+  backgroundTasks(...left),
+]
+
+/**
+ * A background task's stop, as a `stop_task` request has the CLI send it: `task_notification`
+ * (stopped), then the live set without it, `left`.
+ */
+export const taskStopped = (
+  id: string,
+  ...left: ReadonlyArray<{ readonly id: string; readonly ambient?: boolean }>
+): ReadonlyArray<Step> => [
+  emit({
+    type: "system",
+    subtype: "task_notification",
+    task_id: id,
+    status: "stopped",
+    output_file: `/tmp/tasks/${id}.output`,
+    summary: `Background command "${id}" was stopped`,
   }),
   backgroundTasks(...left),
 ]

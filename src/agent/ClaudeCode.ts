@@ -154,6 +154,8 @@ export interface ClaudeSession {
   ) => Effect.Effect<SDKControlInterruptResponse | undefined, SessionFailed>
   /** Drops the queued message `uuid` (cancel_async_message): whether it did. */
   readonly cancelQueued: (uuid: string) => Effect.Effect<boolean, SessionFailed>
+  /** Stops its background task `taskId` (stop_task): a task_notification says it stopped. */
+  readonly stopTask: (taskId: string) => Effect.Effect<void, SessionFailed>
   /** Aborts the session: the SDK ends Claude Code. */
   readonly abort: Effect.Effect<void>
   /** Kills Claude Code's process group at once, its descendants' first, and aborts the session. */
@@ -272,6 +274,7 @@ const opener =
         contextUsage: ask(() => handle.getContextUsage({ detail: "summary" })),
         interrupt: (cancelQueued) => ask(() => controls.interrupt({ cancelQueued })),
         cancelQueued: (uuid) => ask(() => controls.cancelAsyncMessage(uuid)),
+        stopTask: (taskId) => ask(() => handle.stopTask(taskId)),
         abort: abortNow,
         kill: Effect.andThen(process.kill, abortNow),
         pid: () => {

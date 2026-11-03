@@ -4,8 +4,8 @@
 //
 // The reducer keeps a Worker: the state and what it is derived from. Each step updates the facts
 // the event changes, then derives the state from them afresh, so no order of events can leave a
-// stale state behind; only Idle's, Failed's and ApiUnavailable's `at` carries over, from the step
-// that first made it so.
+// stale state behind; only Idle's, Failed's and ApiUnavailable's `at`, and Working's `tasksSince`,
+// carries over, from the step that first made it so.
 //
 // The reducer folds a message as the host read it, once (src/agent/reading.ts): a message a CLI of
 // another version sent without a field it reads is Unreadable, and no change. Each reading, and
@@ -27,9 +27,10 @@ export type WorkerState = Data.TaggedEnum<{
   Starting: Empty
   /**
    * A turn is under way, more turns follow, a send of tutti's is outstanding, a task is live, or a
-   * finished task's report is still to come.
+   * finished task's report is still to come. `tasksSince` is set while nothing but live background
+   * tasks keeps it Working, the turns being over: since when (src/run/settle.ts stops them).
    */
-  Working: { readonly doing: Doing }
+  Working: { readonly doing: Doing; readonly tasksSince?: number }
   /** An `api_retry` message, until the next message of the turn. `status` is null without a response. */
   Retrying: { readonly attempt: number; readonly max: number; readonly status: number | null }
   /** Pending `canUseTool` calls or elicitations, or `requires_action`: how many there are. */
@@ -82,6 +83,13 @@ export const settled = (state: WorkerState): boolean =>
  * (UsageLimited, § 4.12) or the API outage's (ApiUnavailable, § 4.2). Its time waiting is the
  * account's or the API's, not its own.
  */
+/**
+ * Since when nothing but live background tasks has kept a worker in `state` from settling, its
+ * turns being over; undefined when something else keeps it, or it has settled.
+ */
+export const tasksOnlySince = (state: WorkerState): number | undefined =>
+  state._tag === "Working" ? state.tasksSince : undefined
+
 export const waitsForHold = (state: WorkerState): boolean =>
   state._tag === "UsageLimited" || state._tag === "ApiUnavailable"
 
@@ -225,6 +233,8 @@ export interface Worker {
     | null
   /** The live background tasks that count: `background_tasks_changed`'s, but for ambient ones. */
   readonly tasks: ReadonlyArray<string>
+  /** The descriptions of the tasks that count, by ID, where they have one. */
+  readonly descriptions: ReadonlyMap<string, string>
   /**
    * When a task that counts left the live set after `idle`, so the CLI's turn to report it is still
    * to come; null when no report is awaited. The next turn, or ReportLate, ends the wait.
@@ -268,6 +278,7 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   texts: new Map(),
   end: null,
   tasks: [],
+  descriptions: new Map(),
   report: null,
   pending: 0,
   requiresAction: false,
@@ -351,7 +362,7 @@ const onReading: Handlers<Reading> = {
     retry: { attempt, max, status },
     retried: status,
   }),
-  Tasks: (worker, { live, counted }, now) => {
+  Tasks: (worker, { live, counted, descriptions }, now) => {
     const next = unretried(worker)
     // A task that counted and has ended, between idle and the next running: the CLI starts a turn
     // to report it, about 70 ms after this message (docs/spikes/01-sdk-session.md).
@@ -359,6 +370,7 @@ const onReading: Handlers<Reading> = {
     return {
       ...next,
       tasks: counted,
+      descriptions,
       report: next.idle && ended && next.report === null ? now : next.report,
     }
   },
@@ -459,17 +471,21 @@ const derive = (worker: Worker, now: number): WorkerState => {
   if (worker.retry !== null) {
     return WorkerState.Retrying(worker.retry)
   }
-  const working = (): WorkerState =>
-    WorkerState.Working({
-      doing: worker.tool ?? (worker.subagents.length > 0 ? "subagent" : "working"),
-    })
-  // The turns are over, none of tutti's sends is outstanding, and no background task is live or
-  // report to come.
-  const over =
+  // The turns are over, the last clean or failed, none of tutti's sends is outstanding, and no
+  // task's report is to come.
+  const quiet =
+    (worker.turn._tag === "Ended" || worker.turn._tag === "Failed") &&
     worker.idle &&
     worker.outstanding.length === 0 &&
-    worker.tasks.length === 0 &&
     worker.report === null
+  // And no background task is live.
+  const over = quiet && worker.tasks.length === 0
+  const working = (): WorkerState => {
+    const doing = worker.tool ?? (worker.subagents.length > 0 ? "subagent" : "working")
+    if (!quiet) return WorkerState.Working({ doing })
+    const since = tasksOnlySince(worker.state)
+    return WorkerState.Working({ doing, tasksSince: since ?? now })
+  }
   switch (worker.turn._tag) {
     case "Limited":
       return WorkerState.UsageLimited({ resetsAt: worker.limit.resetsAt })

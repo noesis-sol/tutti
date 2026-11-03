@@ -69,6 +69,7 @@ import {
   Ref,
   Scope,
   Stream,
+  SubscriptionRef,
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
@@ -910,6 +911,31 @@ export const layer = (
           return yield* new AgentGone({ ticket: session.ticket, why })
         })
 
+      /** Stops the session's live background tasks that count: what they were. */
+      const stopTasksIn = (session: Live) =>
+        Effect.gen(function* () {
+          const ticket = session.ticket
+          const { tasks, descriptions } = yield* SubscriptionRef.get(session.entry.worker)
+          yield* Effect.forEach(
+            tasks,
+            (task) =>
+              session.claude
+                .stopTask(task)
+                .pipe(
+                  Effect.mapError((error) =>
+                    liveOf(sessions.get(ticket)) === session
+                      ? new AgentProtocol({ ticket, detail: `stop_task failed: ${error.reason}` })
+                      : new AgentGone({
+                          ticket,
+                          why: "its session ended as its tasks were stopped",
+                        }),
+                  ),
+                ),
+            { concurrency: "unbounded", discard: true },
+          )
+          return tasks.map((task) => descriptions.get(task) ?? task)
+        })
+
       return AgentHost.of({
         start: Effect.fn("AgentHost.start")((ticket, session) =>
           Effect.map(
@@ -958,6 +984,22 @@ export const layer = (
               timeoutAwake({
                 duration: interruptWithin,
                 orElse: () => unanswered(session),
+              }),
+            ),
+          ),
+        ),
+        stopTasks: Effect.fn("AgentHost.stopTasks")((ticket) =>
+          Effect.flatMap(sessionOf(ticket), (session) =>
+            stopTasksIn(session).pipe(
+              timeoutAwake({
+                duration: interruptWithin,
+                orElse: () =>
+                  Effect.fail(
+                    new AgentProtocol({
+                      ticket,
+                      detail: `stop_task wasn't answered within ${Duration.format(interruptWithin)}`,
+                    }),
+                  ),
               }),
             ),
           ),
