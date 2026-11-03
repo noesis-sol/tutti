@@ -23,7 +23,7 @@ import {
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
-import { compactLines, labelLines, sectionLines } from "../src/ui/Card.tsx"
+import { compactLines, idleBox, idleText, labelLines, sectionLines } from "../src/ui/Card.tsx"
 import { type DashboardLayout, dashboardLayout } from "../src/ui/Dashboard.tsx"
 import { type Motion, motionTones } from "../src/ui/marks.ts"
 import { fewestTableLines, ticketsLines } from "../src/ui/TicketsTable.tsx"
@@ -173,11 +173,24 @@ describe("dashboardLayout", () => {
               lines: laid.current - labelLines,
             })
             expect(labelLines + box.length).toBeLessThanOrEqual(laid.current)
+          } else if (laid.cards._tag === "Idle") {
+            // The box with no worker in it is cut to the lines left it, down to its first line.
+            const box = idleBox(
+              idleText(false, null, now),
+              theme,
+              spinnerFrames[0],
+              width,
+              laid.current - labelLines,
+            )
+            expect(labelLines + box.length).toBeLessThanOrEqual(laid.current)
           } else {
             expect(sectionLines(laid.cards, view.cards.length)).toBeLessThanOrEqual(laid.current)
           }
         },
       ),
+      // No card at 60 × 18: Current at its fewest, 4 lines, the idle box cut to its first line
+      // (tutti-fi6h).
+      { examples: [[emptyView, 60, 18]] },
     )
   })
 
