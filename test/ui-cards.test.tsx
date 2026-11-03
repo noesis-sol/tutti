@@ -256,10 +256,10 @@ describe("a card for each status", () => {
     }
   })
 
-  test("the marks: the spinner while it works, ◼ to merge, ◆ merging, • after a turn", () => {
+  test("the marks: the spinner while it works, ◼ to merge, ◆ merging, ⟳ resolving, • after a turn", () => {
     const head = (card: Card) => textOf(drawn(card)).split("\n")[2]
     expect(head(cardOf(working, states(WS.Working({ doing: "editing" }))))).toContain("│ ⣾ t-1")
-    expect(head(cardOf(TicketPhase.Resolving({ attempt: 1 })))).toContain("│ ⣾ t-1")
+    expect(head(cardOf(TicketPhase.Resolving({ attempt: 1 })))).toContain("│ ⟳ t-1")
     expect(head(cardOf(TicketPhase.ToMerge({ place: 1 })))).toContain("│ ◼ t-1")
     expect(head(cardOf(TicketPhase.Merging({ step: "rebase" })))).toContain("│ ◆ t-1")
     expect(head(cardOf(working, states(WS.Idle({ at: now }))))).toContain("│ • t-1")
