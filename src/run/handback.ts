@@ -59,7 +59,7 @@ import type { CheckError } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
-import { awakeSince } from "../services/Wake.ts"
+import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import { attemptAt, baseSince, branchHead, leftAt, onBranch, restoreBranch } from "./branch.ts"
 import {
   type Checked,
@@ -626,6 +626,22 @@ const whenState = (
     if (Option.isNone(found)) yield* Effect.never
   })
 
+/**
+ * Waits until the ticket's worker is no longer in a state `held` takes, or its states end (its
+ * session gone or closed before a state said so, or its worker ended): it is no longer held then.
+ */
+const whenLeft = (
+  id: TicketId,
+  held: (state: WorkerState) => boolean,
+): Effect.Effect<void, never, AgentHost> =>
+  Effect.gen(function* () {
+    yield* (yield* AgentHost).state(id).pipe(
+      Stream.filter((state) => !held(state)),
+      Stream.runHead,
+      Effect.catchTag("AgentGone", () => Effect.succeed(Option.none())),
+    )
+  })
+
 const isLimited = (state: WorkerState) => state._tag === "UsageLimited"
 
 /** Whether the worker waits for Claude's API to answer again (apiOutage.ts). */
@@ -648,7 +664,8 @@ interface Late {
  * every loadEvery) left out too, up to `limit` again, as orchestra 0.9.0 has it. Each time the
  * worker is seen at the limit, git is asked whether it has done what it was asked, its turn having
  * ended on the limit as it finished (a turn that has ended can't change git): "taken" when it has.
- * Late once the time is up. Its wait for the limit is one of `options.atReset`'s.
+ * Late once the time is up, or once the worker has been at the limit for --usage-limit-wait. Its
+ * wait for the limit is one of `options.atReset`'s, and ends too when the worker's states do.
  */
 const clock = (
   handBack: HandBack,
@@ -656,6 +673,7 @@ const clock = (
   options: GiveOptions,
 ): Effect.Effect<"taken" | Late, never, GiveEnv> =>
   Effect.gen(function* () {
+    const config = yield* AppConfig
     const logs = yield* Log
     const { id, branch } = handBack.ticket
     const { atReset, loaded } = options
@@ -706,7 +724,7 @@ const clock = (
         yield* logs.write(
           detail`${id}'s worker waits for Claude's API on its hand-back: it carries on once the API answers, the wait not counting toward the ${formatDuration(limit)}`,
         )
-        yield* whenState(id, (state) => !isOut(state))
+        yield* whenLeft(id, isOut)
         continue
       }
       if (yield* handBack.done) {
@@ -718,8 +736,20 @@ const clock = (
       yield* logs.write(
         detail`${id}'s worker is at the usage limit on its hand-back: it carries on once the limit lifts, the wait not counting toward the ${formatDuration(limit)}`,
       )
-      const lifted = whenState(id, (state) => !isLimited(state))
-      yield* atReset.waits(id, lifted)
+      // At most --usage-limit-wait, as the run's hold waits at most that for the reset.
+      const lifted = yield* atReset.waits(
+        id,
+        Effect.raceFirst(
+          Effect.as(whenLeft(id, isLimited), true),
+          Effect.as(sleepAwake(config.usageLimitWait), false),
+        ),
+      )
+      if (!lifted) {
+        yield* logs.write(
+          detail`${id}'s worker has been at the usage limit on its hand-back for ${formatDuration(config.usageLimitWait)}, --usage-limit-wait: its hand-back is over`,
+        )
+        return { loaded: Duration.seconds(Math.round(extra / 1000)) }
+      }
     }
   })
 
@@ -816,15 +846,19 @@ const sendAtReset = (
     yield* logs.write(
       detail`${id}'s worker is at the usage limit: it is handed its ${handedWords(handBack.mode)} once the limit lifts, the wait not counting toward the ${formatDuration(limit)}`,
     )
-    let sent = yield* Effect.raceFirst(
+    const wait = (yield* AppConfig).usageLimitWait
+    let sent = yield* Effect.raceAll([
       Effect.result(kept),
-      Effect.as(
-        whenState(id, (state) => !isLimited(state)),
-        undefined,
-      ),
-    )
-    if (sent === undefined) {
+      Effect.as(whenLeft(id, isLimited), "left" as const),
+      Effect.as(sleepAwake(wait), "waited" as const),
+    ])
+    if (sent === "left" || sent === "waited") {
       if (yield* atReset.takeBack(id)) {
+        if (sent === "waited") {
+          return Result.fail(
+            line`its worker was still at the usage limit after ${formatDuration(wait)}, --usage-limit-wait`,
+          )
+        }
         return !before && (yield* steered) ? Result.fail(steeredWhile) : undefined
       }
       sent = yield* Effect.result(kept)
@@ -834,7 +868,7 @@ const sendAtReset = (
     }
     if (sent.success === undefined) return Result.fail(steeredWhile)
     // Sent at the reset, its worker is UsageLimited until the hand-back's turn starts.
-    yield* whenState(id, (state) => !isLimited(state))
+    yield* whenLeft(id, isLimited)
     return Result.succeed(sent.success)
   })
 
