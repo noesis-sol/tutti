@@ -238,15 +238,17 @@ describe("scripted cases", () => {
       ...taskEnds("b1", { id: "watch", ambient: true }),
       ...selfStartedTurn(),
     ]
+    // Only b1 keeps it Working once its turn is over, from then on.
+    const onlyTasks = WorkerState.Working({ doing: "working", tasksSince: 0 })
     const states = await run(
       { "t-1": [script] },
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1" as TicketId, session())
-        const states = yield* watch("t-1" as TicketId, 3)
+        const states = yield* watch("t-1" as TicketId, 5)
         yield* host.send("t-1" as TicketId, { text: "Go.", from: "clientComposed" })
         yield* TestClock.adjust("30 seconds")
-        expect(yield* host.current("t-1" as TicketId)).toEqual(working)
+        expect(yield* host.current("t-1" as TicketId)).toEqual(onlyTasks)
         // b1 ends at 60 s; until the turn reporting it starts, 70 ms later, its report is to come.
         yield* TestClock.adjust("30 seconds")
         expect(yield* host.current("t-1" as TicketId)).toEqual(working)
@@ -254,7 +256,13 @@ describe("scripted cases", () => {
         return yield* Fiber.join(states)
       }),
     )
-    expect(states).toEqual([WorkerState.Starting(), working, WorkerState.Idle({ at: 60_070 })])
+    expect(states).toEqual([
+      WorkerState.Starting(),
+      working,
+      onlyTasks,
+      working,
+      WorkerState.Idle({ at: 60_070 }),
+    ])
   })
 
   test("only ambient tasks: Idle as the turn ends", async () => {

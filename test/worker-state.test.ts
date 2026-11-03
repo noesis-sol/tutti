@@ -148,7 +148,7 @@ describe("Idle", () => {
 
   test("a live background task keeps a worker Working; Idle after the turn reporting its end", () => {
     const live = [init, tasks({ id: "b1" }), result(), idle]
-    expect(stateAfter(...live)).toEqual(WorkerState.Working({ doing: "working" }))
+    expect(stateAfter(...live)).toEqual(WorkerState.Working({ doing: "working", tasksSince: 3 }))
     expect(stateAfter(...live, tasks())).toEqual(WorkerState.Working({ doing: "working" }))
     const reported = [...live, tasks(), running, init, result(), idle]
     expect(stateAfter(...reported)).toEqual(WorkerState.Idle({ at: 8 }))
@@ -247,7 +247,10 @@ describe("a finished task's report", () => {
       (w, event, n) => step(w, event, n * 60 * 60 * 1000),
       initial(),
     )
-    expect(worker.state).toEqual(WorkerState.Working({ doing: "working" }))
+    // Since the turns were over: tutti stops it after a while (test/left-tasks.test.ts).
+    expect(worker.state).toEqual(
+      WorkerState.Working({ doing: "working", tasksSince: 3 * 60 * 60 * 1000 }),
+    )
     expect(step(worker, requests(0), 30 * 60 * 60 * 1000).state._tag).toBe("Working")
     // Each event it sees starts a turn; the worker stays Working after it.
     expect(fold([running, init, result(), idle], worker).state._tag).toBe("Working")

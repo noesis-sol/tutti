@@ -4,7 +4,7 @@ import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Attention } from "../src/agent/Attention.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
-import { WorkerState } from "../src/agent/WorkerState.ts"
+import { tasksOnlySince, WorkerState } from "../src/agent/WorkerState.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -42,6 +42,9 @@ const run = <A, E>(scripts: Readonly<Record<string, Script>>, effect: Effect.Eff
 
 const session = { sessionId: "s-1", cwd: "/work/t-1" }
 const working = WorkerState.Working({ doing: "working" })
+/** `state` without when only its tasks began to keep it Working (test/left-tasks.test.ts has that). */
+const plain = (state: WorkerState): WorkerState =>
+  state._tag === "Working" ? WorkerState.Working({ doing: state.doing }) : state
 const late =
   "  t-1: a background task ended and no turn came to report it within 30 seconds; not waiting for it"
 
@@ -80,7 +83,7 @@ describe("a finished background task's report", () => {
         return seen
       }),
     )
-    expect(seen).toEqual([
+    expect(seen.map(plain)).toEqual([
       working,
       working,
       working,
@@ -106,7 +109,7 @@ describe("a finished background task's report", () => {
         return seen
       }),
     )
-    expect(seen).toEqual([working, working, WorkerState.Idle({ at: 50_000 })])
+    expect(seen.map(plain)).toEqual([working, working, WorkerState.Idle({ at: 50_000 })])
   })
 
   test("a Monitor watch live after idle keeps the worker Working, through its events", async () => {
@@ -127,6 +130,11 @@ describe("a finished background task's report", () => {
         return seen
       }),
     )
-    expect(seen).toEqual([working, working, working, working])
+    expect(seen.map(plain)).toEqual([working, working, working, working])
+    // Each event's turn starts afresh the time only the watch has kept it Working.
+    const since = seen.map(tasksOnlySince)
+    expect(since[0]).toBeDefined()
+    expect(since[1]).toBe(since[0])
+    expect(since[2]).toBeGreaterThan(since[1] ?? Number.POSITIVE_INFINITY)
   })
 })
