@@ -10,6 +10,7 @@ import { TestClock } from "effect/testing"
 import { decodeLine, type EventRecord } from "../src/run/events.ts"
 import { EventStream, eventsFile } from "../src/run/eventstream.ts"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
+import { figuresText } from "../src/run/figures.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
@@ -252,5 +253,9 @@ describe("the run's end", () => {
     const at = (kind: string) => ran.events.findIndex((each) => each.kind === kind)
     expect(at("score_update")).toBeGreaterThan(at("score"))
     expect(at("score_update")).toBeLessThan(at("end"))
+    // The summary's Scores line counts it.
+    expect(ran.exit.value.summary.figures.map(figuresText)).toContain(
+      "Scores  1 of 1 merged first time · 1 follow-up",
+    )
   })
 })

@@ -1211,6 +1211,22 @@ const runFrom = (
     // A stopped run names the tickets it leaves without the check once more it promised them.
     if (quit === null && all.length > 0) yield* dropRechecks(queue.rechecks, "the run stopped")
 
+    // The follow-ups the run's workers filed that it didn't take up, on their tickets' scorecards
+    // before the summary's Scores line counts them: each scored ticket's dependents, as bd show
+    // gives them; a ticket bd can't show is left out.
+    yield* Effect.forEach(
+      [...(yield* events.figures).scoring.scores.keys()],
+      (id) =>
+        Effect.gen(function* () {
+          const read = yield* Effect.result(beads.show(id as TicketId, { dependents: true }))
+          if (Result.isFailure(read)) return
+          const filed = dependentFollowUps(read.success, (yield* events.figures).scoring)
+          for (const follow of filed) {
+            yield* events.emit({ kind: "score_update", ticket: id, follow_up: follow })
+          }
+        }),
+      { concurrency: showConcurrency, discard: true },
+    )
     // The summary lines, then the closing line: the stops', or how the run ended by itself.
     const state = yield* ledger.current
     const { lines: summary, summary: summarised } = yield* end.summary(state)
@@ -1231,21 +1247,6 @@ const runFrom = (
     if (earlyChecks !== null) sections.push(section("Early checks", earlyChecks))
     const capped = capEvidence(yield* pressure.spent)
     if (capped !== null) sections.push(section("Workers allowed under memory pressure", capped))
-    // The follow-ups the run's workers filed that it didn't take up, on their tickets' scorecards:
-    // each scored ticket's dependents, as bd show gives them; a ticket bd can't show is left out.
-    yield* Effect.forEach(
-      [...(yield* events.figures).scoring.scores.keys()],
-      (id) =>
-        Effect.gen(function* () {
-          const read = yield* Effect.result(beads.show(id as TicketId, { dependents: true }))
-          if (Result.isFailure(read)) return
-          const filed = dependentFollowUps(read.success, (yield* events.figures).scoring)
-          for (const follow of filed) {
-            yield* events.emit({ kind: "score_update", ticket: id, follow_up: follow })
-          }
-        }),
-      { concurrency: showConcurrency, discard: true },
-    )
     // Each ended ticket's scorecard (scorecard.ts), for the reviewer and the report's section.
     const scores = [...(yield* events.figures).scoring.scores.values()]
     if (scores.length > 0) {
