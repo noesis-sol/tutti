@@ -5,7 +5,15 @@
 // on; a younger lock is left to the git that holds it. The merges run under TestClock, moved on
 // gitAgainAfter at a time; Git's live removeStaleLocks is run on a real repository, slow.
 import { describe, expect, test } from "bun:test"
-import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Clock, Duration, Effect, Exit, Fiber, Layer, Ref } from "effect"
@@ -16,6 +24,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
+import { run } from "../src/run/run.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -214,4 +223,39 @@ describe("Git's removeStaleLocks on a real repository", () => {
       repo.commit("After", { "after.txt": "x\n" })
     },
   )
+})
+
+describe("as a run starts", () => {
+  /** Leaves `name` now, moves the clock on `after`, then runs a run with nothing to do. */
+  const starting = (name: string, after: Duration.Duration) => {
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-stale-locks-")))
+    return scenario(
+      { config: { repo }, git: { dir: repo } },
+      Effect.gen(function* () {
+        yield* leave(name)
+        yield* advance(after)
+        return yield* run({ version: "0.1.0-test", base: "main" })
+      }),
+    ).then((ran) => ({ ran, repo }))
+  }
+
+  test("a lock left staleLockAge ago is removed, said in a STALE_LOCK warning", async () => {
+    const { ran, repo } = await starting(
+      "index.lock",
+      Duration.sum(staleLockAge, Duration.seconds(10)),
+    )
+    expect(ran.exit._tag).toBe("Success")
+    expectLog(ran, [
+      `STALE_LOCK: removed ${repo}/.git/index.lock, which a git left 3m10s ago and no git holds that long: one stopped mid-write leaves its lock, which keeps git from writing there`,
+    ])
+    expect(ran.events).toContainEqual(
+      expect.objectContaining({ kind: "warn", text: expect.stringContaining("STALE_LOCK") }),
+    )
+  })
+
+  test("a younger one is left to the git that holds it", async () => {
+    const { ran } = await starting("index.lock", Duration.minutes(1))
+    expect(ran.exit._tag).toBe("Success")
+    expect(ran.log.some((text) => /STALE_LOCK|lock files/.test(text))).toBe(false)
+  })
 })

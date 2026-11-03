@@ -400,7 +400,22 @@ export class Worktrees extends Context.Service<
                 }
                 const path = join(root, id)
                 const branchLeft = yield* git.branchExists(repo, branch)
-                yield* git.addWorktree(repo, path, branchLeft ? { branch } : { branch, base })
+                // One git made before it failed (stopped past its time limit) is removed, so that a
+                // try again makes it afresh and its setup runs, rather than reuse a worktree whose
+                // checkout may not have finished.
+                yield* git
+                  .addWorktree(repo, path, branchLeft ? { branch } : { branch, base })
+                  .pipe(
+                    Effect.tapError(() =>
+                      Effect.ignore(
+                        Effect.flatMap(worktreeOf(branch), (made) =>
+                          made === undefined
+                            ? Effect.void
+                            : git.removeWorktree(repo, made.path, { force: true }),
+                        ),
+                      ),
+                    ),
+                  )
                 const earlier = branchLeft ? yield* earlierIn(path) : nothingEarlier
                 return found(id, path, { existing: false, branchLeft, earlier })
               }),

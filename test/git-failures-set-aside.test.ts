@@ -228,6 +228,48 @@ describe("a closed ticket whose worktree git can't read as its worker settles", 
 
 describe("git worktree add on a real repository", () => {
   slow.test(
+    "one git made before it failed is removed, and the next try makes it afresh",
+    async () => {
+      const repo = makeRepo()
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "tutti-git-aside-live-")))
+      let added = 0
+      // git makes the worktree, then fails, as one stopped past its time limit after its checkout.
+      const failingOnce = Layer.effect(
+        Git,
+        Effect.map(Effect.service(Git), (real) =>
+          Git.of({
+            ...real,
+            addWorktree: (dir, path, options) =>
+              Effect.andThen(
+                real.addWorktree(dir, path, options),
+                Effect.suspend(() => (++added === 1 ? Effect.fail(hookFailed) : Effect.void)),
+              ),
+          }),
+        ),
+      )
+      const layer = Worktrees.layer({ repo: repo.dir, root, base: "main" }).pipe(
+        Layer.provide(failingOnce),
+        Layer.provideMerge(Git.layer()),
+        Layer.provideMerge(GitWriter.layer),
+        Layer.provideMerge(BunServices.layer),
+      )
+      const tries = await Effect.runPromise(
+        Effect.gen(function* () {
+          const worktrees = yield* Worktrees
+          const first = yield* Effect.exit(worktrees.prepare(id))
+          const listed = yield* (yield* Git).worktrees(repo.dir)
+          const second = yield* worktrees.prepare(id)
+          return { first, listed, second }
+        }).pipe(Effect.provide(layer)),
+      )
+      expect(Exit.isFailure(tries.first)).toBe(true)
+      expect(tries.listed.map((each) => each.branch)).not.toContain("tutti/t-1")
+      expect(tries.second).toMatchObject({ path: join(root, id), fresh: true })
+      expect(existsSync(join(root, id, "README.md"))).toBe(true)
+    },
+  )
+
+  slow.test(
     "runs without the project's hooks: a failing post-checkout hook doesn't fail it",
     async () => {
       const repo = makeRepo()
