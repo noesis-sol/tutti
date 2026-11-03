@@ -171,7 +171,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `--plain` | log lines instead of the dashboard ([Plain output](dashboard.md#plain-output)) |
 | `--no-mouse` | leave the mouse to the terminal |
 | `--prompt <file>` | another worker prompt ([The worker prompt](workers.md#the-worker-prompt)) |
-| `--worktrees <dir>` | the folder for the tickets' worktrees, outside the repository (default `<repo>-tutti` beside it) |
+| `--worktrees <dir>` | the folder for the tickets' worktrees, outside the repository (default `~/.tutti/worktrees/<repo>`: [Where the worktrees go](#where-the-worktrees-go)) |
 | `--billing api` | keep `ANTHROPIC_API_KEY` beside a subscription login ([Login and billing](setup.md#login-and-billing)) |
 | `--usage-limit-wait 6h` | the longest a run with nothing else to do waits for the usage limit ([below](#the-usage-limit)) |
 | `--claude <path>` | run workers with this Claude Code instead of the embedded one |
@@ -182,6 +182,42 @@ Most default to [the settings](setup.md#the-settings); the flag wins for its run
 
 Every `git` and `bd` command tutti runs has a time limit: 30 seconds for a read, 2 minutes for a git
 write or a `bd` update. A command still running then is stopped with everything it started.
+
+### Where the worktrees go
+
+Each ticket's worktree is `~/.tutti/worktrees/<repo>/<id>`, `<repo>` the repository folder's name,
+one folder in your home for every project's worktrees, as Codex and Cursor keep theirs. Another
+repository of the same name gets the name with a short hash of its path, `app-3f9c`, which stays
+the same from run to run. `--worktrees` (or `TUTTI_WORKTREES`) puts them elsewhere, outside the
+repository: inside it, `git status`, the project's tests and linters and their upward lookups would
+see them.
+
+A worktree's churn, an install per ticket and thousands of new files, is nothing to back up or
+index. On macOS each run checks that Time Machine leaves `~/.tutti/worktrees` out (`tmutil
+isexcluded`) and excludes it where it doesn't (`tmutil addexclusion`, on the folder, no sudo); an
+overridden root is excluded itself. Spotlight indexes nothing under a hidden folder such as
+`~/.tutti`. The START block says what holds:
+
+```
+  worktrees: ~/.tutti/worktrees/fabrica (excluded from Time Machine; not indexed by Spotlight)
+```
+
+Where tmutil can't exclude it, the START block warns once and the run goes on.
+`"exclude_worktrees": false` in [the settings](setup.md#the-settings) leaves Time Machine alone.
+
+tutti 0.6.5 and earlier put the worktrees in `<repo>-tutti` beside the repository. The first run on the new
+default moves them, while it holds the run lock and before any worker starts: each worktree there,
+kept ones included, and its trash, then `git worktree repair` so git finds them, and `state.json`'s
+paths. A saved Claude Code session's folder (`~/.claude/projects/<path>`) is renamed with its
+worktree, so a suspended worker resumes where it went; one that can't be renamed safely stays with
+its worktree in the old folder until its ticket ends. The old folder is removed once it is empty:
+
+```
+  moved 7 worktrees from ~/Projects/fabrica-tutti to ~/.tutti/worktrees/fabrica
+```
+
+A move that fails undoes what it did, leaves everything where it was, and that run keeps the
+worktrees in `<repo>-tutti`, warning once.
 
 ### Keeping the machine awake
 
@@ -1358,7 +1394,8 @@ time:
 - **Never at once.** tutti takes orchestra's lock too, so orchestra started during a tutti run refuses,
   naming tutti's PID, and tutti refuses while orchestra runs: `orchestra is running in <repo> (pid …)`.
 - **Separate branches and worktrees.** tutti's branches are `tutti/<id>`, never orchestra's `wt/<id>`,
-  and its worktrees go in `<repo>-tutti/`, not `<repo>-worktrees/`, so neither reuses the other's work.
+  and its worktrees go in `~/.tutti/worktrees/<repo>/`, not `<repo>-worktrees/`, so neither reuses the
+  other's work.
   A ticket orchestra labelled `unmerged` loses the label once its work is on the base, as orchestra
   would remove it.
 - **No adoption.** tutti doesn't read orchestra's run state or take over its workers: finish orchestra's

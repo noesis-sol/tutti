@@ -549,6 +549,7 @@ for a project that sets them all; the table below gives each one's default:
 | `version` | `1` | the format |
 | `concurrent` | `1` | tickets at the same time, 1 to 16; `-c` for a run |
 | `keep_awake` | `true` | runs keep the machine from sleeping when idle, the repository's default; `false` turns it off, and yours in the user config wins over it; [Keeping the machine awake](running.md#keeping-the-machine-awake) |
+| `exclude_worktrees` | `true` | on macOS, runs exclude the worktrees' folder from Time Machine; `false` leaves it as it is; [Where the worktrees go](running.md#where-the-worktrees-go) |
 | `pressure_cap` | `true` | the run allows fewer workers under memory pressure and more again as it passes; `false` keeps them at `concurrent`; [Memory pressure](running.md#memory-pressure) |
 | `checks.fast.command` | none | the merge check; [The checks](#the-checks) |
 | `checks.fast.timeout` | `"30m"` | its time limit; `--check-timeout` for a run |

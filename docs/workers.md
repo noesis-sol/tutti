@@ -6,7 +6,7 @@ hand-backs, sessions and MCP servers. Back to the [README](../README.md).
 ## A worker
 
 A worker is a Claude Code session working on one ticket, in its own git worktree
-(`<repo>-tutti/<id>`, on the branch `tutti/<id>`). tutti's own process holds every session through
+(`~/.tutti/worktrees/<repo>/<id>`, on the branch `tutti/<id>`). tutti's own process holds every session through
 the Claude Agent SDK, with no terminal tabs: you see a worker on its card, and read it or talk to it in
 its [view](dashboard.md#the-worker-view).
 

@@ -158,8 +158,8 @@ or no terminal at all get plain log lines. See [Terminals](docs/dashboard.md#ter
 ## orchestra beside tutti
 
 tutti and orchestra share Beads, its labels (`solo`, `human`, `unmerged`, `area:<name>`) and ticket
-metadata, but not their runs: tutti's branches are `tutti/<id>` and its worktrees `<repo>-tutti/`,
-it never takes over orchestra's workers, and each refuses to start while the other runs in the
+metadata, but not their runs: tutti's branches are `tutti/<id>` and its worktrees
+`~/.tutti/worktrees/<repo>/`, it never takes over orchestra's workers, and each refuses to start while the other runs in the
 repository. Finish an orchestra run with orchestra. See
 [orchestra beside tutti](docs/running.md#orchestra-beside-tutti).
 
