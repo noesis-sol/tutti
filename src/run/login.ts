@@ -1,7 +1,9 @@
 // Claude's login refused in a worker's turn (§ 4.13). The startup probe reads the account, which an
 // expired login still has, and costs no model turn, so only a turn finds the token refused: its
 // assistant message says `authentication_failed` and its result is_error, and its worker is
-// LoginRefused (WorkerState). Every turn after it fails the same way until the login is renewed, so
+// LoginRefused (WorkerState). A refusal may pass a moment later, the workers' refreshes of one login
+// having raced: the login check (loginCheck.ts) holds the run and probes the login a few times
+// first. Refused still, every turn after it would fail the same way until the login is renewed, so
 // the run takes no more tickets and ends, as a quit ends it (quitting.ts), with a stop of its own,
 // LOGIN (exit 2): its workers interrupted and their sessions kept, no ticket deferred or triaged,
 // and no organ called, the reviewer included, as they fail on the same login.
@@ -40,7 +42,7 @@ export const loginStop = (error: string, ticket?: TicketId): StopReason =>
     ticket === undefined ? {} : { ticket },
   )
 
-/** The line said as a worker's turn is refused for the login, before the run quits. */
+/** The line said as a turn refused for the login, not a ticket's, quits the run at once. */
 export const refusedLine = (refused: Refused): Line =>
   line`${refused.ticket}'s turn was refused for Claude's login (${refused.error}): the run stops, its workers stopped and their sessions kept for the next run`
 

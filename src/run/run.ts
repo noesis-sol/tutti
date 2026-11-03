@@ -23,8 +23,8 @@
 // instead, as it does one PAUSED or past its ticket limit, and goes on (overnightAside.ts).
 //
 // Quitting (§ 4.8, quit.ts): the first request to quit (SIGINT, SIGTERM, SIGHUP, the quit box's
-// `q`), a panic in one of the run's fibers, or a worker's turn refused for Claude's login (login.ts),
-// cuts the loop short: the workers are interrupted at once and their results waited for, the merges
+// `q`), a panic in one of the run's fibers, or a worker's turn refused for Claude's login that the
+// login check's probes find refused too (loginCheck.ts, login.ts), cuts the loop short: the workers are interrupted at once and their results waited for, the merges
 // and hand-backs stopped, triage aborted, then the end below suspends every session and the run
 // ends INTERRUPTED (130), PANIC (4) or LOGIN (2), with no report. A second request
 // says what is under way; a third ends tutti at once, through RunOptions.exitNow.
@@ -151,12 +151,14 @@ import {
   withApiHold,
   withBattery,
   withFiling,
+  withLoginHold,
 } from "./holds.ts"
 import { make as makeHoldsGate } from "./holdsGate.ts"
 import { Ledger } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
 import { type Line, Log, line, tagged } from "./log.ts"
-import { loginStop, refusedLine, saveTold, watchLogins } from "./login.ts"
+import { loginStop, watchLogins } from "./login.ts"
+import { make as makeLoginCheck } from "./loginCheck.ts"
 import { make as makeLoop } from "./look.ts"
 import { OtherWorkers } from "./machine.ts"
 import { hasRoom, make as makeMachineGate } from "./machineGate.ts"
@@ -444,6 +446,21 @@ const runFrom = (
       show: (held) => changeHolds((now) => withApiHold(now, held)),
       wakeUp: wakeUp("hold"),
     })
+    // A worker's turn refused for Claude's login holds the run while a few probes check the login
+    // again, its workers told then what the turn was to tell them; every probe failing quits the
+    // run, LOGIN (loginCheck.ts, login.ts, § 4.13), as a refusal outside the run's tickets does.
+    const loginCheck = yield* makeLoginCheck({
+      show: (held) => changeHolds((now) => withLoginHold(now, held)),
+      wakeUp: wakeUp("hold"),
+      quit: (first, said) =>
+        Effect.gen(function* () {
+          const ours = (yield* ledger.current).tickets.has(first.ticket)
+          const stop = loginStop(first.error, ours ? first.ticket : undefined)
+          if (yield* Deferred.succeed(quitting, Quitting.Login({ stop }))) {
+            yield* warn(said, ours ? first.ticket : undefined)
+          }
+        }),
+    })
     // The account's windows on the title line all the time, each figure recorded (usageWindows.ts).
     yield* watchUsageWindows({
       show: showOn(status, "windows"),
@@ -467,14 +484,16 @@ const runFrom = (
         currentStops,
         usage.held,
         apiOutage.held,
+        loginCheck.held,
         commands.ended,
         ledger.current,
         Effect.flatten(Ref.get(limitReached)),
       ]),
-      ([all, usageHeld, apiHeld, ended, state, limit]): Gate => ({
+      ([all, usageHeld, apiHeld, loginHeld, ended, state, limit]): Gate => ({
         stop: firstStop(all),
         usageHeld,
         apiHeld,
+        loginHeld,
         ended,
         windingDown: state.windDown !== null,
         limitReached: limit,
@@ -738,20 +757,8 @@ const runFrom = (
           panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
         ),
       )
-    // A worker's turn refused for Claude's login quits the run, LOGIN (login.ts, § 4.13): what the
-    // turn was to tell a ticket's worker is saved for the next run to tell it again.
-    yield* watch(
-      watchLogins((refused) =>
-        Effect.gen(function* () {
-          const ours = (yield* ledger.current).tickets.has(refused.ticket)
-          if (ours) yield* saveTold(refused.ticket, refused.told)
-          const stop = loginStop(refused.error, ours ? refused.ticket : undefined)
-          if (yield* Deferred.succeed(quitting, Quitting.Login({ stop }))) {
-            yield* warn(refusedLine(refused), ours ? refused.ticket : undefined)
-          }
-        }),
-      ),
-    )
+    // A worker's turn refused for Claude's login holds the run for the login check (loginCheck.ts).
+    yield* watch(watchLogins(loginCheck.refused))
     yield* watch(apiOutage.watch)
     // The title line's badge while the keep-awake command holds the machine awake.
     if (options.keepingAwake !== undefined) {

@@ -1,8 +1,9 @@
 // Claude's login refused in a worker's turn (§ 4.13, login.ts): the turn's assistant message says
 // `authentication_failed` and its result is_error, as on 2026-10-28 when an OAuth session expired
-// mid-run. The worker is LoginRefused, not Failed; the run quits as a quit does, ending LOGIN with
-// exit 2: its ticket neither deferred nor triaged, its session kept with what the refused turn was
-// to tell it, which the next run sends again as it resumes it, and no organ called.
+// mid-run. The worker is LoginRefused, not Failed; the login check's probes (loginCheck.ts) all
+// refused too, the run quits as a quit does, ending LOGIN with exit 2: its ticket neither deferred
+// nor triaged, its session kept with what the refused turn was to tell it, which the next run sends
+// again as it resumes it, and no organ called.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,6 +11,7 @@ import { join } from "node:path"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Effect, Fiber, Layer } from "effect"
 import { read } from "../src/agent/reading.ts"
+import { ProbeAnswer } from "../src/agent/UsageProbe.ts"
 import { initial, settled, step, WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { line } from "../src/run/log.ts"
@@ -26,8 +28,9 @@ import {
   turn,
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
+import { texts } from "../src/testing/Log.ts"
 import { layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
-import { backlog, type Ran, scenario } from "./harness.ts"
+import { advance, backlog, type Ran, scenario } from "./harness.ts"
 
 // A whole run takes up to a second on an idle machine: bun's 5 s default fails it when other
 // checks run beside this one.
@@ -140,11 +143,35 @@ const toldTo = (ran: Ran<unknown>, id: string): ReadonlyArray<string> =>
 // organ call the organs record is one after the stop.
 const noFootprint = { ...appConfig().settings.queue, footprint: false }
 
+/** Waits, in real time, until `count` log lines match `pattern`. */
+const untilLogged = (pattern: RegExp, count = 1) =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 2000; i++) {
+      const all = yield* texts
+      if (all.filter((text) => pattern.test(text)).length >= count) return
+      yield* Effect.promise(() => Bun.sleep(2))
+    }
+    throw new Error(`no ${count} log lines matched ${pattern}`)
+  })
+
+/** The login check's three probes, each refused for the login as the worker's turn was. */
+const checksRefused = Array.from({ length: 3 }, () => ProbeAnswer.Unanswered({ reason: refusal }))
+
+/** Moves the clock through the login check's three probes, each failing. */
+const checksFail = Effect.gen(function* () {
+  yield* untilLogged(/^LOGIN_CHECK: t-1's turn was refused for Claude's login/)
+  yield* advance("30 seconds")
+  yield* untilLogged(/^LOGIN_CHECK: a check of Claude's login failed too/)
+  yield* advance("1 minute")
+  yield* untilLogged(/^LOGIN_CHECK: a check of Claude's login failed too/, 2)
+  yield* advance("2 minutes")
+})
+
 /**
  * A whole run of t-1 and t-2, two at a time, from `state`, with organs that record every call:
- * t-1's turn is refused for the login once t-2's worker has claimed its ticket; t-2's worker works
- * on until interrupted. Its outcome's report is asked for as main asks for it. What state.json
- * says once it has ended.
+ * t-1's turn is refused for the login once t-2's worker has claimed its ticket, and so is every
+ * probe of the login check; t-2's worker works on until interrupted. Its outcome's report is asked
+ * for as main asks for it. What state.json says once it has ended.
  */
 const runRefused = async (
   scripts: Readonly<Record<string, ReadonlyArray<SessionScript>>>,
@@ -167,12 +194,14 @@ const runRefused = async (
       git: { dir: dirs.repo },
       worktrees: { root: dirs.root },
       scripts,
+      usageProbe: checksRefused,
       ...(state === undefined ? {} : { state }),
     },
     Effect.gen(function* () {
       const fiber = yield* Effect.forkChild(
         run({ version: "0.1.0-test", base: "main", start: [line`START tutti`] }),
       )
+      yield* checksFail
       const outcome = yield* Fiber.join(fiber)
       yield* outcome.report(Effect.die(new Error("the report printed")))
       saved = yield* (yield* Store).state
@@ -212,7 +241,13 @@ describe("a run whose worker's turn is refused for the login", () => {
     const { ran, saved, calls } = first
     expect(exitCode(ran)).toBe(2)
     expect(ran.log).toContain(
-      "t-1's turn was refused for Claude's login (Failed to authenticate: OAuth session expired and could not be refreshed): the run stops, its workers stopped and their sessions kept for the next run",
+      "LOGIN_CHECK: t-1's turn was refused for Claude's login (Failed to authenticate: OAuth session expired and could not be refreshed); no new tickets while tutti checks the login again, in 30s",
+    )
+    expect(ran.log).toContain(
+      "LOGIN_CHECK: a check of Claude's login failed too (Failed to authenticate: OAuth session expired and could not be refreshed); tutti checks it again in 1m",
+    )
+    expect(ran.log).toContain(
+      "LOGIN_CHECK: t-1's turn was refused for Claude's login (Failed to authenticate: OAuth session expired and could not be refreshed), and 3 checks of it over 3m30s failed too: the run stops, its workers stopped and their sessions kept for the next run",
     )
     expect(ran.log.at(-1)).toBe(`${loginLine}; the sessions of t-1, t-2 are saved for the next run`)
     // Neither ticket deferred, noted or triaged; t-2's worker interrupted as a quit interrupts it.

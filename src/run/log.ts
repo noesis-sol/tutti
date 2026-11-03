@@ -115,6 +115,7 @@ export const Tag = {
   usage: "USAGE",
   usageLimit: "USAGE_LIMIT",
   apiUnavailable: "API_UNAVAILABLE",
+  loginCheck: "LOGIN_CHECK",
   phaseBug: "PHASE_BUG",
 } as const
 

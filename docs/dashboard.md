@@ -69,7 +69,8 @@ On the right, the banners:
   `USAGE_LIMIT · resets 14:05` while the usage limit does, with `· in 1h12m` while the run has
   nothing else to do but wait for it (see [The usage limit](running.md#the-usage-limit)), and
   `API_UNAVAILABLE` while a worker's turn failing on Claude's API does
-  (see [Claude's API unavailable](running.md#claudes-api-unavailable)).
+  (see [Claude's API unavailable](running.md#claudes-api-unavailable)), and `LOGIN_CHECK` while
+  tutti checks Claude's login again after a worker's turn was refused for it.
 
 In a narrow pane the line gives up the least needed first: the keep-awake badge, then the
 auto-answer pill, then the branch and

@@ -419,6 +419,11 @@ export interface Gate {
    * failed check is handed back all the same: its worker waits for the API as the others do.
    */
   readonly apiHeld?: boolean
+  /**
+   * Whether the login check holds the run (loginCheck.ts), a worker's turn refused for Claude's
+   * login; not when left out.
+   */
+  readonly loginHeld?: boolean
   /** Whether the run has ended (screenCommands.ts): nothing starts after it. */
   readonly ended: boolean
   /** Whether the run winds down (the ledger's windDown): it takes up only what is running. */
@@ -437,11 +442,15 @@ export const openGate: Gate = {
 }
 
 /**
- * Whether the run holds: a stop, the usage limit, Claude's API unavailable, or its end. A ticket
- * set aside is taken back into the queue only while it doesn't.
+ * Whether the run holds: a stop, the usage limit, Claude's API unavailable, the login check, or its
+ * end. A ticket set aside is taken back into the queue only while it doesn't.
  */
 export const holds = (gate: Gate): boolean =>
-  gate.stop !== null || gate.usageHeld || gate.apiHeld === true || gate.ended
+  gate.stop !== null ||
+  gate.usageHeld ||
+  gate.apiHeld === true ||
+  gate.loginHeld === true ||
+  gate.ended
 
 /**
  * Whether the run takes back the work it has: the workers carried over and the answered tickets,
@@ -520,6 +529,8 @@ export interface RunHolds {
   readonly pressure?: boolean
   /** Claude's API unavailable holds the run (apiOutage.ts); not when left out. */
   readonly api?: boolean
+  /** The login check holds the run (loginCheck.ts); not when left out. */
+  readonly login?: boolean
   /** What the usage limit's hold shows: the usage line, its banner and its notice. */
   readonly usage: UsageView
   /** The battery's notice while it runs low (battery.ts): it holds nothing, but shows beside them. */
@@ -579,6 +590,10 @@ export const withPressureHold = (holds: RunHolds, full: boolean): RunHolds =>
 export const withApiHold = (holds: RunHolds, held: boolean): RunHolds =>
   (holds.api ?? false) === held ? holds : { ...holds, api: held }
 
+/** `holds` with the login check's hold on (`held`) or off. */
+export const withLoginHold = (holds: RunHolds, held: boolean): RunHolds =>
+  (holds.login ?? false) === held ? holds : { ...holds, login: held }
+
 /** `holds` showing the battery's `notice`, or none. */
 export const withBattery = (holds: RunHolds, notice: string | null): RunHolds =>
   holds.battery === notice ? holds : { ...holds, battery: notice }
@@ -595,8 +610,8 @@ export interface ShownHolds {
   /** A stop holds the run, and the running tickets are finishing. */
   readonly stopping: boolean
   /**
-   * The banners, BLOCKED first, then the usage limit's, the API outage's, the machine's and the
-   * pressure cap's.
+   * The banners, BLOCKED first, then the usage limit's, the API outage's, the login check's, the
+   * machine's and the pressure cap's.
    */
   readonly holds: ReadonlyArray<RunHold>
   readonly usage: Usage | null
@@ -610,6 +625,7 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
     ...(blockedTickets(holds).size > 0 ? [{ word: Tag.blocked, resetsAt: null }] : []),
     ...(holds.usage.hold === null ? [] : [holds.usage.hold]),
     ...(holds.api === true ? [{ word: Tag.apiUnavailable, resetsAt: null }] : []),
+    ...(holds.login === true ? [{ word: Tag.loginCheck, resetsAt: null }] : []),
     ...(holds.machine ? [{ word: machineWord, resetsAt: null }] : []),
     ...(holds.pressure === true ? [{ word: pressureWord, resetsAt: null }] : []),
     ...(holds.filing == null ? [] : [{ word: holds.filing, resetsAt: null }]),

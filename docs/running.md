@@ -1086,7 +1086,14 @@ An [overnight run](#overnight) sets the ticket aside for these three instead, an
   runner still checks nothing, or failed when run again; the line names the question the tree waits
   on, exit 2 ([the checks gate](#the-checks-gate)).
 - **`LOGIN`**: a worker's turn was refused for Claude's login (an OAuth session that expired and
-  couldn't be refreshed), which the startup check can't see, as the account still reads. The run
+  couldn't be refreshed), which the startup check can't see, as the account still reads, and the
+  login check found it refused still. A first refusal holds the run instead (`LOGIN_CHECK: t-1's
+  turn was refused for Claude's login (…); no new tickets while tutti checks the login again, in
+  30s`): workers sharing one login can race to refresh it, or find the keychain locked just after a
+  wake, so a refusal may pass a moment later. tutti checks the login with the usage limit's haiku
+  turn 30s, 1m30s and 3m30s after the hold; once one passes, the hold lifts (`LOGIN_CHECK: lifted:
+  …`), the refused worker is sent again what its turn was to tell it, and the run goes on. All three
+  failing, or a turn refused again within 10 minutes of a check that passed, the run
   stops as a quit does, without waiting for the running tickets: their workers are interrupted and
   their sessions kept, no ticket is deferred or triaged, and there is no report; exit 2. Log in again
   (`claude /login`, or `tutti login`) and start tutti again: it resumes them, telling the refused one
