@@ -7,8 +7,8 @@
 // mode reads the machine too, and the dashboard's load line says the workers allowed.
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
-import { mkdtempSync, realpathSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
+import { availableParallelism, tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, Duration, Effect, Fiber, Layer, Schema, SubscriptionRef } from "effect"
 import { TestClock } from "effect/testing"
@@ -39,6 +39,7 @@ import { make as makePressureGate } from "../src/run/pressureGate.ts"
 import { run } from "../src/run/run.ts"
 import { emptyStatus, emptyView, type Status } from "../src/run/runView.ts"
 import { make as makeScheduler } from "../src/run/schedule.ts"
+import { shareFile } from "../src/run/share.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
@@ -456,11 +457,10 @@ const dispatched = (ran: Ran<unknown>): Readonly<Record<string, number>> => {
 }
 
 /**
- * A whole run with plain output, two slots, the machine's load read from `source`: a's worker
+ * A whole run in `repo` with plain output, two slots, the machine's load read from `source`: a's worker
  * takes 3 minutes, b's 12 and c's 1, c waiting for a slot. The memory is pressed until 4 minutes in.
  */
-const pressedRun = (on: boolean) => {
-  const repo = folder("repo")
+const pressedRun = (on: boolean, repo = folder("repo")) => {
   const root = folder("worktrees")
   const defaults = appConfig().settings
   let pressure: Kernel["pressure"] = "warn"
@@ -508,7 +508,8 @@ const pressedRun = (on: boolean) => {
 
 describe("a run under memory pressure", () => {
   test("lowers the workers allowed, holds c until it raises them, and stops no worker", async () => {
-    const ran = await pressedRun(true)
+    const repo = folder("repo")
+    const ran = await pressedRun(true, repo)
     expectExitCode(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", c: "Done" })
     expect(ran.leaks).toEqual({ fibers: [], processes: [] })
@@ -531,6 +532,13 @@ describe("a run under memory pressure", () => {
       "2 → 1: memory pressure warn for 60 s",
       "1 → 2: memory pressure normal for 5 min",
     ])
+    // The checks' share followed the cap (share.ts): said at each step, and in the share file.
+    const shares = ran.events.flatMap((record) => (record.kind === "share" ? [record.why] : []))
+    expect(shares).toEqual(
+      availableParallelism() >= 2 ? ["workers allowed 2 → 1", "workers allowed 1 → 2"] : [],
+    )
+    const kept = JSON.parse(readFileSync(join(repo, shareFile), "utf8"))
+    expect(kept.cores).toBe(Math.max(Math.floor(availableParallelism() / 2), 1))
     expect(ran.events.some((record) => record.kind === "suspended")).toBe(false)
     expect(ran.events.some((record) => record.kind === "resumed")).toBe(false)
     // The plain mode read the machine: a load record a minute, and one as the pressure changed.
