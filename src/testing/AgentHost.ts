@@ -369,23 +369,25 @@ export const apiRetry = (attempt: number, status: number | null = 529, max = 10)
     error: "overloaded",
   })
 
+/** A live background task as a script gives it: `type` is its task_type, `local_bash` unless given. */
+export type LiveTask = {
+  readonly id: string
+  readonly ambient?: boolean
+  readonly description?: string
+  readonly type?: string
+}
+
 /**
  * `background_tasks_changed`: the live tasks, replacing the set; ambient ones don't count. A task's
  * description is its ID unless given.
  */
-export const backgroundTasks = (
-  ...tasks: ReadonlyArray<{
-    readonly id: string
-    readonly ambient?: boolean
-    readonly description?: string
-  }>
-) =>
+export const backgroundTasks = (...tasks: ReadonlyArray<LiveTask>) =>
   emit({
     type: "system",
     subtype: "background_tasks_changed",
-    tasks: tasks.map(({ id, ambient, description }) => ({
+    tasks: tasks.map(({ id, ambient, description, type }) => ({
       task_id: id,
-      task_type: "local_bash",
+      task_type: type ?? "local_bash",
       description: description ?? id,
       ...(ambient === undefined ? {} : { ambient }),
     })),
@@ -397,7 +399,7 @@ export const backgroundTasks = (
  */
 export const taskEnds = (
   id: string,
-  ...left: ReadonlyArray<{ readonly id: string; readonly ambient?: boolean }>
+  ...left: ReadonlyArray<LiveTask>
 ): ReadonlyArray<Step> => [
   emit({ type: "system", subtype: "task_updated", task_id: id, patch: { status: "completed" } }),
   emit({
@@ -417,7 +419,7 @@ export const taskEnds = (
  */
 export const taskStopped = (
   id: string,
-  ...left: ReadonlyArray<{ readonly id: string; readonly ambient?: boolean }>
+  ...left: ReadonlyArray<LiveTask>
 ): ReadonlyArray<Step> => [
   emit({
     type: "system",

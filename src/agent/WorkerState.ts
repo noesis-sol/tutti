@@ -28,9 +28,10 @@ export type WorkerState = Data.TaggedEnum<{
   /**
    * A turn is under way, more turns follow, a send of tutti's is outstanding, a task is live, or a
    * finished task's report is still to come. `tasksSince` is set while nothing but live background
-   * tasks keeps it Working, the turns being over: since when (src/run/settle.ts stops them).
+   * tasks keeps it Working, the turns being over: since when (src/run/settle.ts stops them);
+   * `agentsOnly` while those tasks are all agents' work (reading.ts's agentTaskTypes).
    */
-  Working: { readonly doing: Doing; readonly tasksSince?: number }
+  Working: { readonly doing: Doing; readonly tasksSince?: number; readonly agentsOnly?: true }
   /** An `api_retry` message, until the next message of the turn. `status` is null without a response. */
   Retrying: { readonly attempt: number; readonly max: number; readonly status: number | null }
   /** Pending `canUseTool` calls or elicitations, or `requires_action`: how many there are. */
@@ -83,15 +84,20 @@ export const settled = (state: WorkerState): boolean =>
  * (UsageLimited, § 4.12) or the API outage's (ApiUnavailable, § 4.2). Its time waiting is the
  * account's or the API's, not its own.
  */
+export const waitsForHold = (state: WorkerState): boolean =>
+  state._tag === "UsageLimited" || state._tag === "ApiUnavailable"
+
 /**
  * Since when nothing but live background tasks has kept a worker in `state` from settling, its
- * turns being over; undefined when something else keeps it, or it has settled.
+ * turns being over; undefined when something else keeps it, or it has settled. The clock starts
+ * again when those tasks go from all agents' work to not, or back.
  */
 export const tasksOnlySince = (state: WorkerState): number | undefined =>
   state._tag === "Working" ? state.tasksSince : undefined
 
-export const waitsForHold = (state: WorkerState): boolean =>
-  state._tag === "UsageLimited" || state._tag === "ApiUnavailable"
+/** Whether the tasks that alone keep a worker in `state` from settling are all agents' work. */
+export const agentsOnly = (state: WorkerState): boolean =>
+  state._tag === "Working" && state.agentsOnly === true
 
 /**
  * What reaches the reducer: an SDK message, a send of tutti's or its cancellation, a hook callback,
@@ -233,6 +239,8 @@ export interface Worker {
     | null
   /** The live background tasks that count: `background_tasks_changed`'s, but for ambient ones. */
   readonly tasks: ReadonlyArray<string>
+  /** Those of `tasks` that are agents' work (reading.ts's agentTaskTypes). */
+  readonly agents: ReadonlyArray<string>
   /** The descriptions of the tasks that count, by ID, where they have one. */
   readonly descriptions: ReadonlyMap<string, string>
   /**
@@ -278,6 +286,7 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   texts: new Map(),
   end: null,
   tasks: [],
+  agents: [],
   descriptions: new Map(),
   report: null,
   pending: 0,
@@ -362,7 +371,7 @@ const onReading: Handlers<Reading> = {
     retry: { attempt, max, status },
     retried: status,
   }),
-  Tasks: (worker, { live, counted, descriptions }, now) => {
+  Tasks: (worker, { live, counted, agents, descriptions }, now) => {
     const next = unretried(worker)
     // A task that counted and has ended, between idle and the next running: the CLI starts a turn
     // to report it, about 70 ms after this message (docs/spikes/01-sdk-session.md).
@@ -370,6 +379,7 @@ const onReading: Handlers<Reading> = {
     return {
       ...next,
       tasks: counted,
+      agents,
       descriptions,
       report: next.idle && ended && next.report === null ? now : next.report,
     }
@@ -483,8 +493,14 @@ const derive = (worker: Worker, now: number): WorkerState => {
   const working = (): WorkerState => {
     const doing = worker.tool ?? (worker.subagents.length > 0 ? "subagent" : "working")
     if (!quiet) return WorkerState.Working({ doing })
-    const since = tasksOnlySince(worker.state)
-    return WorkerState.Working({ doing, tasksSince: since ?? now })
+    const onlyAgents = worker.tasks.every((task) => worker.agents.includes(task))
+    const since =
+      agentsOnly(worker.state) === onlyAgents ? tasksOnlySince(worker.state) : undefined
+    return WorkerState.Working({
+      doing,
+      tasksSince: since ?? now,
+      ...(onlyAgents ? { agentsOnly: true as const } : {}),
+    })
   }
   switch (worker.turn._tag) {
     case "Limited":

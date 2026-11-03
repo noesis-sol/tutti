@@ -39,12 +39,13 @@ export type Reading = Data.TaggedEnum<{
   /** An `api_retry`; `status` null when the attempt had no response. */
   Retry: { readonly attempt: number; readonly max: number; readonly status: number | null }
   /**
-   * A `background_tasks_changed`: the live tasks' IDs, those of them that aren't ambient, and their
-   * descriptions, by ID, where they have one.
+   * A `background_tasks_changed`: the live tasks' IDs, those of them that aren't ambient, those of
+   * these that are agents' work (agentTaskTypes), and their descriptions, by ID, where they have one.
    */
   Tasks: {
     readonly live: ReadonlyArray<string>
     readonly counted: ReadonlyArray<string>
+    readonly agents: ReadonlyArray<string>
     readonly descriptions: ReadonlyMap<string, string>
   }
   /** A `rate_limit_event`: its info, and the account's windows it carries (`windowsOf`). */
@@ -138,10 +139,23 @@ const retry: Reader = (raw, kind) => {
   return Reading.Retry({ attempt, max, status: status ?? null })
 }
 
+/**
+ * The task types of a background task that is a model's work, not a command's: a subagent, a remote
+ * agent, a workflow's agents or a teammate. Such a task ends by itself as its agent finishes, so it
+ * gets a longer limit than a dev server or a watch (src/run/settle.ts).
+ */
+export const agentTaskTypes: ReadonlySet<string> = new Set([
+  "local_agent",
+  "remote_agent",
+  "local_workflow",
+  "in_process_teammate",
+])
+
 const tasks: Reader = (raw, kind) => {
   if (!Array.isArray(raw.tasks)) return unreadable(kind, "its tasks aren't a list")
   const live: Array<string> = []
   const counted: Array<string> = []
+  const agents: Array<string> = []
   const descriptions = new Map<string, string>()
   for (const task of raw.tasks) {
     if (!Predicate.isObject(task) || typeof task.task_id !== "string") {
@@ -153,11 +167,14 @@ const tasks: Reader = (raw, kind) => {
     live.push(task.task_id)
     if (task.ambient === true) continue
     counted.push(task.task_id)
+    if (typeof task.task_type === "string" && agentTaskTypes.has(task.task_type)) {
+      agents.push(task.task_id)
+    }
     if (typeof task.description === "string" && task.description.trim() !== "") {
       descriptions.set(task.task_id, task.description.trim())
     }
   }
-  return Reading.Tasks({ live, counted, descriptions })
+  return Reading.Tasks({ live, counted, agents, descriptions })
 }
 
 // The windows are read apart from the info: an info this SDK can't read may still carry them.

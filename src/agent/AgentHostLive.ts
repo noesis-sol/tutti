@@ -911,11 +911,18 @@ export const layer = (
           return yield* new AgentGone({ ticket: session.ticket, why })
         })
 
-      /** Stops the session's live background tasks that count: what they were. */
-      const stopTasksIn = (session: Live) =>
+      /**
+       * Stops the session's live background tasks that count, but for agents' work when
+       * `leaveAgents`: what they were.
+       */
+      const stopTasksIn = (session: Live, leaveAgents: boolean) =>
         Effect.gen(function* () {
           const ticket = session.ticket
-          const { tasks, descriptions } = yield* SubscriptionRef.get(session.entry.worker)
+          const worker = yield* SubscriptionRef.get(session.entry.worker)
+          const { descriptions } = worker
+          const tasks = leaveAgents
+            ? worker.tasks.filter((task) => !worker.agents.includes(task))
+            : worker.tasks
           yield* Effect.forEach(
             tasks,
             (task) =>
@@ -986,9 +993,9 @@ export const layer = (
             ),
           ),
         ),
-        stopTasks: Effect.fn("AgentHost.stopTasks")((ticket) =>
+        stopTasks: Effect.fn("AgentHost.stopTasks")((ticket, options) =>
           Effect.flatMap(sessionOf(ticket), (session) =>
-            stopTasksIn(session).pipe(
+            stopTasksIn(session, options?.leaveAgents === true).pipe(
               timeoutAwake({
                 duration: interruptWithin,
                 orElse: () =>
