@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { Duration, Effect, Exit } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { Ledger } from "../src/run/ledger.ts"
+import type { Log } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
@@ -92,7 +93,7 @@ const finished = Effect.gen(function* () {
 const handedBack = (
   left: ReadonlyArray<LiveTask>,
   after: SessionScript,
-  during: Effect.Effect<void>,
+  during: Effect.Effect<void, never, Log>,
 ) =>
   scenario(
     {
