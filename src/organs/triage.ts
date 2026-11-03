@@ -64,10 +64,14 @@ export const resultCharacters = 200
 
 type Fields = Readonly<Record<string, unknown>>
 
-/** What a call of `tool` is about (tools.ts's aboutOf), or else its input as JSON. */
+/**
+ * What a call of `tool` is about (tools.ts's aboutOf), saying so when it runs in the background,
+ * or else its input as JSON.
+ */
 const toolInput = (tool: string, input: unknown): string => {
   const about = aboutOf(tool, input)
-  if (about !== undefined) return oneLine(about, textCharacters)
+  const background = asRecord(input)?.run_in_background === true ? " (in the background)" : ""
+  if (about !== undefined) return `${oneLine(about, textCharacters)}${background}`
   let json: string | undefined
   try {
     json = JSON.stringify(input)

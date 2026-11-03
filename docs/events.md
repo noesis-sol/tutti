@@ -83,9 +83,10 @@ the time.
 | `reopened` | a ticket set aside for failing at once was reopened by an environment hold | `ticket`; `detail`; `text` |
 | `triage` | triage's verdict on a deferred ticket | `ticket`; `title`, the verdict; `detail`, as in `environment · high`; `text` |
 | `ticket_end` | a ticket's part in the run ended: it merged, closed with no change, was set aside, waits on you or stopped, or the run ended with it back in the queue; again each time it comes back and ends again, so its last in a run gives its whole | `ticket`; `outcome`: `merged`, `no_change`, `set_aside`, `needs_you`, `stopped` or `queued`; `phase`, the one it ended in (`Done`, `Deferred`, `Review`, `Asked`, `Blocked`, `Stopped`, and for `queued` `Waiting`, `Queued` or `HeldBack`); `why`, as that phase gives it (`CHECKS_FAILED`, the question's ID, `PAUSED`, what a Waiting ticket waits for: a ticket's ID, `probe` or `setup`, …); `seconds`, from when the run first took it up; `turns`, its workers' model round-trips; `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd` |
-| `score` | the ticket's scorecard, right after each of its `ticket_end` records, from the run's records about it so far (see [Scorecards](#scorecards)): its last in a run gives its whole | `ticket`, `outcome`, `phase` and `why`, as its `ticket_end`'s; `verifier`: `rounds` begun, `passed` and `failed` (the rounds that ended PASS, FAIL), `last` (the last verdict, `pass` or `fail`), `last_fix_verified` (with a round: `false` when tutti found its last fix unverified and no round began after); `hand_backs`; `resolving`, `fixing` and `working`, its seconds in each; `seconds`; `checks`: its merge, recheck and fix checks that `failed` and `timed_out`; `flaky`, its checks' FLAKY warnings; `denied`, its tool calls denied, by Claude Code without asking or by you (or tutti) when asked; `asked`, the questions it asked: the question tickets it waited on and AskUserQuestion's; `cost_usd`; `size`, the files its footprint named; `median`, of the tickets of its size class ended before it in the run (`tickets`, how many, `working`, `cost_usd`); `follow_ups` and `reverts`, those `score_update` records named so far |
+| `score` | the ticket's scorecard, right after each of its `ticket_end` records, from the run's records about it so far (see [Scorecards](#scorecards)): its last in a run gives its whole | `ticket`, `outcome`, `phase` and `why`, as its `ticket_end`'s; `verifier`: `rounds` begun, `passed` and `failed` (the rounds that ended PASS, FAIL), `last` (the last verdict, `pass` or `fail`), `last_fix_verified` (with a round: `false` when tutti found its last fix unverified and no round began after); `hand_backs`; `resolving`, `fixing` and `working`, its seconds in each; `seconds`; `checks`: its merge, recheck and fix checks that `failed` and `timed_out`; `flaky`, its checks' FLAKY warnings; `denied`, its tool calls denied, by Claude Code without asking or by you (or tutti) when asked; `asked`, the questions it asked: the question tickets it waited on and AskUserQuestion's; `cost_usd`; `size`, the files its footprint named; `median`, of the tickets of its size class ended before it in the run (`tickets`, how many, `working`, `cost_usd`); `follow_ups` and `reverts`, those `score_update` records named so far; `audit`, its latest `audit` record's `flagged` and `unclear` items |
 | `score_update` | something came of a ticket after it ended, for its scorecard: the run took up a ticket filed against it, found one as it ended that it didn't take up, or merged a commit reverting it. It may be about an earlier run's ticket | `ticket`, the one scored; `follow_up`, the ticket discovered from it, or blocked by it and filed after the run took it up; or `revert`, the commit whose subject starts with `Revert` and names it in parentheses, and `by`, the ticket whose merge brought that commit |
 | `review` | the [critic](organs.md#the-critic) reviewed a merged ticket's work | `ticket`; `trigger`: `every` (one of the run's every `organs.critic_every` merges) or `worst` (its scorecard in the run's worst decile); `commit`, the one the merge put the base at; `checklist`, the criteria the critic built; `findings`, each with `title`, `severity` (`severe`, `high`, `medium`, `low`), `criterion`, `evidence` (`path:line`), `confidence`, and `filed`, the ticket filed for it (the question, for a severe one), or `dropped`: `doubtful` (low confidence), `ungrounded` (a place the merged tree hasn't), `duplicate` (with `duplicate_of`, the open ticket it is alike), `capped` (past `organs.critic_tickets`) or `failed` (bd refused it); `text` |
+| `audit` | the [auditor](organs.md#the-auditor) read an ended ticket's worker transcript against its rubric, with `organs.auditor` on | `ticket`; `outcome`, as the `ticket_end` it follows; `items`, each with `item` (`verifier_before_checks`, `background_left_running`, `outside_footprint`, `asked_what_ticket_said`, `repeated_failing_command`, `wrote_main_checkout`), `answer` (`yes`, a behaviour seen; `no`; `unclear`), `evidence`, the line it quoted or its words, and `ungrounded: true` for a `yes` whose quote the transcript doesn't hold, read `unclear`; `text` |
 
 **Workers:**
 
@@ -155,7 +156,8 @@ used, so the stream has what orchestra's has of a ticket's time and tokens, and 
 
 Every ticket whose part in the run ends gets a scorecard, a `score` record right after its
 `ticket_end`, computed from the run's own records about it, so that a change to how tutti works
-can be measured against the same figures run after run. Nothing reads a model's judgement into it:
+can be measured against the same figures run after run. Nothing reads a model's judgement into its
+figures, only into its audit, below:
 
 - its verifier rounds come from the `verifier` records, which its worker's hooks give as the
   verifier's Agent call starts and ends, the verdict read from the first word of its answer;
@@ -168,6 +170,10 @@ can be measured against the same figures run after run. Nothing reads a model's 
   files, the latest of each ticket; a ticket with no footprint read is compared with the others
   without one.
 
+With `organs.auditor` on, the [auditor](organs.md#the-auditor) reads each ended ticket's transcript
+against a fixed rubric, an `audit` record after its `score`, and the scorecard takes its items
+flagged and those left unclear, as `audit` on the latest `score` and every later one.
+
 What comes of a ticket later is a `score_update`: the run writes one as it takes up a ticket filed
 against it (discovered from it, or blocked by it and filed after the run took it up), as it ends
 for each such ticket it didn't take up (one outside a `--ticket` run's scope, or blocked until a
@@ -179,8 +185,8 @@ later run, so a query joins them by ticket ([Analytics](analytics.md#scorecards)
 
 There is no single figure: the [run report](organs.md#the-reviewer-and-the-run-report) ranks the scorecards by their
 parts in a fixed order (reverts, outcome, hand-backs and failed checks, an unverified last fix,
-failed verifier rounds, follow-ups, FLAKY warnings, denials and questions, then cost and working
-time over the run's median for the size) and shows each part, so that what moved stays in sight.
+failed verifier rounds, follow-ups, FLAKY warnings, denials and questions, the items its audit
+flagged, then cost and working time over the run's median for the size) and shows each part, so that what moved stays in sight.
 
 ## Reading it
 

@@ -2614,6 +2614,44 @@
           "items": {
             "type": "string"
           }
+        },
+        "audit": {
+          "type": "object",
+          "properties": {
+            "flagged": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "verifier_before_checks",
+                  "background_left_running",
+                  "outside_footprint",
+                  "asked_what_ticket_said",
+                  "repeated_failing_command",
+                  "wrote_main_checkout"
+                ]
+              }
+            },
+            "unclear": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "verifier_before_checks",
+                  "background_left_running",
+                  "outside_footprint",
+                  "asked_what_ticket_said",
+                  "repeated_failing_command",
+                  "wrote_main_checkout"
+                ]
+              }
+            }
+          },
+          "required": [
+            "flagged",
+            "unclear"
+          ],
+          "additionalProperties": true
         }
       },
       "required": [
@@ -2796,6 +2834,101 @@
         "commit",
         "checklist",
         "findings",
+        "text"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "enum": [
+            1
+          ]
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "audit"
+          ]
+        },
+        "ticket": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "merged",
+            "no_change",
+            "set_aside",
+            "needs_you",
+            "stopped",
+            "queued"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "type": "string",
+                "enum": [
+                  "verifier_before_checks",
+                  "background_left_running",
+                  "outside_footprint",
+                  "asked_what_ticket_said",
+                  "repeated_failing_command",
+                  "wrote_main_checkout"
+                ]
+              },
+              "answer": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unclear"
+                ]
+              },
+              "evidence": {
+                "type": "string"
+              },
+              "ungrounded": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            },
+            "required": [
+              "item",
+              "answer",
+              "evidence"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "v",
+        "time",
+        "run",
+        "kind",
+        "ticket",
+        "outcome",
+        "items",
         "text"
       ],
       "additionalProperties": true

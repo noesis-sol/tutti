@@ -50,6 +50,8 @@ export interface Look {
   readonly triagePending: number
   /** The critic's review under way, and those due it could start now (critic.ts's pending). */
   readonly reviewsPending?: number
+  /** The audits under way and queued (auditor.ts's pending). */
+  readonly auditsPending?: number
   /** Whether the run has a dashboard, which shows the end-of-run box. */
   readonly dashboard: boolean
   /**
@@ -119,7 +121,8 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<T
     look.mergedBefore &&
     look.settled &&
     look.triagePending === 0 &&
-    (look.reviewsPending ?? 0) === 0
+    (look.reviewsPending ?? 0) === 0 &&
+    (look.auditsPending ?? 0) === 0
   // With a dashboard, a conflict hand-back waiting for its steered worker keeps the run open as a
   // request does, until you hand it over from the worker's view or release it (§ 4.3). An overnight
   // run leaves it Blocked, as a plain one does, and ends: nobody is there to hand it over.

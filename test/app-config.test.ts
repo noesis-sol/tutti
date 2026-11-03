@@ -277,6 +277,7 @@ describe("precedence", () => {
         critic: true,
         critic_every: 5,
         critic_tickets: 5,
+        auditor: false,
       },
       merge: { ...s.merge, resolve_conflicts: false },
     })
@@ -311,6 +312,7 @@ describe("precedence", () => {
       critic: true,
       critic_every: 5,
       critic_tickets: 5,
+      auditor: false,
     })
     expect(fromEnv.merge.resolve_conflicts).toBe(true)
 
@@ -345,6 +347,7 @@ describe("precedence", () => {
       critic: true,
       critic_every: 5,
       critic_tickets: 5,
+      auditor: false,
     })
     expect(fromFlags.merge.resolve_conflicts).toBe(false)
     // What no flag overrides is the settings' own.

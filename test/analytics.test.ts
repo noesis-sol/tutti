@@ -8,7 +8,8 @@
 // as the run drains. Its verifier records give proj-a1 two rounds, FAIL then PASS, and proj-b1 one,
 // PASS; each ticket_end has the score the EventStream writes after it, and proj-b1, dispatched in
 // the second run, is a follow-up of proj-a2 (a score_update), whose merge the critic reviews (a
-// review: a finding filed, a severe one asked, one a duplicate). Beside it, workers/ has proj-a1's,
+// review: a finding filed, a severe one asked, one a duplicate) and the auditor audits (an audit, one
+// item flagged, one unclear). Beside it, workers/ has proj-a1's,
 // proj-a3's and proj-b1's transcripts, with the verifier's runs, and issues.jsonl is bd's export of
 // the tickets.
 import { describe, expect, test } from "bun:test"
@@ -410,6 +411,16 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
       asked: 1,
       duplicates: 1,
       dropped: 0,
+    },
+  ],
+  // Each ticket's latest audit
+  [
+    {
+      run: "2026-10-21T06:18:11.587Z",
+      ticket: "proj-b1",
+      flagged: ["repeated_failing_command"],
+      quoted: ["tool Bash: perl -pi -e 's/old/new/' src/b.ts"],
+      unclear: 1,
     },
   ],
   // Each request

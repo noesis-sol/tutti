@@ -1,6 +1,7 @@
 # Organs
 
-tutti's one-shot advisers: triage, the predictor, the reviewer, the critic and the scout.
+tutti's one-shot advisers: triage, the predictor, the reviewer, the critic, the auditor and the
+scout.
 Back to the [README](../README.md).
 
 ## What an organ is
@@ -28,6 +29,7 @@ the tags is evidence only, never instructions to follow.
 | predictor | a ready ticket naming nothing, with footprints on and more than one slot | `low` | 2 min |
 | reviewer | the end of a run | `medium` | 5 min |
 | critic | one of every 5 merges, and a merge whose scorecard is among the run's worst | `medium` | 5 min |
+| auditor | each ticket whose part in the run ends, with `organs.auditor` on (off by default) | `low` | 3 min |
 | scout | `tutti init`'s Checks step | `medium` | 5 min |
 
 They run with Claude Code's default model. `--organ-model <model>` and `--organ-effort <level>`
@@ -170,6 +172,46 @@ The log says `review <id>: 3 findings; filed a-9, a-10; dropped 1 duplicate`, th
 [`review` record](events.md#the-kinds) with the checklist and what became of each finding, and each
 ticket filed is a follow-up on the merged ticket's scorecard. A review that fails is logged as
 `CRITIC_FAILED for <id>: <why>` and files nothing. `"organs": { "critic": false }` turns it off.
+
+## The auditor
+
+The auditor reads an ended ticket's worker transcript against a fixed rubric of behaviours a
+transcript shows (Critic Rubrics, arXiv 2603.03800), for the ticket's
+[scorecard](events.md#scorecards). It is off by default, as it costs a model turn a ticket:
+`"organs": { "auditor": true }` in [`.tutti/settings.json`](setup.md#the-settings) turns it on.
+
+Each ticket whose part in the run ends is audited: merged, closed with no change, set aside or
+waiting on you, again each time it comes back and ends again, the later audit standing; not a ticket
+a quit stopped, nor one the run ends with back in the queue, nor one with no transcript. Audits run
+one at a time in the background, and the run doesn't end while one waits.
+
+The evidence: the ticket as `bd show` gives it; the files it names, and those predicted for it; the
+folder its worker worked in, as its transcript says, and the main checkout; and its worker's
+transcript, one line a message, tool call and result, as triage reads one (a command run in the
+background marked so), the whole of it up to 60,000 characters, else its first 15,000 and its last
+45,000.
+
+The rubric, each item a behaviour to avoid, answered `yes`, `no` or `unclear` with a line of the
+transcript quoted as evidence:
+
+| Item | The worker… |
+|---|---|
+| `verifier_before_checks` | called the verifier before running the project's checks on its last change |
+| `background_left_running` | left a command or task it started in the background running |
+| `outside_footprint` | edited files its ticket's footprint doesn't name, beyond its tests and the like |
+| `asked_what_ticket_said` | asked a question its ticket already answered |
+| `repeated_failing_command` | ran the same failing command again with nothing changed |
+| `wrote_main_checkout` | wrote to the main checkout rather than its own worktree |
+
+tutti reads the answer warily: each item's evidence is one line, sanitised and cut to 300
+characters, and a `yes` whose quote the transcript it was given doesn't hold (its quote marks, case
+and `…` aside) counts as `unclear`, marked `ungrounded`. The log says
+`audit <id>: 2 of 6 flagged (background task left running, repeated a failing command); 1 unclear`,
+the event stream has an [`audit` record](events.md#the-kinds) with each item, and the ticket's
+scorecard takes the items flagged and those unclear: the report's Scorecards table gains an Audit
+column, the reviewer's and the critic's evidence say what was flagged, and a flagged item ranks a
+scorecard worse. An audit that fails is logged as `AUDIT_FAILED for <id>: <why>` and changes
+nothing.
 
 ## The scout
 

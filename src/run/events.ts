@@ -631,6 +631,30 @@ export const ScoreMedian = Schema.Struct({
 })
 
 /**
+ * The rubric the auditor reads an ended ticket's transcript against (src/organs/auditor.ts), each
+ * item a behaviour to avoid, so a yes is a flag.
+ */
+export const auditItems = [
+  "verifier_before_checks",
+  "background_left_running",
+  "outside_footprint",
+  "asked_what_ticket_said",
+  "repeated_failing_command",
+  "wrote_main_checkout",
+] as const
+
+export type AuditItemName = (typeof auditItems)[number]
+
+/** An audit item's answer. */
+export const auditAnswers = ["yes", "no", "unclear"] as const
+
+/** A scorecard's audit: the items its latest audit flagged, and those it left unclear. */
+export const ScoreAudit = Schema.Struct({
+  flagged: Schema.Array(Schema.Literals(auditItems)),
+  unclear: Schema.Array(Schema.Literals(auditItems)),
+})
+
+/**
  * A ticket's scorecard (src/run/scorecard.ts), written after each of its `ticket_end` records,
  * computed from the run's records about it so far: its last `score` in a run gives its whole, as
  * its last `ticket_end` does. tutti's own.
@@ -665,6 +689,8 @@ export const Score = Schema.Struct({
   /** The follow-ups and reverts its score_update records have named so far. */
   follow_ups: optional(Schema.Array(Schema.String)),
   reverts: optional(Schema.Array(Schema.String)),
+  /** Its latest `audit` so far: the rubric's items it was flagged on, and those left unclear. */
+  audit: optional(ScoreAudit),
 })
 
 /**
@@ -682,6 +708,30 @@ export const ScoreUpdate = Schema.Struct({
   revert: optional(Schema.String),
   /** revert: the ticket whose merge brought the commit. */
   by: optional(Schema.String),
+})
+
+/** One item of an audit, as tutti read the auditor's answer. */
+export const AuditItem = Schema.Struct({
+  item: Schema.Literals(auditItems),
+  answer: Schema.Literals(auditAnswers),
+  /** The line of the transcript the auditor quoted, or its words; one line, cut. */
+  evidence: Schema.String,
+  /** The auditor said yes, and the transcript it was given doesn't hold its quote: read unclear. */
+  ungrounded: optional(Schema.Literal(true)),
+})
+
+/**
+ * The auditor read an ended ticket's worker transcript against its rubric (src/run/auditor.ts),
+ * each item yes, no or unclear with its evidence; the ticket's scorecard takes its flags. tutti's
+ * own; `text` is its log line.
+ */
+export const Audit = Schema.Struct({
+  ...head("audit"),
+  ticket: Schema.String,
+  /** How the ticket's part in the run ended, as the ticket_end it follows says. */
+  outcome: Schema.Literals(ticketOutcomes),
+  items: Schema.Array(AuditItem),
+  text: Schema.String,
 })
 
 /** What called for a review: the run's every Nth merge, or a scorecard in its worst decile. */
@@ -939,6 +989,7 @@ export const kinds = {
   score: Score,
   score_update: ScoreUpdate,
   review: Review,
+  audit: Audit,
   end: End,
   phase: Phase,
   attention: Attention,

@@ -106,7 +106,14 @@ describe("--refine with --feature", () => {
 
 describe("the screen and plan organs", () => {
   test("are gone from the organs", () => {
-    expect([...organNames]).toEqual(["triage", "predictor", "reviewer", "critic", "scout"])
+    expect([...organNames]).toEqual([
+      "triage",
+      "predictor",
+      "reviewer",
+      "critic",
+      "auditor",
+      "scout",
+    ])
   })
 
   test("organs.screen and organs.plan in the settings are read whatever they are, and noted", () => {
@@ -126,6 +133,7 @@ describe("the screen and plan organs", () => {
         critic: true,
         critic_every: 5,
         critic_tickets: 5,
+        auditor: false,
       })
       expect(keepAwakeNotes(config)).toEqual([
         `organs.screen in ${settingsFile} is no longer read: the screen organ is gone, and --feature talks the feature through with you`,
@@ -172,6 +180,7 @@ describe("the screen and plan organs", () => {
       "critic",
       "critic_every",
       "critic_tickets",
+      "auditor",
     ])
     expect(Object.keys(properties("user-config.json"))).not.toContain("organs")
   })

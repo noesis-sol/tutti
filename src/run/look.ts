@@ -9,6 +9,7 @@
 import { Effect } from "effect"
 import type { Attention } from "../agent/Attention.ts"
 import type { TicketId } from "../services/Beads.ts"
+import type { Auditor } from "./auditor.ts"
 import type { Critic } from "./critic.ts"
 import type { EnvironmentHold } from "./environment.ts"
 import { changeStops, firstStop, type Gate, swapStop, takesNew } from "./holds.ts"
@@ -41,6 +42,8 @@ export interface LoopParts {
   readonly triage: Pick<Triage, "pending">
   /** The critic (critic.ts): the run doesn't end while a review runs; none without it. */
   readonly critic?: Pick<Critic, "pending">
+  /** The auditor (auditor.ts): the run doesn't end while a ticket waits for its audit. */
+  readonly auditor?: Pick<Auditor, "pending">
   readonly usage: Pick<UsageLimitHold, "limited" | "handBacks" | "look">
   readonly commands: Pick<ScreenCommands, "acted" | "endAsked" | "endAfter" | "askEnd">
   readonly environment: Pick<EnvironmentHold, "probe">
@@ -94,6 +97,7 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         settled: isSettled(yield* queue.state),
         triagePending: yield* parts.triage.pending,
         reviewsPending: parts.critic === undefined ? 0 : yield* parts.critic.pending,
+        auditsPending: parts.auditor === undefined ? 0 : yield* parts.auditor.pending,
         dashboard: parts.dashboard,
         overnight: parts.overnight === true,
       }

@@ -449,6 +449,7 @@ export const resolveAll = (
         critic: settings.organs.critic,
         critic_every: settings.organs.critic_every,
         critic_tickets: settings.organs.critic_tickets,
+        auditor: settings.organs.auditor,
       },
       merge: {
         ...settings.merge,

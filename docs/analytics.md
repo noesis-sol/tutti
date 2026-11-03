@@ -53,7 +53,8 @@ FROM read_json(path, format = 'newline_delimited', filename = true, columns = {
   verifier: 'STRUCT(rounds INTEGER, passed INTEGER, failed INTEGER, "last" VARCHAR, last_fix_verified BOOLEAN)',
   checks: 'STRUCT(failed INTEGER, timed_out INTEGER)', resolving: 'DOUBLE', fixing: 'DOUBLE',
   working: 'DOUBLE', flaky: 'INTEGER', denied: 'INTEGER', asked: 'INTEGER', size: 'INTEGER',
-  median: 'STRUCT(tickets INTEGER, working DOUBLE, cost_usd DOUBLE)'
+  median: 'STRUCT(tickets INTEGER, working DOUBLE, cost_usd DOUBLE)',
+  items: 'STRUCT(item VARCHAR, answer VARCHAR, evidence VARCHAR, ungrounded BOOLEAN)[]'
 });
 
 CREATE OR REPLACE MACRO transcripts(path) AS TABLE
@@ -444,6 +445,24 @@ SELECT run, ticket, "trigger", len(reviews.findings) AS findings,
   count(f) FILTER (f.dropped IS NOT NULL AND f.dropped <> 'duplicate') AS dropped
 FROM reviews LEFT JOIN findings USING (seq)
 GROUP BY seq, run, ticket, "trigger", reviews.findings, time ORDER BY run, time;
+```
+
+Each ticket's latest audit by the [auditor](organs.md#the-auditor), with `organs.auditor` on: the
+rubric's items it flagged in the worker's transcript, the line it quoted for each, and how many it
+left unclear.
+
+```sql
+WITH audits AS (
+  SELECT * FROM events('.tutti/run/events.jsonl') WHERE kind = 'audit'
+  QUALIFY row_number() OVER (PARTITION BY run, ticket ORDER BY time DESC, seq DESC) = 1
+), items AS (
+  SELECT run, ticket, unnest(items) AS i FROM audits
+)
+SELECT run, ticket,
+  list(i.item ORDER BY i.item) FILTER (i.answer = 'yes') AS flagged,
+  list(i.evidence ORDER BY i.item) FILTER (i.answer = 'yes') AS quoted,
+  count(*) FILTER (i.answer = 'unclear') AS unclear
+FROM items GROUP BY run, ticket ORDER BY run, ticket;
 ```
 
 ## Waiting on you

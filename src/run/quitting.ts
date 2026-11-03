@@ -13,6 +13,7 @@ import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
+import type { Auditor } from "./auditor.ts"
 import { saveAsked, saveLeft } from "./carry.ts"
 import type { Critic } from "./critic.ts"
 import { EventStream } from "./eventstream.ts"
@@ -95,6 +96,8 @@ export const make = (options: {
   readonly triage: Pick<Triage, "interrupt">
   /** The critic (critic.ts), whose review under way is aborted with triage's; none without it. */
   readonly critic?: Pick<Critic, "interrupt">
+  /** The auditor (auditor.ts), whose audit under way is aborted with triage's; none without it. */
+  readonly auditor?: Pick<Auditor, "interrupt">
   readonly status: SubscriptionRef.SubscriptionRef<Status>
   readonly exitNow?: (code: number, said: ReadonlyArray<Line>) => Effect.Effect<void>
 }): Effect.Effect<Quits, never, AgentHost | Attention | Ledger | Store | Log | EventStream> =>
@@ -196,6 +199,7 @@ export const make = (options: {
         yield* queue.stopMerges
         yield* options.triage.interrupt
         yield* options.critic?.interrupt ?? Effect.void
+        yield* options.auditor?.interrupt ?? Effect.void
         yield* waitFor([])
       })
 

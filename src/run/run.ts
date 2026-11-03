@@ -106,6 +106,7 @@ import { awakeSince } from "../services/Wake.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { make as makeApiOutage } from "./apiOutage.ts"
 import { askedLook, askedQuestions, takeAnswers } from "./asked.ts"
+import { off as auditorOff, followEnds, make as makeAuditor } from "./auditor.ts"
 import {
   AutoAnswer,
   answeredQuestions,
@@ -561,6 +562,14 @@ const runFrom = (
           idle: Effect.flatten(Ref.get(criticIdle)),
           done: wakeUp("verdict"),
         }).pipe(Effect.provideService(Organs, organs.value))
+    // The auditor (auditor.ts), when the run has organs and organs.auditor is on: told of each
+    // ticket whose part in the run ends (followEnds, below), it audits its worker's transcript in
+    // the background. Each audit's end wakes the run, which doesn't end while one waits.
+    const auditor = Option.isNone(organs)
+      ? auditorOff
+      : yield* makeAuditor({ repo: config.repo, done: wakeUp("verdict") }).pipe(
+          Effect.provideService(Organs, organs.value),
+        )
     const queue = yield* makeQueue(
       {
         repo: config.repo,
@@ -785,6 +794,8 @@ const runFrom = (
     // A worker's turn refused for Claude's login holds the run for the login check (loginCheck.ts).
     yield* watch(watchLogins(loginCheck.refused))
     yield* watch(apiOutage.watch)
+    // Each ticket whose part in the run ends is audited, with the auditor on (auditor.ts).
+    if (auditor !== auditorOff) yield* watch(followEnds(ledger.changes, auditor))
     // The title line's badge while the keep-awake command holds the machine awake.
     if (options.keepingAwake !== undefined) {
       yield* watch(Stream.runForEach(options.keepingAwake, showOn(status, "keepAwake")))
@@ -826,6 +837,7 @@ const runFrom = (
       scheduler,
       triage,
       critic,
+      auditor,
       status,
       ...(options.exitNow === undefined ? {} : { exitNow: options.exitNow }),
     })
@@ -1155,6 +1167,7 @@ const runFrom = (
       queue,
       triage,
       critic,
+      auditor,
       usage,
       commands,
       environment,

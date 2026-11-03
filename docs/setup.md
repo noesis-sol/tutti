@@ -527,7 +527,8 @@ for a project that sets them all; the table below gives each one's default:
     "review": true,
     "critic": true,
     "critic_every": 5,
-    "critic_tickets": 5
+    "critic_tickets": 5,
+    "auditor": false
   },
   "spec": { "timeout": "60m", "effort": "high" },
   "queue": { "exclude_types": ["epic"], "footprint": true, "shared_files": ["test/FEATURES.md"] },
@@ -573,6 +574,7 @@ for a project that sets them all; the table below gives each one's default:
 | `organs.critic` | `true` | the critic, which reviews merged work mid-run and files follow-up tickets; [The critic](organs.md#the-critic) |
 | `organs.critic_every` | `5` | the critic reviews one of every this many merges; `0` only those whose scorecard is in the run's worst decile |
 | `organs.critic_tickets` | `5` | the most tickets the critic files in a run |
+| `organs.auditor` | `false` | the auditor, which reads each ended ticket's transcript against a rubric for its scorecard, a model turn a ticket; [The auditor](organs.md#the-auditor) |
 | `spec.timeout`, `spec.effort` | `"60m"`, `"high"` | how long a spec's breakdown may take, and its effort; `--spec-timeout`, `--spec-effort` for a run; [A whole app from a spec](running.md#a-whole-app-from-a-spec) |
 | `queue.exclude_types` | `["epic"]` | issue types a run never takes; epics never run whatever it says |
 | `queue.footprint` | `true` | keep tickets that touch the same code apart; [Footprints](running.md#footprints) |

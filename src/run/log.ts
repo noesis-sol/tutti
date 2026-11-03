@@ -113,6 +113,7 @@ export const Tag = {
   triageFailed: "TRIAGE_FAILED",
   predictFailed: "PREDICT_FAILED",
   criticFailed: "CRITIC_FAILED",
+  auditFailed: "AUDIT_FAILED",
   usage: "USAGE",
   usageLimit: "USAGE_LIMIT",
   apiUnavailable: "API_UNAVAILABLE",

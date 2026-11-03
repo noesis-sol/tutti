@@ -263,6 +263,11 @@ export const Settings = Schema.Struct({
     critic_every: Count.pipe(withDefault(5)),
     /** The most tickets the critic files in a run. */
     critic_tickets: Count.pipe(withDefault(5)),
+    /**
+     * The auditor, which reads each ended ticket's transcript against a rubric for its scorecard
+     * (src/run/auditor.ts): off by default, as it costs a model turn a ticket.
+     */
+    auditor: Schema.Boolean.pipe(withDefault(false)),
     /** Gone with the screen organ (retiredOrganKeys): read whatever it is, and ignored. */
     screen: Schema.optionalKey(Schema.Unknown),
     /** Gone with the plan organ (retiredOrganKeys): read whatever it is, and ignored. */

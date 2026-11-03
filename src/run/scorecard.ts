@@ -17,6 +17,8 @@
 // - its working time and cost beside the median of the tickets of a size like its own (the files
 //   its footprint named, as its `dispatch` said, in classes: 0–1, 2–3, 4–7, 8–15, 16 or more)
 //   that ended in the run before it, the latest score of each;
+// - its latest audit's flags, from the `audit` records the auditor wrote (auditor.ts), with
+//   organs.auditor on: the items of its rubric it was flagged on and those left unclear;
 // - the follow-ups and reverts its `score_update` records named so far. The run writes one when it
 //   takes up a ticket filed against it (`followUpsOf`), for each one its workers filed that it
 //   didn't take up, as it ends (`dependentFollowUps`), and when a merge brings a commit reverting
@@ -29,9 +31,12 @@
 import { HumanLabel, type Issue } from "../services/Beads.ts"
 import type { Commit } from "../services/Git.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
-import type { Event, verdicts } from "./events.ts"
+import type { AuditItemName, Event, verdicts } from "./events.ts"
 
 type Verdict = (typeof verdicts)[number]
+
+/** A scorecard's audit: the items flagged, and those left unclear. */
+export type ScoreAudit = NonNullable<Score["audit"]>
 
 /** A `score` record, as the run gives it to the EventStream. */
 export type Score = Extract<Event, { readonly kind: "score" }>
@@ -57,6 +62,8 @@ export interface Tally {
   readonly took?: number
   readonly followUps: ReadonlyArray<string>
   readonly reverts: ReadonlyArray<string>
+  /** Its latest audit's flags. */
+  readonly audit?: ScoreAudit
 }
 
 const noTally: Tally = {
@@ -194,15 +201,26 @@ export const scoreStep = (scoring: Scoring, event: Event, at: number): Scoring =
         scores: new Map(changed.scores).set(event.ticket, { ...score, ...laterOf(t) }),
       }
     }
+    case "audit": {
+      const audit: ScoreAudit = {
+        flagged: event.items.filter((i) => i.answer === "yes").map((i) => i.item),
+        unclear: event.items.filter((i) => i.answer === "unclear").map((i) => i.item),
+      }
+      const changed = update(scoring, event.ticket, (t) => ({ ...t, audit }))
+      const score = changed.scores.get(event.ticket)
+      if (score === undefined) return changed
+      return { ...changed, scores: new Map(changed.scores).set(event.ticket, { ...score, audit }) }
+    }
     case "score":
       return { ...scoring, scores: new Map(scoring.scores).set(event.ticket, event) }
   }
   return scoring
 }
 
-const laterOf = (t: Tally): Pick<Score, "follow_ups" | "reverts"> => ({
+const laterOf = (t: Tally): Pick<Score, "follow_ups" | "reverts" | "audit"> => ({
   ...(t.followUps.length === 0 ? {} : { follow_ups: t.followUps }),
   ...(t.reverts.length === 0 ? {} : { reverts: t.reverts }),
+  ...(t.audit === undefined ? {} : { audit: t.audit }),
 })
 
 // `n` to a tenth, or as it is where a tenth of it can't be written.
@@ -370,8 +388,8 @@ const runMedians = (scores: ReadonlyArray<Score>): ((score: Score) => Score["med
 /**
  * A scorecard's parts in the order the ranking weighs them, larger worse: its reverts, its
  * outcome, its hand-backs and failed checks, an unverified last fix, its failed verifier rounds,
- * its follow-ups, its FLAKY warnings, its denials and questions, then its cost and working time
- * over the run's median for its size.
+ * its follow-ups, its FLAKY warnings, its denials and questions, the items its audit flagged, then
+ * its cost and working time over the run's median for its size.
  */
 export const badness = (score: Score, of: Score["median"]): ReadonlyArray<number> => [
   score.reverts?.length ?? 0,
@@ -382,6 +400,7 @@ export const badness = (score: Score, of: Score["median"]): ReadonlyArray<number
   score.follow_ups?.length ?? 0,
   score.flaky,
   score.denied + score.asked,
+  score.audit?.flagged.length ?? 0,
   ratio(score.cost_usd, of?.cost_usd),
   ratio(score.working, of?.working),
 ]
@@ -429,6 +448,26 @@ const outcomeWords: Readonly<Record<Score["outcome"], string>> = {
   queued: "queued",
 }
 
+/** Each audit item in the report's words. */
+export const auditWords: { readonly [I in AuditItemName]: string } = {
+  verifier_before_checks: "verifier before checks",
+  background_left_running: "background task left running",
+  outside_footprint: "files outside its footprint",
+  asked_what_ticket_said: "asked what the ticket said",
+  repeated_failing_command: "repeated a failing command",
+  wrote_main_checkout: "wrote to the main checkout",
+}
+
+/** An audit as the report gives it: `2 flagged: a, b; 1 unclear`, `none flagged`; empty for none. */
+export const auditText = (audit: ScoreAudit | undefined): string => {
+  if (audit === undefined) return ""
+  const flagged =
+    audit.flagged.length === 0
+      ? "none flagged"
+      : `${audit.flagged.length} flagged: ${audit.flagged.map((item) => auditWords[item]).join(", ")}`
+  return audit.unclear.length === 0 ? flagged : `${flagged}; ${audit.unclear.length} unclear`
+}
+
 /** A scorecard's parts, as the report's table and the reviewer's lines give them. */
 export const scoreParts = (score: Score, of: Score["median"]) => {
   const v = score.verifier
@@ -472,24 +511,55 @@ export const scoreParts = (score: Score, of: Score["median"]) => {
         : `$${score.cost_usd.toFixed(2)}${over(score.cost_usd, of?.cost_usd)}`,
     size: sizeWords(score.size),
     later: later.length === 0 ? "" : later.join(", "),
+    audit: auditText(score.audit),
   }
 }
 
 /** A table cell of text from the run: one line, Markdown escaped, sanitised. */
 const cell = (untrusted: string): string => escapeMarkdown(sanitizeLine(untrusted))
 
-const header =
-  "| Ticket | Outcome | Verifier | Hand-backs | Checks | Denied | Questions | Working | Cost | Later |\n" +
-  "|---|---|---|---|---|---|---|---|---|---|"
+const columns = [
+  "Ticket",
+  "Outcome",
+  "Verifier",
+  "Hand-backs",
+  "Checks",
+  "Denied",
+  "Questions",
+  "Working",
+  "Cost",
+  "Later",
+]
 
-const row = (score: Score, of: Score["median"]): string => {
+// The table's header, with an Audit column where a ticket of the run was audited.
+const header = (audited: boolean): string => {
+  const titles = audited ? [...columns, "Audit"] : columns
+  return `| ${titles.join(" | ")} |\n|${titles.map(() => "---").join("|")}|`
+}
+
+const row = (score: Score, of: Score["median"], audited: boolean): string => {
   const p = scoreParts(score, of)
-  return `| ${[p.ticket, p.outcome, p.verifier, p.handBacks, p.checks, p.denied, p.questions, p.working, p.cost, p.later].map(cell).join(" | ")} |`
+  const cells = [
+    p.ticket,
+    p.outcome,
+    p.verifier,
+    p.handBacks,
+    p.checks,
+    p.denied,
+    p.questions,
+    p.working,
+    p.cost,
+    p.later,
+    ...(audited ? [p.audit] : []),
+  ]
+  return `| ${cells.map(cell).join(" | ")} |`
 }
 
 const table = (
   rows: ReadonlyArray<{ readonly score: Score; readonly median: Score["median"] }>,
-): string => [header, ...rows.map(({ score, median }) => row(score, median))].join("\n")
+  audited: boolean,
+): string =>
+  [header(audited), ...rows.map(({ score, median }) => row(score, median, audited))].join("\n")
 
 /**
  * The report's Scorecards section, after the reviewer's text: the worst and the best of the run's
@@ -499,17 +569,19 @@ const table = (
 export const scorecardsReport = (scores: ReadonlyArray<Score>): string => {
   if (scores.length === 0) return ""
   const all = ranked(scores)
+  const audited = scores.some((score) => score.audit !== undefined)
   const intro =
     "Each ticket's scorecard, from the run's records (`score` in .tutti/run/events.jsonl): its " +
-    "working time and cost beside the run's median for tickets of its size, as ×."
+    "working time and cost beside the run's median for tickets of its size, as ×" +
+    (audited ? "; and what the auditor flagged in its transcript." : ".")
   if (all.length <= 2 * shownEach) {
-    return `\n## Scorecards\n\n${intro} Worst first.\n\n${table(all)}\n`
+    return `\n## Scorecards\n\n${intro} Worst first.\n\n${table(all, audited)}\n`
   }
   const worst = all.slice(0, shownEach)
   const best = all.slice(-shownEach).reverse()
   return (
     `\n## Scorecards\n\n${intro} ${all.length} tickets ended; the worst and the best ${shownEach}.\n\n` +
-    `### Worst\n\n${table(worst)}\n\n### Best\n\n${table(best)}\n`
+    `### Worst\n\n${table(worst, audited)}\n\n### Best\n\n${table(best, audited)}\n`
   )
 }
 
@@ -523,6 +595,7 @@ export const scorecardsEvidence = (scores: ReadonlyArray<Score>): ReadonlyArray<
     return (
       `${p.ticket}: ${p.outcome}; verifier ${p.verifier}; hand-backs ${p.handBacks}; ` +
       `checks ${p.checks}; denied ${p.denied}; questions ${p.questions}; working ${p.working}; ` +
-      `cost ${p.cost}; ${p.size}${p.later === "" ? "" : `; ${p.later}`}`
+      `cost ${p.cost}; ${p.size}${p.later === "" ? "" : `; ${p.later}`}` +
+      (p.audit === "" ? "" : `; audit ${p.audit}`)
     )
   })
