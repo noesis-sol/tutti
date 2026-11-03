@@ -4,10 +4,14 @@
 import { Duration, Effect, Schedule } from "effect"
 import { awakeSince } from "../services/Wake.ts"
 
-/** How a failing effect is made again: up to `tries` times in all, `after` apart. */
+/**
+ * How a failing effect is made again: up to `tries` times in all, `after` apart, or, with `upTo`,
+ * `after` first and twice as long each time after it, up to `upTo` apart.
+ */
 export interface Again {
   readonly tries: number
   readonly after: Duration.Duration
+  readonly upTo?: Duration.Duration
   /**
    * And no more once the machine has been awake this long since the first failure, however many
    * tries are left: a sleep of the machine meanwhile isn't counted, as tutti's time limits aren't.
@@ -33,7 +37,15 @@ export const again = <E, R = never>(
   options: AgainOptions<E, R> = {},
 ): Schedule.Schedule<number, E, never, R> => {
   const { while: retries, tried } = options
+  const { upTo } = policy
   return Schedule.spaced(policy.after).pipe(
+    Schedule.modifyDelay(({ duration, attempt }) =>
+      Effect.succeed(
+        upTo === undefined
+          ? duration
+          : Duration.min(Duration.times(duration, 2 ** Math.max(0, attempt - 1)), upTo),
+      ),
+    ),
     Schedule.setInputType<E>(),
     Schedule.upTo({ times: policy.tries - 1 }),
     Schedule.while(({ start }) => {

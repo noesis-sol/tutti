@@ -24,7 +24,8 @@
 //   merge queue runs protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE,
 //   GIT_FAILED), the base fast-forwarded to the commit checked, the branch still at it
 //   (MERGE_FAILED; Moved, entered again and checked, when it is not; BaseMoved, the same, when the
-//   base moved on before it; a fast-forward git was kept from tried again, then GIT_FAILED), the
+//   base moved on before it; a fast-forward git was kept from tried again for minutes, a stale
+//   lock removed meanwhile, then GIT_FAILED), the
 //   worktree and branch removed (the worktree with --force when its only changes are untracked
 //   files tutti's setups and checks wrote there, checkWrote.ts), the epics the ticket was the last
 //   to merge under closed, up the tree. exec's time limits kill a command themselves, without
@@ -69,9 +70,10 @@ import { retrying } from "./again.ts"
 import { aheadKey, clearAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
 import {
-  gitAgain,
+  clearStaleLocks,
   gitReads,
   gitTries,
+  keptAgain,
   onBranch,
   restoreBranch,
   statusOf,
@@ -1433,8 +1435,9 @@ export const diagnose = (
  * `at`, as when its worker committed after its check passed: the merge checks it again. A
  * fast-forward git refuses is diagnosed (Refused): BaseMoved when the base is no longer at `onto`
  * (a commit made on it by hand), for the merge to rebase and check the branch again; tried again
- * as gitAgain says while the branch still fast-forwards onto it (Kept, as with another's
- * .git/index.lock), then GIT_FAILED; MERGE_FAILED only when it doesn't.
+ * as keptAgain says while the branch still fast-forwards onto it (Kept, as with another's
+ * .git/index.lock), a lock no git holds removed between the tries (clearStaleLocks), then
+ * GIT_FAILED; MERGE_FAILED only when it doesn't.
  */
 export const fastForward = (
   ticket: FinishedTicket,
@@ -1498,14 +1501,15 @@ export const fastForward = (
       )
       return FastForward.Moved({ to: head.success })
     }
-    // Tried again while the branch still fast-forwards, git kept from it.
+    // Tried again while the branch still fast-forwards, git kept from it, for minutes: a lock a git
+    // stopped mid-write left is removed between the tries once it is old enough (clearStaleLocks).
     const merged = yield* Effect.result(
       retrying(
         Effect.catch(git.fastForward(repo, at), (error) =>
           Effect.flatMap(diagnose(options, onto, at, checkout.success.status, error), Effect.fail),
         ),
-        gitAgain,
-        { while: Refused.$is("Kept") },
+        keptAgain,
+        { while: Refused.$is("Kept"), tried: () => clearStaleLocks(repo) },
       ),
     )
     if (Result.isFailure(merged)) {
@@ -1543,7 +1547,7 @@ export const fastForward = (
             ticket,
             "GIT_FAILED",
             "git failed",
-            line`${branch} fast-forwards onto ${base}, but git could not merge it (${gitTries} tries): ${gitWhy(error)}; ${left}`,
+            line`${branch} fast-forwards onto ${base}, but git could not merge it (${keptAgain.tries} tries): ${gitWhy(error)}; ${left}`,
           ),
       })
     }

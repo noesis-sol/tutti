@@ -28,17 +28,19 @@ const calls: ReadonlyArray<{
 }> = [
   {
     op: "worktree add",
-    command: "git worktree add --quiet -b tutti/t-1 /wt --end-of-options main",
+    command:
+      "git -c core.hooksPath=/dev/null worktree add --quiet -b tutti/t-1 /wt --end-of-options main",
     call: (git, dir) => git.addWorktree(dir, "/wt", { branch: "tutti/t-1", base: "main" }),
   },
   {
     op: "worktree add",
-    command: "git worktree add --quiet /wt --end-of-options main",
+    command: "git -c core.hooksPath=/dev/null worktree add --quiet /wt --end-of-options main",
     call: (git, dir) => git.addWorktree(dir, "/wt", { branch: "main" }),
   },
   {
     op: "worktree add",
-    command: "git worktree add --quiet --detach /wt --end-of-options main",
+    command:
+      "git -c core.hooksPath=/dev/null worktree add --quiet --detach /wt --end-of-options main",
     call: (git, dir) => git.addDetachedWorktree(dir, "/wt", "main"),
   },
   {

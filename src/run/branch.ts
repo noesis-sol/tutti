@@ -5,10 +5,21 @@
 // branch, clean or the base not moved. And restoreBranch, which puts a ticket's branch back where it
 // was, as each of them does when its own step can't go on.
 import { Data, Duration, Effect, Result } from "effect"
-import { Git, type GitError, givenHash, type Sha, type StatusEntry } from "../services/Git.ts"
+import { formatDuration } from "../project/configFile.ts"
+import {
+  Git,
+  type GitError,
+  gitWhy,
+  givenHash,
+  type Sha,
+  type StatusEntry,
+} from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { type Again, retrying } from "./again.ts"
+import type { EventStream } from "./eventstream.ts"
+import { detail, Log, line, Tag } from "./log.ts"
 import type { FinishedTicket, MergeTarget } from "./merge.ts"
+import { warn } from "./say.ts"
 
 /** How many times a git read that steers a merge is made while it fails, as orchestra asks git. */
 export const gitTries = 3
@@ -21,6 +32,46 @@ export const gitAgainAfter: Duration.Duration = Duration.seconds(3)
  * fails: gitTries in all, gitAgainAfter apart.
  */
 export const gitAgain: Again = { tries: gitTries, after: gitAgainAfter }
+
+/**
+ * How a fast-forward git was kept from (merge.ts's Kept) is made again: gitAgainAfter first, then
+ * twice as long each time, up to a minute apart, for about five and a half minutes in all. Another
+ * git's lock (an editor's, git gc --auto) goes in seconds; one a git stopped mid-write left is
+ * removed by clearStaleLocks between the tries, once it is staleLockAge old.
+ */
+export const keptAgain: Again = { tries: 10, after: gitAgainAfter, upTo: Duration.minutes(1) }
+
+/**
+ * How long ago a lock file in the main repository's git folder was left for clearStaleLocks to take
+ * it for one no git holds: longer than tutti's own git writes may take (exec.ts's TimeLimit.write),
+ * and short of keptAgain's tries, so that a lock a run killed just before left is removed while the
+ * first merge waits on it.
+ */
+export const staleLockAge: Duration.Duration = Duration.minutes(3)
+
+/**
+ * Removes the lock files git left in the main repository at `repo`, staleLockAge or more ago (Git's
+ * removeStaleLocks), each said in a warning: tutti killed mid fast-forward, or a power loss, leaves
+ * one, which would keep every later merge from writing. Git failing, nothing is removed, and that is
+ * logged.
+ */
+export const clearStaleLocks = (
+  repo: string,
+): Effect.Effect<void, never, Git | Log | EventStream> =>
+  Effect.gen(function* () {
+    const removed = yield* Effect.result((yield* Git).removeStaleLocks(repo, staleLockAge))
+    if (Result.isFailure(removed)) {
+      yield* (yield* Log).write(
+        detail`git can't say where ${repo}'s lock files are: ${gitWhy(removed.failure)}; none removed`,
+      )
+      return
+    }
+    for (const { path, age } of removed.success) {
+      yield* warn(
+        line`${Tag.staleLock}: removed ${path}, which a git left ${formatDuration(age)} ago and no git holds that long: one stopped mid-write leaves its lock, which keeps git from writing there`,
+      )
+    }
+  })
 
 /**
  * A git read that steers the merge, made again as gitAgain says while it fails, up to `tries` reads

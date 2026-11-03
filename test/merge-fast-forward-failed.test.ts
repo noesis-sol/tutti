@@ -1,12 +1,12 @@
 // A fast-forward git refuses isn't always a branch that doesn't fast-forward (merge.ts's
 // fastForward): a commit made on the base by hand since prepare read it sends the ticket back to be
 // rebased and checked; git kept from writing, as by another's .git/index.lock, while the branch
-// still fast-forwards, is tried again a few seconds later, up to gitTries in all, then holds the run
-// with GIT_FAILED. Each scenario is a merge queue under TestClock, moved on gitAgainAfter at a time
-// while the merges run.
+// still fast-forwards, is tried again a few seconds later, then further apart, keptAgain's tries in
+// all, then holds the run with GIT_FAILED. Each scenario is a merge queue under TestClock, moved on
+// gitAgainAfter at a time while the merges run.
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Fiber } from "effect"
-import { gitAgainAfter, gitTries } from "../src/run/branch.ts"
+import { gitAgainAfter, keptAgain } from "../src/run/branch.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
@@ -144,16 +144,16 @@ describe("a fast-forward git was kept from, the branch still fast-forwarding", (
     expect(ran.log.some((text) => /MERGE_FAILED|GIT_FAILED/.test(text))).toBe(false)
   })
 
-  test(`every time: ${gitTries} tries, then Blocked and the run held, GIT_FAILED`, async () => {
+  test(`every time: ${keptAgain.tries} tries, then Blocked and the run held, GIT_FAILED`, async () => {
     const ran = await merges(lockedFor(100))
     const merged = resultOf(ran)
     expect(merged.phases.a).toEqual(expect.objectContaining({ _tag: "Blocked", why: "GIT_FAILED" }))
     expect(merged.stop).toBe("GIT_FAILED")
     expect(merged.main.has("a.txt")).toBe(false)
-    expect(merged.fastForwards).toBe(gitTries)
+    expect(merged.fastForwards).toBe(keptAgain.tries)
     expectLog(ran, [
       new RegExp(
-        `^HOLD: GIT_FAILED: tutti/a fast-forwards onto main, but git could not merge it \\(${gitTries} tries\\): fatal: Unable to create '/repo/\\.git/index\\.lock': File exists\\.`,
+        `^HOLD: GIT_FAILED: tutti/a fast-forwards onto main, but git could not merge it \\(${keptAgain.tries} tries\\): fatal: Unable to create '/repo/\\.git/index\\.lock': File exists\\.`,
       ),
     ])
     expect(ran.log.some((text) => text.includes("MERGE_FAILED"))).toBe(false)

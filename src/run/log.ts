@@ -98,6 +98,7 @@ export const Tag = {
   notifyFailed: "NOTIFY_FAILED",
   dirtyTree: "DIRTY_TREE",
   gitFailed: "GIT_FAILED",
+  staleLock: "STALE_LOCK",
   mergeFailed: "MERGE_FAILED",
   permission: "PERMISSION",
   question: "QUESTION",

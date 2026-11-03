@@ -21,8 +21,9 @@
 // symbolic link (RUN_FILES_OUTSIDE), or whose worker didn't start (START_FAILED) is set aside:
 // Working → Deferred. A session that didn't start or begin counts toward the environment hold
 // (environment.ts), so that Claude Code failing to start sessions holds the run rather than defer
-// the queue a ticket at a time. git failing to make the worktree, and a state.json that can't be written, are
-// errors for the run to stop on.
+// the queue a ticket at a time. git failing to make the worktree is tried again as gitAgain says,
+// then the ticket is set aside too (GIT_FAILED), the other tickets going on. An info/exclude, or a
+// state.json, that can't be written is an error for the run to stop on.
 import { join } from "node:path"
 import { Data, Duration, Effect, Exit, Option, Result, Stream } from "effect"
 import { AgentHost, type AgentStartFailed } from "../agent/AgentHost.ts"
@@ -34,6 +35,7 @@ import {
   type Commit,
   type Git,
   type GitError,
+  gitWhy,
   type StatusEntry,
   shortHash,
 } from "../services/Git.ts"
@@ -49,7 +51,9 @@ import {
   Worktrees,
 } from "../services/Worktrees.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { retrying } from "./again.ts"
 import { type Aside, type AsideTicket, putAside } from "./aside.ts"
+import { gitAgain, gitTries } from "./branch.ts"
 import { howFailed, outputKept } from "./check.ts"
 import type { EventStream } from "./eventstream.ts"
 import type { Ledger } from "./ledger.ts"
@@ -100,8 +104,8 @@ export type Start = Data.TaggedEnum<{
 
 export const Start = Data.taggedEnum<Start>()
 
-/** What a start can fail with: git making the worktree, info/exclude, or state.json. */
-export type StartError = GitError | ExcludeUnwritable | StoreWriteFailed
+/** What a start can fail with: info/exclude, or state.json. */
+export type StartError = ExcludeUnwritable | StoreWriteFailed
 
 /** The metadata key naming the spec a ticket comes from, as orchestra's spec runs set it. */
 export const specKey = "spec"
@@ -247,6 +251,28 @@ export const badTicketId = (id: TicketId, why: string): Aside => ({
   failed: `${why}: ${id}, and bd could not defer it`,
   instead: `rename it with: bd rename ${id} <new-id>`,
 })
+
+/** Whether `error` is git's: a failure or a time limit, which making a worktree is tried again on. */
+const isGitError = (error: { readonly _tag: string }): error is GitError =>
+  error._tag === "GitFailed" || error._tag === "GitTimedOut"
+
+/** Setting aside a ticket whose worktree git could not make, `error` its last failure. */
+export const worktreeFailed = (id: TicketId, error: GitError): Aside => {
+  const why = gitWhy(error)
+  const failed = `git could not make ${id}'s worktree (${gitTries} tries)`
+  return {
+    note:
+      `tutti: ${failed}: ${why}; no worker was started, and it is deferred so it can be retried. ` +
+      `Bring it back with: bd undefer ${id}`,
+    reason: `git could not make its worktree: ${why}`,
+    detail: "git could not make its worktree",
+    deferred: log.ticketLine(
+      log.Tag.gitFailed,
+    )`${failed}: ${why} -> deferred without starting a worker; bd undefer ${id} once git can make it`,
+    failed: `${failed} (${why}), and bd could not defer it`,
+    instead: "no worker was started",
+  }
+}
 
 /** Setting aside a ticket whose worktree has a symbolic link at `path` on the way to its run files. */
 export const runFilesOutside = ({
@@ -440,14 +466,25 @@ export const start = (
     const host = yield* AgentHost
     const id = ticket.id
 
-    // prepare checks the ID, once, before it makes a folder or a branch of it.
-    const worktree = yield* worktrees
-      .prepare(id)
-      .pipe(
-        Effect.catchTag("BadTicketId", (error) =>
-          Effect.fail(new SetAsideBy({ aside: badTicketId(id, error.why) })),
-        ),
-      )
+    // prepare checks the ID, once, before it makes a folder or a branch of it. Made again as
+    // gitAgain says while git fails: a try that failed after git made the worktree finds it there.
+    const worktree = yield* retrying(worktrees.prepare(id), gitAgain, {
+      while: isGitError,
+      tried: (error) =>
+        isGitError(error)
+          ? info(
+              log.detail`git could not make ${id}'s worktree, trying again in ${formatDuration(gitAgain.after)}: ${gitWhy(error)}`,
+              id,
+            )
+          : Effect.void,
+    }).pipe(
+      Effect.catchTag("BadTicketId", (error) =>
+        Effect.fail(new SetAsideBy({ aside: badTicketId(id, error.why) })),
+      ),
+      Effect.catchTag(["GitFailed", "GitTimedOut"], (error) =>
+        Effect.fail(new SetAsideBy({ aside: worktreeFailed(id, error) })),
+      ),
+    )
     const { path, branch } = worktree
     const made = worktree.reused
       ? log.detail`reusing worktree ${path} (${branch})`

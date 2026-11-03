@@ -997,6 +997,17 @@ to 3 reads, so one slow read on a loaded machine changes nothing. One that still
 taken for an answer: when it is the ticket's worktree git can't read, the ticket is left for review,
 `GIT_FAILED`, and the other merges go on; when it is the main repository, the merges stop.
 
+A fast-forward git was kept from, the branch still fast-forwarding onto the base (another git's
+`.git/index.lock`), is tried again 3 seconds later, then twice as long each time, up to a minute
+apart, for about five and a half minutes, before the merges stop with `GIT_FAILED`. A lock file in
+the main repository that a git left 3 minutes ago or longer, as one stopped mid-write leaves (tutti
+killed mid fast-forward, a power loss), is removed meanwhile, and as a run starts, with a
+`STALE_LOCK` warning naming it.
+
+git failing for one ticket sets that ticket aside, and the run goes on: making its worktree (tried
+3 times, with the project's git hooks off) defers it without a worker, and a closed ticket whose
+worktree git can't read as its worker finishes is left for review, `GIT_FAILED`.
+
 A failing check's whole output is kept in the worktree, `.tutti/run/check.log` (`setup.log` for the
 setup), and its line ends with the lines that say what failed. Each line about a ticket set aside also
 goes into the ticket's notes.

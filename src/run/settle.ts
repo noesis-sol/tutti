@@ -42,7 +42,7 @@ import {
 import { allChangeEntries, allChanges } from "../services/gitStatus.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import { retrying } from "./again.ts"
-import { onBranch } from "./branch.ts"
+import { onBranch, steering } from "./branch.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
@@ -160,6 +160,8 @@ export type Reading = Data.TaggedEnum<{
   Uncommitted: { readonly commit: Commit; readonly files: ReadonlyArray<StatusEntry> }
   /** Closed, but its worktree has `on` checked out instead of its branch. */
   OffBranch: { readonly on: string }
+  /** Closed, but git can't read its worktree, asked gitTries times: `error`, git's last. */
+  Unreadable: { readonly error: GitError }
   /** It waits on `question`, which its worker filed. */
   Asked: { readonly question: Issue }
   /** Its worker stopped with nothing done, having linked `blockers`, which haven't merged. */
@@ -279,7 +281,9 @@ const show = (id: TicketId) =>
 /**
  * What the closed ticket's worktree says: off its branch; no change of its own (no commits beyond
  * the base and a clean worktree, or commits that together change nothing); no commit naming it;
- * uncommitted changes; or finished, ready to merge.
+ * uncommitted changes; or finished, ready to merge. A worktree git can't read, each read asked
+ * gitTries times, is Unreadable: the ticket is set aside for review, as an open one is, rather than
+ * its fiber failing and the run holding with GIT_FAILED.
  */
 const readClosed = (worker: StartedWorker, base: string) =>
   Effect.gen(function* () {
@@ -287,9 +291,9 @@ const readClosed = (worker: StartedWorker, base: string) =>
     const { id, branch, path } = worker.worktree
     const on = yield* onBranch({ branch, worktree: path })
     if (on._tag === "OffBranch") return Reading.OffBranch({ on: on.on })
-    if (on._tag === "Unknown") return yield* Effect.fail(on.error)
-    const commits = yield* git.log(path, base)
-    const files = allChangeEntries(yield* git.status(path))
+    if (on._tag === "Unknown") return Reading.Unreadable({ error: on.error })
+    const commits = yield* steering(git.log(path, base))
+    const files = allChangeEntries(yield* steering(git.status(path)))
     const named = commits.find((commit) => namesTicket(commit.message, id))
     if (files.length === 0 && commits.length === 0) {
       return Reading.NoChange({
@@ -297,7 +301,7 @@ const readClosed = (worker: StartedWorker, base: string) =>
         own: false,
       })
     }
-    if (files.length === 0 && (yield* git.changedFiles(path, base)).length === 0) {
+    if (files.length === 0 && (yield* steering(git.changedFiles(path, base))).length === 0) {
       return Reading.NoChange({
         why: `the commits on ${branch}, taken together, change nothing`,
         own: true,
@@ -306,7 +310,7 @@ const readClosed = (worker: StartedWorker, base: string) =>
     if (named === undefined) return Reading.NoCommit()
     if (files.length > 0) return Reading.Uncommitted({ commit: named, files })
     return Reading.Finished({ commit: named })
-  })
+  }).pipe(Effect.catch((error) => Effect.succeed(Reading.Unreadable({ error }))))
 
 /**
  * Reads the ticket in Beads, and its worktree, as its worker left them: Beads, not the worker's

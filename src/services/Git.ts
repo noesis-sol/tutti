@@ -5,13 +5,16 @@
 // stopped on conflicts is left stopped, for its worker to resolve, and fails with RebaseConflict.
 // Output that names files or holds commit messages is read with -z, so no path or message a worker
 // wrote can be taken for a separator.
+import { join } from "node:path"
 import {
+  Clock,
   Context,
-  type Duration,
+  Duration,
   Effect,
   FileSystem,
   Layer,
   Option,
+  Result,
   Schema,
   Semaphore,
 } from "effect"
@@ -52,6 +55,18 @@ export class RebaseConflict extends Schema.TaggedError<RebaseConflict>()("Rebase
 }) {}
 
 export type GitError = GitFailed | GitTimedOut
+
+/** A lock file removeStaleLocks removed: its path, and how long ago git left it. */
+export interface StaleLock {
+  readonly path: string
+  readonly age: Duration.Duration
+}
+
+/**
+ * The lock files, relative to the git folder, that keep git from writing the main checkout or its
+ * refs, beside each `<ref>.lock` under refs/.
+ */
+export const staleLocks = ["index.lock", "HEAD.lock", "packed-refs.lock"] as const
 
 /** What git said of its failure, in a few words. */
 export const gitWhy = (error: GitError): string =>
@@ -317,6 +332,9 @@ const revisions = (
     ? ["--end-of-options", ...revs]
     : ["--end-of-options", ...revs, "--", ...paths]
 
+/** git's options that run a command without the repository's hooks. */
+const noHooks = ["-c", "core.hooksPath=/dev/null"] as const
+
 /** The format `log` asks for: the hash, the subject and the message, each ended by -z's NUL. */
 export const logFormat = "--format=%H%x00%s%x00%B"
 
@@ -327,13 +345,17 @@ export const logFormat = "--format=%H%x00%s%x00%B"
  * faults and shows them as the live layer would.
  */
 export const gitOps = {
+  // With the project's hooks off: its post-checkout hook, as Beads' (bd hooks run post-checkout,
+  // with a limit of its own of 5 min), could outlast the write's time limit or fail the add after
+  // git made the worktree. A worktree is set up by the project's setup command, not by a hook.
   addWorktree: {
     op: "worktree add",
     kind: "write",
     args: (path: string, worktree: WorktreeOptions): ReadonlyArray<string> =>
       worktree.base === undefined
-        ? ["worktree", "add", "--quiet", path, ...revisions([worktree.branch])]
+        ? [...noHooks, "worktree", "add", "--quiet", path, ...revisions([worktree.branch])]
         : [
+            ...noHooks,
             "worktree",
             "add",
             "--quiet",
@@ -347,6 +369,7 @@ export const gitOps = {
     op: "worktree add",
     kind: "write",
     args: (path: string, commit: string): ReadonlyArray<string> => [
+      ...noHooks,
       "worktree",
       "add",
       "--quiet",
@@ -908,6 +931,17 @@ export class Git extends Context.Service<
     branches(repo: string, folder: string): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git rev-parse --git-common-dir: the absolute path of the git folder every worktree shares. */
     commonDir(dir: string): Effect.Effect<string, GitError>
+    /**
+     * Removes the lock files in the git folder of `repo`, the main checkout, that were left
+     * `olderThan` ago or longer: index.lock, HEAD.lock, packed-refs.lock and those under refs/
+     * (staleLocks). A git stopped mid-write (tutti killed, a power loss) leaves its lock, which keeps
+     * every later git from writing there until it is deleted; no git holds one that long. Those it
+     * removed, with their age. Takes GitWriter, so no write of the run's is under way meanwhile.
+     */
+    removeStaleLocks(
+      repo: string,
+      olderThan: Duration.Duration,
+    ): Effect.Effect<ReadonlyArray<StaleLock>, GitError>
     /** git rev-parse --show-toplevel: the top of the checkout dir is in, a linked worktree's own. */
     topLevel(dir: string): Effect.Effect<string, GitError>
     /** The branch checked out in dir; none on a detached HEAD. */
@@ -1219,6 +1253,36 @@ export class Git extends Context.Service<
                 .map((ref) => ref.slice("refs/heads/".length)),
             ),
           commonDir: (dir) => Effect.map(read(gitCall(gitOps.commonDir), dir), (out) => out.trim()),
+          removeStaleLocks: (repo, olderThan) =>
+            writer.withLock(
+              Effect.gen(function* () {
+                const dir = (yield* read(gitCall(gitOps.commonDir), repo)).trim()
+                const refs = yield* fs
+                  .readDirectory(join(dir, "refs"), { recursive: true })
+                  .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
+                const names = [
+                  ...staleLocks,
+                  ...refs
+                    .filter((name) => name.endsWith(".lock"))
+                    .map((name) => join("refs", name)),
+                ]
+                const now = yield* Clock.currentTimeMillis
+                const removed: Array<StaleLock> = []
+                for (const name of names) {
+                  const path = join(dir, name)
+                  const info = yield* Effect.option(fs.stat(path))
+                  if (Option.isNone(info) || info.value.type !== "File") continue
+                  const left = Option.getOrUndefined(info.value.mtime)
+                  if (left === undefined) continue
+                  const age = Duration.millis(Math.max(0, now - left.getTime()))
+                  if (Duration.isLessThan(age, olderThan)) continue
+                  if (Result.isSuccess(yield* Effect.result(fs.remove(path)))) {
+                    removed.push({ path, age })
+                  }
+                }
+                return removed
+              }),
+            ),
           topLevel: (dir) => Effect.map(read(gitCall(gitOps.topLevel), dir), (out) => out.trim()),
           currentBranch: (dir) => {
             const call = gitCall(gitOps.currentBranch)

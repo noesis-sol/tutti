@@ -34,6 +34,7 @@ import { Store } from "../services/Store.ts"
 import { type TicketWorktree, Worktrees } from "../services/Worktrees.ts"
 import { dropNothingDone, leaveForReview, nothingLeft, putAside } from "./aside.ts"
 import { autoAnswerOf, takenAtOnce } from "./autoAnswer.ts"
+import { gitTries } from "./branch.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -380,6 +381,15 @@ export const conclude = (
           text: ticketLine(
             Tag.offBranch,
           )`${id} closed, but its worktree ${path} has ${reading.on}, not ${branch}; worktree left for review`,
+        })
+        break
+      case "Unreadable":
+        yield* leaveForReview(id, {
+          why: Tag.gitFailed,
+          detail: "git could not read its worktree",
+          text: ticketLine(
+            Tag.gitFailed,
+          )`${id} closed, but git could not read its worktree ${path} (${gitTries} tries): ${gitWhy(reading.error)}; ${branch} is not merged, its worktree left for review`,
         })
         break
       case "WaitsForMerge":

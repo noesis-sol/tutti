@@ -9,10 +9,12 @@
 // always overlap). A test can also force a conflict on a branch's next rebase, or make the next call
 // of any operation fail or time out, which is how scenarios reach OFF_BRANCH, DIRTY_WORKTREE,
 // REBASE_FAILED, MERGE_CONFLICT and MERGE_FAILED. A folder inside a worktree counts as the worktree,
-// but paths, in and out, are always the worktree root's.
+// but paths, in and out, are always the worktree root's. A test can leave a lock file in the main
+// checkout's git folder, as a git stopped mid-write does: its fast-forward is refused while
+// index.lock or its branch's lock is there, until removeStaleLocks takes it, its age by the Clock.
 import { createHash } from "node:crypto"
 import { posix } from "node:path"
-import { Context, Effect, Layer, Option, Semaphore } from "effect"
+import { Clock, Context, Duration, Effect, Layer, Option, Semaphore } from "effect"
 import { showCommand, TimeLimit } from "../services/exec.ts"
 import {
   type Commit,
@@ -86,6 +88,11 @@ export class Repository extends Context.Service<
     continueRebase(dir: string, resolved?: Files): Effect.Effect<ReadonlyArray<string>>
     /** Makes the branch's next rebase that has a commit to replay stop on conflicts in these files. */
     conflict(branch: string, files: ReadonlyArray<string>): Effect.Effect<void>
+    /**
+     * Leaves a lock file in the main checkout's git folder now, `name` relative to it (`index.lock`,
+     * `refs/heads/main.lock`), as a git stopped mid-write does.
+     */
+    leaveLock(name: string): Effect.Effect<void>
     /** Makes the next call of op (`rebase`, `merge --ff-only`, `status`, …) fail. */
     fail(op: GitOp, fault?: Fault): Effect.Effect<void>
     /** The full hash rev names, in dir (the main checkout by default). */
@@ -244,6 +251,8 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
       const checkouts = new Map<string, Checkout>()
       const forced = new Map<string, ReadonlyArray<string>>()
       const faults: Array<{ op: GitOp; fault: Fault; left: number }> = []
+      // The lock files left in the main checkout's git folder, by name, and when each was left.
+      const locks = new Map<string, number>()
       const calls: Array<Call> = []
       let seq = 0
 
@@ -606,6 +615,16 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
         operation(gitCall(gitOps.fastForward, branch), repo, (refuse) =>
           Effect.gen(function* () {
             const checkout = yield* inRepo(refuse, repo)
+            const held = [
+              "index.lock",
+              ...("branch" in checkout.head ? [`refs/heads/${checkout.head.branch}.lock`] : []),
+            ].find((name) => checkout.path === main && locks.has(name))
+            if (held !== undefined) {
+              return yield* refuse(
+                128,
+                `fatal: Unable to create '${posix.join(main, ".git", held)}': File exists.\n\nAnother git process seems to be running in this repository`,
+              )
+            }
             const target = resolve(checkout, branch)
             if (target === undefined) {
               return yield* refuse(1, `merge: ${branch} - not something we can merge`)
@@ -1093,6 +1112,23 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           operation(gitCall(gitOps.commonDir), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), () => posix.join(main, ".git")),
           ),
+        removeStaleLocks: (repo, olderThan) =>
+          writer.withLock(
+            operation(gitCall(gitOps.commonDir), repo, (refuse) =>
+              Effect.gen(function* () {
+                yield* inRepo(refuse, repo)
+                const now = yield* Clock.currentTimeMillis
+                const removed = [...locks]
+                  .map(([name, left]) => ({ name, age: Duration.millis(now - left) }))
+                  .filter(({ age }) => !Duration.isLessThan(age, olderThan))
+                for (const { name } of removed) locks.delete(name)
+                return removed.map(({ name, age }) => ({
+                  path: posix.join(main, ".git", name),
+                  age,
+                }))
+              }),
+            ),
+          ),
         topLevel: (dir) =>
           operation(gitCall(gitOps.topLevel), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => checkout.path),
@@ -1201,6 +1237,8 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             return Effect.succeed(replay(checkout, rebasing, current, rebasing.remaining).conflicts)
           }),
         conflict: (branch, files) => Effect.sync(() => void forced.set(branch, files)),
+        leaveLock: (name) =>
+          Effect.map(Clock.currentTimeMillis, (now) => void locks.set(name, now)),
         fail: (op, fault = {}) =>
           Effect.sync(() => void faults.push({ op, fault, left: fault.times ?? 1 })),
         head: (rev = "HEAD", dir = main) => revAt(rev, dir),

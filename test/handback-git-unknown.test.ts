@@ -2,7 +2,7 @@
 // read, asked gitTries times, is never taken for one that didn't move, so what the worker left goes
 // back to its merge; a worktree whose HEAD git can't read is never taken for one on its branch, so
 // the worker's fix or resolution isn't accepted on it and its branch is never reset. Settling a
-// closed ticket fails with git's error rather than read it as on its branch. Each scenario runs
+// closed ticket reads it as Unreadable, with git's error, rather than as on its branch. Each scenario runs
 // under TestClock, moved on gitAgainAfter at a time while git is asked again.
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Fiber, Stream } from "effect"
@@ -342,24 +342,21 @@ describe("a worktree whose HEAD git can't read", () => {
     expect(value).toContain("has checked out: fatal: locked")
   })
 
-  test("settling the closed ticket fails with git's error, never reading it as finished", async () => {
+  test("settling the closed ticket reads it as Unreadable, with git's error, never as finished", async () => {
     const ran = await headUnreadable((a) =>
-      Effect.flip(
-        read(
-          {
-            ticket: a.id,
-            worktree: worktrees.get(a.id) as TicketWorktree,
-            session: "session-a",
-            message: "m",
-          },
-          "main",
-        ),
+      read(
+        {
+          ticket: a.id,
+          worktree: worktrees.get(a.id) as TicketWorktree,
+          session: "session-a",
+          message: "m",
+        },
+        "main",
       ),
     )
     expect(resultOf(ran).value).toMatchObject({
-      _tag: "GitFailed",
-      op: "symbolic-ref",
-      stderr: "fatal: locked",
+      _tag: "Unreadable",
+      error: { _tag: "GitFailed", op: "symbolic-ref", stderr: "fatal: locked" },
     })
   })
 })

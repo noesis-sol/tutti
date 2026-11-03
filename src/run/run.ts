@@ -116,6 +116,7 @@ import {
 } from "./autoAnswer.ts"
 import { Battery, watchBattery } from "./battery.ts"
 import { make as makeBlockedWatch } from "./blockedWatch.ts"
+import { clearStaleLocks } from "./branch.ts"
 import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carry.ts"
 import { type GateAsk, make as makeChecksGate } from "./checksGate.ts"
 import { closedBranches } from "./closedBranches.ts"
@@ -835,6 +836,10 @@ const runFrom = (
         ),
       )
     }
+
+    // The lock files a git stopped mid-write left in the main repository (a run killed mid
+    // fast-forward, a power loss), removed before anything writes there (branch.ts).
+    yield* untilQuit(clearStaleLocks(config.repo), undefined)
 
     // The branches a killed run's trains left rebased onto the branch ahead, put back before their
     // tickets are carried over to merge (mergetrain.ts). One cut short by a quit keeps its mark in
