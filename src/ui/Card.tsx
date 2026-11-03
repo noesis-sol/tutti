@@ -10,9 +10,12 @@
 //
 // A card is framed `live` while its worker works and `needsYou` when it waits for you, `frame`
 // otherwise; the highlighted one keeps its colour, bold in the heavy border style. From 120 columns
-// the cards go two to a row, a row as tall as its tallest card. When the pane can't hold a card each,
-// they go one line each in a single compact box, framed `needsYou` when any of them waits for you,
-// their tickets, statuses, times and memory lined up as columns, each as wide as the widest.
+// the cards go two to a row, a row as tall as its tallest card and a shorter card stretched to it,
+// its frame drawn round blank lines, so that the cards meet frame to frame across and down alike, no
+// blank line under a card as there is no blank column between two (tutti-5sf0). When the pane can't
+// hold a card each, they go one line each in a single compact box, framed `needsYou` when any of
+// them waits for you, their tickets, statuses, times and memory lined up as columns, each as wide as
+// the widest.
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box as tall as a full card says what the run does on its first line: `picking the
 // next ticket…`, or `stopping…`, or, while the end-of-run full check runs, its step, command and
@@ -363,7 +366,10 @@ export type CardsLayout =
       readonly across: number
       /** The lines inside each card but an attention card: 3, its action line blank without one. */
       readonly inside: number
-      /** Each row's lines, frames included: its tallest card's, an attention card's own. */
+      /**
+       * Each row's lines, frames included: its tallest card's, an attention card's own, every card
+       * in it drawn as tall.
+       */
       readonly rows: ReadonlyArray<number>
     }
   | { readonly _tag: "Compact" }
@@ -375,7 +381,7 @@ export const grows = (card: Card): boolean => card.requests.length > 0
  * The Current section's layout: full cards when they fit `room` lines, else the compact box. A full
  * card is 3 lines inside its frame whether or not it has an action line, so that it keeps its height
  * as actions come and go, but an attention card is as tall as its request needs, and a row as tall
- * as its tallest card.
+ * as its tallest card, the cards beside it stretched to it.
  */
 export const layoutOf = (cards: ReadonlyArray<Card>, width: number, room: number): CardsLayout => {
   if (cards.length === 0) return { _tag: "Idle" }
@@ -516,6 +522,7 @@ const CardBox = memo(
     readonly card: Card
     readonly theme: Theme
     readonly width: number
+    /** The lines inside its frame: its row's tallest card's, blank lines padding a shorter one. */
     readonly inside: number
     readonly highlighted: boolean
     readonly focus: number | null
@@ -530,6 +537,7 @@ const CardBox = memo(
             width,
             highlighted,
             focus,
+            inside,
           })
         : cardLines(card, theme, { now, spin, width, inside, highlighted })
     }, [card, theme, width, inside, highlighted, focus])
@@ -642,7 +650,7 @@ export const Cards = ({
                         card={card}
                         theme={theme}
                         width={w}
-                        inside={layout.inside}
+                        inside={tall - 2}
                         highlighted={card.ticket === highlighted}
                         focus={focusOf(card.requests[0])}
                         press={press}

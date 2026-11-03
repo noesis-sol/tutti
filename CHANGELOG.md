@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Current's cards are spaced alike across and down: a card shorter than its row, a full card beside an attention card or an attention card beside a taller one, is drawn as tall as the row, its frame round blank lines, rather than leaving blank lines under it, so that the cards meet frame to frame down as they do across (§ 7.2; `src/ui/Card.tsx`' `Cards`, `src/ui/AttentionCard.tsx`' `attentionLines`; tutti-5sf0). `test/current-card-spacing.test.tsx` covers it.
+
 ## [0.6.6] - 2026-11-03
 
 - The title line leaves a column empty at the pane's right edge after its banners, as the load line under it keeps one at its left, so `This week ────────  5%` and `PRESSURE` no longer touch the edge (§ 7.2; `src/ui/TitleLine.tsx`' `titleForms`; tutti-3j79). Every narrower form the line falls back to keeps it, so a form that fitted with no column spare now gives way one column sooner. `test/title-line-edge.test.ts` covers it.

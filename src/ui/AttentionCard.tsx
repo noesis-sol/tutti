@@ -71,8 +71,9 @@ export const attentionInside = (card: Card): number => {
 
 /**
  * An attention card's lines `width` wide, framed `needsYou`, heavy when it is highlighted: `head`
- * (its first line and its title), then its request with `focus` the focused button. A button is a
- * segment whose target is its index, while the card's width holds it whole.
+ * (its first line and its title), then its request with `focus` the focused button, padded out below
+ * with blank lines to `inside` lines between its frame's top and bottom where that is more. A button
+ * is a segment whose target is its index, while the card's width holds it whole.
  */
 export const attentionLines = (
   card: Card,
@@ -82,15 +83,14 @@ export const attentionLines = (
     readonly width: number
     readonly highlighted: boolean
     readonly focus: number | null
+    /** The lines between its frame's top and bottom, as tall as its row's tallest card's. */
+    readonly inside?: number
   },
 ): ReadonlyArray<Segments> => {
   const border: Border = options.highlighted ? "heavy" : "rounded"
-  return boxed(
-    [...head, ...requestLines(card, theme, options.focus)],
-    options.width,
-    theme.look("needsYou"),
-    border,
-  )
+  const content = [...head, ...requestLines(card, theme, options.focus)]
+  while (content.length < (options.inside ?? 0)) content.push([])
+  return boxed(content, options.width, theme.look("needsYou"), border)
 }
 
 /** The keys that answer `request`, for the view's or the Answer box's layer. */
