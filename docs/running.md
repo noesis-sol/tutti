@@ -190,7 +190,7 @@ one folder in your home for every project's worktrees, as Codex and Cursor keep 
 repository of the same name gets the name with a short hash of its path, `app-3f9c`, which stays
 the same from run to run. `--worktrees` (or `TUTTI_WORKTREES`) puts them elsewhere, outside the
 repository: inside it, `git status`, the project's tests and linters and their upward lookups would
-see them.
+see them. A repository that is your home folder keeps them in `<repo>-tutti` beside it.
 
 A worktree's churn, an install per ticket and thousands of new files, is nothing to back up or
 index. On macOS each run checks that Time Machine leaves `~/.tutti/worktrees` out (`tmutil

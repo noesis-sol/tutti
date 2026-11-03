@@ -23,7 +23,7 @@ import {
   runsDir,
   runsDirVariables,
 } from "../run/machine.ts"
-import { findRoot, plainRoot, within } from "../run/worktreesRoot.ts"
+import { findRoot, oldDefaultRoot, plainRoot, within } from "../run/worktreesRoot.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { type LoadedScheme, loadScheme, orchestraLoaded, schemeFolders } from "../ui/theme.ts"
 import {
@@ -113,7 +113,8 @@ export interface AppConfigValue {
   /**
    * Whether `worktrees` is tutti's default, `~/.tutti/worktrees/<name>` (src/run/worktreesRoot.ts),
    * no --worktrees or TUTTI_WORKTREES given: the run claims it, and moves the worktrees of the old
-   * default, `<repo>-tutti`, into it.
+   * default, `<repo>-tutti`, into it. A repository holding the home folder has `<repo>-tutti` beside
+   * it instead, which isn't the default.
    */
   readonly worktreesDefault: boolean
   /**
@@ -368,13 +369,18 @@ export const resolveAll = (
 
   const prompt = pick("prompt", workerPromptFile)
   const worktrees = pick("worktrees", null)
-  const worktreesPath =
-    worktrees === null
-      ? (sources.worktreesDefault ?? plainRoot(homedir(), repo))
+  // A repository holding the home folder, as one of dotfiles can, would hold ~/.tutti/worktrees:
+  // its worktrees go beside it, as they did before tutti-omox.
+  const homeRoot = sources.worktreesDefault ?? plainRoot(homedir(), repo)
+  const worktreesDefault = worktrees === null && !within(homeRoot, repo)
+  const worktreesPath = worktreesDefault
+    ? homeRoot
+    : worktrees === null
+      ? oldDefaultRoot(repo)
       : pathOf("worktrees", worktrees)
   // A --claude with no `/` is a command name, which the startup checks look up on PATH.
   const claude = pick("claude", null)
-  if (within(worktreesPath, repo)) {
+  if (worktrees !== null && within(worktreesPath, repo)) {
     problems.push(
       `--worktrees (or TUTTI_WORKTREES) (${worktreesPath}) must be outside the repository, or git sees the worktrees as untracked files.`,
     )
@@ -466,7 +472,7 @@ export const resolveAll = (
     mouse: !pick("noMouse", !user.mouse),
     prompt: pathOf("prompt", prompt),
     worktrees: worktreesPath,
-    worktreesDefault: worktrees === null,
+    worktreesDefault,
     runs: runsDir(env),
     machineWorkers,
     machineWorkersFrom,

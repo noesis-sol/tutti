@@ -500,6 +500,7 @@ for a project that sets them all; the table below gives each one's default:
   "concurrent": 1,
   "pressure_cap": true,
   "keep_awake": true,
+  "exclude_worktrees": true,
   "checks": {
     "fast": { "command": "scripts/check-fast.sh", "timeout": "30m" },
     "full": { "command": "scripts/check-full.sh", "timeout": "60m" },

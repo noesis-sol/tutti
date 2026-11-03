@@ -137,6 +137,20 @@ describe("the default root", () => {
     expect(given.success.worktrees).toBe("/trees")
     expect(given.success.worktreesDefault).toBe(false)
   })
+
+  test("a repository holding the home folder keeps its worktrees beside it, as before", () => {
+    const resolved = resolve({
+      repo: "/home/me",
+      flags: noFlags,
+      env: () => undefined,
+      user: defaultUserConfig,
+      settings: defaultSettings,
+      worktreesDefault: "/home/me/.tutti/worktrees/me",
+    })
+    if (Result.isFailure(resolved)) throw new Error(resolved.failure.join("\n"))
+    expect(resolved.success.worktrees).toBe("/home/me-tutti")
+    expect(resolved.success.worktreesDefault).toBe(false)
+  })
 })
 
 describe("Spotlight and Claude Code's session folders", () => {

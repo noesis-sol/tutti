@@ -32,6 +32,7 @@ describe("the START block's colour scheme notices", () => {
       "  billing: subscription",
       "  permission mode: auto",
       `  ${noServersNote}`,
+      `  worktrees: ${TestAppConfig.appConfig({}, "/work/project").worktrees}`,
       "  memory: about 1 GiB of memory, about 1 GiB per worker",
     ])
   })
@@ -62,7 +63,7 @@ describe("the START block's colour scheme notices", () => {
       }),
     )
     const last = lines.at(-1) as string
-    expect(lines).toHaveLength(5)
+    expect(lines).toHaveLength(6)
     expect([..."\n\r\u001b"].some((c) => last.includes(c))).toBe(false)
   })
 })
