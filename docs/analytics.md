@@ -811,3 +811,8 @@ SELECT run, r.concurrency, count(*) FILTER (now < was) AS lowered,
 FROM steps JOIN (SELECT run, concurrency FROM stream WHERE kind = 'start') r USING (run)
 GROUP BY ALL ORDER BY run;
 ```
+
+Each change of the workers' share of the machine for their checks is a `share` record beside the
+cap's steps ([The checks' share](running.md#the-checks-share)): its `cores` and `memory` (in MiB),
+each `{from, to}`, and `why`, the workers allowed, the other runs' workers or the memory budget that
+moved it, so how far the share fell under pressure, and how often, reads as the cap's steps do.
