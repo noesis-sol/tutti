@@ -252,6 +252,12 @@ export const Settings = Schema.Struct({
     model: Schema.NullOr(Text).pipe(withDefault(null)),
     triage: Schema.Boolean.pipe(withDefault(true)),
     review: Schema.Boolean.pipe(withDefault(true)),
+    /** The critic, which reviews merged work mid-run and files follow-ups (src/run/critic.ts). */
+    critic: Schema.Boolean.pipe(withDefault(true)),
+    /** The critic reviews every this many merges; 0: only those in the worst decile. */
+    critic_every: Count.pipe(withDefault(5)),
+    /** The most tickets the critic files in a run. */
+    critic_tickets: Count.pipe(withDefault(5)),
     /** Gone with the screen organ (retiredOrganKeys): read whatever it is, and ignored. */
     screen: Schema.optionalKey(Schema.Unknown),
     /** Gone with the plan organ (retiredOrganKeys): read whatever it is, and ignored. */

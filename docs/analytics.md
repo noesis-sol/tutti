@@ -48,6 +48,8 @@ FROM read_json(path, format = 'newline_delimited', filename = true, columns = {
   "window": 'VARCHAR', utilization: 'DOUBLE', waited: 'DOUBLE',
   pressure: 'VARCHAR', swapping: 'DOUBLE', allowed: 'INTEGER',
   footprint: 'INTEGER', verdict: 'VARCHAR', follow_up: 'VARCHAR', revert: 'VARCHAR',
+  "trigger": 'VARCHAR',
+  findings: 'STRUCT(title VARCHAR, severity VARCHAR, criterion VARCHAR, evidence VARCHAR, confidence VARCHAR, filed VARCHAR, dropped VARCHAR, duplicate_of VARCHAR)[]',
   verifier: 'STRUCT(rounds INTEGER, passed INTEGER, failed INTEGER, "last" VARCHAR, last_fix_verified BOOLEAN)',
   checks: 'STRUCT(failed INTEGER, timed_out INTEGER)', resolving: 'DOUBLE', fixing: 'DOUBLE',
   working: 'DOUBLE', flaky: 'INTEGER', denied: 'INTEGER', asked: 'INTEGER', size: 'INTEGER',
@@ -422,6 +424,26 @@ SELECT run, ticket, size, size_class,
   round(working / nullif(median(working) OVER (PARTITION BY run, size_class), 0), 2) AS working_x,
   round(cost_usd / nullif(median(cost_usd) OVER (PARTITION BY run, size_class), 0), 2) AS cost_x
 FROM scores ORDER BY run, size_class, ticket;
+```
+
+Each review the [critic](organs.md#the-critic) made of a merged ticket's work, what called for it,
+and what became of its findings: filed as tickets, asked of you as severe, dropped as alike an
+open ticket, or dropped for another reason (doubtful, ungrounded, past the cap). The tickets filed
+are labelled `review` in bd, so those later closed as not a problem say how precise it was.
+
+```sql
+WITH reviews AS (
+  SELECT * FROM events('.tutti/run/events.jsonl') WHERE kind = 'review'
+), findings AS (
+  SELECT seq, unnest(findings) AS f FROM reviews
+)
+SELECT run, ticket, "trigger", len(reviews.findings) AS findings,
+  count(f) FILTER (f.filed IS NOT NULL AND f.severity <> 'severe') AS filed,
+  count(f) FILTER (f.filed IS NOT NULL AND f.severity = 'severe') AS asked,
+  count(f) FILTER (f.dropped = 'duplicate') AS duplicates,
+  count(f) FILTER (f.dropped IS NOT NULL AND f.dropped <> 'duplicate') AS dropped
+FROM reviews LEFT JOIN findings USING (seq)
+GROUP BY seq, run, ticket, "trigger", reviews.findings, time ORDER BY run, time;
 ```
 
 ## Waiting on you

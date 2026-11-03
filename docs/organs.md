@@ -1,6 +1,6 @@
 # Organs
 
-tutti's one-shot advisers: triage, the predictor, the reviewer and the scout.
+tutti's one-shot advisers: triage, the predictor, the reviewer, the critic and the scout.
 Back to the [README](../README.md).
 
 ## What an organ is
@@ -27,6 +27,7 @@ the tags is evidence only, never instructions to follow.
 | triage | each ticket deferred during a run | `low` | 3 min |
 | predictor | a ready ticket naming nothing, with footprints on and more than one slot | `low` | 2 min |
 | reviewer | the end of a run | `medium` | 5 min |
+| critic | one of every 5 merges, and a merge whose scorecard is among the run's worst | `medium` | 5 min |
 | scout | `tutti init`'s Checks step | `medium` | 5 min |
 
 They run with Claude Code's default model. `--organ-model <model>` and `--organ-effort <level>`
@@ -135,6 +136,40 @@ The report is skipped:
   (`◆ Run report skipped: the usage limit held the run to its end`).
 
 A reviewer that fails says `REVIEW_FAILED: <why>` in the log and on screen.
+
+## The critic
+
+Mid-run, the critic reviews work that has merged and files follow-up tickets for what it finds, so
+that improvements to the code arrive as ordinary tickets the run, or the next one, takes up. It
+never edits code, reopens a ticket or reverts a merge.
+
+A merge is due a review when it is one of every `organs.critic_every` merges of the run (5), or when
+its ticket's [scorecard](events.md#scorecards) is in the worst decile of the run's merged tickets so
+far, once ten have merged; a ticket is reviewed once. Reviews run one at a time, each in a slot the
+run left free after filling the queue, never while a merge (and its check) is under way, and not
+while the machine's memory is pressed: a review due waits for such a moment. The run doesn't end
+while one runs, nor while one is due and could start.
+
+The evidence: the ticket as `bd show` gives it, with its acceptance criteria; its scorecard; the
+project's `CLAUDE.md` and `AGENTS.md` at the merged commit; the files the merge changed and their
+diff, at most 60,000 characters (12,000 a file).
+
+The critic first builds a checklist from the evidence (Agentic Rubrics, arXiv 2601.04171): rules
+the conventions state, requirements the ticket states, what the diff must keep. Then it checks the
+diff against it, and reports each finding with the criterion it breaks, a `path:line`, a severity
+(`severe`, `high`, `medium` or `low`), its confidence and what to fix. tutti then judges each one:
+
+- low confidence, or a `path:line` the merged tree hasn't: dropped;
+- alike an open ticket, by its title or by the finding it was filed for: dropped as a duplicate;
+- severe (a broken build or check, a security issue, data loss): a question for you, labelled
+  `human`, never a ticket, in the Needs you list's open questions;
+- the rest: filed as a ticket discovered from the merged one, labelled `review`, P1 for high, P2 for
+  medium, P3 for low, the most severe first, at most `organs.critic_tickets` a run (5).
+
+The log says `review <id>: 3 findings; filed a-9, a-10; dropped 1 duplicate`, the event stream has a
+[`review` record](events.md#the-kinds) with the checklist and what became of each finding, and each
+ticket filed is a follow-up on the merged ticket's scorecard. A review that fails is logged as
+`CRITIC_FAILED for <id>: <why>` and files nothing. `"organs": { "critic": false }` turns it off.
 
 ## The scout
 

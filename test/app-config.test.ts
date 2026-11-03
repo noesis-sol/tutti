@@ -269,7 +269,15 @@ describe("precedence", () => {
         full: { ...s.checks.full, timeout: minutes(90) },
       },
       workers: { ...s.workers, effort: "low", model: "sonnet", ticket_limit: Duration.hours(1) },
-      organs: { effort: "high", model: "haiku", triage: false, review: false },
+      organs: {
+        effort: "high",
+        model: "haiku",
+        triage: false,
+        review: false,
+        critic: true,
+        critic_every: 5,
+        critic_tickets: 5,
+      },
       merge: { ...s.merge, resolve_conflicts: false },
     })
     const defaults = configOf({}).settings
@@ -300,6 +308,9 @@ describe("precedence", () => {
       model: "sonnet",
       triage: true,
       review: true,
+      critic: true,
+      critic_every: 5,
+      critic_tickets: 5,
     })
     expect(fromEnv.merge.resolve_conflicts).toBe(true)
 
@@ -326,7 +337,15 @@ describe("precedence", () => {
       model: "fable",
       ticket_limit: Duration.hours(2),
     })
-    expect(fromFlags.organs).toEqual({ effort: "low", model: "opus", triage: false, review: false })
+    expect(fromFlags.organs).toEqual({
+      effort: "low",
+      model: "opus",
+      triage: false,
+      review: false,
+      critic: true,
+      critic_every: 5,
+      critic_tickets: 5,
+    })
     expect(fromFlags.merge.resolve_conflicts).toBe(false)
     // What no flag overrides is the settings' own.
     expect(fromFlags.queue).toEqual(defaultSettings.queue)

@@ -121,6 +121,7 @@ import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carr
 import { type GateAsk, make as makeChecksGate } from "./checksGate.ts"
 import { closedBranches } from "./closedBranches.ts"
 import { noteCompactions } from "./compactions.ts"
+import { off as criticOff, make as makeCritic } from "./critic.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
 import { type DrainRequest, hear } from "./drain.ts"
 import { make as makeEarlyChecks } from "./earlyCheck.ts"
@@ -548,11 +549,24 @@ const runFrom = (
       held: pressure.pressed,
       loaded: machineLoaded,
     })
+    // The critic (critic.ts), when the run has organs: told of each merge, it reviews the merges due
+    // one at a time, each in a slot the look's fill left free, with no merge under way and the
+    // memory not pressed (`criticIdle`, set once the scheduler is made). Each review's end wakes
+    // the run, which doesn't end while one runs.
+    const criticIdle = yield* Ref.make<Effect.Effect<boolean>>(Effect.succeed(false))
+    const critic = Option.isNone(organs)
+      ? criticOff
+      : yield* makeCritic({
+          repo: config.repo,
+          idle: Effect.flatten(Ref.get(criticIdle)),
+          done: wakeUp("verdict"),
+        }).pipe(Effect.provideService(Organs, organs.value))
     const queue = yield* makeQueue(
       {
         repo: config.repo,
         base,
         early,
+        merged: critic.merged,
         noMore,
         atReset: usage.atReset,
         recheckSlot,
@@ -745,6 +759,13 @@ const runFrom = (
     })
     yield* Ref.set(slots, scheduler.recheckSlot)
     yield* Ref.set(limitReached, scheduler.limitReached)
+    yield* Ref.set(
+      criticIdle,
+      Effect.map(
+        Effect.all([scheduler.slots, queue.state, pressure.pressed]),
+        ([taken, now, hard]) => taken < config.settings.concurrent && now.merging === null && !hard,
+      ),
+    )
     // A look around the machine (machineGate.ts): the hold's end writes the queue's record.
     const lookAround = Effect.gen(function* () {
       const own = yield* scheduler.slots
@@ -804,6 +825,7 @@ const runFrom = (
       queue,
       scheduler,
       triage,
+      critic,
       status,
       ...(options.exitNow === undefined ? {} : { exitNow: options.exitNow }),
     })
@@ -1117,6 +1139,8 @@ const runFrom = (
       }
       // For the other runs to count before this one next looks around.
       yield* machine.sayRunning(yield* scheduler.slots)
+      // The critic's next review, in a slot the fill left free.
+      yield* critic.look
     })
     // The loop (look.ts): it looks at each wake until nothing is left, then ends the run.
     const fillContext = yield* Effect.context<WorkEnv | FileSystem.FileSystem | Notifier>()
@@ -1130,6 +1154,7 @@ const runFrom = (
       scheduler,
       queue,
       triage,
+      critic,
       usage,
       commands,
       environment,

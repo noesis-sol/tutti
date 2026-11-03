@@ -2702,6 +2702,124 @@
         "kind": {
           "type": "string",
           "enum": [
+            "review"
+          ]
+        },
+        "ticket": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "string",
+          "enum": [
+            "every",
+            "worst"
+          ]
+        },
+        "commit": {
+          "type": "string"
+        },
+        "checklist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "severe",
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "criterion": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "filed": {
+                "type": "string"
+              },
+              "dropped": {
+                "type": "string",
+                "enum": [
+                  "doubtful",
+                  "ungrounded",
+                  "duplicate",
+                  "capped",
+                  "failed"
+                ]
+              },
+              "duplicate_of": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "severity",
+              "criterion",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "v",
+        "time",
+        "run",
+        "kind",
+        "ticket",
+        "trigger",
+        "commit",
+        "checklist",
+        "findings",
+        "text"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "enum": [
+            1
+          ]
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
             "end"
           ]
         },

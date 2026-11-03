@@ -108,6 +108,7 @@ import {
   toFix,
 } from "./checkback.ts"
 import { writtenOnly } from "./checkWrote.ts"
+import type { MergedWork } from "./critic.ts"
 import type { EarlyChecks } from "./earlyCheck.ts"
 import { EventStream } from "./eventstream.ts"
 import {
@@ -194,6 +195,11 @@ export interface MergeOptions {
    * same base. None without them.
    */
   readonly early?: EarlyChecks
+  /**
+   * Told of each ticket merged: its base's commit before and the commit the merge put the base at,
+   * for the critic (critic.ts), which may review it. Nothing is told without it.
+   */
+  readonly merged?: (work: MergedWork) => Effect.Effect<void>
 }
 
 /** Where the merges land: the main checkout and the base, all that most of their steps read. */

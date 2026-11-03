@@ -447,6 +447,36 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
     { ...head, kind: "score_update", ticket: "a-1", follow_up: "a-7" },
     { ...head, kind: "score_update", ticket: "a-1", revert: "9f8e7d6c5b4a", by: "a-8" },
   ],
+  review: [
+    {
+      ...head,
+      kind: "review",
+      ticket: "a-1",
+      trigger: "every",
+      commit: "9f8e7d6c5b4a",
+      checklist: ["CLAUDE.md: errors are tagged errors"],
+      findings: [
+        {
+          title: "Throw a tagged error in the parser",
+          severity: "medium",
+          criterion: "CLAUDE.md: errors are tagged errors",
+          evidence: "src/parse.ts:12",
+          confidence: "high",
+          filed: "a-9",
+        },
+        {
+          title: "Check the input's length",
+          severity: "low",
+          criterion: "ticket: inputs are checked",
+          evidence: "src/parse.ts:30",
+          confidence: "medium",
+          dropped: "duplicate",
+          duplicate_of: "a-4",
+        },
+      ],
+      text: "  review a-1: 2 findings; filed a-9; dropped 1 duplicate",
+    },
+  ],
   phase: [
     { ...head, kind: "phase", ticket: "a-1", to: "Queued", cause: "ready" },
     {
@@ -642,7 +672,7 @@ describe("the records", () => {
           "resumed",
         ],
         ...["check", "turn", "organ", "ticket_end"],
-        ...["verifier", "score", "score_update"],
+        ...["verifier", "score", "score_update", "review"],
         "auto_answered",
       ].sort(),
     )

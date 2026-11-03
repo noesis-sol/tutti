@@ -444,6 +444,9 @@ export const resolveAll = (
         model: pick("organModel", settings.organs.model),
         triage: pick("triage", settings.organs.triage),
         review: pick("review", settings.organs.review),
+        critic: settings.organs.critic,
+        critic_every: settings.organs.critic_every,
+        critic_tickets: settings.organs.critic_tickets,
       },
       merge: {
         ...settings.merge,

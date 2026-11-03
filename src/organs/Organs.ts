@@ -1,6 +1,6 @@
-// Organs (§ 3.3, § 6): the one-shot advisers, triage, the predictor, the reviewer and the scout,
-// written against effect/ai's LanguageModel. An organ is a name, a prompt (from prompts/), the
-// Schema of its answer, an effort and a time limit, both as orchestra sets them.
+// Organs (§ 3.3, § 6): the one-shot advisers, triage, the predictor, the reviewer, the critic and
+// the scout, written against effect/ai's LanguageModel. An organ is a name, a prompt (from
+// prompts/), the Schema of its answer, an effort and a time limit, both as orchestra sets them.
 // `--organ-model` and `--organ-effort`, or the settings' organs.model and organs.effort, override
 // every organ's model and effort; AppConfig has them resolved.
 //
@@ -24,7 +24,7 @@ import { limitOf, OrganCall, type OrganReads, subtypeOf } from "./AgentSdkLangua
 import { evidenceId, fromTheRun, type InputPart, renderInput, systemPrompt } from "./evidence.ts"
 
 /** The organs, by the names their log lines and costs carry. */
-export const organNames = ["triage", "predictor", "reviewer", "scout"] as const
+export const organNames = ["triage", "predictor", "reviewer", "critic", "scout"] as const
 export type OrganName = (typeof organNames)[number]
 
 /** Each organ's effort and time limit, as orchestra sets them (§ 6.1). */
@@ -34,6 +34,7 @@ export const organDefaults: {
   triage: { effort: "low", timeLimit: Duration.minutes(3) },
   predictor: { effort: "low", timeLimit: Duration.minutes(2) },
   reviewer: { effort: "medium", timeLimit: Duration.minutes(5) },
+  critic: { effort: "medium", timeLimit: Duration.minutes(5) },
   scout: { effort: "medium", timeLimit: Duration.minutes(5) },
 }
 

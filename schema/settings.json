@@ -368,6 +368,22 @@
         "review": {
           "type": "boolean",
           "default": true
+        },
+        "critic": {
+          "type": "boolean",
+          "default": true
+        },
+        "critic_every": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "default": 5
+        },
+        "critic_tickets": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "default": 5
         }
       },
       "additionalProperties": false,

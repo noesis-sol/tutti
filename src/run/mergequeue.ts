@@ -420,6 +420,8 @@ export const make = (
           // A merge moves the base on, which may be what a ticket's failed check waits for: the
           // tickets it puts back are in line before this merge is over, so `settled` waits for them.
           if (prepared._tag === "Merged") {
+            yield* options.merged?.({ ticket: ticket.id, onto: prepared.onto, at: prepared.at }) ??
+              Effect.void
             yield* takeSettings(ticket.id, options, setUps, prepared.onto, prepared.at)
             yield* Effect.exit(restore(recheckFrom(prepared.at)))
           }

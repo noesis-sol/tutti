@@ -684,6 +684,48 @@ export const ScoreUpdate = Schema.Struct({
   by: optional(Schema.String),
 })
 
+/** What called for a review: the run's every Nth merge, or a scorecard in its worst decile. */
+export const reviewTriggers = ["every", "worst"] as const
+
+/** Why a finding wasn't filed. */
+export const findingDropped = ["doubtful", "ungrounded", "duplicate", "capped", "failed"] as const
+
+/** One finding of a review, and what became of it. */
+export const ReviewFinding = Schema.Struct({
+  title: Schema.String,
+  severity: Schema.Literals(["severe", "high", "medium", "low"]),
+  criterion: Schema.String,
+  /** path:line. */
+  evidence: Schema.String,
+  confidence: Schema.Literals(["high", "medium", "low"]),
+  /** The ticket filed for it, or the question asked for a severe one. */
+  filed: optional(Schema.String),
+  /**
+   * Why it wasn't filed: low confidence, a place the merged tree hasn't, alike an open ticket, past
+   * the cap, bd failing.
+   */
+  dropped: optional(Schema.Literals(findingDropped)),
+  /** duplicate: the open ticket it is alike. */
+  duplicate_of: optional(Schema.String),
+})
+
+/**
+ * The critic reviewed a merged ticket's work (src/run/critic.ts): its findings, each filed as a
+ * follow-up ticket, asked of the maintainer as a question when severe, or dropped and why. tutti's
+ * own; `text` is its log line.
+ */
+export const Review = Schema.Struct({
+  ...head("review"),
+  ticket: Schema.String,
+  trigger: Schema.Literals(reviewTriggers),
+  /** The commit the merge put the base at. */
+  commit: Schema.String,
+  /** The checklist the critic built. */
+  checklist: Schema.Array(Schema.String),
+  findings: Schema.Array(ReviewFinding),
+  text: Schema.String,
+})
+
 /** The phases of § 5.1, by their tags. */
 export const phaseNames = [
   "Queued",
@@ -896,6 +938,7 @@ export const kinds = {
   verifier: Verifier,
   score: Score,
   score_update: ScoreUpdate,
+  review: Review,
   end: End,
   phase: Phase,
   attention: Attention,

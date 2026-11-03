@@ -14,6 +14,7 @@ import { Attention } from "../agent/Attention.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { saveAsked, saveLeft } from "./carry.ts"
+import type { Critic } from "./critic.ts"
 import { EventStream } from "./eventstream.ts"
 import { type StopReason, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
@@ -92,6 +93,8 @@ export const make = (options: {
   readonly queue: MergeQueue
   readonly scheduler: Pick<Scheduler, "interrupt">
   readonly triage: Pick<Triage, "interrupt">
+  /** The critic (critic.ts), whose review under way is aborted with triage's; none without it. */
+  readonly critic?: Pick<Critic, "interrupt">
   readonly status: SubscriptionRef.SubscriptionRef<Status>
   readonly exitNow?: (code: number, said: ReadonlyArray<Line>) => Effect.Effect<void>
 }): Effect.Effect<Quits, never, AgentHost | Attention | Ledger | Store | Log | EventStream> =>
@@ -192,6 +195,7 @@ export const make = (options: {
         yield* waitFor(merging === null ? [] : [{ ticket: merging, what: "merge" as const }])
         yield* queue.stopMerges
         yield* options.triage.interrupt
+        yield* options.critic?.interrupt ?? Effect.void
         yield* waitFor([])
       })
 

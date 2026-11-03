@@ -177,6 +177,7 @@ describe("Organs", () => {
       { organ: "triage", effort: "low" },
       { organ: "predictor", effort: "low" },
       { organ: "reviewer", effort: "medium" },
+      { organ: "critic", effort: "medium" },
       { organ: "scout", effort: "medium" },
     ])
   })
@@ -201,7 +202,7 @@ describe("Organs", () => {
     const minutes = Object.fromEntries(
       organNames.map((name) => [name, Duration.toMinutes(organDefaults[name].timeLimit)]),
     )
-    expect(minutes).toEqual({ triage: 3, predictor: 2, reviewer: 5, scout: 5 })
+    expect(minutes).toEqual({ triage: 3, predictor: 2, reviewer: 5, critic: 5, scout: 5 })
   })
 
   for (const name of organNames) {
