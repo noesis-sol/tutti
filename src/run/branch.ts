@@ -152,8 +152,11 @@ export const gitReads = { concurrency: "unbounded" } as const
 export type Restored = Data.TaggedEnum<{
   /** At `to` already, once a rebase in progress was aborted (`aborted`), or none was. */
   AlreadyThere: { readonly aborted: boolean }
-  /** Reset to `to` from `from`, its worker's attempt; undefined when git couldn't say where. */
-  Reset: { readonly from: Sha | undefined }
+  /**
+   * Reset to `to` from `from`, its worker's attempt; undefined when git couldn't say where.
+   * `discarded` are the tracked files whose changes the reset discarded, where it was told to.
+   */
+  Reset: { readonly from: Sha | undefined; readonly discarded: ReadonlyArray<string> }
   /** Left: its worktree has uncommitted changes, or git can't say whether it has. */
   Dirty: { readonly at: Sha | undefined }
   /** Left: its worktree has something else checked out, as `on` says (Checkout's OffBranch). */
@@ -181,12 +184,15 @@ export const attemptAt = (from: Sha | undefined): string =>
  * branch, when it is elsewhere, reset to `to` if its worktree is clean and has it checked out. A
  * branch at `to` already is left as it is, whatever its worktree holds. `to` is a full hash, or a
  * ref, which is never taken for where the branch is. Its worktree's checkout is asked up to `tries`
- * times (onBranch). Each caller says what came of it in its own words.
+ * times (onBranch). With `discard`, a worktree whose changes to tracked files are tutti's own (the
+ * merge train's setup and check, in a worktree it found clean) is reset all the same, the files
+ * whose changes went named. Each caller says what came of it in its own words.
  */
 export const restoreBranch = (
   ticket: Pick<FinishedTicket, "branch" | "worktree">,
   to: string,
   tries = gitTries,
+  discard = false,
 ): Effect.Effect<Restored, never, Git> =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -202,15 +208,15 @@ export const restoreBranch = (
     const head = yield* Effect.result(git.revParse(worktree, branch))
     const at = Result.isSuccess(head) ? head.success : undefined
     if (at === to) return Restored.AlreadyThere({ aborted })
-    if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
-      return Restored.Dirty({ at })
-    }
+    if (Result.isFailure(status)) return Restored.Dirty({ at })
+    const changed = trackedChanges(status.success)
+    if (changed.length > 0 && !discard) return Restored.Dirty({ at })
     const on = yield* onBranch(ticket, tries)
     if (on._tag === "OffBranch") return Restored.OffBranch({ at, on: on.on })
     if (on._tag === "Unknown") return Restored.Unknown({ at, error: on.error })
     const reset = yield* Effect.result(git.resetBranch(worktree, to))
     if (Result.isFailure(reset)) return Restored.ResetFailed({ at, error: reset.failure })
-    return Restored.Reset({ from: at })
+    return Restored.Reset({ from: at, discarded: changed })
   })
 
 /**

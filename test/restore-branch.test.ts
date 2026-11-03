@@ -63,7 +63,7 @@ const halfDone = Effect.flatMap(Repository, (it) => it.write(worktree, { "a.txt"
 describe("restoreBranch", () => {
   test("resets a branch elsewhere to where it was, the worker's attempt its from", async () => {
     const ended = await restore()
-    expect(ended.restored).toEqual({ _tag: "Reset", from: ended.attempt })
+    expect(ended.restored).toEqual({ _tag: "Reset", from: ended.attempt, discarded: [] })
     expect(ended.branch).toBe(ended.to)
   })
 
@@ -79,7 +79,7 @@ describe("restoreBranch", () => {
 
   test("aborts a rebase in progress, then resets the branch", async () => {
     const ended = await restore(() => conflicted)
-    expect(ended.restored).toEqual({ _tag: "Reset", from: ended.attempt })
+    expect(ended.restored).toEqual({ _tag: "Reset", from: ended.attempt, discarded: [] })
     expect(ended.rebasing).toBe(false)
     expect(ended.branch).toBe(ended.to)
   })

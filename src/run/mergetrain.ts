@@ -216,6 +216,15 @@ const notBack = (worktree: string, restored: Restored): Line | undefined => {
   }
 }
 
+/**
+ * What putting a branch back discarded, for the line that says it was: the changes the train's
+ * setup or check made to tracked files in a worktree it found clean (a lockfile rewritten).
+ */
+const discardedNote = (restored: Restored | undefined): Line | string =>
+  restored?._tag === "Reset" && restored.discarded.length > 0
+    ? line`, discarding what its setup and check ahead of its turn changed in ${restored.discarded.join(", ")}`
+    : ""
+
 /** Why a ticket's dependencies are set up again before its next check, after its train's setup. */
 const setUpOnTop = (behind: string) =>
   line`its dependencies were set up on top of ${behind}, ahead of its turn`
@@ -278,7 +287,9 @@ export const putBackLeft = (
         )
         continue
       }
-      const why = notBack(worktree, yield* restoreBranch({ branch, worktree }, mark.orig, 1))
+      // Marked only once its worktree was found clean: what it holds now is the train's.
+      const restored = yield* restoreBranch({ branch, worktree }, mark.orig, 1, true)
+      const why = notBack(worktree, restored)
       if (why !== undefined) {
         yield* log.write(
           ticketLine(
@@ -289,7 +300,7 @@ export const putBackLeft = (
       }
       yield* clearAhead(id)
       yield* log.write(
-        detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn by a run that was killed before its turn: put back as its worker left it, at ${shortHash(mark.orig)}`,
+        detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn by a run that was killed before its turn: put back as its worker left it, at ${shortHash(mark.orig)}${discardedNote(restored)}`,
       )
     }
   })
@@ -584,15 +595,17 @@ export const make = (
 
     // Puts the ticket's branch, at `head`, back as its worker left it when its train rebased it and
     // it hasn't moved since: what restoreBranch said, or undefined when it was not the train's to
-    // put back. Dependencies set up on top of the branch ahead are set up again before its next
-    // check. Its mark is cleared once its branch is back, or was not the train's to put back.
+    // put back. The train rebased it only in a clean worktree, so what its setup and check changed
+    // in tracked files is discarded with it. Dependencies set up on top of the branch ahead are set
+    // up again before its next check. Its mark is cleared once its branch is back, or was not the
+    // train's to put back.
     const putBack = (run: Run, head: Sha) =>
       Effect.gen(function* () {
         if (setUpOf(run.step)) yield* memory.setUps.offBase(run.ticket.id, setUpOnTop(run.behind))
         const restored =
           run.orig === undefined || headOf(run.step) === undefined || head !== headOf(run.step)
             ? undefined
-            : yield* restoreBranch(run.ticket, run.orig, 1)
+            : yield* restoreBranch(run.ticket, run.orig, 1, true)
         if (restored === undefined || notBack(run.ticket.worktree, restored) === undefined) {
           yield* clearAhead(run.ticket.id)
         }
@@ -656,7 +669,7 @@ export const make = (
             if (why === undefined) {
               if (back !== undefined) {
                 yield* log.write(
-                  detail`${branch} was rebased onto ${run.behind} to be checked ahead of its turn, but the run stopped before its turn: put back as its worker left it`,
+                  detail`${branch} was rebased onto ${run.behind} to be checked ahead of its turn, but the run stopped before its turn: put back as its worker left it${discardedNote(back)}`,
                 )
               }
               continue
@@ -769,7 +782,7 @@ export const make = (
           ? line`which merged as it was checked, but ${blame(step)}`
           : "which did not merge as it was checked"
         yield* log.write(
-          detail`${branch} was checked ahead of its turn on top of ${ended.behind}, ${which}: put back as its worker left it`,
+          detail`${branch} was checked ahead of its turn on top of ${ended.behind}, ${which}: put back as its worker left it${discardedNote(back)}`,
         )
         return undefined
       })
