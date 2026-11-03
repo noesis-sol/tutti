@@ -962,8 +962,13 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   // from the share file, which follows it.
   const machine = { ...process.env, ...shareFileVariables(process.env) }
   const suites = testEnvironment(process.env, join(temp, "tutti-test-path"))
+  // A run a test starts, in the suites' environment, is a fixture's, its outcome the same on any
+  // machine: it reads no record but the one TUTTI_TEST_MEMORY_FILE names, and neither watches the
+  // memory nor keeps a record.
+  const own = process.env.TUTTI_TEST_MACHINE_PATH === undefined
   const recordPath = memoryRecordPath(process.env)
-  const record = readMemoryRecord(recordPath)
+  const record: MemoryRecord =
+    own || process.env.TUTTI_TEST_MEMORY_FILE ? readMemoryRecord(recordPath) : { runs: [] }
   const sizing: Sizing = {
     memory: memoryShareOf(machine) ?? availableMemory(),
     each: highMark(record) ?? defaultProcessMemory,
@@ -980,7 +985,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     temp,
     { ...suites, ...coreThreadVariables(machine, undefined, workers) },
     true,
-    (pid, exited) => watchMemory(pid, workers, exited),
+    own ? (pid, exited) => watchMemory(pid, workers, exited) : undefined,
   )
   const cases = readReport(first)
   const warned = watched?.warned === true
@@ -990,8 +995,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
         " running; the reruns, and the runs of the next 10 minutes, start fewer",
     )
   }
-  // A run that scripts/test.sh's own tests start, in the suites' environment, keeps no record.
-  if (watched !== undefined && process.env.TUTTI_TEST_MACHINE_PATH === undefined) {
+  if (watched !== undefined) {
     const files = new Set(cases.map((test) => test.file)).size
     const run = { ...watched, at: Date.now(), processes: workers, files }
     writeMemoryRecord(recordPath, recordRun(readMemoryRecord(recordPath), run))
