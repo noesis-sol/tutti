@@ -405,6 +405,22 @@ export const testWorkers = (
   return Math.max(1, files > 0 ? Math.min(wanted, files) : wanted)
 }
 
+/**
+ * bun test's --parallel for `workers` processes running the files `args` name, or every file where
+ * they name none: for one process too, where it runs more than one file, as only in bun test's
+ * workers does each file run in a fresh global with the preload's hooks around it, which collect
+ * its garbage (test/warm-up.ts; tutti-3cri); without, a file's garbage stays for the next. None for
+ * one file, or where the arguments choose --parallel themselves.
+ */
+export const parallelArguments = (
+  workers: number,
+  args: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  if (args.some((arg) => arg === "--parallel" || arg.startsWith("--parallel="))) return []
+  const files = args.filter((arg) => !arg.startsWith("-") && /\.[cm]?[jt]sx?$/.test(arg)).length
+  return workers > 1 || files !== 1 ? [`--parallel=${workers}`] : []
+}
+
 /** What the processes are sized by beside the cores (testProcesses). */
 export interface Sizing {
   /** The run's share of the memory, in bytes (memoryShareOf, availableMemory); undefined where
@@ -712,11 +728,12 @@ const writeMemoryRecord = (path: string, record: MemoryRecord): void => {
 /**
  * The most one test process takes in the listing `all`, in bytes: each process's memory with that
  * of everything below it (the processes its tests started). The test processes are bun test's,
- * `root`'s, children where it runs them in `processes` above one (--parallel), else `root` itself.
+ * `root`'s, children where it runs them in workers (`parallel`, --parallel), else `root` itself.
  */
-export const processPeak = (all: Processes, root: number, processes: number): number => {
-  const tests =
-    processes > 1 ? [...all].filter(([, each]) => each.parent === root).map(([pid]) => pid) : [root]
+export const processPeak = (all: Processes, root: number, parallel: boolean): number => {
+  const tests = parallel
+    ? [...all].filter(([, each]) => each.parent === root).map(([pid]) => pid)
+    : [root]
   let peak = 0
   for (const pid of tests) {
     const own = all.get(pid)?.memory ?? 0
@@ -761,7 +778,7 @@ const pressureNow = async (platform: NodeJS.Platform): Promise<Pressure> => {
  */
 export const watchMemory = async (
   root: number,
-  processes: number,
+  parallel: boolean,
   exited: Promise<unknown>,
   platform: NodeJS.Platform = process.platform,
 ): Promise<Watched> => {
@@ -778,7 +795,7 @@ export const watchMemory = async (
       pressureNow(platform),
     ])
     const all = parseProcesses(listing)
-    if (all !== undefined) peak = Math.max(peak, processPeak(all, root, processes))
+    if (all !== undefined) peak = Math.max(peak, processPeak(all, root, parallel))
     if (pressure === "warn" || pressure === "critical") warned = true
     await Promise.race([Bun.sleep(watchEvery), exited])
   }
@@ -978,7 +995,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   }
   const { processes: workers, line } = testProcesses(machine, args, sizing)
   console.log(line)
-  const parallel = workers > 1 ? [`--parallel=${workers}`] : []
+  const parallel = parallelArguments(workers, args)
   const limit = timeLimitArguments(args)
   const first = join(reports, "first.xml")
   const { code, output, watched } = await runBunTest(
@@ -987,7 +1004,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     temp,
     { ...suites, ...coreThreadVariables(machine, undefined, workers) },
     true,
-    own ? (pid, exited) => watchMemory(pid, workers, exited) : undefined,
+    own ? (pid, exited) => watchMemory(pid, parallel.length > 0, exited) : undefined,
   )
   const cases = readReport(first)
   const warned = watched?.warned === true

@@ -8,7 +8,8 @@
 // process, each in a fresh global, and leaves the garbage of the files before to JavaScriptCore's
 // collector: over a whole-suite run at three processes the workers peaked at 1.3-1.7 GB, though no
 // file alone took over 620 MB; collected after each file, they peaked at 0.66-1.05 GB, and the
-// suite took 151-160 s, not 172-181 s (tutti-3cri, 2026-11-03).
+// suite took 151-160 s, not 172-181 s (tutti-3cri, 2026-11-03). Only in a worker is this hook each
+// file's: scripts/test.ts runs even one process's files in one (parallelArguments).
 import { afterAll, beforeAll } from "bun:test"
 import { spawn } from "node:child_process"
 

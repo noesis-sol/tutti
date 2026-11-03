@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { parallelArguments } from "../scripts/test.ts"
 import { testEnv } from "./env.ts"
 
 const root = resolve(import.meta.dir, "..")
@@ -61,5 +62,28 @@ describe("the preload's garbage collection between files", () => {
     // Without the preload the garbage is still in the heap, which shows the test can see it.
     expect(heapAfterGarbage([])).toBeGreaterThan(100)
     expect(heapAfterGarbage([join(root, "test", "warm-up.ts")])).toBeLessThan(50)
+  })
+})
+
+describe("parallelArguments", () => {
+  test("runs one process's files in a worker too, so that the preload's hooks are each file's", () => {
+    expect(parallelArguments(1, [])).toEqual(["--parallel=1"])
+    expect(parallelArguments(1, ["test/a.test.ts", "test/b.test.ts"])).toEqual(["--parallel=1"])
+    expect(parallelArguments(1, ["test/"])).toEqual(["--parallel=1"])
+  })
+
+  test("runs a single file in bun test's own process", () => {
+    expect(parallelArguments(1, ["test/a.test.ts"])).toEqual([])
+    expect(parallelArguments(1, ["test/a.test.ts", "-t", "a name"])).toEqual([])
+  })
+
+  test("runs more processes in as many workers", () => {
+    expect(parallelArguments(3, [])).toEqual(["--parallel=3"])
+    expect(parallelArguments(2, ["test/a.test.ts", "test/b.test.ts"])).toEqual(["--parallel=2"])
+  })
+
+  test("leaves --parallel to arguments that choose it", () => {
+    expect(parallelArguments(1, ["--parallel=4"])).toEqual([])
+    expect(parallelArguments(1, ["--parallel", "test/a.test.ts", "test/b.test.ts"])).toEqual([])
   })
 })

@@ -275,13 +275,13 @@ describe("processPeak", () => {
 
   test("is the most a test process takes, with what its tests started", () => {
     if (listing === undefined) throw new Error("the listing didn't parse")
-    expect(processPeak(listing, 100, 2)).toBe(500 * mebibyte)
+    expect(processPeak(listing, 100, true)).toBe(500 * mebibyte)
   })
 
   test("is bun test's own, with all below it, where it runs the files itself", () => {
     if (listing === undefined) throw new Error("the listing didn't parse")
-    expect(processPeak(listing, 100, 1)).toBe(950 * mebibyte)
-    expect(processPeak(listing, 999, 1)).toBe(0)
+    expect(processPeak(listing, 100, false)).toBe(950 * mebibyte)
+    expect(processPeak(listing, 999, false)).toBe(0)
   })
 })
 
