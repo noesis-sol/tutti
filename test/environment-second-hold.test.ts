@@ -49,7 +49,7 @@ const endLine =
 
 describe("the wait before a probe", () => {
   test("doubles with each probe, up to an hour, or environment_hold.probe when it is longer", () => {
-    const minutes = (after: string, probes: number) =>
+    const minutes = (after: Duration.Input, probes: number) =>
       Duration.toMinutes(probeWait(Duration.fromInputUnsafe(after), probes))
     expect([0, 1, 2, 3, 4, 50].map((probes) => minutes("10 minutes", probes))).toEqual([
       10, 20, 40, 60, 60, 60,
