@@ -304,6 +304,7 @@ below are the coverage report's uncovered lines at 368899e.
 - **Reached by**: `scripts/check*.sh`, `scripts/test.sh`, `scripts/check-own.sh`,
   `scripts/fetch-shellcheck.sh`, `docs/`, `skills/tutti`.
 - **Tests**: `check-own.test.ts`, `check-verdict.test.ts`, `test-script.test.ts`,
+  `test-memory.test.ts`,
   `test-tmpdir.test.ts`, `flaky.test.ts`, `gates.test.ts`, `fetch-shellcheck.test.ts`,
   `user-docs.test.ts`, `parity-doc.test.ts`, `parity-since.test.ts`, `skill-install-docs.test.ts`,
   `tutti-skill.test.ts`.

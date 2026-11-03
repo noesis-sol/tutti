@@ -35,6 +35,16 @@
 // load the machine themselves, a test's time limit is 15 s where its file sets none (testTimeLimit),
 // not bun's 5 s.
 //
+// The processes follow the memory too (testProcesses; tutti-epza.19): each stays alive across many
+// files, and one worker's whole-suite check started five of 1.3-1.7 GB on a 16 GB Mac, swap near
+// full (2026-11-03). So they are no more than the run's share of the memory (the share file, the
+// variables, or the memory free now outside tutti) holds at what one takes, which each run learns:
+// it reads its test processes' memory and the memory pressure every couple of seconds (watchMemory)
+// and keeps its peak in .cache/test-memory.json (recordRun), whose high mark the next runs take. A
+// process's memory is that of the file it runs, not the files before: over a whole-suite run at
+// three processes each went up and down, peaks of 0.6-1.15 GB, one from 1149 MB to 55 MB within
+// 10 s (2026-11-03), so nothing caps the files a process runs, which bun 1.4.3 can't anyway.
+//
 // The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or
 // bd and passes, or skips, only where they are installed (orchestra-nqbn, orchestra-163s); and none
@@ -49,13 +59,31 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { availableParallelism, tmpdir } from "node:os"
-import { basename, delimiter, join, resolve } from "node:path"
-import { paneVariable, sessionVariable } from "../src/agent/env.ts"
+import { basename, delimiter, dirname, join, resolve } from "node:path"
+import {
+  coresVariable,
+  mebibyte,
+  memoryVariable,
+  orchestraMemoryVariable,
+  paneVariable,
+  sessionVariable,
+  shareFileVariable,
+} from "../src/agent/env.ts"
+import {
+  below,
+  memoryReserve,
+  type Pressure,
+  type Processes,
+  parseLinux,
+  parseProcesses,
+  psArgs,
+} from "../src/run/load.ts"
 import { processAlive } from "../src/services/processTree.ts"
 
 export interface TestCase {
@@ -375,6 +403,386 @@ export const testWorkers = (
   return Math.max(1, files > 0 ? Math.min(wanted, files) : wanted)
 }
 
+/** What the processes are sized by beside the cores (testProcesses). */
+export interface Sizing {
+  /** The run's share of the memory, in bytes (memoryShareOf, availableMemory); undefined where
+   * neither is known. */
+  readonly memory: number | undefined
+  /** The memory one test process takes, in bytes: the record's high mark, or defaultProcessMemory. */
+  readonly each: number
+  /** The most processes a run may start as a run met memory pressure lately (heldProcesses). */
+  readonly held?: number | undefined
+}
+
+/** The memory one test process is taken to need until the record has a run's (2026-11-03). */
+export const defaultProcessMemory = 1.5 * 1024 ** 3
+
+const gigabytes = (bytes: number): string => (bytes / 1024 ** 3).toFixed(1)
+
+const plural = (count: number, noun: string, nouns = `${noun}s`): string =>
+  `${count} ${count === 1 ? noun : nouns}`
+
+/**
+ * How many worker processes bun test runs the files in, and the run's first line, which says why:
+ * the least of testWorkers' number (TUTTI_TEST_PARALLEL's, or the cores share) and the processes
+ * the memory share holds at `sizing.each` a process, and no more than `sizing.held`; at least one.
+ * `scripts/test.sh: 3 processes (cores 5, memory 4.6 GB at ~1.5 GB each)`.
+ */
+export const testProcesses = (
+  env: Readonly<Record<string, string | undefined>>,
+  args: ReadonlyArray<string>,
+  sizing: Sizing,
+  cores: number = availableParallelism(),
+): { readonly processes: number; readonly line: string } => {
+  if (args.some((arg) => arg === "--parallel" || arg.startsWith("--parallel="))) {
+    return { processes: 1, line: "scripts/test.sh: processes as the arguments' --parallel says" }
+  }
+  const asked = env.TUTTI_TEST_PARALLEL?.trim() ?? ""
+  const reasons = [
+    /^\d+$/.test(asked) && Number(asked) >= 1
+      ? `TUTTI_TEST_PARALLEL ${Number(asked)}`
+      : `cores ${coreShareOf(env) ?? Math.max(1, Math.floor(cores / 2))}`,
+  ]
+  let processes = testWorkers(env, args, cores)
+  const { memory, each, held } = sizing
+  if (memory === undefined) reasons.push("memory not known")
+  else {
+    reasons.push(`memory ${gigabytes(memory)} GB at ~${gigabytes(each)} GB each`)
+    processes = Math.min(processes, Math.max(1, Math.floor(memory / Math.max(each, 1))))
+  }
+  if (held !== undefined) {
+    reasons.push(`no more than ${held} as memory pressure reached warn lately`)
+    processes = Math.max(1, Math.min(processes, held))
+  }
+  const files = args.filter((arg) => !arg.startsWith("-") && /\.[cm]?[jt]sx?$/.test(arg)).length
+  if (files > 0) reasons.push(plural(files, "file"))
+  return {
+    processes,
+    line: `scripts/test.sh: ${plural(processes, "process", "processes")} (${reasons.join(", ")})`,
+  }
+}
+
+/**
+ * The share tutti keeps in the file TUTTI_SHARE_FILE names (src/run/share.ts' shareLine), as a run
+ * reads it as it starts: the variables it stands for, TUTTI_CORES and TUTTI_MEMORY_MB, those of
+ * its figures that are whole numbers of at least one; none where the file is unset, unreadable or
+ * not such a line. TUTTI_CORES and TUTTI_MEMORY_MB are the share as the worker's session started;
+ * the file follows it as the run's memory pressure moves it.
+ */
+export const shareFileVariables = (
+  env: Readonly<Record<string, string | undefined>>,
+  read: (path: string) => string = (path) => readFileSync(path, "utf8"),
+): Record<string, string> => {
+  const path = env[shareFileVariable] ?? ""
+  if (path === "") return {}
+  let share: unknown
+  try {
+    share = JSON.parse(read(path))
+  } catch {
+    return {}
+  }
+  if (typeof share !== "object" || share === null) return {}
+  const whole = (value: unknown): value is number =>
+    typeof value === "number" && Number.isInteger(value) && value >= 1
+  const { cores, memory_mb: memory } = share as { cores?: unknown; memory_mb?: unknown }
+  return {
+    ...(whole(cores) ? { [coresVariable]: String(cores) } : {}),
+    ...(whole(memory) ? { [memoryVariable]: String(memory) } : {}),
+  }
+}
+
+/**
+ * The run's share of the memory, in bytes: TUTTI_MEMORY_MB, or orchestra's ORCHESTRA_MEMORY_MB, in
+ * MiB, a whole number of at least 1; undefined when neither holds one.
+ */
+export const memoryShareOf = (
+  env: Readonly<Record<string, string | undefined>>,
+): number | undefined => {
+  for (const name of [memoryVariable, orchestraMemoryVariable]) {
+    const value = env[name]?.trim() ?? ""
+    if (/^\d+$/.test(value) && Number(value) >= 1) return Number(value) * mebibyte
+  }
+  return undefined
+}
+
+/** The number on vm_stat's or /proc/meminfo's line that starts with `name`. */
+const counted = (text: string, name: string): number | undefined => {
+  const line = text.split("\n").find((each) => each.startsWith(name))
+  const value = line?.slice(name.length).trim().split(/\s+/)[0]?.replace(/\.$/, "") ?? ""
+  return /^\d+$/.test(value) ? Number(value) : undefined
+}
+
+/**
+ * The memory macOS can give programs now, from vm_stat's output, in bytes: its free, inactive and
+ * purgeable pages; undefined where any can't be read.
+ */
+export const darwinAvailable = (vmstat: string): number | undefined => {
+  const page = /\(page size of (\d+) bytes\)/.exec(vmstat)?.[1]
+  const pages = ["Pages free:", "Pages inactive:", "Pages purgeable:"].map((name) =>
+    counted(vmstat, name),
+  )
+  if (page === undefined || pages.some((count) => count === undefined)) return undefined
+  return pages.reduce((sum: number, count) => sum + (count ?? 0), 0) * Number(page)
+}
+
+/** The memory Linux can give programs now, /proc/meminfo's MemAvailable, in bytes. */
+export const linuxAvailable = (meminfo: string): number | undefined => {
+  const kilobytes = counted(meminfo, "MemAvailable:")
+  return kilobytes === undefined ? undefined : kilobytes * 1024
+}
+
+/**
+ * A run's share of the memory outside tutti, where neither the share file nor the variables give
+ * one: the memory the machine can give programs now, less load.ts' memoryReserve, as tutti keeps
+ * one; undefined where it can't be read.
+ */
+export const availableMemory = (
+  platform: NodeJS.Platform = process.platform,
+): number | undefined => {
+  let available: number | undefined
+  try {
+    if (platform === "darwin") {
+      const vmstat = Bun.spawnSync(["vm_stat"])
+      if (vmstat.exitCode === 0) available = darwinAvailable(vmstat.stdout.toString())
+    } else if (platform === "linux") {
+      available = linuxAvailable(readFileSync("/proc/meminfo", "utf8"))
+    }
+  } catch {
+    return undefined
+  }
+  return available === undefined ? undefined : Math.max(available - memoryReserve, 0)
+}
+
+/** One run the record keeps: when it ended, the most one test process took, its processes, files. */
+export interface MemoryRun {
+  readonly at: string
+  readonly peak_mb: number
+  readonly processes: number
+  readonly files: number
+}
+
+/**
+ * What .cache/test-memory.json keeps: recent runs' peaks, latest last, and the last run that met
+ * memory pressure at warn or worse, with the processes it ran in.
+ */
+export interface MemoryRecord {
+  readonly runs: ReadonlyArray<MemoryRun>
+  readonly warn?: { readonly at: string; readonly processes: number }
+}
+
+/** The runs the record keeps, its latest. */
+export const recordedRuns = 20
+
+/**
+ * The fewest test files a run must have run for the record to keep its peak: a process's memory is
+ * that of the file it runs, and a few files may not take what the hungriest do.
+ */
+export const recordFiles = 50
+
+/** How long a run that met memory pressure holds the next runs to fewer processes. */
+export const warnHold = 10 * 60_000
+
+/** The record in `text`, the runs and the warn that are well formed; empty for anything else. */
+export const parseMemoryRecord = (text: string): MemoryRecord => {
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch {
+    return { runs: [] }
+  }
+  if (typeof json !== "object" || json === null) return { runs: [] }
+  const { runs, warn } = json as { runs?: unknown; warn?: unknown }
+  const whole = (value: unknown): value is number =>
+    typeof value === "number" && Number.isInteger(value) && value >= 1
+  const dated = (value: unknown): value is string =>
+    typeof value === "string" && !Number.isNaN(Date.parse(value))
+  const kept = (Array.isArray(runs) ? runs : []).filter(
+    (run: Partial<MemoryRun> | null): run is MemoryRun =>
+      typeof run === "object" &&
+      run !== null &&
+      dated(run.at) &&
+      whole(run.peak_mb) &&
+      whole(run.processes) &&
+      whole(run.files),
+  )
+  const { at, processes } = (typeof warn === "object" && warn !== null ? warn : {}) as {
+    at?: unknown
+    processes?: unknown
+  }
+  return {
+    runs: kept.slice(-recordedRuns),
+    ...(dated(at) && whole(processes) ? { warn: { at, processes } } : {}),
+  }
+}
+
+/**
+ * The memory one test process takes, as the record learned it, in bytes: the 90th percentile of
+ * its runs' peaks (nearest rank), so that one odd run neither sets it nor is forgotten at once;
+ * undefined without a run.
+ */
+export const highMark = (record: MemoryRecord): number | undefined => {
+  const peaks = record.runs.map((run) => run.peak_mb).sort((a, b) => a - b)
+  const mark = peaks[Math.ceil(peaks.length * 0.9) - 1]
+  return mark === undefined ? undefined : mark * mebibyte
+}
+
+/**
+ * The most processes a run started at `now` may start: one fewer than the record's last run that
+ * met memory pressure ran in, at least one, for warnHold after it; undefined otherwise.
+ */
+export const heldProcesses = (record: MemoryRecord, now: number): number | undefined => {
+  if (record.warn === undefined) return undefined
+  const since = now - Date.parse(record.warn.at)
+  return since >= 0 && since < warnHold ? Math.max(1, record.warn.processes - 1) : undefined
+}
+
+/** What a run's watch found (watchMemory): the most one test process took, and the pressure. */
+export interface Watched {
+  /** In bytes; 0 where the processes were never read. */
+  readonly peak: number
+  /** Whether the memory pressure reached warn or worse. */
+  readonly warned: boolean
+}
+
+/**
+ * The record with the run that ended at `at` in it, which ran `files` test files in `processes`
+ * processes: its peak where it ran recordFiles or more and one was read, its warn where it met one.
+ */
+export const recordRun = (
+  record: MemoryRecord,
+  run: Watched & { readonly at: number; readonly processes: number; readonly files: number },
+): MemoryRecord => {
+  const at = new Date(run.at).toISOString()
+  const peak = Math.ceil(run.peak / mebibyte)
+  const runs =
+    run.files >= recordFiles && peak >= 1
+      ? [...record.runs, { at, peak_mb: peak, processes: run.processes, files: run.files }]
+      : record.runs
+  return {
+    runs: runs.slice(-recordedRuns),
+    ...(run.warned
+      ? { warn: { at, processes: run.processes } }
+      : record.warn === undefined
+        ? {}
+        : { warn: record.warn }),
+  }
+}
+
+/**
+ * The record's file: TUTTI_TEST_MEMORY_FILE, else .cache/test-memory.json in the main checkout,
+ * which `cwd`'s worktrees share (git's common folder's parent), or in `cwd` outside git: a
+ * worker's worktree is new, and would learn nothing.
+ */
+export const memoryRecordPath = (
+  env: Readonly<Record<string, string | undefined>>,
+  cwd: string = process.cwd(),
+): string => {
+  if (env.TUTTI_TEST_MEMORY_FILE) return env.TUTTI_TEST_MEMORY_FILE
+  const git = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    cwd,
+    stderr: "ignore",
+  })
+  const common = git.exitCode === 0 ? git.stdout.toString().trim() : ""
+  return join(common === "" ? cwd : dirname(common), ".cache", "test-memory.json")
+}
+
+const readMemoryRecord = (path: string): MemoryRecord => {
+  try {
+    return parseMemoryRecord(readFileSync(path, "utf8"))
+  } catch {
+    return { runs: [] }
+  }
+}
+
+// Written whole to a file of its own, then renamed over the record, so a run reading it beside
+// another's write never reads half of one. Two runs ending together may lose one's run.
+const writeMemoryRecord = (path: string, record: MemoryRecord): void => {
+  try {
+    mkdirSync(dirname(path), { recursive: true })
+    const partial = `${path}.${process.pid}`
+    writeFileSync(partial, `${JSON.stringify(record, null, 2)}\n`)
+    renameSync(partial, path)
+  } catch {
+    // A record that can't be written leaves the next run to its default.
+  }
+}
+
+/**
+ * The most one test process takes in the listing `all`, in bytes: each process's memory with that
+ * of everything below it (the processes its tests started). The test processes are bun test's,
+ * `root`'s, children where it runs them in `processes` above one (--parallel), else `root` itself.
+ */
+export const processPeak = (all: Processes, root: number, processes: number): number => {
+  const tests =
+    processes > 1 ? [...all].filter(([, each]) => each.parent === root).map(([pid]) => pid) : [root]
+  let peak = 0
+  for (const pid of tests) {
+    const own = all.get(pid)?.memory ?? 0
+    peak = Math.max(peak, own + below(all, pid, new Set()))
+  }
+  return peak
+}
+
+/** How often a run reads its test processes' memory and the memory pressure. */
+export const watchEvery = 2_000
+
+/** macOS's kern.memorystatus_vm_pressure_level, as load.ts' parseDarwin reads it. */
+const darwinPressures: Readonly<Record<string, Pressure>> = {
+  1: "normal",
+  2: "warn",
+  4: "critical",
+}
+
+/** The kernel's memory pressure now: macOS's level from sysctl, Linux's stall in /proc. */
+const pressureNow = async (platform: NodeJS.Platform): Promise<Pressure> => {
+  try {
+    if (platform === "darwin") {
+      const proc = Bun.spawn(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"], {
+        stderr: "ignore",
+      })
+      const level = (await new Response(proc.stdout).text()).trim()
+      return darwinPressures[level] ?? "unknown"
+    }
+    const read = (path: string) => readFileSync(path, "utf8")
+    const files = { loadavg: "", vmstat: "", cores: 0 }
+    const kernel = parseLinux({ ...files, pressure: read("/proc/pressure/memory"), meminfo: "" })
+    return kernel?.pressure ?? "unknown"
+  } catch {
+    return "unknown"
+  }
+}
+
+/**
+ * Reads, every watchEvery until `exited` settles, the memory of bun test `root`'s test processes
+ * (processPeak) and the memory pressure, and returns the most and whether it reached warn: ps once,
+ * and sysctl or /proc, a few milliseconds.
+ */
+export const watchMemory = async (
+  root: number,
+  processes: number,
+  exited: Promise<unknown>,
+  platform: NodeJS.Platform = process.platform,
+): Promise<Watched> => {
+  let peak = 0
+  let warned = false
+  let done = false
+  void exited.finally(() => {
+    done = true
+  })
+  while (!done) {
+    const ps = Bun.spawn(["ps", ...psArgs], { stderr: "ignore" })
+    const [listing, pressure] = await Promise.all([
+      new Response(ps.stdout).text(),
+      pressureNow(platform),
+    ])
+    const all = parseProcesses(listing)
+    if (all !== undefined) peak = Math.max(peak, processPeak(all, root, processes))
+    if (pressure === "warn" || pressure === "critical") warned = true
+    await Promise.race([Bun.sleep(watchEvery), exited])
+  }
+  return { peak, warned }
+}
+
 /** A test's time limit where its file sets none (setDefaultTimeout), in place of bun's 5 s. */
 export const testTimeLimit = 15_000
 
@@ -498,18 +906,21 @@ export const testEnvironment = (
 }
 
 // Its output is copied through to ours as it comes, or, with `echo` false, only returned: a rerun
-// beside others prints its own once it ends, so that its lines stay together.
+// beside others prints its own once it ends, so that its lines stay together. `watch`, where given,
+// watches bun test's process (its ID) until it exits, and what it returns is the result's.
 const runBunTest = async (
   args: ReadonlyArray<string>,
   report: string,
   temp: string,
   environment: Readonly<Record<string, string>>,
   echo = true,
+  watch?: (pid: number, exited: Promise<number>) => Promise<Watched>,
 ): Promise<{
   readonly code: number
   readonly out: string
   readonly err: string
   readonly output: string
+  readonly watched: Watched | undefined
 }> => {
   const proc = Bun.spawn(
     [
@@ -528,12 +939,13 @@ const runBunTest = async (
       env: { ...environment, TMPDIR: temp },
     },
   )
-  const [out, err, code] = await Promise.all([
+  const [out, err, code, watched] = await Promise.all([
     echo ? tee(proc.stdout, process.stdout) : new Response(proc.stdout).text(),
     echo ? tee(proc.stderr, process.stderr) : new Response(proc.stderr).text(),
     proc.exited,
+    watch?.(proc.pid, proc.exited),
   ])
-  return { code, out, err, output: `${out}\n${err}` }
+  return { code, out, err, output: `${out}\n${err}`, watched }
 }
 
 const readReport = (report: string): ReadonlyArray<TestCase> => {
@@ -546,17 +958,44 @@ const readReport = (report: string): ReadonlyArray<TestCase> => {
 
 const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> => {
   const reports = mkdtempSync(join(temp, "tutti-test-reports-"))
-  // The share is read from the machine's variables, which the suites' environment leaves out.
+  // The share is read from the machine's variables, which the suites' environment leaves out, and
+  // from the share file, which follows it.
+  const machine = { ...process.env, ...shareFileVariables(process.env) }
   const suites = testEnvironment(process.env, join(temp, "tutti-test-path"))
-  const workers = testWorkers(process.env, args)
+  const recordPath = memoryRecordPath(process.env)
+  const record = readMemoryRecord(recordPath)
+  const sizing: Sizing = {
+    memory: memoryShareOf(machine) ?? availableMemory(),
+    each: highMark(record) ?? defaultProcessMemory,
+    held: heldProcesses(record, Date.now()),
+  }
+  const { processes: workers, line } = testProcesses(machine, args, sizing)
+  console.log(line)
   const parallel = workers > 1 ? [`--parallel=${workers}`] : []
   const limit = timeLimitArguments(args)
   const first = join(reports, "first.xml")
-  const { code, output } = await runBunTest([...parallel, ...limit, ...args], first, temp, {
-    ...suites,
-    ...coreThreadVariables(process.env, undefined, workers),
-  })
+  const { code, output, watched } = await runBunTest(
+    [...parallel, ...limit, ...args],
+    first,
+    temp,
+    { ...suites, ...coreThreadVariables(machine, undefined, workers) },
+    true,
+    (pid, exited) => watchMemory(pid, workers, exited),
+  )
   const cases = readReport(first)
+  const warned = watched?.warned === true
+  if (warned) {
+    console.log(
+      `scripts/test.sh: memory pressure reached warn with ${plural(workers, "process", "processes")}` +
+        " running; the reruns, and the runs of the next 10 minutes, start fewer",
+    )
+  }
+  // A run that scripts/test.sh's own tests start, in the suites' environment, keeps no record.
+  if (watched !== undefined && process.env.TUTTI_TEST_MACHINE_PATH === undefined) {
+    const files = new Set(cases.map((test) => test.file)).size
+    const run = { ...watched, at: Date.now(), processes: workers, files }
+    writeMemoryRecord(recordPath, recordRun(readMemoryRecord(recordPath), run))
+  }
   // The verdict, the files whose tests all passed written first where check-own.sh asked for them,
   // which it keeps when the run fails (tutti-0vbd.2).
   const verdict = (code: number, failing: ReadonlyArray<TestCase>): number => {
@@ -576,11 +1015,15 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   // a time as the first run's workers (tutti-0vbd.4): one after another, 19 failures took 779 s.
   // Each prints its output once it ends, in the order the failures came.
   const groups = rerunGroups(failed)
-  const rerunWorkers = testWorkers(
-    process.env,
-    groups.map((group) => fileArgument(group.file)),
+  const rerunWorkers = Math.min(
+    testProcesses(
+      machine,
+      groups.map((group) => fileArgument(group.file)),
+      sizing,
+    ).processes,
+    warned ? Math.max(1, workers - 1) : workers,
   )
-  const environment = { ...suites, ...coreThreadVariables(process.env, undefined, rerunWorkers) }
+  const environment = { ...suites, ...coreThreadVariables(machine, undefined, rerunWorkers) }
   const reruns = inPool(
     groups.map((group, index) => async () => {
       const report = join(reports, `rerun-${index}.xml`)
