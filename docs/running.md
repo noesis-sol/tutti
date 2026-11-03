@@ -693,7 +693,9 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
   ticket that becomes ready meanwhile (an answered question, a follow-up, a closed blocker) takes a
   free slot then. No ticket runs twice.
 - **A finished ticket frees its slot as it goes to merge.** The next ready ticket starts while it waits
-  for its turn, is rebased and checked, or has its worker resolve or fix its branch. Until it merges
+  for its turn or is rebased and checked. Handed back to its worker to resolve a conflict or fix a
+  failed check, it takes a slot again while its worker is at work: the hand-back starts at once, and
+  no ticket starts until the workers at work are under `concurrent` again. Until it merges
   it still holds back what it did while it ran: the tickets it blocks, its follow-ups, those
   overlapping its footprint (`skipping <id>: after <other>: both touch src/a.ts`) and a solo
   ticket. Up to `concurrent` tickets merge or wait to merge without a slot; beyond that a finished
@@ -773,7 +775,8 @@ while it holds, so the slot is filled within seconds of a worker finishing. A ru
 own workers running never waits. A registration whose run is gone (its process ended, or its PID
 taken by a process started since, after a reboot or a run killed) counts nothing and is removed.
 A run's workers, for the cap and for the other runs, are the slots it has taken: its tickets
-working and its checks run once more, and a ticket waiting to merge or merging only beyond
+working, handed back to their workers and its checks run once more, and a ticket waiting to
+merge or merging only beyond
 `concurrent` of them, as such tickets take no slot up to that many.
 
 The other runs' workers count in each worker's share of the cores (`TUTTI_CORES`, see
