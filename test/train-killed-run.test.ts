@@ -168,6 +168,26 @@ describe("a branch a killed run left rebased ahead of its turn", () => {
     expectLog(ended.ran, [putBackLine(ended.left.orig)])
   })
 
+  test("whose setup rewrote a tracked file, is reset to where its worker left it, discarding it", async () => {
+    const ended = await afterKill(
+      (left) => ({ ...left, behind: "tutti/a", setUp: false }),
+      (worktree) =>
+        Effect.flatMap(Repository, (repository) =>
+          repository.write(worktree, { "b.txt": "rewritten\n" }),
+        ),
+    )
+    expectExitCode(ended.ran, 0)
+    expectPhases(ended.ran, { b: "Done" })
+    expect(ended.main.get("b.txt")).toBe("b\n")
+    expect(ended.main.has("a.txt")).toBe(false)
+    expectLog(ended.ran, [
+      `${putBackLine(ended.left.orig)}, discarding what its setup and check ahead of its turn changed in b.txt`,
+      /^ {2}b closed .*; merged into main/,
+    ])
+    expect(ended.ran.log.some((text) => text.includes("REBASE_FAILED"))).toBe(false)
+    expect(markOf(ended.state, "b", aheadKey)).toBeUndefined()
+  })
+
   test("whose setup ran on top of the branch ahead, is set up again before its check", async () => {
     const ended = await afterKill(
       (left) => ({ ...left, behind: "tutti/a", setUp: true }),
