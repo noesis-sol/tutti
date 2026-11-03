@@ -92,6 +92,7 @@ import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
 import { type Said as SaidRecord, sayer } from "./say.ts"
 import { ready, unclosedIn, unmergedLabel } from "./scope.ts"
+import { followUpsOf } from "./scorecard.ts"
 import { noneVendored, readVendored } from "./vendored.ts"
 
 /** How often bd ready is read while tickets run: tickets become ready mid-run. */
@@ -849,10 +850,18 @@ export const make = (
           n: s.started,
           ...(options.limit === null ? {} : { limit: options.limit }),
           ...queue,
+          ...(footprint === undefined ? {} : { footprint: footprint.files.length }),
           text,
         }
+        // A ticket filed against one the run scored is a follow-up of it, for its scorecard.
+        const follows = followUpsOf(issue, (yield* events.figures).scoring)
         const moved = yield* ledger.transition(issue.id, Move.Dispatched(), {
           said: [record],
+          beside: follows.map((ticket) => ({
+            kind: "score_update" as const,
+            ticket,
+            follow_up: issue.id,
+          })),
         })
         if (Result.isFailure(moved)) {
           // A PHASE_BUG, which the ledger logged: nothing starts, and nothing is counted.

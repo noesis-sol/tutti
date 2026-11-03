@@ -73,7 +73,7 @@ the time.
 |---|---|---|
 | `phase` | a ticket moved from one phase to another | `ticket`; `from`, absent as it enters the run; `to`, absent as it leaves it (gone from `bd ready`); `cause`; and the new phase's details: `place` (`ToMerge`, 1 is next), `step` (`Merging`), `attempt` (`Resolving`, `Fixing`), `why` (`HeldBack`, `Deferred`, `Review`, `Blocked`, `Stopped`) |
 | `queue` | the number of ready tickets waiting for a slot, or held back, changed: the dashboard's **In queue** | `queued`; `held` and `held_by` while some are held back; `solo`; `machine_full: true` while the run holds at `--machine-workers` |
-| `dispatch` | a ticket was picked up | `ticket`, `title`; `n` and `limit`, as in `[n/limit]` (no `limit` for a run without one); `queued`, `held`, `held_by`, `solo` as for `queue`; `text` |
+| `dispatch` | a ticket was picked up | `ticket`, `title`; `n` and `limit`, as in `[n/limit]` (no `limit` for a run without one); `queued`, `held`, `held_by`, `solo` as for `queue`; `footprint`, how many files its footprint names, where the run read one; `text` |
 | `closed` | a ticket merged, or closed with no change of its own to merge | `ticket`, `title`; `detail`, `ffd6ce4 merged into main` or `no change to merge`; `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd` (see [What runs spend](#what-runs-spend)); `text` |
 | `deferred` | a ticket was set aside, deferred | `ticket`, `title`; `detail`, why (`by the worker`, `still in_progress, noted for review`, `set aside overnight: BLOCKED`, …); `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd`; `text` |
 | `asked` | a ticket waits on a question ticket for you | `ticket`, `title`; `detail`, the question's ID and title; `text` |
@@ -83,6 +83,8 @@ the time.
 | `reopened` | a ticket set aside for failing at once was reopened by an environment hold | `ticket`; `detail`; `text` |
 | `triage` | triage's verdict on a deferred ticket | `ticket`; `title`, the verdict; `detail`, as in `environment · high`; `text` |
 | `ticket_end` | a ticket's part in the run ended: it merged, closed with no change, was set aside, waits on you or stopped, or the run ended with it back in the queue; again each time it comes back and ends again, so its last in a run gives its whole | `ticket`; `outcome`: `merged`, `no_change`, `set_aside`, `needs_you`, `stopped` or `queued`; `phase`, the one it ended in (`Done`, `Deferred`, `Review`, `Asked`, `Blocked`, `Stopped`, and for `queued` `Waiting`, `Queued` or `HeldBack`); `why`, as that phase gives it (`CHECKS_FAILED`, the question's ID, `PAUSED`, what a Waiting ticket waits for: a ticket's ID, `probe` or `setup`, …); `seconds`, from when the run first took it up; `turns`, its workers' model round-trips; `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd` |
+| `score` | the ticket's scorecard, right after each of its `ticket_end` records, from the run's records about it so far (see [Scorecards](#scorecards)): its last in a run gives its whole | `ticket`, `outcome`, `phase` and `why`, as its `ticket_end`'s; `verifier`: `rounds` begun, `passed` and `failed` (the rounds that ended PASS, FAIL), `last` (the last verdict, `pass` or `fail`), `last_fix_verified` (with a round: `false` when tutti found its last fix unverified and no round began after); `hand_backs`; `resolving`, `fixing` and `working`, its seconds in each; `seconds`; `checks`: its merge, recheck and fix checks that `failed` and `timed_out`; `flaky`, its checks' FLAKY warnings; `denied`, its tool calls denied, by Claude Code without asking or by you (or tutti) when asked; `asked`, the questions it asked: the question tickets it waited on and AskUserQuestion's; `cost_usd`; `size`, the files its footprint named; `median`, of the tickets of its size class ended before it in the run (`tickets`, how many, `working`, `cost_usd`); `follow_ups` and `reverts`, those `score_update` records named so far |
+| `score_update` | something came of a ticket after it ended, for its scorecard: the run took up a ticket filed against it, or merged a commit reverting it. It may be about an earlier run's ticket | `ticket`, the one scored; `follow_up`, the ticket discovered from it, or blocked by it and filed after the run took it up; or `revert`, the commit whose subject starts with `Revert` and names it in parentheses, and `by`, the ticket whose merge brought that commit |
 
 **Workers:**
 
@@ -97,6 +99,7 @@ the time.
 | `steered`, `released` | a worker became steered, or was released (see [Steering](workers.md#steering)) | `ticket`, `text` |
 | `suspended` | a worker's session was suspended as the run ended | `ticket`, `session`; `why`: `quit`, `PAUSED`, `TICKET_LIMIT`, `waiting on you`, `run ended`, … |
 | `resumed` | a worker's session was resumed | `ticket`, `session`; `why`: `suspended` (by the last run), `answered` (its question), `gone` (it ended unexpectedly), `hand_back`, `set_aside` (an overnight run set its ticket aside, undeferred since); `text` |
+| `verifier` | a worker's verifier round began or ended, as its hooks see the verifier's Agent call; or tutti found its ticket deferred with its last fix unverified and gave it one more round | `ticket`; `detail`: `began`, `ended` or `unverified`; `verdict`, `pass` or `fail`, as an ended round's answer starts (absent when it starts with neither); `commit`, the fix no round checked (`unverified`) |
 | `turn` | a worker's turn ended: its SDK result | `ticket` (`tutti-probe` for the environment probe's session, `tutti-interview` for the feature interview's); `session`; `subtype`, the result's (`success`, `error_during_execution`, `error_max_turns`, …); `is_error: true` when it ended on an error; `cost_usd`, the turn's share of the session's cost; `turns`, its model round-trips; `duration_ms`, and `api_ms` of it waiting on the API; `tokens`, the turn's share by model, its subagents' and compactions' included |
 
 **Phases.** A `phase` record's `from` and `to` are among `Queued`, `HeldBack`, `Working`, `ToMerge`,
@@ -146,6 +149,34 @@ used, so the stream has what orchestra's has of a ticket's time and tokens, and 
 - **The run's.** The `end` record sums its workers' `tokens` and `cost_usd`, and its organ calls in
   `organs`. Costs are the SDK's estimates at list prices, not a bill: a subscription doesn't pay by
   the token.
+
+## Scorecards
+
+Every ticket whose part in the run ends gets a scorecard, a `score` record right after its
+`ticket_end`, computed from the run's own records about it, so that a change to how tutti works
+can be measured against the same figures run after run. Nothing reads a model's judgement into it:
+
+- its verifier rounds come from the `verifier` records, which its worker's hooks give as the
+  verifier's Agent call starts and ends, the verdict read from the first word of its answer;
+- its failed checks from the `check` records of its merge, recheck and fix checks, its FLAKY
+  warnings from its `warn` records, its denials from the `denied` and `attention_answered`
+  records, its questions from the `asked` and AskUserQuestion's `attention` records;
+- its hand-backs and its time in each phase from its `ticket_end`;
+- its size from its `dispatch` (the files its footprint names), and `median` from the scorecards
+  before it of tickets of a size like its own, in classes of 0–1, 2–3, 4–7, 8–15 and 16 or more
+  files, the latest of each ticket; a ticket with no footprint read is compared with the others
+  without one.
+
+What comes of a ticket later is a `score_update`: the run writes one as it takes up a ticket filed
+against it (discovered from it, or blocked by it and filed after the run took it up) and as a
+merge brings a commit reverting it (its subject starts with `Revert` and names the ticket in
+parentheses, as commit subjects here end). It can come after the ticket's last `score`, or in a
+later run, so a query joins them by ticket ([Analytics](analytics.md#scorecards)).
+
+There is no single figure: the [run report](organs.md#the-reviewer-and-the-run-report) ranks the scorecards by their
+parts in a fixed order (reverts, outcome, hand-backs and failed checks, an unverified last fix,
+failed verifier rounds, follow-ups, FLAKY warnings, denials and questions, then cost and working
+time over the run's median for the size) and shows each part, so that what moved stays in sight.
 
 ## Reading it
 

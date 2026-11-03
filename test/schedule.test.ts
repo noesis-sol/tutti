@@ -369,6 +369,7 @@ describe("BAD_TICKET_ID", () => {
       "phase:Deferred",
       "deferred",
       "ticket_end",
+      "score",
     ])
     expect(count).toBe(1)
   })

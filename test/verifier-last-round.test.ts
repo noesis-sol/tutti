@@ -326,6 +326,19 @@ describe("a ticket deferred after three verifier rounds with its last fix unveri
     expect(worked.phase?._tag).toBe("ToMerge")
     expect(offered).toEqual([id])
     expect(handed).toEqual([])
+    // Each round's start and end, and tutti's finding between the third and the last, are
+    // records for the ticket's scorecard.
+    expect(
+      ran.events.flatMap((record) =>
+        record.kind === "verifier"
+          ? [`${record.detail}${record.commit ? ` ${record.commit}` : ""}`]
+          : [],
+      ),
+    ).toEqual([
+      ...["began", "ended", "began", "ended", "began", "ended"],
+      `unverified ${givenHash(last)}`,
+      ...["began", "ended"],
+    ])
   })
 
   test("a fail defers it to triage, with no second round", async () => {

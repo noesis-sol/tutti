@@ -25,7 +25,8 @@ const aside = (body: Effect.Effect<unknown, never, Ledger | Beads | Log | Store>
         notes: issues.find((issue) => issue.id === "t-1")?.notes,
         status: issues.find((issue) => issue.id === "t-1")?.status,
         records: (yield* (yield* Captured).records).filter(
-          (record) => record.kind !== "phase" && record.kind !== "ticket_end",
+          (record) =>
+            record.kind !== "phase" && record.kind !== "ticket_end" && record.kind !== "score",
         ),
         log: yield* texts,
         phase: (yield* ledger.current).tickets.get("t-1" as TicketId)?.phase,

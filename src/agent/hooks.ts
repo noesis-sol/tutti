@@ -24,6 +24,7 @@ import type {
   PreCompactHookInput,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Data, Effect, FiberSet, Predicate } from "effect"
+import type { verdicts } from "../run/events.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { SessionFibers } from "./callbacks.ts"
 
@@ -69,10 +70,38 @@ export const foregroundVerifier = (input: HookInput): HookJSONOutput => {
  */
 export type VerifierEvent = Data.TaggedEnum<{
   Began: { readonly call: string; readonly commits: ReadonlyArray<string> }
-  Ended: { readonly call: string }
+  /** `verdict`: what its answer starts with, PASS or FAIL; absent when it starts with neither. */
+  Ended: { readonly call: string; readonly verdict?: Verdict }
 }>
 
 export const VerifierEvent = Data.taggedEnum<VerifierEvent>()
+
+/** A verifier round's verdict, as the verifier's answer starts (§ 4.11). */
+export type Verdict = (typeof verdicts)[number]
+
+// The answer's first words: PASS or FAIL, in bold or a heading's, before a colon, a dash or the
+// end of the line.
+const verdictStart = /^[\s#*_>`]*(PASS|FAIL)(?![A-Za-z0-9_])/
+
+/**
+ * The verdict the verifier's answer `response` starts with, as its Agent call's PostToolUse gives
+ * it (the SDK's AgentOutput, its text in `content`, or the text itself); undefined when its text
+ * starts with neither PASS nor FAIL, or it has no text.
+ */
+export const verdictOf = (response: unknown): Verdict | undefined => {
+  const text =
+    typeof response === "string"
+      ? response
+      : Predicate.isObject(response) && Array.isArray(response.content)
+        ? response.content
+            .flatMap((block: unknown) =>
+              Predicate.isObject(block) && typeof block.text === "string" ? [block.text] : [],
+            )
+            .join("\n")
+        : ""
+  const found = verdictStart.exec(text)?.[1]
+  return found === "PASS" ? "pass" : found === "FAIL" ? "fail" : undefined
+}
 
 /** The words in `text` that may be commit hashes, abbreviated or whole, each once, in order. */
 export const hashesIn = (text: string): ReadonlyArray<string> => [
@@ -96,7 +125,11 @@ export const verifierEvent = (input: HookInput): VerifierEvent | undefined => {
     if (input.tool_name !== "Agent" || !Predicate.isObject(toolInput)) return undefined
     if (toolInput.subagent_type !== verifierAgent) return undefined
     const call = input.tool_use_id
-    if (input.hook_event_name !== "PreToolUse") return VerifierEvent.Ended({ call })
+    if (input.hook_event_name === "PostToolUseFailure") return VerifierEvent.Ended({ call })
+    if (input.hook_event_name === "PostToolUse") {
+      const verdict = verdictOf(input.tool_response)
+      return VerifierEvent.Ended(verdict === undefined ? { call } : { call, verdict })
+    }
     const prompt = typeof toolInput.prompt === "string" ? toolInput.prompt : ""
     return VerifierEvent.Began({ call, commits: hashesIn(prompt) })
   } catch {

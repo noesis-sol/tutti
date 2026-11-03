@@ -7,13 +7,14 @@
 // leaves part of a record without its newline: the newline is written at once, or, where that
 // fails too, ahead of the next record, so only the cut record is lost, not the one after it. A file
 // an earlier run left so cut, its last byte not a newline, is ended the same way, ahead of the
-// first record of this run.
+// first record of this run. Each record is added to the run's figures as it is written (figures.ts),
+// and a ticket's `ticket_end` is followed by its scorecard, a `score` record (scorecard.ts).
 import { fstatSync, readSync, writeSync } from "node:fs"
 import { Clock, Context, Effect, Layer, Result } from "effect"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { runFolder } from "../services/Worktrees.ts"
 import { type Event, type EventRecord, encodeLine, version } from "./events.ts"
-import { addRecord, type Figures, noFigures } from "./figures.ts"
+import { addRecord, type Figures, noFigures, scoreAfter } from "./figures.ts"
 import { timestamp } from "./localTime.ts"
 
 /** The event stream's file, relative to the main checkout's top level (§ 9.1). */
@@ -126,20 +127,21 @@ export class EventStream extends Context.Service<
           })
 
         let figures = noFigures
-        return EventStream.of({
-          emit: (event) =>
-            Effect.flatMap(Clock.currentTimeMillis, (now) => {
-              const line = encodeLine(stamp(event, options.run, now))
-              if (Result.isFailure(line)) {
-                return failed(
-                  `a ${event.kind} record doesn't fit its schema: ${line.failure.message}`,
-                )
-              }
-              figures = addRecord(figures, event, now)
-              return write(`${line.success}\n`)
-            }),
-          figures: Effect.sync(() => figures),
-        })
+        const record = (event: Event): Effect.Effect<void> =>
+          Effect.flatMap(Clock.currentTimeMillis, (now) => {
+            const line = encodeLine(stamp(event, options.run, now))
+            if (Result.isFailure(line)) {
+              return failed(
+                `a ${event.kind} record doesn't fit its schema: ${line.failure.message}`,
+              )
+            }
+            figures = addRecord(figures, event, now)
+            // A ticket's scorecard follows its ticket_end, from the records before it.
+            const score = scoreAfter(figures, event)
+            const written = write(`${line.success}\n`)
+            return score === undefined ? written : Effect.andThen(written, record(score))
+          })
+        return EventStream.of({ emit: record, figures: Effect.sync(() => figures) })
       }),
     )
 }

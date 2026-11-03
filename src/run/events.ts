@@ -182,6 +182,8 @@ export const Dispatch = Schema.Struct({
   n: Count,
   limit: optional(Count),
   ...queueFields,
+  /** How many files its footprint names, where the run read one: its size, for its scorecard. */
+  footprint: optional(Count),
   text: Schema.String,
 })
 
@@ -582,6 +584,106 @@ export const TicketEnd = Schema.Struct({
   ...spentFields,
 })
 
+/** What became of a verifier round, or what tutti found of a ticket's last fix (§ 4.11). */
+export const verifierDetails = ["began", "ended", "unverified"] as const
+
+/** How a verifier round ended, as its answer starts: PASS or FAIL. */
+export const verdicts = ["pass", "fail"] as const
+
+/**
+ * A worker's verifier round began or ended, as its hooks show the verifier's Agent call; or tutti
+ * found the ticket deferred with its last fix unverified (`unverified`, src/run/lastRound.ts) and
+ * gave its worker one more round. tutti's own.
+ */
+export const Verifier = Schema.Struct({
+  ...head("verifier"),
+  ticket: Schema.String,
+  detail: Schema.Literals(verifierDetails),
+  /** ended: the verdict its answer starts with; absent when it starts with neither. */
+  verdict: optional(Schema.Literals(verdicts)),
+  /** unverified: the fix, the branch's head, that no round checked. */
+  commit: optional(Schema.String),
+})
+
+/** A ticket's verifier rounds, as its scorecard counts them. */
+export const ScoreVerifier = Schema.Struct({
+  /** The rounds begun. */
+  rounds: Count,
+  /** The rounds that ended PASS, and FAIL. */
+  passed: Count,
+  failed: Count,
+  /** The verdict of the last round that ended with one. */
+  last: optional(Schema.Literals(verdicts)),
+  /**
+   * With a round: false when tutti found its last fix unverified (`unverified`) and no round began
+   * after; true otherwise.
+   */
+  last_fix_verified: optional(Schema.Boolean),
+})
+
+/** The median of the tickets of a size like a ticket's, ended in the run before it. */
+export const ScoreMedian = Schema.Struct({
+  /** How many tickets it is the median of, the latest score of each. */
+  tickets: Count,
+  working: Seconds,
+  /** Of those that said what they cost. */
+  cost_usd: optional(Usd),
+})
+
+/**
+ * A ticket's scorecard (src/run/scorecard.ts), written after each of its `ticket_end` records,
+ * computed from the run's records about it so far: its last `score` in a run gives its whole, as
+ * its last `ticket_end` does. tutti's own.
+ */
+export const Score = Schema.Struct({
+  ...head("score"),
+  ticket: Schema.String,
+  outcome: Schema.Literals(ticketOutcomes),
+  phase: Schema.Literals([...endingPhases, ...queuePhases]),
+  why: optional(Schema.String),
+  verifier: ScoreVerifier,
+  hand_backs: HandBacks,
+  /** Its time in Resolving and in Fixing, and Working. */
+  resolving: Seconds,
+  fixing: Seconds,
+  working: Seconds,
+  /** From when the run first took it up, as its ticket_end's. */
+  seconds: Seconds,
+  /** Its merge, recheck and fix checks that failed, and that timed out. */
+  checks: Schema.Struct({ failed: Count, timed_out: Count }),
+  /** The FLAKY warnings of its checks. */
+  flaky: Count,
+  /** Its tool calls denied: by Claude Code without asking, and by you or tutti when asked. */
+  denied: Count,
+  /** The questions it asked: question tickets it waited on, and AskUserQuestion's. */
+  asked: Count,
+  cost_usd: optional(Usd),
+  /** How many files its footprint named, as its dispatch said; absent when it didn't say. */
+  size: optional(Count),
+  /** The median of the tickets of its size class ended before it; absent when there were none. */
+  median: optional(ScoreMedian),
+  /** The follow-ups and reverts its score_update records have named so far. */
+  follow_ups: optional(Schema.Array(Schema.String)),
+  reverts: optional(Schema.Array(Schema.String)),
+})
+
+/**
+ * Something came of a ticket after it ended, for its scorecard (src/run/scorecard.ts): a ticket
+ * filed against it was taken up (`follow_up`), or a commit merged reverted it (`revert`). tutti's
+ * own.
+ */
+export const ScoreUpdate = Schema.Struct({
+  ...head("score_update"),
+  /** The ticket scored, which may be an earlier run's. */
+  ticket: Schema.String,
+  /** The ticket filed against it, discovered from it or blocked by it. */
+  follow_up: optional(Schema.String),
+  /** The commit that reverts it. */
+  revert: optional(Schema.String),
+  /** revert: the ticket whose merge brought the commit. */
+  by: optional(Schema.String),
+})
+
 /** The phases of § 5.1, by their tags. */
 export const phaseNames = [
   "Queued",
@@ -791,6 +893,9 @@ export const kinds = {
   turn: Turn,
   organ: Organ,
   ticket_end: TicketEnd,
+  verifier: Verifier,
+  score: Score,
+  score_update: ScoreUpdate,
   end: End,
   phase: Phase,
   attention: Attention,

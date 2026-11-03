@@ -185,6 +185,7 @@ import {
   readyPoll,
   type Scheduler,
 } from "./schedule.ts"
+import { scorecardsEvidence, scorecardsReport } from "./scorecard.ts"
 import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
@@ -1230,6 +1231,17 @@ const runFrom = (
     if (earlyChecks !== null) sections.push(section("Early checks", earlyChecks))
     const capped = capEvidence(yield* pressure.spent)
     if (capped !== null) sections.push(section("Workers allowed under memory pressure", capped))
+    // Each ended ticket's scorecard (scorecard.ts), for the reviewer and the report's section.
+    const scores = [...(yield* events.figures).scoring.scores.values()]
+    if (scores.length > 0) {
+      sections.push(
+        section(
+          "Each ticket's scorecard from the run's records, best first, the worst last",
+          scorecardsEvidence(scores).join("\n"),
+        ),
+      )
+    }
+    const after = scorecardsReport(scores) + checked.after
     const exitCode = checked.code ?? exitCodeOf(all)
 
     // Gathered only for a report, which a quit skips: bd lists the scope's tickets level by level.
@@ -1251,7 +1263,7 @@ const runFrom = (
       exitCode,
       quit: quitted,
       sections,
-      ...(checked.after === "" ? {} : { after: checked.after }),
+      ...(after === "" ? {} : { after }),
     }
     const reportContext = yield* Effect.context<RunEnv | Ledger>()
     const cost = yield* Effect.serviceOption(OrganCost)

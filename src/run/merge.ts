@@ -106,7 +106,7 @@ import {
 } from "./checkback.ts"
 import { writtenOnly } from "./checkWrote.ts"
 import type { EarlyChecks } from "./earlyCheck.ts"
-import type { EventStream } from "./eventstream.ts"
+import { EventStream } from "./eventstream.ts"
 import {
   type AtReset,
   type HandBacks,
@@ -123,6 +123,7 @@ import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
 import { info, type Said } from "./say.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
+import { revertsIn } from "./scorecard.ts"
 import { shownChanges } from "./settle.ts"
 import { fileList, type SetUps, setUp } from "./setup.ts"
 import { Trash } from "./trash.ts"
@@ -1561,6 +1562,16 @@ export const fastForward = (
     }
     const short = shortHash(hash)
     const named = commit === undefined ? short : line`${short} ${commit.subject}`
+    // A commit merged that reverts another ticket goes on that ticket's scorecard.
+    const events = yield* EventStream
+    for (const reverted of revertsIn(own, id)) {
+      yield* events.emit({
+        kind: "score_update",
+        ticket: reverted.ticket,
+        revert: reverted.commit,
+        by: id,
+      })
+    }
     yield* retire(ticket, options, {
       move: Move.FastForwarded({ commit: hash }),
       moveToBase: false,

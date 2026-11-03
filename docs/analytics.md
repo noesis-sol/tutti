@@ -46,7 +46,12 @@ FROM read_json(path, format = 'newline_delimited', filename = true, columns = {
   reason_type: 'VARCHAR', reason: 'VARCHAR',
   status: 'VARCHAR', "limit": 'VARCHAR', resets_at: 'TIMESTAMPTZ', session: 'VARCHAR',
   "window": 'VARCHAR', utilization: 'DOUBLE', waited: 'DOUBLE',
-  pressure: 'VARCHAR', swapping: 'DOUBLE', allowed: 'INTEGER'
+  pressure: 'VARCHAR', swapping: 'DOUBLE', allowed: 'INTEGER',
+  footprint: 'INTEGER', verdict: 'VARCHAR', follow_up: 'VARCHAR', revert: 'VARCHAR',
+  verifier: 'STRUCT(rounds INTEGER, passed INTEGER, failed INTEGER, "last" VARCHAR, last_fix_verified BOOLEAN)',
+  checks: 'STRUCT(failed INTEGER, timed_out INTEGER)', resolving: 'DOUBLE', fixing: 'DOUBLE',
+  working: 'DOUBLE', flaky: 'INTEGER', denied: 'INTEGER', asked: 'INTEGER', size: 'INTEGER',
+  median: 'STRUCT(tickets INTEGER, working DOUBLE, cost_usd DOUBLE)'
 });
 
 CREATE OR REPLACE MACRO transcripts(path) AS TABLE
@@ -351,6 +356,72 @@ SELECT detail, why, count(*) AS times
 FROM events('.tutti/run/events.jsonl')
 WHERE kind = 'early_check' AND detail IN ('cancelled', 'not run', 'miss')
 GROUP BY ALL ORDER BY times DESC, detail, why;
+```
+
+## Scorecards
+
+Each ticket's [scorecard](events.md#scorecards) in each run, its last `score` there, with the
+follow-ups and reverts its `score_update` records have named since, in any run: the baseline a
+change to how tutti works is measured against.
+
+```sql
+WITH scores AS (
+  SELECT * FROM events('.tutti/run/events.jsonl') WHERE kind = 'score'
+  QUALIFY row_number() OVER (PARTITION BY run, ticket ORDER BY time DESC, seq DESC) = 1
+), later AS (
+  SELECT ticket, count(DISTINCT follow_up) AS follow_ups, count(DISTINCT revert) AS reverts
+  FROM events('.tutti/run/events.jsonl') WHERE kind = 'score_update' GROUP BY ticket
+)
+SELECT run, ticket, outcome, verifier.rounds AS rounds, verifier.failed AS failed_rounds,
+  hand_backs.resolve + hand_backs.fix AS hand_backs,
+  checks.failed + checks.timed_out AS checks_failed, flaky, denied, asked,
+  round(working / 60, 1) AS working_minutes, cost_usd,
+  coalesce(follow_ups, 0) AS follow_ups, coalesce(reverts, 0) AS reverts
+FROM scores LEFT JOIN later USING (ticket)
+ORDER BY run, ticket;
+```
+
+The scorecards of each run summed, to set run against run: how many tickets merged, the verifier
+rounds a ticket and those that failed, the last fixes left unverified, the hand-backs, the checks
+that failed or timed out, the FLAKY warnings, the denials and questions, a ticket's median working
+time and cost, and the follow-ups filed against the run's tickets since.
+
+```sql
+WITH scores AS (
+  SELECT * FROM events('.tutti/run/events.jsonl') WHERE kind = 'score'
+  QUALIFY row_number() OVER (PARTITION BY run, ticket ORDER BY time DESC, seq DESC) = 1
+), later AS (
+  SELECT ticket, count(DISTINCT follow_up) AS follow_ups
+  FROM events('.tutti/run/events.jsonl') WHERE kind = 'score_update' GROUP BY ticket
+)
+SELECT run, count(*) AS tickets, count(*) FILTER (outcome = 'merged') AS merged,
+  round(avg(verifier.rounds), 2) AS rounds, sum(verifier.failed)::BIGINT AS failed_rounds,
+  count(*) FILTER (verifier.last_fix_verified = false) AS unverified,
+  sum(hand_backs.resolve + hand_backs.fix)::BIGINT AS hand_backs,
+  sum(checks.failed + checks.timed_out)::BIGINT AS checks_failed, sum(flaky)::BIGINT AS flaky,
+  sum(denied)::BIGINT AS denied, sum(asked)::BIGINT AS asked,
+  round(median(working) / 60, 1) AS median_working_minutes,
+  round(median(cost_usd), 2) AS median_cost_usd,
+  coalesce(sum(follow_ups), 0)::BIGINT AS follow_ups
+FROM scores LEFT JOIN later USING (ticket)
+GROUP BY run ORDER BY run;
+```
+
+Each ticket's working time and cost over the median of its run's tickets of a size like its own,
+in the size classes the scorecard uses (0–1, 2–3, 4–7, 8–15 and 16 or more files in its
+footprint; `-1` where its size is unknown), as the report's `×` gives them.
+
+```sql
+WITH scores AS (
+  SELECT *, CASE WHEN size IS NULL THEN -1 WHEN size <= 1 THEN 0
+    ELSE least(4, floor(log2(size)))::INTEGER END AS size_class
+  FROM events('.tutti/run/events.jsonl') WHERE kind = 'score'
+  QUALIFY row_number() OVER (PARTITION BY run, ticket ORDER BY time DESC, seq DESC) = 1
+)
+SELECT run, ticket, size, size_class,
+  round(working / nullif(median(working) OVER (PARTITION BY run, size_class), 0), 2) AS working_x,
+  round(cost_usd / nullif(median(cost_usd) OVER (PARTITION BY run, size_class), 0), 2) AS cost_x
+FROM scores ORDER BY run, size_class, ticket;
 ```
 
 ## Waiting on you

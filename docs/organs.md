@@ -100,8 +100,8 @@ the run report. The evidence: how the run ended, the run's whole log, the commit
 base, the tickets closed (with their close reasons), set aside (with their notes, triage's
 included) and still in progress, each ticket's tallies (attention requests, answers, denials,
 compactions, your messages), what the check said of each ticket set aside after its check failed,
-the full check, the follow-ups filed outside a `--ticket` run's scope, the feature request, and what
-the organs have cost so far.
+the full check, the follow-ups filed outside a `--ticket` run's scope, the feature request, each
+ticket's [scorecard](events.md#scorecards), and what the organs have cost so far.
 
 The report has three sections:
 
@@ -114,6 +114,12 @@ The report has three sections:
   as `Bash(ffprobe:*)`), removals the safety check denied (with the worker-prompt rule, since no
   rule can allow them), what stopped the run, failed checks, follow-ups filed outside the scope, and
   tickets you steered. Otherwise `Nothing.`
+
+After them tutti adds a **Scorecards** section of its own, written from the run's `score` records
+rather than by the reviewer: a table of the tickets, worst first, or of the worst five and the best
+five in a run of more than ten, with each one's outcome, verifier rounds, hand-backs, failed and
+FLAKY checks, denials, questions, working time and cost (each beside the run's median for tickets
+of its size, as `1.8×`), and the follow-ups and reverts filed against it so far.
 
 On a terminal a spinner shows while it is written (`⣾ Writing the run report with Claude… 0:42`),
 then `◆ Run report written (12s)`, the report rendered as Markdown, and

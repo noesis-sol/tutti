@@ -186,7 +186,9 @@ describe("a failed full check's last 40 lines", () => {
     expect(evidence).toMatch(/^ *FULL_CHECK_FAILED: 'scripts\/check-full\.sh' fails on main at /)
     expect(evidence).toEndWith(`\nThe end of its output:\n${end.join("\n")}`)
 
-    expect(report).toContain(`${reviewerText}\n## Full check\n\n`)
+    // The tickets' scorecards come first after the reviewer's text, then the full check.
+    expect(report).toContain(`${reviewerText}\n## Scorecards\n\n`)
+    expect(report).toMatch(/\n\| t-1 \| merged \| none \|[^\n]*\|\n\n## Full check\n\n/)
     expect(report).toMatch(
       /\n## Full check\n\n`scripts\/check-full\.sh` failed in the suite e2e; filed \S+\. The whole output is in `.*\/\.tutti\/run\/check-full\.log`\. Its end:\n\n```\n/,
     )

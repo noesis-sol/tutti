@@ -102,7 +102,8 @@ describe("a transition's said records", () => {
         const records = yield* given
         const closed = records.find((each) => each.kind === "closed")
         expect(closed).toMatchObject({ ticket: "t-1", text, hand_backs: { resolve: 0, fix: 0 } })
-        expect(records.at(-1)?.kind).toBe("ticket_end")
+        // Its ticket_end comes last of the transition's records, its scorecard after it.
+        expect(records.slice(-2).map((each) => each.kind)).toEqual(["ticket_end", "score"])
       }),
     )
   })

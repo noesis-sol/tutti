@@ -47,6 +47,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import type { efforts } from "../project/settings.ts"
+import { EventStream } from "../run/eventstream.ts"
 import { detail, Log } from "../run/log.ts"
 import { Spending } from "../run/spending.ts"
 import type { TicketId } from "../services/Beads.ts"
@@ -414,6 +415,8 @@ export const makeWorkers = (
     const log = yield* Log
     const usage = yield* Effect.serviceOption(UsageLimits)
     const spending = yield* Effect.serviceOption(Spending)
+    // The verifier rounds' records, for the tickets' scorecards (src/run/scorecard.ts).
+    const events = yield* Effect.serviceOption(EventStream)
 
     const late = (ticket: TicketId) => {
       const text = `a background task ended and no turn came to report it within ${reportWait}; not waiting for it`
@@ -431,6 +434,19 @@ export const makeWorkers = (
               round._tag === "Began" && !was.rounds.some((each) => each.call === round.call)
             if (begun)
               yield* PubSub.publish(verifierCalls, { ticket: entry.ticket, call: round.call })
+            const ended =
+              round._tag === "Ended" &&
+              was.rounds.some((each) => each.call === round.call && !each.ended)
+            if (Option.isSome(events) && (begun || ended)) {
+              yield* events.value.emit({
+                kind: "verifier",
+                ticket: entry.ticket,
+                detail: begun ? "began" : "ended",
+                ...(round._tag === "Ended" && round.verdict !== undefined
+                  ? { verdict: round.verdict }
+                  : {}),
+              })
+            }
           }
         }
         const now = yield* Clock.currentTimeMillis

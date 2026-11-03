@@ -235,6 +235,11 @@
             true
           ]
         },
+        "footprint": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
         "text": {
           "type": "string"
         }
@@ -2347,6 +2352,333 @@
         "phase",
         "seconds",
         "turns"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "enum": [
+            1
+          ]
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "verifier"
+          ]
+        },
+        "ticket": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string",
+          "enum": [
+            "began",
+            "ended",
+            "unverified"
+          ]
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "commit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "v",
+        "time",
+        "run",
+        "kind",
+        "ticket",
+        "detail"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "enum": [
+            1
+          ]
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "score"
+          ]
+        },
+        "ticket": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "merged",
+            "no_change",
+            "set_aside",
+            "needs_you",
+            "stopped",
+            "queued"
+          ]
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "Done",
+            "Asked",
+            "Deferred",
+            "Review",
+            "Blocked",
+            "Stopped",
+            "Waiting",
+            "Queued",
+            "HeldBack"
+          ]
+        },
+        "why": {
+          "type": "string"
+        },
+        "verifier": {
+          "type": "object",
+          "properties": {
+            "rounds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "passed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "last": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail"
+              ]
+            },
+            "last_fix_verified": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "rounds",
+            "passed",
+            "failed"
+          ],
+          "additionalProperties": true
+        },
+        "hand_backs": {
+          "type": "object",
+          "properties": {
+            "resolve": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "fix": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "resolve",
+            "fix"
+          ],
+          "additionalProperties": true
+        },
+        "resolving": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fixing": {
+          "type": "number",
+          "minimum": 0
+        },
+        "working": {
+          "type": "number",
+          "minimum": 0
+        },
+        "seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "checks": {
+          "type": "object",
+          "properties": {
+            "failed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "timed_out": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "failed",
+            "timed_out"
+          ],
+          "additionalProperties": true
+        },
+        "flaky": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "denied": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "questions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "median": {
+          "type": "object",
+          "properties": {
+            "tickets": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "working": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cost_usd": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "tickets",
+            "working"
+          ],
+          "additionalProperties": true
+        },
+        "follow_ups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reverts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "v",
+        "time",
+        "run",
+        "kind",
+        "ticket",
+        "outcome",
+        "phase",
+        "verifier",
+        "hand_backs",
+        "resolving",
+        "fixing",
+        "working",
+        "seconds",
+        "checks",
+        "flaky",
+        "denied",
+        "questions"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "enum": [
+            1
+          ]
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "score_update"
+          ]
+        },
+        "ticket": {
+          "type": "string"
+        },
+        "follow_up": {
+          "type": "string"
+        },
+        "revert": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "v",
+        "time",
+        "run",
+        "kind",
+        "ticket"
       ],
       "additionalProperties": true
     },

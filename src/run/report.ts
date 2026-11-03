@@ -74,12 +74,13 @@ export interface ReportRun {
   readonly quit: boolean
   /**
    * The rest of the evidence the run gathered, as sections: the failed checks, the full check, the
-   * feature request, the follow-ups filed outside a scoped run.
+   * feature request, the follow-ups filed outside a scoped run, the tickets' scorecards.
    */
   readonly sections?: ReadonlyArray<Section>
   /**
-   * What the report says after the reviewer's text, whatever it wrote, in Markdown: a failed full
-   * check and the end of its output (fullCheckReport).
+   * What the report says after the reviewer's text, whatever it wrote, in Markdown: the worst and
+   * best tickets' scorecards (scorecard.ts scorecardsReport), then a failed full check and the end
+   * of its output (fullCheckReport).
    */
   readonly after?: string
 }
@@ -274,7 +275,7 @@ export const listCaps = {
 export const evidenceCap = { lines: 1000, characters: 15_000 }
 
 /** The most sections the run gathers itself (ReportRun.sections). */
-export const runSections = 4
+export const runSections = 5
 
 /**
  * About how many characters of evidence the reviewer is given at most: every section's cap, and

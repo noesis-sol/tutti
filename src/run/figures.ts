@@ -15,6 +15,9 @@
 import { Duration } from "effect"
 import { formatDuration } from "../project/configFile.ts"
 import type { checkResults, checkSuites, Event, Tokens } from "./events.ts"
+import { median, noScoring, type Score, type Scoring, scoreOf, scoreStep } from "./scorecard.ts"
+
+export { median }
 
 type Suite = (typeof checkSuites)[number]
 
@@ -68,6 +71,8 @@ export interface Figures {
   readonly windows: ReadonlyMap<string, { readonly first: number; readonly last: number }>
   /** The time the machine slept while the run went, in milliseconds. */
   readonly slept: number
+  /** Each ticket's tally and latest scorecard (scorecard.ts). */
+  readonly scoring: Scoring
 }
 
 export const noFigures: Figures = {
@@ -82,6 +87,7 @@ export const noFigures: Figures = {
   tickets: new Map(),
   windows: new Map(),
   slept: 0,
+  scoring: noScoring,
 }
 
 const plus = <K>(map: ReadonlyMap<K, number>, key: K, n: number): ReadonlyMap<K, number> =>
@@ -89,6 +95,20 @@ const plus = <K>(map: ReadonlyMap<K, number>, key: K, n: number): ReadonlyMap<K,
 
 /** `figures` with `event`, written at `at`, added. */
 export const addRecord = (figures: Figures, event: Event, at: number): Figures => {
+  const summed = sums(figures, event, at)
+  const scoring = scoreStep(figures.scoring, event, at)
+  return scoring === summed.scoring ? summed : { ...summed, scoring }
+}
+
+/**
+ * The scorecard the EventStream writes after `event`, given `figures` with it added: a ticket's
+ * after its `ticket_end`, none after another record.
+ */
+export const scoreAfter = (figures: Figures, event: Event): Score | undefined =>
+  event.kind === "ticket_end" ? scoreOf(figures.scoring, event) : undefined
+
+// `figures`' sums with `event`, written at `at`, added.
+const sums = (figures: Figures, event: Event, at: number): Figures => {
   switch (event.kind) {
     case "phase": {
       const was = figures.open.get(event.ticket)
@@ -332,15 +352,6 @@ export const tokenCount = (n: number): string => {
 
 /** Dollars to the cent: `$44.75`. */
 export const dollarsText = (usd: number): string => `$${usd.toFixed(2)}`
-
-/** The middle of `values`, or the mean of the two middle ones. */
-export const median = (values: ReadonlyArray<number>): number => {
-  const sorted = [...values].sort((a, b) => a - b)
-  const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1
-    ? (sorted[middle] ?? 0)
-    : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
-}
 
 /**
  * The Spent line's parts, where the turns spent anything: the tokens, the cache's share of the

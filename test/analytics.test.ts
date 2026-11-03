@@ -5,8 +5,11 @@
 // merges in the second run, carried over, proj-b1 merges there after a conflict hand-back, its
 // cleanup failing, and proj-b2 closes with no change. proj-a4 waits for a slot, then is held back
 // for a merge until it leaves bd ready; proj-b3 waits for a slot, then is held back for an overlap
-// as the run drains. Beside it, workers/ has proj-a1's, proj-a3's and proj-b1's transcripts, with
-// the verifier's runs, and issues.jsonl is bd's export of the tickets.
+// as the run drains. Its verifier records give proj-a1 two rounds, FAIL then PASS, and proj-b1 one,
+// PASS; each ticket_end has the score the EventStream writes after it, and proj-b1, dispatched in
+// the second run, is a follow-up of proj-a2 (a score_update). Beside it, workers/ has proj-a1's,
+// proj-a3's and proj-b1's transcripts, with the verifier's runs, and issues.jsonl is bd's export of
+// the tickets.
 import { describe, expect, test } from "bun:test"
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -317,6 +320,84 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
     },
     { detail: "miss", why: "its turn did not check it", times: 1 },
   ],
+  // Each ticket's scorecard in each run, with the follow-ups filed against it since
+  [
+    ["2026-10-20T06:00:00.000Z", "proj-a1", "merged", 2, 1, 1, 1, 2, 2, 0, 12, 1.65, 0],
+    ["2026-10-20T06:00:00.000Z", "proj-a2", "set_aside", 0, 0, 0, 2, 0, 0, 0, 9, 0.8, 1],
+    ["2026-10-20T06:00:00.000Z", "proj-a3", "needs_you", 0, 0, 0, 0, 0, 2, 2, 44, 0.55, 0],
+    ["2026-10-21T06:18:11.587Z", "proj-a3", "merged", 0, 0, 0, 0, 0, 0, 0, 8, 0.3, 0],
+    ["2026-10-21T06:18:11.587Z", "proj-b1", "merged", 1, 0, 1, 0, 2, 0, 0, 7, 0.8, 0],
+    ["2026-10-21T06:18:11.587Z", "proj-b2", "no_change", 0, 0, 0, 0, 0, 0, 0, 2, 0.1, 0],
+  ].map(([run, ticket, outcome, rounds, failed_rounds, hand_backs, checks_failed, ...rest]) => {
+    const [flaky, denied, asked, working_minutes, cost_usd, follow_ups] = rest
+    return {
+      run,
+      ticket,
+      outcome,
+      rounds,
+      failed_rounds,
+      hand_backs,
+      checks_failed,
+      flaky,
+      denied,
+      asked,
+      working_minutes,
+      cost_usd,
+      follow_ups,
+      reverts: 0,
+    }
+  }),
+  // The scorecards of each run summed
+  [
+    {
+      run: "2026-10-20T06:00:00.000Z",
+      tickets: 3,
+      merged: 1,
+      rounds: 0.67,
+      failed_rounds: 1,
+      unverified: 0,
+      hand_backs: 1,
+      checks_failed: 3,
+      flaky: 2,
+      denied: 4,
+      asked: 2,
+      median_working_minutes: 12,
+      median_cost_usd: 0.8,
+      follow_ups: 1,
+    },
+    {
+      run: "2026-10-21T06:18:11.587Z",
+      tickets: 3,
+      merged: 2,
+      rounds: 0.33,
+      failed_rounds: 0,
+      unverified: 0,
+      hand_backs: 1,
+      checks_failed: 0,
+      flaky: 2,
+      denied: 0,
+      asked: 0,
+      median_working_minutes: 7,
+      median_cost_usd: 0.3,
+      follow_ups: 0,
+    },
+  ],
+  // Working time and cost over the median of the run's tickets of the same size class
+  [
+    ["2026-10-20T06:00:00.000Z", "proj-a1", 3, 1, 1.14, 1.35],
+    ["2026-10-20T06:00:00.000Z", "proj-a2", 2, 1, 0.86, 0.65],
+    ["2026-10-20T06:00:00.000Z", "proj-a3", 5, 2, 1, 1],
+    ["2026-10-21T06:18:11.587Z", "proj-b2", 1, 0, 1, 1],
+    ["2026-10-21T06:18:11.587Z", "proj-b1", 3, 1, 1, 1],
+    ["2026-10-21T06:18:11.587Z", "proj-a3", 5, 2, 1, 1],
+  ].map(([run, ticket, size, size_class, working_x, cost_x]) => ({
+    run,
+    ticket,
+    size,
+    size_class,
+    working_x,
+    cost_x,
+  })),
   // Each request
   [
     {

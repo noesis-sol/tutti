@@ -11,11 +11,12 @@
 // with the hashes its prompt names, one of them the commit the worker gave it, and its end. The
 // commit the last round checked is the newest of the branch's commits beyond the base that its
 // prompt names; a round that names none of them can't say, and is left as it is.
-import { Effect, Result } from "effect"
+import { Effect, Option, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import type { VerifierRounds } from "../agent/hooks.ts"
 import { Beads } from "../services/Beads.ts"
 import { type Commit, Git, type GitError, givenHash, type Sha } from "../services/Git.ts"
+import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
 import type { Settled } from "./settle.ts"
@@ -73,6 +74,15 @@ export const lastRound = (
       host.send(id, { text: lastRoundText(givenHash(fix)), from: "clientComposed" }),
     )
     if (Result.isFailure(sent)) return false
+    const events = yield* Effect.serviceOption(EventStream)
+    if (Option.isSome(events)) {
+      yield* events.value.emit({
+        kind: "verifier",
+        ticket: id,
+        detail: "unverified",
+        commit: givenHash(fix),
+      })
+    }
     yield* (yield* Log).write(
       detail`${id} deferred after three verifier rounds with its last fix unverified: one more round`,
     )
