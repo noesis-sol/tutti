@@ -45,7 +45,12 @@
 // three processes each went up and down, peaks of 0.6-1.15 GB, one from 1149 MB to 55 MB within
 // 10 s (2026-11-03), so nothing caps the files a process runs, which bun 1.4.3 can't anyway. What
 // piled up was the files before's garbage, no file alone taking over 620 MB, which the preload,
-// test/warm-up.ts, now collects after each file (tutti-3cri).
+// test/warm-up.ts, now collects after each file (tutti-3cri). What a process's tests start is kept
+// apart, and counted once for the run, not once a process (tutti-q61i): a few slow files start big
+// short-lived processes, build-script.test.ts' bun build --compile 2.5 GB, tutti-skill.test.ts'
+// bun src/main.ts 1 GB, alone each 620 MB at most, and one run's sample catching the compile had
+// set every run's processes at 2.5 GB. A plain run counts what plain runs' tests started, a
+// TUTTI_SLOW run what slow runs' did.
 //
 // The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or
@@ -428,6 +433,8 @@ export interface Sizing {
   readonly memory: number | undefined
   /** The memory one test process takes, in bytes: the record's high mark, or defaultProcessMemory. */
   readonly each: number
+  /** The memory kept, once for the run, for what the tests start, in bytes (childrenMark). */
+  readonly children?: number | undefined
   /** The most processes a run may start as a run met memory pressure lately (heldProcesses). */
   readonly held?: number | undefined
 }
@@ -443,8 +450,9 @@ const plural = (count: number, noun: string, nouns = `${noun}s`): string =>
 /**
  * How many worker processes bun test runs the files in, and the run's first line, which says why:
  * the least of testWorkers' number (TUTTI_TEST_PARALLEL's, or the cores share) and the processes
- * the memory share holds at `sizing.each` a process, and no more than `sizing.held`; at least one.
- * `scripts/test.sh: 3 processes (cores 5, memory 4.6 GB at ~1.5 GB each)`.
+ * the memory share, less `sizing.children`, holds at `sizing.each` a process, and no more than
+ * `sizing.held`; at least one. `scripts/test.sh: 3 processes (cores 5, memory 4.6 GB at ~1.5 GB
+ * each)`, `… memory 4.6 GB less ~1.0 GB for what the tests start, at ~0.6 GB each)`.
  */
 export const testProcesses = (
   env: Readonly<Record<string, string | undefined>>,
@@ -462,11 +470,13 @@ export const testProcesses = (
       : `cores ${coreShareOf(env) ?? Math.max(1, Math.floor(cores / 2))}`,
   ]
   let processes = testWorkers(env, args, cores)
-  const { memory, each, held } = sizing
+  const { memory, each, children = 0, held } = sizing
   if (memory === undefined) reasons.push("memory not known")
   else {
-    reasons.push(`memory ${gigabytes(memory)} GB at ~${gigabytes(each)} GB each`)
-    processes = Math.min(processes, Math.max(1, Math.floor(memory / Math.max(each, 1))))
+    const kept = children > 0 ? ` less ~${gigabytes(children)} GB for what the tests start,` : ""
+    reasons.push(`memory ${gigabytes(memory)} GB${kept} at ~${gigabytes(each)} GB each`)
+    const left = Math.max(memory - children, 0)
+    processes = Math.min(processes, Math.max(1, Math.floor(left / Math.max(each, 1))))
   }
   if (held !== undefined) {
     reasons.push(`no more than ${held} as memory pressure reached warn lately`)
@@ -571,12 +581,17 @@ export const availableMemory = (
   return available === undefined ? undefined : Math.max(available - memoryReserve, 0)
 }
 
-/** One run the record keeps: when it ended, the most one test process took, its processes, files. */
+/**
+ * One run the record keeps: when it ended, the most one test process took itself and the most one
+ * process's tests started took (processPeak), its processes and files, and whether it was TUTTI_SLOW.
+ */
 export interface MemoryRun {
   readonly at: string
   readonly peak_mb: number
+  readonly children_mb: number
   readonly processes: number
   readonly files: number
+  readonly slow: boolean
 }
 
 /**
@@ -600,7 +615,11 @@ export const recordFiles = 50
 /** How long a run that met memory pressure holds the next runs to fewer processes. */
 export const warnHold = 10 * 60_000
 
-/** The record in `text`, the runs and the warn that are well formed; empty for anything else. */
+/**
+ * The record in `text`, the runs and the warn that are well formed; empty for anything else. A run
+ * kept before tutti-q61i, without children_mb, counted its tests' processes in its peak, and is left
+ * out.
+ */
 export const parseMemoryRecord = (text: string): MemoryRecord => {
   let json: unknown
   try {
@@ -620,8 +639,12 @@ export const parseMemoryRecord = (text: string): MemoryRecord => {
       run !== null &&
       dated(run.at) &&
       whole(run.peak_mb) &&
+      typeof run.children_mb === "number" &&
+      Number.isInteger(run.children_mb) &&
+      run.children_mb >= 0 &&
       whole(run.processes) &&
-      whole(run.files),
+      whole(run.files) &&
+      typeof run.slow === "boolean",
   )
   const { at, processes } = (typeof warn === "object" && warn !== null ? warn : {}) as {
     at?: unknown
@@ -638,9 +661,23 @@ export const parseMemoryRecord = (text: string): MemoryRecord => {
  * its runs' peaks (nearest rank), so that one odd run neither sets it nor is forgotten at once;
  * undefined without a run.
  */
-export const highMark = (record: MemoryRecord): number | undefined => {
-  const peaks = record.runs.map((run) => run.peak_mb).sort((a, b) => a - b)
-  const mark = peaks[Math.ceil(peaks.length * 0.9) - 1]
+export const highMark = (record: MemoryRecord): number | undefined =>
+  percentile90(record.runs.map((run) => run.peak_mb))
+
+/**
+ * The memory a run keeps for what its tests start, in bytes: the 90th percentile of the children_mb
+ * of the record's runs that were TUTTI_SLOW as this one is (`slow`), or of all its runs where none
+ * was; 0 without a run. Kept once for the run: few files start much, and seldom at once.
+ */
+export const childrenMark = (record: MemoryRecord, slow: boolean): number => {
+  const alike = record.runs.filter((run) => run.slow === slow)
+  return percentile90((alike.length > 0 ? alike : record.runs).map((run) => run.children_mb)) ?? 0
+}
+
+/** The 90th percentile (nearest rank) of `values`, MiB, in bytes; undefined without one. */
+const percentile90 = (values: ReadonlyArray<number>): number | undefined => {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mark = sorted[Math.ceil(sorted.length * 0.9) - 1]
   return mark === undefined ? undefined : mark * mebibyte
 }
 
@@ -654,28 +691,44 @@ export const heldProcesses = (record: MemoryRecord, now: number): number | undef
   return since >= 0 && since < warnHold ? Math.max(1, record.warn.processes - 1) : undefined
 }
 
-/** What a run's watch found (watchMemory): the most one test process took, and the pressure. */
+/**
+ * What a run's watch found (watchMemory): the most one test process took and the most its tests
+ * started took, and the pressure.
+ */
 export interface Watched {
   /** In bytes; 0 where the processes were never read. */
   readonly peak: number
+  /** In bytes; 0 where the processes were never read or started none. */
+  readonly children: number
   /** Whether the memory pressure reached warn or worse. */
   readonly warned: boolean
 }
 
 /**
  * The record with the run that ended at `at` in it, which ran `files` test files in `processes`
- * processes: its peak where it ran recordFiles or more and one was read, its warn where it met one.
+ * processes, TUTTI_SLOW or not (`slow`): its peaks where it ran recordFiles or more and one was
+ * read, its warn where it met one.
  */
 export const recordRun = (
   record: MemoryRecord,
-  run: Watched & { readonly at: number; readonly processes: number; readonly files: number },
+  run: Watched & {
+    readonly at: number
+    readonly processes: number
+    readonly files: number
+    readonly slow: boolean
+  },
 ): MemoryRecord => {
   const at = new Date(run.at).toISOString()
   const peak = Math.ceil(run.peak / mebibyte)
-  const runs =
-    run.files >= recordFiles && peak >= 1
-      ? [...record.runs, { at, peak_mb: peak, processes: run.processes, files: run.files }]
-      : record.runs
+  const kept: MemoryRun = {
+    at,
+    peak_mb: peak,
+    children_mb: Math.ceil(run.children / mebibyte),
+    processes: run.processes,
+    files: run.files,
+    slow: run.slow,
+  }
+  const runs = run.files >= recordFiles && peak >= 1 ? [...record.runs, kept] : record.runs
   return {
     runs: runs.slice(-recordedRuns),
     ...(run.warned
@@ -726,20 +779,25 @@ const writeMemoryRecord = (path: string, record: MemoryRecord): void => {
 }
 
 /**
- * The most one test process takes in the listing `all`, in bytes: each process's memory with that
- * of everything below it (the processes its tests started). The test processes are bun test's,
+ * The most one test process takes itself in the listing `all`, in bytes, and the most everything
+ * below one of them takes (the processes its tests started). The test processes are bun test's,
  * `root`'s, children where it runs them in workers (`parallel`, --parallel), else `root` itself.
  */
-export const processPeak = (all: Processes, root: number, parallel: boolean): number => {
+export const processPeak = (
+  all: Processes,
+  root: number,
+  parallel: boolean,
+): { readonly own: number; readonly children: number } => {
   const tests = parallel
     ? [...all].filter(([, each]) => each.parent === root).map(([pid]) => pid)
     : [root]
-  let peak = 0
+  let own = 0
+  let children = 0
   for (const pid of tests) {
-    const own = all.get(pid)?.memory ?? 0
-    peak = Math.max(peak, own + below(all, pid, new Set()))
+    own = Math.max(own, all.get(pid)?.memory ?? 0)
+    children = Math.max(children, below(all, pid, new Set()))
   }
-  return peak
+  return { own, children }
 }
 
 /** How often a run reads its test processes' memory and the memory pressure. */
@@ -773,8 +831,8 @@ const pressureNow = async (platform: NodeJS.Platform): Promise<Pressure> => {
 
 /**
  * Reads, every watchEvery until `exited` settles, the memory of bun test `root`'s test processes
- * (processPeak) and the memory pressure, and returns the most and whether it reached warn: ps once,
- * and sysctl or /proc, a few milliseconds.
+ * and their tests' (processPeak) and the memory pressure, and returns the most of each and whether
+ * it reached warn: ps once, and sysctl or /proc, a few milliseconds.
  */
 export const watchMemory = async (
   root: number,
@@ -783,6 +841,7 @@ export const watchMemory = async (
   platform: NodeJS.Platform = process.platform,
 ): Promise<Watched> => {
   let peak = 0
+  let children = 0
   let warned = false
   let done = false
   void exited.finally(() => {
@@ -795,11 +854,15 @@ export const watchMemory = async (
       pressureNow(platform),
     ])
     const all = parseProcesses(listing)
-    if (all !== undefined) peak = Math.max(peak, processPeak(all, root, parallel))
+    if (all !== undefined) {
+      const read = processPeak(all, root, parallel)
+      peak = Math.max(peak, read.own)
+      children = Math.max(children, read.children)
+    }
     if (pressure === "warn" || pressure === "critical") warned = true
     await Promise.race([Bun.sleep(watchEvery), exited])
   }
-  return { peak, warned }
+  return { peak, children, warned }
 }
 
 /** A test's time limit where its file sets none (setDefaultTimeout), in place of bun's 5 s. */
@@ -988,9 +1051,11 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   const recordPath = memoryRecordPath(process.env)
   const record: MemoryRecord =
     own || process.env.TUTTI_TEST_MEMORY_FILE ? readMemoryRecord(recordPath) : { runs: [] }
+  const slow = process.env.TUTTI_SLOW === "1"
   const sizing: Sizing = {
     memory: memoryShareOf(machine) ?? availableMemory(),
     each: highMark(record) ?? defaultProcessMemory,
+    children: childrenMark(record, slow),
     held: heldProcesses(record, Date.now()),
   }
   const { processes: workers, line } = testProcesses(machine, args, sizing)
@@ -1016,7 +1081,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   }
   if (watched !== undefined) {
     const files = new Set(cases.map((test) => test.file)).size
-    const run = { ...watched, at: Date.now(), processes: workers, files }
+    const run = { ...watched, at: Date.now(), processes: workers, files, slow }
     writeMemoryRecord(recordPath, recordRun(readMemoryRecord(recordPath), run))
   }
   // The verdict, the files whose tests all passed written first where check-own.sh asked for them,

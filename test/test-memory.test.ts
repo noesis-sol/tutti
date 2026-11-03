@@ -179,8 +179,10 @@ describe("the memory share", () => {
 const run = (peak: number, at = "2026-11-03T10:00:00.000Z") => ({
   at,
   peak_mb: peak,
+  children_mb: 0,
   processes: 3,
   files: 700,
+  slow: false,
 })
 
 describe("the memory record", () => {
@@ -194,14 +196,15 @@ describe("the memory record", () => {
 
   test("keeps a run's peak where it ran enough files, and its recent runs only", () => {
     const at = Date.parse("2026-11-03T10:00:00.000Z")
-    const watched = { peak: 1149 * mebibyte + 1, warned: false, at, processes: 3 }
-    expect(recordRun({ runs: [] }, { ...watched, files: recordFiles })).toEqual({
-      runs: [{ at: "2026-11-03T10:00:00.000Z", peak_mb: 1150, processes: 3, files: recordFiles }],
+    const watched = { peak: 1149 * mebibyte + 1, children: 0, warned: false, at, processes: 3 }
+    const plain = { ...watched, slow: false }
+    expect(recordRun({ runs: [] }, { ...plain, files: recordFiles })).toEqual({
+      runs: [{ ...run(1150), processes: 3, files: recordFiles }],
     })
-    expect(recordRun({ runs: [] }, { ...watched, files: recordFiles - 1 })).toEqual({ runs: [] })
-    expect(recordRun({ runs: [] }, { ...watched, peak: 0, files: 700 })).toEqual({ runs: [] })
+    expect(recordRun({ runs: [] }, { ...plain, files: recordFiles - 1 })).toEqual({ runs: [] })
+    expect(recordRun({ runs: [] }, { ...plain, peak: 0, files: 700 })).toEqual({ runs: [] })
     const full: MemoryRecord = { runs: Array.from({ length: recordedRuns }, (_, i) => run(i + 1)) }
-    const next = recordRun(full, { ...watched, files: 700 })
+    const next = recordRun(full, { ...plain, files: 700 })
     expect(next.runs).toHaveLength(recordedRuns)
     expect(next.runs[0]?.peak_mb).toBe(2)
     expect(next.runs.at(-1)?.peak_mb).toBe(1150)
@@ -209,15 +212,16 @@ describe("the memory record", () => {
 
   test("keeps the last run that met memory pressure, which holds the next runs to fewer", () => {
     const at = Date.parse("2026-11-03T10:00:00.000Z")
-    const warned = recordRun({ runs: [] }, { peak: 0, warned: true, at, processes: 3, files: 2 })
+    const none = { peak: 0, children: 0, slow: false }
+    const warned = recordRun({ runs: [] }, { ...none, warned: true, at, processes: 3, files: 2 })
     expect(warned).toEqual({ runs: [], warn: { at: "2026-11-03T10:00:00.000Z", processes: 3 } })
     expect(heldProcesses(warned, at + 60_000)).toBe(2)
     expect(heldProcesses(warned, at + warnHold)).toBeUndefined()
     expect(heldProcesses(warned, at - 60_000)).toBeUndefined()
     expect(heldProcesses({ runs: [] }, at)).toBeUndefined()
-    const one = recordRun({ runs: [] }, { peak: 0, warned: true, at, processes: 1, files: 2 })
+    const one = recordRun({ runs: [] }, { ...none, warned: true, at, processes: 1, files: 2 })
     expect(heldProcesses(one, at)).toBe(1)
-    const calm = recordRun(warned, { peak: 0, warned: false, at: at + 1, processes: 2, files: 2 })
+    const calm = recordRun(warned, { ...none, warned: false, at: at + 1, processes: 2, files: 2 })
     expect(calm.warn).toEqual(warned.warn)
   })
 
@@ -273,15 +277,21 @@ describe("processPeak", () => {
     ].join("\n"),
   )
 
-  test("is the most a test process takes, with what its tests started", () => {
+  test("is the most a test process takes, and apart the most its tests started", () => {
     if (listing === undefined) throw new Error("the listing didn't parse")
-    expect(processPeak(listing, 100, true)).toBe(500 * mebibyte)
+    expect(processPeak(listing, 100, true)).toEqual({
+      own: 400 * mebibyte,
+      children: 200 * mebibyte,
+    })
   })
 
-  test("is bun test's own, with all below it, where it runs the files itself", () => {
+  test("is bun test's own, and all below it, where it runs the files itself", () => {
     if (listing === undefined) throw new Error("the listing didn't parse")
-    expect(processPeak(listing, 100, false)).toBe(950 * mebibyte)
-    expect(processPeak(listing, 999, false)).toBe(0)
+    expect(processPeak(listing, 100, false)).toEqual({
+      own: 50 * mebibyte,
+      children: 900 * mebibyte,
+    })
+    expect(processPeak(listing, 999, false)).toEqual({ own: 0, children: 0 })
   })
 })
 
