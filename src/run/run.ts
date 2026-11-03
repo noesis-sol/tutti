@@ -124,6 +124,7 @@ import { closedBranches } from "./closedBranches.ts"
 import { noteCompactions } from "./compactions.ts"
 import { off as criticOff, make as makeCritic } from "./critic.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
+import { make as makeDiskGate } from "./diskGate.ts"
 import { type DrainRequest, hear } from "./drain.ts"
 import { make as makeEarlyChecks } from "./earlyCheck.ts"
 import { make as makeEndOfRun } from "./endOfRun.ts"
@@ -163,7 +164,7 @@ import { loginStop, watchLogins } from "./login.ts"
 import { make as makeLoginCheck } from "./loginCheck.ts"
 import { make as makeLoop } from "./look.ts"
 import { OtherWorkers } from "./machine.ts"
-import { hasRoom, make as makeMachineGate } from "./machineGate.ts"
+import { hasRoom, make as makeMachineGate, type Room } from "./machineGate.ts"
 import { make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { putBackLeft } from "./mergetrain.ts"
 import { make as makeOvernightAside } from "./overnightAside.ts"
@@ -537,6 +538,17 @@ const runFrom = (
       status,
       wakeUp: wakeUp("hold"),
     })
+    // The free disk where the worktrees go (diskGate.ts): under its floor, the ticket about to start
+    // or resume waits, until the disk is freed; none where the machine's load doesn't read the disk.
+    const diskSource = (yield* Load)?.disk
+    const disk =
+      diskSource === undefined
+        ? undefined
+        : yield* makeDiskGate({
+            holds,
+            measure: diskSource(config.worktrees),
+            wakeUp: wakeUp("hold"),
+          })
     // An overnight run sets a ticket aside rather than hold the run for PAUSED, BLOCKED or
     // TICKET_LIMIT (overnightAside.ts): its register of the fibers following their workers, the
     // hand-backs' included.
@@ -706,13 +718,16 @@ const runFrom = (
     // ticket about to start waits while the workers across them are at that cap.
     const machine = yield* makeMachineGate({ holds, status, wakeUp: wakeUp("hold") })
     // The workers allowed are the least of concurrent, the machine's cap and the pressure cap: the
-    // pressure cap's room is asked first, then the machine's.
-    const room = (own: number) =>
+    // pressure cap's room is asked first, then the machine's, then the disk's.
+    const room = (own: number): Effect.Effect<Room> =>
       Effect.gen(function* () {
         const first = yield* pressure.room(own)
         if (!hasRoom(first)) return first
         const second = yield* machine.room(own)
-        return first === "lifted" && second === "room" ? "lifted" : second
+        if (!hasRoom(second)) return second
+        const third = disk === undefined ? "room" : yield* disk.room
+        if (!hasRoom(third)) return third
+        return [first, second, third].includes("lifted") ? "lifted" : "room"
       })
     // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
     // the checks' scripts, and what the merge and full checks' scripts run, count as no ticket's,
@@ -1003,11 +1018,13 @@ const runFrom = (
           roots: host.processes,
           runs: otherWorkers.runs,
           self: process.pid,
+          dir: config.worktrees,
           show: (load) =>
             Effect.asVoid(
               Effect.all([
                 Ref.set(pressed, pressing(load.levels)),
                 pressure.read(load),
+                disk === undefined ? Effect.void : disk.read(load),
                 share.read(load),
                 showOn(status, "load")(load),
               ]),
@@ -1180,6 +1197,7 @@ const runFrom = (
       resuming: Effect.map(Ref.get(unslotted), (all) => all.size > 0),
       answering: Ref.get(autoAnswering),
       unread: Effect.map(Ref.get(outage), (now) => now !== null),
+      ...(disk === undefined ? {} : { diskHeld: disk.held }),
       ...(options.filing === undefined
         ? {}
         : { filing: Effect.map(SubscriptionRef.get(options.filing), (now) => now !== null) }),

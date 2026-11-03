@@ -172,6 +172,24 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       text: "HOLD: PRESSURE: workers allowed 4 → 3: memory pressure warn for 60 s",
     },
   ],
+  disk_hold: [
+    {
+      ...head,
+      kind: "disk_hold",
+      held: true,
+      free: 4_509_715_660,
+      where: "/work",
+      text: "HOLD: DISK: 4.2 GB free in /work, where the worktrees go, under 5.0 GB: no ticket starts until 7.0 GB are free",
+    },
+    {
+      ...head,
+      kind: "disk_hold",
+      held: false,
+      free: 7_838_315_315,
+      where: "/work",
+      text: "disk hold lifted: 7.3 GB free in /work, where the worktrees go",
+    },
+  ],
   share: [
     {
       ...head,
@@ -677,7 +695,8 @@ describe("the records", () => {
       [
         ...["start", "info", "dispatch", "queue", "closed", "deferred", "asked", "answered"],
         ...["waits", "reopened", "triage", "warn", "hold", "drain", "resume", "probed", "stop"],
-        ...["shared_machine", "machine_hold", "pressure_cap", "share", "load", "slept", "battery"],
+        ...["shared_machine", "machine_hold", "pressure_cap", "disk_hold", "share", "load"],
+        ...["slept", "battery"],
         ...["done", "full_check", "checks_gate", "early_check", "end", "phase", "attention"],
         ...["attention_answered", "denied"],
         ...[

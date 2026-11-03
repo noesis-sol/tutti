@@ -271,6 +271,21 @@ export const SharedMachine = Schema.Struct({
 export const MachineHold = lineRecord("machine_hold")
 
 /**
+ * The free disk where the worktrees go fell under the disk hold's floor (`HOLD: DISK: …`), a ready
+ * ticket about to start, or the hold lifted (`disk hold lifted: …`).
+ */
+export const DiskHold = Schema.Struct({
+  ...head("disk_hold"),
+  /** Whether the hold began (true) or lifted (false). */
+  held: Schema.Boolean,
+  /** The free disk read, in bytes. */
+  free: Count,
+  /** The folder it was read in: where the worktrees go, or the nearest one above it there is. */
+  where: Schema.String,
+  text: Schema.String,
+})
+
+/**
  * The workers the run allows under memory pressure fell or rose a step (`HOLD: PRESSURE: workers
  * allowed 4 → 3: memory pressure warn for 60 s`, `workers allowed 3 → 4: …`).
  */
@@ -972,6 +987,7 @@ export const kinds = {
   shared_machine: SharedMachine,
   machine_hold: MachineHold,
   pressure_cap: PressureCap,
+  disk_hold: DiskHold,
   share: ShareMoved,
   load: LoadReading,
   slept: Slept,

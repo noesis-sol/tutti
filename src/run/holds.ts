@@ -18,6 +18,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Dependency, type Issue, type TicketId } from "../services/Beads.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import { afterMerging, afterOverlap, afterSubtickets } from "./after.ts"
+import { holdWord as diskWord } from "./disk.ts"
 import type { EventStream } from "./eventstream.ts"
 import type { Footprint } from "./footprint.ts"
 import type { State } from "./ledger.ts"
@@ -527,6 +528,11 @@ export interface RunHolds {
    * (pressureCap.ts); none when left out or null.
    */
   readonly pressure?: PressureHold | null
+  /**
+   * No ticket starts or resumes while the free disk where the worktrees go is low (diskGate.ts);
+   * not when left out.
+   */
+  readonly disk?: boolean
   /** Claude's API unavailable holds the run (apiOutage.ts); not when left out. */
   readonly api?: boolean
   /** The login check holds the run (loginCheck.ts); not when left out. */
@@ -598,6 +604,10 @@ export const withPressureHold = (holds: RunHolds, hold: PressureHold | null): Ru
   return same ? holds : { ...holds, pressure: hold }
 }
 
+/** `holds` with the disk hold on (`low`) or off. */
+export const withDiskHold = (holds: RunHolds, low: boolean): RunHolds =>
+  (holds.disk ?? false) === low ? holds : { ...holds, disk: low }
+
 /** `holds` with the API-outage hold on (`held`) or off. */
 export const withApiHold = (holds: RunHolds, held: boolean): RunHolds =>
   (holds.api ?? false) === held ? holds : { ...holds, api: held }
@@ -623,7 +633,7 @@ export interface ShownHolds {
   readonly stopping: boolean
   /**
    * The banners, BLOCKED first, then the usage limit's, the API outage's, the login check's, the
-   * machine's and the pressure cap's.
+   * machine's, the pressure cap's and the disk's.
    */
   readonly holds: ReadonlyArray<RunHold>
   readonly usage: Usage | null
@@ -649,6 +659,7 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
     ...(holds.login === true ? [{ word: Tag.loginCheck, resetsAt: null }] : []),
     ...(holds.machine ? [{ word: machineWord, resetsAt: null }] : []),
     ...(holds.pressure == null ? [] : [pressureBanner(holds.pressure)]),
+    ...(holds.disk === true ? [{ word: diskWord, resetsAt: null }] : []),
     ...(holds.filing == null ? [] : [{ word: holds.filing, resetsAt: null }]),
   ],
   usage: holds.usage.usage,

@@ -55,6 +55,8 @@ export interface LoopParts {
   readonly filing?: Effect.Effect<boolean>
   /** Whether bd failed the last fill's read of the queue (runEnd.ts's Look, queueOutage.ts). */
   readonly unread?: Effect.Effect<boolean>
+  /** Whether the disk hold is on (runEnd.ts's Look, diskGate.ts). */
+  readonly diskHeld?: Effect.Effect<boolean>
   /** Shows the end-of-run box, naming the workers waiting on you; null for none. */
   readonly showEndOfRun: (tickets: ReadonlyArray<TicketId> | null) => Effect.Effect<void>
   /** Whether the run has a dashboard, which shows the end-of-run box. */
@@ -94,6 +96,7 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         answering: yield* parts.answering,
         filing: parts.filing === undefined ? false : yield* parts.filing,
         unread: parts.unread === undefined ? false : yield* parts.unread,
+        diskHeld: parts.diskHeld === undefined ? false : yield* parts.diskHeld,
         settled: isSettled(yield* queue.state),
         triagePending: yield* parts.triage.pending,
         reviewsPending: parts.critic === undefined ? 0 : yield* parts.critic.pending,

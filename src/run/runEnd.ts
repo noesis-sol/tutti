@@ -44,6 +44,11 @@ export interface Look {
    * a later look rather than end on the tickets it couldn't see, while it would take them.
    */
   readonly unread?: boolean
+  /**
+   * Whether the disk hold is on (diskGate.ts), begun as a ticket was about to start: the run waits
+   * for the disk to free rather than end on the tickets it held back, while it would take them.
+   */
+  readonly diskHeld?: boolean
   /** Whether the merge queue is settled now: nothing merging, queued or resolving. */
   readonly settled: boolean
   /** The triage calls under way. */
@@ -116,6 +121,7 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<T
     !look.answering &&
     look.filing !== true &&
     !(look.unread === true && look.canTake) &&
+    !(look.diskHeld === true && look.canTake) &&
     busy.length === 0 &&
     !toStart &&
     look.mergedBefore &&

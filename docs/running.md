@@ -867,6 +867,19 @@ lowest it went. `load` records in the event stream say how often runs meet press
 ([Analytics](analytics.md#memory-pressure)). `"pressure_cap": false` in `.tutti/settings.json` keeps
 the workers at `concurrent`; the `START` line says `pressure cap: on` or `off`.
 
+### Low disk
+
+Each reading of the machine's load, every 5 seconds, also takes the free disk where the worktrees go,
+and so does each ticket about to start or resume. Under 5 GB the run holds: it starts and resumes no
+ticket, with `DISK` on the dashboard's title line, a log line and a `disk_hold` record,
+`HOLD: DISK: 4.2 GB free in /Users/you/.tutti/worktrees, where the worktrees go, under 5.0 GB: no ticket starts until 7.0 GB are free`.
+It stops nothing: the workers running go on, and their tickets merge. Once 7 GB are free, it lifts,
+`disk hold lifted: 7.3 GB free in …`, and the run fills its slots again. Held with nothing running,
+the run waits for the disk rather than end. Through a night the worktrees, those set aside for
+review, the transcripts and the event log grow; a disk that filled would fail the tickets one after
+another, `GIT_FAILED` or `STATE_UNWRITABLE`. An overnight run's pre-flight asks more at the start,
+20 GB by default (`--overnight-free-disk`).
+
 ### The checks' share
 
 Each worker's checks get a share of the machine's memory as well as its cores, as a test runner left

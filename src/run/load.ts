@@ -10,11 +10,13 @@
 // The run reads it every loadEvery while it runs, with the dashboard or plain output, through
 // LoadSource: main.ts gives the live one, and a run without one (the tests') reads nothing. Its
 // memory pressure lowers the workers the run allows while it lasts (pressureCap.ts); its swapping,
-// only a figure, doesn't, nor counts against a hand-back's time limit (pressing).
+// only a figure, doesn't, nor counts against a hand-back's time limit (pressing). Each reading also
+// takes the free disk where the worktrees go: under diskFloor, no ticket starts (diskGate.ts).
 import { availableParallelism } from "node:os"
 import { Clock, Context, Duration, Effect, FileSystem } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { exec, TimeLimit } from "../services/exec.ts"
+import { freeDisk, gb } from "./processes.ts"
 
 /** The memory of a worker whose processes can't be found: none of them in the listing. */
 export const unknownMemory = -1
@@ -57,6 +59,15 @@ export const memoryReserve = 2 * 1024 ** 3
 export const memoryFloor = 1024 ** 3
 /** How far the memory share moves before the share is changed, on readings alone. */
 export const memoryStep = 512 * 1024 ** 2
+
+// The disk hold's thresholds (diskGate.ts): tune them here.
+/** The free disk where the worktrees go under which no ticket starts or resumes (HOLD: DISK): room
+ * for a worktree or two with their dependencies, the transcripts and the event log, whatever
+ * --overnight-free-disk wanted at the start. */
+export const diskFloor = 5 * gb
+/** The free disk at which the hold lifts: diskFloor and a margin, so that a worktree made at once,
+ * or a log's growth, doesn't put the hold back on. */
+export const diskClear = 7 * gb
 
 /** How often the run reads the machine's load: one process listing and the kernel's figures. */
 export const loadEvery: Duration.Duration = Duration.seconds(5)
@@ -136,6 +147,14 @@ export interface Reading {
   /** The pages swapped in and out a minute since the reading before; -1 before there are two. */
   readonly swapping: number
   readonly levels: Levels
+  /** The free disk where the worktrees go; left out where it isn't read, or can't be. */
+  readonly disk?: DiskFree
+}
+
+/** The free disk in bytes, with the folder it was read in (processes.ts' freeDisk). */
+export interface DiskFree {
+  readonly free: number
+  readonly where: string
 }
 
 /** One process in a listing: its parent, its process group and its resident memory, in bytes. */
@@ -440,6 +459,8 @@ export const sample = (options: {
   readonly roots: ReadonlyMap<string, number>
   readonly self: number
   readonly runs?: ReadonlyArray<number>
+  /** The free disk where the worktrees go, where it was read. */
+  readonly disk?: DiskFree | undefined
 }): { readonly reading: Reading; readonly sampler: Sampler } => {
   const { sampler, now, processes } = options
   const workers = new Map<string, number>()
@@ -486,6 +507,7 @@ export const sample = (options: {
       kernel,
       swapping,
       levels,
+      ...(options.disk === undefined ? {} : { disk: options.disk }),
     },
     sampler: { last, overSince },
   }
@@ -505,6 +527,9 @@ export interface LoadSource {
     never,
     ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem
   >
+  /** The free disk where `dir` is, or will be; undefined when it can't be read. None (no disk is
+   * read) where left out. */
+  readonly disk?: (dir: string) => Effect.Effect<DiskFree | undefined>
 }
 
 /** A command's output, or undefined when it can't be run or fails. */
@@ -543,7 +568,7 @@ const kernelOf = (platform: NodeJS.Platform, cores: () => number) =>
     return undefined
   })
 
-/** The live source, for `platform`: ps, and sysctl and vm_stat or /proc. */
+/** The live source, for `platform`: ps, sysctl and vm_stat or /proc, and statfs for the disk. */
 export const liveLoad = (
   platform: NodeJS.Platform = process.platform,
   cores: () => number = availableParallelism,
@@ -552,6 +577,7 @@ export const liveLoad = (
     text === undefined ? undefined : parseProcesses(text),
   ),
   kernel: kernelOf(platform, cores),
+  disk: (dir) => Effect.orElseSucceed(freeDisk(dir), () => undefined),
 })
 
 /** The source a run reads the machine's load from; none (null) unless a layer gives one. */
@@ -562,13 +588,15 @@ export const Load = Context.Reference<LoadSource | null>("tutti/run/load/Load", 
 /**
  * Reads the machine's load from `source` now and every loadEvery after, forever, and gives each
  * reading to `show`: the workers' roots, by ticket, are `roots`' as each reading starts, and the
- * machine's other runs' processes `runs`' (none where left out).
+ * machine's other runs' processes `runs`' (none where left out); the free disk is read where `dir`
+ * is, where it is given and the source reads the disk.
  */
 export const watchLoad = (options: {
   readonly source: LoadSource
   readonly roots: Effect.Effect<ReadonlyMap<string, number>>
   readonly runs?: Effect.Effect<ReadonlyArray<number>>
   readonly self: number
+  readonly dir?: string
   readonly show: (reading: Reading) => Effect.Effect<void>
 }): Effect.Effect<never, never, ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem> =>
   Effect.gen(function* () {
@@ -578,8 +606,20 @@ export const watchLoad = (options: {
       const runs = options.runs === undefined ? [] : yield* options.runs
       const processes = yield* options.source.processes
       const kernel = yield* options.source.kernel
+      const { disk } = options.source
+      const free =
+        disk === undefined || options.dir === undefined ? undefined : yield* disk(options.dir)
       const now = yield* Clock.currentTimeMillis
-      const next = sample({ sampler, now, processes, kernel, roots, self: options.self, runs })
+      const next = sample({
+        sampler,
+        now,
+        processes,
+        kernel,
+        roots,
+        self: options.self,
+        runs,
+        disk: free,
+      })
       sampler = next.sampler
       yield* options.show(next.reading)
       yield* Effect.sleep(loadEvery)
