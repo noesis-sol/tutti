@@ -14,7 +14,7 @@
 // Talk it through (tutti-i0sz): the question talked through in a session in the Interview view
 // (answerTalk.ts), whose answer is recorded as the form's; a talk that ends without one puts the
 // question again.
-import { Console, Effect, Option, Result } from "effect"
+import { Console, type Duration, Effect, Option, Result } from "effect"
 import { type TalkEnd, talkLeftWhy } from "../agent/answerTalk.ts"
 import {
   Beads,
@@ -26,6 +26,7 @@ import {
 } from "../services/Beads.ts"
 import type { OpenQuestion, QuestionAt, Reply } from "../ui/questions.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+import { answerLimit, notAskedText, unansweredText, within } from "./answerLimit.ts"
 import { recordAnswer, recordWhy } from "./answerQuestion.ts"
 import { exitCodes } from "./holds.ts"
 import { Log, line } from "./log.ts"
@@ -33,10 +34,14 @@ import { checklistLine, type Say } from "./overnight.ts"
 import { joinAnd } from "./processes.ts"
 import { descendants } from "./scope.ts"
 
-/** Where a question is put: the form, or the lines. Fails on a cancel. */
+/**
+ * Where a question is put: the form, or the lines, its countdown saying that no answer within
+ * `limit` leaves it open (answerLimit.ts). Fails on a cancel.
+ */
 export type Put = (
   question: OpenQuestion,
   at: QuestionAt,
+  limit: Duration.Duration,
 ) => Effect.Effect<Reply, { readonly _tag: "FormCancelled" }>
 
 /** How putting the questions ended. */
@@ -130,17 +135,21 @@ export const talkEndedText = (question: OpenQuestion, why: string): string =>
  * answers given kept. An answer bd couldn't record leaves its question open, saying why. Talk it
  * through, where `put` offers it, talks the question through with `talk`: its answer is recorded as
  * the form's; one that ends without an answer puts the question again, saying why unless it was
- * left.
+ * left. A question no answer comes to within `limit` (answerLimit) is left open, as said and logged,
+ * and those after it with it, not put, nobody being there.
  */
 export const putQuestions = <R = never>(options: {
   readonly questions: ReadonlyArray<OpenQuestion>
   readonly put: Option.Option<Put>
   readonly talk?: Talk<R>
   readonly say: Pick<Say, "print" | "say" | "warn" | "theme">
+  readonly limit?: Duration.Duration
 }): Effect.Effect<Putting, never, Beads | Log | R> =>
   Effect.gen(function* () {
     const { questions, say } = options
+    const limit = options.limit ?? answerLimit
     const logs = yield* Log
+    let unanswered = false
     const left: Array<OpenQuestion> = []
     let answered = 0
     const counted = Effect.suspend(() =>
@@ -151,15 +160,28 @@ export const putQuestions = <R = never>(options: {
         left.push(question)
         continue
       }
+      const asked = `${question.id} (${question.title})`
+      if (unanswered) {
+        const text = notAskedText(asked, "left open")
+        yield* say.say(text)
+        yield* logs.write(line`${text}`)
+        left.push(question)
+        continue
+      }
       const put = options.put.value
       const at = { index, of: questions.length }
+      const putWithin = Effect.result(within(put(question, at, limit), limit))
       // Talk it through comes back to the form until the talk gives an answer.
-      let reply = yield* Effect.result(put(question, at))
+      let reply = yield* putWithin
       let talked = false
-      while (Result.isSuccess(reply) && reply.success._tag === "Talk") {
+      while (
+        Result.isSuccess(reply) &&
+        Option.isSome(reply.success) &&
+        reply.success.value._tag === "Talk"
+      ) {
         const ended = options.talk === undefined ? null : yield* options.talk(question)
         if (ended?._tag === "Answered") {
-          reply = Result.succeed({ _tag: "Answer", answer: ended.answer })
+          reply = Result.succeed(Option.some({ _tag: "Answer", answer: ended.answer } as const))
           talked = true
           break
         }
@@ -169,7 +191,7 @@ export const putQuestions = <R = never>(options: {
           if (ended.why !== talkLeftWhy) yield* say.warn(text)
           yield* logs.write(line`${text}`)
         }
-        reply = yield* Effect.result(put(question, at))
+        reply = yield* putWithin
       }
       if (Result.isFailure(reply)) {
         yield* logs.write(
@@ -178,7 +200,15 @@ export const putQuestions = <R = never>(options: {
         yield* counted
         return { _tag: "Cancelled", answered } as const
       }
-      const replied = reply.success
+      if (Option.isNone(reply.success)) {
+        unanswered = true
+        const text = unansweredText(limit, asked, "left open")
+        yield* say.warn(text)
+        yield* logs.write(line`${text}`)
+        left.push(question)
+        continue
+      }
+      const replied = reply.success.value
       if (replied._tag !== "Answer") {
         left.push(question)
         continue

@@ -150,7 +150,7 @@ import { liveClipboard } from "./ui/clipboard.ts"
 import { askOpenQuestion } from "./ui/OpenQuestion.tsx"
 import { showOrgans } from "./ui/OrganScreen.tsx"
 import { liveUrlOpener } from "./ui/openUrl.ts"
-import { confirm, openQuestion, streamInput } from "./ui/plain/forms.ts"
+import { confirm, type LineIO, openQuestion, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
 import { closeLimit, open as openRenderer, type Shell } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
@@ -343,7 +343,7 @@ const overnight = (
     readonly battery: BatteryReading | null | undefined
   },
 ): Effect.Effect<
-  | { readonly _tag: "Cleared"; readonly started: Started }
+  | { readonly _tag: "Cleared"; readonly started: Started; readonly unanswered: boolean }
   | { readonly _tag: "Exit"; readonly code: number }
 > =>
   Effect.gen(function* () {
@@ -360,10 +360,11 @@ const overnight = (
     // The checklist follows the getting-ready line, gone first: one line drawn at a time.
     yield* ready.end
     const write = (text: string) => process.stdout.write(text)
-    const ask: Ask = (question, initial) =>
+    const live = liveLines(terminal)
+    const ask: Ask = (question, initial, limit) =>
       Effect.scoped(
         Effect.flatMap(streamInput(process.stdin), (input) =>
-          confirm({ input, write, theme }, { question, initial }),
+          confirm({ input, write, theme, ...live }, { question, initial, limit }),
         ),
       )
     const ran = yield* Effect.result(
@@ -404,7 +405,11 @@ const overnight = (
     const cleared = ran.success
     switch (cleared._tag) {
       case "Cleared":
-        return { _tag: "Cleared", started: cleared.started } as const
+        return {
+          _tag: "Cleared",
+          started: cleared.started,
+          unanswered: cleared.unanswered,
+        } as const
       case "Cancelled":
         return { _tag: "Exit", code: yield* cancelled } as const
       case "Refused":
@@ -412,6 +417,15 @@ const overnight = (
         return { _tag: "Exit", code: exitCodes.setup } as const
     }
   })
+
+/**
+ * A line form's live terminal (forms.ts' LineIO), whose countdown is drawn again above its prompt:
+ * stdout a terminal that moves its cursor, not TERM=dumb.
+ */
+const liveLines = (terminal: TtyValue): Pick<LineIO, "live"> =>
+  terminal.stdoutIsTty && !terminal.dumb
+    ? { live: { columns: () => process.stdout.columns ?? 80 } }
+    : {}
 
 /** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
@@ -536,13 +550,37 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     if (Result.isFailure(locked)) return yield* cannot(locked.failure.message)
     const lock = locked.success
 
+    // The scope the run's services and the keep-awake command close with, once the report is done.
+    const runScope = yield* Effect.scope
+    // Whether the keep-awake command holds the machine awake, for the title line's badge.
+    const keepingAwake = yield* SubscriptionRef.make(false)
+    // An overnight run keeps the machine awake from before its pre-flight, whose questions wait for
+    // a maintainer who may have walked away (tutti-epza.17); the others as the run begins. Its lines
+    // go to the log, opened for it in the run's scope; one that can't be opened leaves it to begin.
+    let keptAwake = false
+    if (config.overnight && awake._tag === "Command") {
+      const logged = yield* Effect.result(
+        Layer.build(Log.layer({ repo: config.repo })).pipe(Scope.provide(runScope)),
+      )
+      if (Result.isSuccess(logged)) {
+        yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(
+          Effect.provideContext(logged.success),
+          Scope.provide(runScope),
+        )
+        keptAwake = true
+      }
+    }
+
     // --overnight's pre-flight (src/run/overnight.ts), with the lock held and before the run's
-    // services are made, so that its fixes reach those that read AppConfig as they are built.
+    // services are made, so that its fixes reach those that read AppConfig as they are built. A
+    // question of it nobody answered leaves the open questions open, not put, nobody being there.
+    let unanswered = false
     if (config.overnight) {
       const cleared = yield* overnight(started, { terminal, ready, awake, battery })
       if (cleared._tag === "Exit") return cleared.code
       started = cleared.started
       config = started.config
+      unanswered = cleared.unanswered
     }
 
     const mode = outputMode(terminal, config.plain)
@@ -553,8 +591,6 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       ),
       (made) => made.disposeEffect,
     )
-    // The scope the run's services and the keep-awake command close with, once the report is done.
-    const runScope = yield* Effect.scope
     const services = yield* Effect.result(runtime.contextEffect)
     if (Result.isFailure(services)) {
       return yield* cannot(`tutti cannot start its run: ${String(services.failure)}`)
@@ -658,8 +694,6 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       if (asks !== "no") yield* Effect.forkChild(unmergedNow)
       yield* ready.step(readySteps.starting)
 
-      // Whether the keep-awake command holds the machine awake, for the title line's badge.
-      const keepingAwake = yield* SubscriptionRef.make(false)
       const awakeOption =
         awake._tag === "Command" ? { keepingAwake: SubscriptionRef.changes(keepingAwake) } : {}
       /**
@@ -668,7 +702,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
        */
       const begin = (work: Work) =>
         Effect.gen(function* () {
-          if (awake._tag === "Command") {
+          if (awake._tag === "Command" && !keptAwake) {
             // Its line goes to the log, which plain output prints.
             if (mode._tag === "Plain") yield* ready.end
             yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(Scope.provide(runScope))
@@ -818,22 +852,25 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             ),
           )
         : []
-      const putInRenderer = questions.length > 0 && canAsk && mode._tag === "Dashboard"
+      // A question of the pre-flight nobody answered leaves them open, as without a terminal.
+      const putsThem = canAsk && !unanswered
+      const putInRenderer = questions.length > 0 && putsThem && mode._tag === "Dashboard"
       /** The questions put as lines in a terminal, or listed without one, on the main screen. */
       const putOnMainScreen = Effect.gen(function* () {
         if (questions.length === 0) return null
         yield* ready.end
         const theme = mainTheme ?? (yield* printedThemeOf(stdout))
         const write = (text: string) => process.stdout.write(text)
-        const put: Put = (question, at) =>
+        const live = liveLines(tty)
+        const put: Put = (question, at, limit) =>
           Effect.scoped(
             Effect.flatMap(streamInput(process.stdin), (input) =>
-              openQuestion({ input, write, theme }, question, at),
+              openQuestion({ input, write, theme, ...live }, question, at, limit),
             ),
           )
         const putting = yield* putQuestions({
           questions,
-          put: canAsk ? Option.some(put) : Option.none(),
+          put: putsThem ? Option.some(put) : Option.none(),
           say: { ...makePrinter(stdout, theme), theme },
         })
         return putting._tag === "Cancelled" ? yield* stoppedAtQuestions(putting.answered) : null
@@ -1024,8 +1061,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             // Talk it through shows the talk in the Interview view, in this renderer (§ 4.11).
             const putting = yield* putQuestions({
               questions,
-              put: Option.some((question, at) =>
-                askOpenQuestion(shell, themeOf, question, at, true),
+              put: Option.some((question, at, limit) =>
+                askOpenQuestion(shell, themeOf, question, at, true, limit),
               ),
               talk: (question) => talkQuestion(question, interviewScreen(shell, themeOf, desktop)),
               say: { ...makePrinter(screen.out, theme), theme },

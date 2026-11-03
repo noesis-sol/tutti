@@ -5,11 +5,14 @@
 // through where the caller offers it (§ 4.11: the question talked through in a session, whose
 // answer comes back as the form's), and Leave open. ↑ and ↓ move the selector, Enter chooses (on Other it sends what is typed), PgUp and PgDn
 // scroll a description taller than its room; Esc or Ctrl+C stops the run before it starts. A click
-// on a choice chooses it, as Enter on it does (D9, § 7.3); one on Other's line focuses it.
+// on a choice chooses it, as Enter on it does (D9, § 7.3); one on Other's line focuses it. Put with
+// a time limit (src/run/answerLimit.ts), a countdown under the choices says that no answer within it
+// leaves the question open.
 import type { InputRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
-import type { Effect } from "effect"
-import { useRef, useState } from "react"
+import { Duration, type Effect } from "effect"
+import { useEffect, useRef, useState } from "react"
+import { countdownText, countdownTick, leavesOpen } from "../run/answerLimit.ts"
 import type { Key } from "../run/runView.ts"
 import { type Answers, ask, Field, formHintSegments, targetLines } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
@@ -114,6 +117,8 @@ export const OpenQuestionForm = ({
   bind = useFormCommands,
   closing = beforeRun,
   talk = false,
+  limit,
+  clock = Date.now,
 }: {
   readonly theme: Theme
   readonly question: OpenQuestion
@@ -127,6 +132,10 @@ export const OpenQuestionForm = ({
   readonly closing?: Closing
   /** Whether Talk it through is offered: where a talk can be shown, in the renderer before a run. */
   readonly talk?: boolean
+  /** How long the question waits for its answer, a countdown saying so; none without a limit. */
+  readonly limit?: Duration.Duration
+  /** What the countdown counts on: the time now, in milliseconds. */
+  readonly clock?: () => number
 } & Answers<Reply>) => {
   const choices = choicesOf(question, talk)
   const other = choices.findIndex((choice) => choice._tag === "Other")
@@ -137,6 +146,15 @@ export const OpenQuestionForm = ({
   const input = useRef<InputRenderable>(null)
   const scrollbox = useRef<ScrollBoxRenderable>(null)
   const { form } = theme
+  const [deadline] = useState(() =>
+    limit === undefined ? null : clock() + Duration.toMillis(limit),
+  )
+  const [time, setTime] = useState(clock)
+  useEffect(() => {
+    if (deadline === null) return
+    const timer = setInterval(() => setTime(clock()), Duration.toMillis(countdownTick))
+    return () => clearInterval(timer)
+  }, [clock, deadline])
 
   /** The selector on choice `to`: Other's line focused, so that the keys after it type in it. */
   const highlight = (to: number) => {
@@ -215,9 +233,20 @@ export const OpenQuestionForm = ({
     room,
   )
   const errorLines = error === null ? [] : paragraph(error, form.error)
+  const countdownLines =
+    deadline === null ? [] : paragraph(countdownText(deadline - time, leavesOpen), form.description)
   const hintLines = wrap(formHintSegments(hint, theme), Math.max(width - hintInset, 1))
   // The description gets the lines the rest leaves, at least one, and scrolls within them.
-  const rest = 1 + heading.length + 1 + options.length + 1 + leave.length + errorLines.length + 1
+  const rest =
+    1 +
+    heading.length +
+    1 +
+    options.length +
+    1 +
+    leave.length +
+    errorLines.length +
+    countdownLines.length +
+    1
   const descriptionRoom = Math.max(height - rest - hintLines.length, leastDescription)
   const descriptionHeight = Math.min(described.length, descriptionRoom)
   const otherOn = highlighted === other
@@ -276,6 +305,7 @@ export const OpenQuestionForm = ({
             }}
           />
           <Lines lines={errorLines} />
+          <Lines lines={countdownLines} />
         </box>
       </Field>
       <box flexDirection="column" paddingTop={1} flexShrink={0}>
@@ -288,7 +318,7 @@ export const OpenQuestionForm = ({
 /**
  * Puts the open question `question`, `at` of those put, in `shell`'s renderer: an option's label,
  * your own text, Talk it through where `talk` offers it, or Leave open. Fails with FormCancelled on
- * Esc or Ctrl+C.
+ * Esc or Ctrl+C. With `limit`, a countdown says how long it waits; the caller ends it then.
  */
 export const askOpenQuestion = (
   shell: Shell,
@@ -296,6 +326,7 @@ export const askOpenQuestion = (
   question: OpenQuestion,
   at: QuestionAt,
   talk = false,
+  limit?: Duration.Duration,
 ): Effect.Effect<Reply, FormCancelled> =>
   ask<Reply>(shell, themeOf, (theme, answers) => (
     <OpenQuestionForm
@@ -304,6 +335,7 @@ export const askOpenQuestion = (
       question={question}
       at={at}
       talk={talk}
+      {...(limit === undefined ? {} : { limit })}
       {...answers}
     />
   ))

@@ -7,7 +7,18 @@
 //
 // They are written without OpenTUI, in the theme's ANSI styles, and read their answers a line at
 // a time, taking from the input no more than the lines they ask for.
-import { Effect, Option, type Scope } from "effect"
+//
+// A question asked before an overnight run has a time limit (src/run/answerLimit.ts): its
+// countdown is the line above its prompt, `No answer in 4:59 takes yes.`, drawn again each second
+// where the terminal moves its cursor, the answer being typed left as it is.
+import { Clock, Duration, Effect, Option, type Scope } from "effect"
+import {
+  countdownText,
+  countdownTick,
+  leavesOpen,
+  type Taken,
+  takesAnswer,
+} from "../../run/answerLimit.ts"
 import {
   choicesOf,
   confirmHint,
@@ -48,7 +59,25 @@ export interface LineIO {
   readonly input: LineInput
   readonly write: (text: string) => void
   readonly theme: Theme
+  /**
+   * Where the output is a terminal that moves its cursor (not TERM=dumb): its width, for a
+   * countdown drawn again above the prompt. Without it, a countdown is said once.
+   */
+  readonly live?: { readonly columns: () => number }
 }
+
+/** A question's time limit, as its countdown says it: when it runs out (Clock's), and what no answer takes. */
+export interface Countdown {
+  readonly deadline: number
+  readonly taken: Taken
+}
+
+/** The countdown of a question asked now that waits `limit` for its answer, `taken` without one. */
+const countdownOf = (limit: Duration.Duration, taken: Taken): Effect.Effect<Countdown> =>
+  Effect.map(Clock.currentTimeMillis, (now) => ({
+    deadline: now + Duration.toMillis(limit),
+    taken,
+  }))
 
 /**
  * The lines of `stream` (stdin), for the rest of the scope. The stream flows only while a line is
@@ -130,19 +159,52 @@ export const streamInput = (
 export const cancelKey = "Ctrl+D"
 
 /**
+ * The line `prompt` was written after, `text` now, drawn again over it, the cursor left where it
+ * was in what is being typed: the prompt is taken to be on lines of its own, as wide as it is.
+ */
+const redrawAbove = (io: LineIO, columns: number, prompt: string, text: string) => {
+  const rows = Math.max(1, Math.ceil(Bun.stringWidth(prompt) / Math.max(columns, 1)))
+  io.write(`\x1b7\x1b[${rows}A\r\x1b[2K${text}\x1b8`)
+}
+
+/**
  * Asks with `prompt` until `parse` takes the answer, saying each of its errors, then leaves a
  * blank line, as huh's accessible form does after each field. Fails with FormCancelled at the end
- * of input.
+ * of input. With `countdown`, the line above each prompt says how long is left and what no answer
+ * takes, drawn again each second in a live terminal; the caller ends the question when it runs out.
  */
 const ask = <A>(
   io: LineIO,
   prompt: string,
   parse: (answer: string) => { readonly ok: A } | { readonly error: string },
+  countdown?: Countdown,
 ): Effect.Effect<A, FormCancelled> =>
   Effect.gen(function* () {
+    const said = Effect.map(Clock.currentTimeMillis, (now) =>
+      countdown === undefined
+        ? ""
+        : io.theme.form.description.paint(countdownText(countdown.deadline - now, countdown.taken)),
+    )
     while (true) {
+      if (countdown !== undefined) io.write(`${yield* said}\n`)
       io.write(prompt)
-      const line = yield* io.input.readLine
+      const live = io.live
+      const read =
+        countdown === undefined || live === undefined
+          ? io.input.readLine
+          : Effect.raceFirst(
+              io.input.readLine,
+              Effect.forever(
+                Effect.andThen(
+                  Effect.sleep(countdownTick),
+                  Effect.flatMap(said, (text) =>
+                    Effect.sync(() => redrawAbove(io, live.columns(), prompt, text)),
+                  ),
+                ),
+              ),
+            )
+      // Its time run out, the question ends its prompt's line, for what is said after it.
+      const line = yield* Effect.onInterrupt(read, () => Effect.sync(() => io.write("\n")))
       if (Option.isNone(line)) {
         io.write("\n")
         return yield* new FormCancelled()
@@ -167,7 +229,8 @@ const prompt = (io: LineIO, text: string) => `${text}${io.theme.form.selector.pa
 
 /**
  * A select: `title`, `description`, then each of `options` numbered from 1; reads the number of
- * the one chosen, or nothing for `initial`'s (the first's by default). Its index.
+ * the one chosen, or nothing for `initial`'s (the first's by default). Its index. With
+ * `countdown`, the line above its prompt counts down to it.
  */
 export const select = (
   io: LineIO,
@@ -176,6 +239,7 @@ export const select = (
     readonly description?: string
     readonly options: ReadonlyArray<string>
     readonly initial?: number
+    readonly countdown?: Countdown
   },
 ): Effect.Effect<number, FormCancelled> => {
   const { options } = field
@@ -188,25 +252,38 @@ export const select = (
     options.length === 1
       ? "There is only one option; enter 1"
       : `Enter a number between 1 and ${options.length}`
-  return ask(io, prompt(io, `${range} `), (answer) => {
-    const text = answer.trim()
-    if (text === "") return { ok: initial }
-    const n = /^\d+$/.test(text) ? Number(text) : Number.NaN
-    return n >= 1 && n <= options.length
-      ? { ok: n - 1 }
-      : {
-          error:
-            options.length === 1
-              ? "Invalid: must be 1"
-              : `Invalid: must be a number between 1 and ${options.length}`,
-        }
-  })
+  return ask(
+    io,
+    prompt(io, `${range} `),
+    (answer) => {
+      const text = answer.trim()
+      if (text === "") return { ok: initial }
+      const n = /^\d+$/.test(text) ? Number(text) : Number.NaN
+      return n >= 1 && n <= options.length
+        ? { ok: n - 1 }
+        : {
+            error:
+              options.length === 1
+                ? "Invalid: must be 1"
+                : `Invalid: must be a number between 1 and ${options.length}`,
+          }
+    },
+    field.countdown,
+  )
 }
 
-/** A confirm: `question` and `[y/N]`; y or yes is true, n, no or nothing `initial` (false). */
+/**
+ * A confirm: `question` and `[y/N]`; y or yes is true, n, no or nothing `initial` (false). With
+ * `limit`, its countdown says that no answer within it takes `initial`.
+ */
 export const confirm = (
   io: LineIO,
-  field: { readonly question: string; readonly description?: string; readonly initial?: boolean },
+  field: {
+    readonly question: string
+    readonly description?: string
+    readonly initial?: boolean
+    readonly limit?: Duration.Duration
+  },
 ): Effect.Effect<boolean, FormCancelled> => {
   const initial = field.initial ?? false
   if (field.description !== undefined) {
@@ -214,18 +291,29 @@ export const confirm = (
   }
   const hint = initial ? "[Y/n]" : confirmHint
   const question = `${io.theme.form.fieldTitle.paint(field.question)} ${io.theme.form.description.paint(hint)} `
-  return ask(io, question, (answer) => {
-    const text = answer.trim().toLowerCase()
-    if (text === "") return { ok: initial }
-    if (text === "y" || text === "yes") return { ok: true }
-    if (text === "n" || text === "no") return { ok: false }
-    return { error: "Answer y or n." }
-  })
+  const countdown =
+    field.limit === undefined
+      ? Effect.succeed(undefined)
+      : countdownOf(field.limit, takesAnswer(initial))
+  return Effect.flatMap(countdown, (counting) =>
+    ask(
+      io,
+      question,
+      (answer) => {
+        const text = answer.trim().toLowerCase()
+        if (text === "") return { ok: initial }
+        if (text === "y" || text === "yes") return { ok: true }
+        if (text === "n" || text === "no") return { ok: false }
+        return { error: "Answer y or n." }
+      },
+      counting,
+    ),
+  )
 }
 
 /**
  * A text: `title`, `description`, then a line; asked again while `validate` says what is wrong
- * with it. The line, trimmed.
+ * with it. The line, trimmed. With `countdown`, the line above its prompt counts down to it.
  */
 export const text = (
   io: LineIO,
@@ -233,13 +321,19 @@ export const text = (
     readonly title: string
     readonly description?: string
     readonly validate?: (answer: string) => string | null
+    readonly countdown?: Countdown
   },
 ): Effect.Effect<string, FormCancelled> => {
   heading(io, field.title, field.description)
-  return ask(io, prompt(io, ""), (answer) => {
-    const error = field.validate?.(answer) ?? null
-    return error === null ? { ok: answer.trim() } : { error }
-  })
+  return ask(
+    io,
+    prompt(io, ""),
+    (answer) => {
+      const error = field.validate?.(answer) ?? null
+      return error === null ? { ok: answer.trim() } : { error }
+    },
+    field.countdown,
+  )
 }
 
 /**
@@ -308,17 +402,22 @@ export const startQuestion = (
 /**
  * An open question put before an overnight run (src/run/overnightQuestions.ts), a line at a time:
  * its heading, title and description, then its options numbered, the recommended one first, Other
- * and Leave open; Other reads your own answer on the next line.
+ * and Leave open; Other reads your own answer on the next line. With `limit`, a countdown says
+ * that no answer within it leaves the question open.
  */
 export const openQuestion = (
   io: LineIO,
   question: OpenQuestion,
   at: QuestionAt,
+  limit?: Duration.Duration,
 ): Effect.Effect<Reply, FormCancelled> =>
   Effect.gen(function* () {
+    const countdown = limit === undefined ? undefined : yield* countdownOf(limit, leavesOpen)
+    const counting = countdown === undefined ? {} : { countdown }
     io.write(`${io.theme.form.description.paint(questionHeading(question, at))}\n`)
     const choices = choicesOf(question)
     const chosen = yield* select(io, {
+      ...counting,
       title: question.title,
       ...(question.description === "" ? {} : { description: question.description }),
       options: choices.map((choice) =>
@@ -333,6 +432,7 @@ export const openQuestion = (
     if (choice === undefined || choice._tag === "LeaveOpen") return { _tag: "LeaveOpen" } as const
     if (choice._tag === "Option") return { _tag: "Answer", answer: choice.answer } as const
     const answer = yield* text(io, {
+      ...counting,
       title: `Your answer to ${question.id}`,
       validate: (typed) => (typed.trim() === "" ? noAnswerTyped(cancelKey) : null),
     })

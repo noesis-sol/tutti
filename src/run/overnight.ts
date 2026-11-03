@@ -35,6 +35,7 @@ import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { marks } from "../ui/marks.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
+import { answerLimit, notAskedText, unansweredText, within } from "./answerLimit.ts"
 import type { BatteryReading } from "./battery.ts"
 import { howFailed, saidOf } from "./check.ts"
 import { type KeepAwakePlan, lidNote } from "./keepAwake.ts"
@@ -110,8 +111,15 @@ export type Machine = ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileS
 /** The services the checks and the fixes use. */
 export type Env = Beads | UsageProbe | Git | Worktrees | Checks | Log | Machine
 
-/** What the pre-flight asks in a terminal: a yes or no, `initial` the answer Enter gives. */
-export type Ask = (question: string, initial: boolean) => Effect.Effect<boolean, Cancelled>
+/**
+ * What the pre-flight asks in a terminal: a yes or no, `initial` the answer Enter gives, and what
+ * no answer within `limit` takes, which its countdown says (answerLimit.ts).
+ */
+export type Ask = (
+  question: string,
+  initial: boolean,
+  limit: Duration.Duration,
+) => Effect.Effect<boolean, Cancelled>
 
 /** The question was cancelled (Esc, Ctrl+C or the end of input): nothing changes. */
 export interface Cancelled {
@@ -120,8 +128,11 @@ export interface Cancelled {
 
 /** How the pre-flight ended. */
 export type Cleared =
-  /** The run starts, as its fixes left it. */
-  | { readonly _tag: "Cleared"; readonly started: Started }
+  /**
+   * The run starts, as its fixes left it; `unanswered` when a question went unanswered, nobody at
+   * the terminal: the open questions are then left open, not put (overnightQuestions.ts).
+   */
+  | { readonly _tag: "Cleared"; readonly started: Started; readonly unanswered: boolean }
   /** A failed check was left: the run doesn't start, exit 2. */
   | { readonly _tag: "Refused"; readonly failed: number }
   /** A question was cancelled: the run doesn't start, nothing changed, exit 130. */
@@ -848,7 +859,10 @@ export const refusal = (failedLeft: number): string =>
  * and written to the log, then, with `ask` (a terminal), each fix offered and, while a failed check
  * is left, whether to start anyway; the fixes taken made once every answer is in. A failed check
  * left refuses the run unless `force` (--force-overnight) or the answer starts it. `puts`: the open
- * questions are put to you once it has cleared the run (a terminal; overnightQuestions.ts).
+ * questions are put to you once it has cleared the run (a terminal; overnightQuestions.ts). Each
+ * question waits `limit` (answerLimit) for its answer, then takes its default, as said and logged:
+ * a fix is taken, the run isn't started anyway; the questions after it are then not asked, taking
+ * theirs, nobody being there.
  */
 export const preflight = (options: {
   readonly started: Started
@@ -857,9 +871,11 @@ export const preflight = (options: {
   readonly ask: Option.Option<Ask>
   readonly puts: boolean
   readonly force: boolean
+  readonly limit?: Duration.Duration
 }): Effect.Effect<Cleared, never, Env> =>
   Effect.gen(function* () {
     const { night, say, force } = options
+    const limit = options.limit ?? answerLimit
     const logs = yield* Log
     const found = yield* checks(options.started, night, say, options.puts)
     yield* say.say(headline(found))
@@ -872,11 +888,31 @@ export const preflight = (options: {
     // The answers first, so that a cancel changes nothing.
     const taken: Array<Found & { readonly fix: Fix }> = []
     let startAnyway = false
+    let unanswered = false
     if (Option.isSome(options.ask)) {
       const ask = options.ask.value
+      /** The answer to `question`, or `initial` once nobody answers it, or answered the one before. */
+      const answer = (question: string, initial: boolean) =>
+        Effect.gen(function* () {
+          const [asked, took] = [`"${question}"`, initial ? "yes" : "no"]
+          if (unanswered) {
+            const text = notAskedText(asked, took)
+            yield* say.say(text)
+            yield* logs.write(line`${text}`)
+            return Result.succeed(initial)
+          }
+          const answered = yield* Effect.result(within(ask(question, initial, limit), limit))
+          if (Result.isFailure(answered)) return Result.fail(answered.failure)
+          if (Option.isSome(answered.success)) return Result.succeed(answered.success.value)
+          unanswered = true
+          const text = unansweredText(limit, asked, took)
+          yield* say.warn(text)
+          yield* logs.write(line`${text}`)
+          return Result.succeed(initial)
+        })
       for (const each of found) {
         if (each.fix === undefined) continue
-        const yes = yield* Effect.result(ask(each.fix.question, true))
+        const yes = yield* answer(each.fix.question, true)
         if (Result.isFailure(yes)) return { _tag: "Cancelled" } as const
         if (yes.success) taken.push(each as Found & { readonly fix: Fix })
       }
@@ -884,9 +920,7 @@ export const preflight = (options: {
         (each) => each.verdict === "failed" && !taken.includes(each as never),
       ).length
       if (left > 0 && !force) {
-        const yes = yield* Effect.result(
-          ask(`Start the run anyway, with ${checksFailed(left)}?`, false),
-        )
+        const yes = yield* answer(`Start the run anyway, with ${checksFailed(left)}?`, false)
         if (Result.isFailure(yes)) return { _tag: "Cancelled" } as const
         startAnyway = yes.success
       }
@@ -909,12 +943,12 @@ export const preflight = (options: {
     }
 
     const left = found.filter((each) => each.verdict === "failed" && !fixed.has(each)).length
-    if (left === 0) return { _tag: "Cleared", started } as const
+    if (left === 0) return { _tag: "Cleared", started, unanswered } as const
     if (force || startAnyway) {
       const text = `overnight pre-flight: starting with ${checksFailed(left)} (${force ? "--force-overnight" : "as answered"})`
       yield* say.warn(text)
       yield* logs.write(line`${text}`)
-      return { _tag: "Cleared", started } as const
+      return { _tag: "Cleared", started, unanswered } as const
     }
     yield* logs.write(line`overnight pre-flight: ${checksFailed(left)}: the run doesn't start`)
     return { _tag: "Refused", failed: left } as const
