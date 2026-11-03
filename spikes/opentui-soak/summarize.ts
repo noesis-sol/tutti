@@ -11,6 +11,16 @@ type Run = { name: string; rows: Row[]; end: string | undefined }
 
 const MB = 2 ** 20
 const mb = (n: number | undefined) => (n === undefined ? "–" : (n / MB).toFixed(0))
+const cpuMicros = (r: Row | undefined) =>
+  r?.cpuUserMicros === undefined ? undefined : r.cpuUserMicros + r.cpuSystemMicros
+/** The CPU the minute since the last sample took, in % of one core: "–" where a sample lacks it. */
+const cpuPercent = (r: Row, before: Row | undefined) => {
+  const now = cpuMicros(r)
+  const then = cpuMicros(before)
+  if (now === undefined || then === undefined || before === undefined) return "–"
+  const wallMicros = (Date.parse(r.at) - Date.parse(before.at)) * 1000
+  return wallMicros > 0 ? ((100 * (now - then)) / wallMicros).toFixed(0) : "–"
+}
 
 const load = async (path: string): Promise<Run> => {
   const lines = (await Bun.file(path).text()).split("\n").filter((l) => l !== "")
@@ -28,14 +38,14 @@ const table = (run: Run) => {
   const out = [
     `#### ${run.name}`,
     "",
-    "| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames |",
-    "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames | CPU % |",
+    "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
   ]
-  for (const r of run.rows) {
+  run.rows.forEach((r, i) => {
     out.push(
-      `| ${r.minute} | ${mb(r.vmmap?.footprintBytes)} | ${mb(r.rssBytes)} | ${mb(r.vmmap?.regions.VM_ALLOCATE)} | ${mb(r.vmmap?.regions["Memory Tag 240"])} | ${mb(r.vmmap?.mallocDirtyBytes)} | ${mb(r.jscHeapBytes)} | ${r.mounted} | ${r.appended} | ${r.ticks} | ${r.frames} |`,
+      `| ${r.minute} | ${mb(r.vmmap?.footprintBytes)} | ${mb(r.rssBytes)} | ${mb(r.vmmap?.regions.VM_ALLOCATE)} | ${mb(r.vmmap?.regions["Memory Tag 240"])} | ${mb(r.vmmap?.mallocDirtyBytes)} | ${mb(r.jscHeapBytes)} | ${r.mounted} | ${r.appended} | ${r.ticks} | ${r.frames} | ${cpuPercent(r, run.rows[i - 1])} |`,
     )
-  }
+  })
   out.push("", `Ended: ${run.end ?? "still running"}. Sizes in MB.`, "")
   return out.join("\n")
 }

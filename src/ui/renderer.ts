@@ -1,6 +1,7 @@
 // The one OpenTUI renderer of a command (§ 7.1, § 7.4): made once, in the alternate screen, and
-// destroyed once, when the scope it was opened in closes. A second renderer after destroy() is
-// unproven (OpenTUI #1533), so everything after it goes to the main screen as plain ANSI.
+// destroyed once, when the scope it was opened in closes. Everything after it goes to the main
+// screen as plain ANSI, where it stays in the terminal's scrollback; a second renderer after
+// destroy() works on OpenTUI 0.8.1 (docs/spikes/05-opentui-soak.md § 9), but none is needed.
 //
 // Signals are tutti's: `exitOnCtrlC: false` and `exitSignals: []` keep OpenTUI from destroying the
 // renderer on Ctrl+C or any of its eight default signals, so the Effect runtime decides what each

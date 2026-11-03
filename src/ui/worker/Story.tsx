@@ -4,8 +4,9 @@
 // first line, `+N −M`); a message sent to the worker wrapped, `› ` before it. Enter or a click
 // expands one: an edit's diff (<diff>), a command's output (<code>), a read's range, an Agent call's
 // subagent work behind a faint `│`, a message's lines past the first `itemLines`. Collapsed items
-// are a fixed height, their lines wrapped beforehand to the pane's width, at most `itemLines`
-// (#1514). Each takes plain props: the view's state is transcriptView.ts's.
+// are a fixed height, their lines wrapped beforehand to the pane's width, at most `itemLines`, the
+// last cut with `…` and a call's mark at its end, which OpenTUI's own wrapping has no way to draw.
+// Each takes plain props: the view's state is transcriptView.ts's.
 import { RGBA } from "@opentui/core"
 import { memo, type ReactNode } from "react"
 import { clickable } from "../click.ts"
@@ -148,7 +149,7 @@ const holds = (entry: Entry, key: string): boolean =>
 
 /**
  * Rows of a fixed height, as many as its lines, that a click selects and expands: lines wrapped
- * beforehand to the pane's width, so that OpenTUI never lays them out a second time (#1514).
+ * beforehand to the pane's width, cut to `itemLines` and marked as tutti draws them.
  */
 const ClickLines = ({
   lines,

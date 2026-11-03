@@ -8,7 +8,7 @@ Ticket tutti-nrg.1.5, M0 spike (6) (spec § 14), for § 7.5 Bounded rendering, �
   `bun spikes/opentui-soak/summarize.ts <files>` makes the tables below.
 - **Versions:** `@opentui/core` and `@opentui/react` 0.6.6, React 19.2.9 (`react-reconciler`
   0.33.0), Bun 1.4.3, macOS 26.6.2 on an Apple M1 Pro (10 cores, 16 GB), 2026-10-16/17. § 8 is
-  the soak again on 0.7.0, 2026-10-26.
+  the soak again on 0.7.0, 2026-10-26; § 9 on 0.8.1 beside 0.7.0, with the CPU, 2026-11-03.
 - **Terminal:** a pseudo-terminal from `Bun.Terminal`, 160×50, `TERM=xterm-256color`,
   `COLORTERM=truecolor`. The harness plays the terminal: it answers OSC 10/11 colour queries and
   reads everything the app writes.
@@ -24,6 +24,7 @@ Ticket tutti-nrg.1.5, M0 spike (6) (spec § 14), for § 7.5 Bounded rendering, �
 | … 200 items | 98 → 267 MB: level from minute 4 (233 MB), **+0.6 MB/min** over the last 10 minutes |
 | OpenTUI's native memory under the bounds | **Levels off**: 469 MB with 600 items, 172 MB with 200; unbounded it grows 46 MB/min. About **0.75 MB per mounted item** once drawn. Unmounting gives it back to the system |
 | … on OpenTUI 0.7.0 (§ 8), production build | **A fifth less**: 364 MB with 600 items, 135 MB with 200; unbounded it still grows, 35 MB/min |
+| … on OpenTUI 0.8.1 (§ 9), production build | **About a fifteenth of 0.7.0's**, in malloc now: 27 MB with 600 items, 12 MB with 200, flat; unbounded 2.4 MB/min, 0.03 MB a mounted item. The footprint at minute 30: 148 MB with 600 items (485 on 0.7.0), 110 MB with 200 (239). CPU a little lower: 5.9 % of a core with 600 items (7.3), 4.6 % with 200 (4.9) |
 | What else grows | **React's development build**: about 10 MB/min, whatever the transcript does. It adds a `performance.measure()` entry per component render (React 19.2's Performance Tracks) and Bun keeps them all. With `NODE_ENV=production`, or with the timeline cleared, it stays flat |
 | Verdict on § 7.5's bounds | **They hold the transcript's memory, but only with React's production build is the whole app near flat.** At 200 items (the view at the bottom) the footprint settles at ~260 MB and grows 0.6 MB/min; at 600 (scrolled back) it settles near 500 MB and still creeps 3–4 MB/min after 30 minutes, which is acceptable for a view one only visits. In the development build, which `bun src/main.ts` gets, nothing is flat |
 | `exitOnCtrlC: false`, `exitSignals: []` | **Work.** Ctrl+C arrives as a key; SIGINT, SIGTERM and SIGHUP reach the app's handlers, and the renderer stays |
@@ -343,6 +344,73 @@ a ScrollBox culls and refreshes its rows. Every 5 minutes, in MB, native as abov
   items (3.1 on 0.6.6) and 0.5 MB/min with 200 (0.7).
 - `checks.ts` on 0.7.0 gives what § 4 found: 15 of 16, mode 2027 still left set (OpenTUI #1727).
 
+## 9. Again on OpenTUI 0.8.1
+
+tutti-efqo, 2026-11-03: the three soaks on `@opentui/core` and `@opentui/react` 0.8.1, with
+React's production build, 30 minutes each, side by side with two on 0.7.0 (600 and 200 items, from
+a copy of the spike with 0.7.0 installed), on the same machine and Bun as above, with other work on
+it. Each kept its 10 Hz (about 17,500 ticks, 35,000 frames) and the PTY took 51 MB from each, as
+every frame changes all 16 cards. The samples now carry the process's CPU time
+(`process.cpuUsage()`, every thread's), and `summarize.ts` gives each minute's share of one core.
+
+0.8.1 allocates OpenTUI's native memory through libc: vmmap lists no `VM_ALLOCATE` region any more,
+and it is in the malloc zones (`MALLOC_SMALL`), the `malloc` column. Every 5 minutes, in MB:
+
+| min | 600: footprint | malloc | 200: footprint | malloc | unbounded: footprint | malloc | mounted |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 109 | 17 | 99 | 9 | 110 | 17 | 606 |
+| 5 | 131 | 23 | 116 | 12 | 150 | 31 | 955 |
+| 10 | 159 | 27 | 117 | 12 | 188 | 41 | 1,296 |
+| 15 | 139 | 27 | 102 | 12 | 185 | 56 | 1,655 |
+| 20 | 144 | 27 | 117 | 12 | 225 | 68 | 2,018 |
+| 25 | 148 | 27 | 113 | 12 | 241 | 78 | 2,378 |
+| 30 | 148 | 27 | 110 | 12 | 251 | 89 | 2,727 |
+
+And at minute 30, beside 0.7.0 run at the same time:
+
+| | 0.8.1: footprint | native | CPU | 0.7.0: footprint | native | CPU |
+|---|---:|---:|---:|---:|---:|---:|
+| 600 items | 148 | 27 | 5.9 % | 485 | 365 | 7.3 % |
+| 200 items | 110 | 12 | 4.6 % | 239 | 136 | 4.9 % |
+| unbounded | 251 | 89 | 9.3 % | | | |
+
+CPU is the run's average, in % of one core; native is malloc on 0.8.1, `VM_ALLOCATE` on 0.7.0.
+
+- **A mounted item's native memory is about a fifteenth of 0.7.0's.** 27 MB with 600 items
+  (365 on 0.7.0) and 12 MB with 200 (136), each level from minute 10. Unbounded it still grows with
+  the items mounted, but by 2.4 MB/min from minute 10 to 30 (35 on 0.7.0), 0.03 MB a mounted item
+  (0.48). The footprint is a third of 0.7.0's with 600 items and under half with 200, and flat from
+  minute 10 in both.
+- **The bounds of spec § 7.5 still pay**, though no longer for native memory alone: unbounded, the
+  footprint grows 3.2 MB/min and the CPU is half again as much as at 600 items (9.3 % against 5.9),
+  as OpenTUI lays out every mounted item each frame. They stay at 200 and 600.
+- **CPU is a little lower** than 0.7.0's beside it, a fifth with 600 items and about the same with
+  200: here every frame changes, so 0.8.1's frames that paint only what changed save little. The
+  soak doesn't measure a frame that changes nothing, which 0.8.1 no longer paints.
+- The 0.7.0 runs gave what § 8 found (485 and 239 MB at minute 30; 480 and 232 there).
+- `checks.ts` on 0.8.1 gives what § 4 found: 15 of 16, mode 2027 still left set (OpenTUI #1727).
+  The theme mode still follows the terminal's OSC 11 answers and its DSR 997 reports.
+- **A second renderer after `destroy()` works** (`bun spikes/opentui-soak/second-renderer-check.ts`):
+  a renderer with a React tree, destroyed, a line on the main screen, then a second renderer with a
+  tree of its own: both trees are drawn, the alternate screen is entered and left twice, the second
+  renderer hears its keys, and the terminal's modes are back at the end. OpenTUI #1533, which the
+  spec named for it, is another matter, a second `render()` on one root, fixed in 0.7.0.
+- **The split wheel report, again** (`bun spikes/opentui-soak/split-input-check.ts`, OpenTUI #1661):
+  a report whose second part comes 60 ms after its first, past the stdin parser's 20 ms, over a
+  focused `<input>`, with OpenTUI's own parser and with its experimental native one
+  (`experimental_nativeInput`, `OTUI_NATIVE_INPUT_PARSER=1`, #1794), the terminal answering DA1:
+
+  | The report split | Own parser | Native parser |
+  |---|---|---|
+  | after `ESC [` | its rest typed into the input, `<64;10;3M` | the wheel turn |
+  | after `ESC [<6` | the wheel turn | the wheel turn |
+  | after `ESC` | an Esc key, then the wheel turn | an Esc key, then the wheel turn |
+
+  The native parser mends the first case, which tutti's mouse filter mends, but not the last, which
+  the Esc hold mends: with it a report split after its ESC still closes a box or leaves the
+  composer. tutti keeps OpenTUI's own parser and both guards (spec § 7.3). Both parsers read
+  OpenTUI's startup replies to the end, DA1 included, and tutti's UI tests (552) pass with either.
+
 ## Appendix: every sample
 
 #### soak-600 (React development build, as for every run without `NODE_ENV`)
@@ -650,3 +718,197 @@ Ended after 30 minutes. Sizes in MB, as above.
 | 30 | 1229 | 1227 | 1061 | 142 | 7 | 47 | 2764 | 2763 | 17713 | 35456 |
 
 Ended after 30 minutes. Sizes in MB, as above.
+
+#### soak-0.8.1-600 (OpenTUI 0.8.1, `NODE_ENV=production`, § 9)
+
+| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames | CPU % |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 109 | 110 | – | 77 | 17 | 21 | 601 | 605 | 85 | 169 | – |
+| 1 | 121 | 121 | – | 86 | 19 | 22 | 601 | 672 | 612 | 1224 | 6 |
+| 2 | 115 | 115 | – | 80 | 20 | 20 | 601 | 744 | 1196 | 2392 | 4 |
+| 3 | 126 | 126 | – | 89 | 21 | 27 | 601 | 816 | 1804 | 3612 | 5 |
+| 4 | 143 | 143 | – | 106 | 22 | 34 | 601 | 886 | 2406 | 4815 | 7 |
+| 5 | 131 | 145 | – | 92 | 23 | 19 | 601 | 955 | 3014 | 6033 | 7 |
+| 6 | 140 | 140 | – | 100 | 24 | 26 | 601 | 1024 | 3525 | 7047 | 7 |
+| 7 | 146 | 146 | – | 105 | 25 | 28 | 601 | 1093 | 4137 | 8276 | 8 |
+| 8 | 144 | 143 | – | 102 | 26 | 26 | 601 | 1163 | 4716 | 9443 | 8 |
+| 9 | 157 | 157 | – | 114 | 27 | 26 | 601 | 1232 | 5267 | 10550 | 9 |
+| 10 | 159 | 159 | – | 116 | 27 | 27 | 601 | 1302 | 5808 | 11649 | 9 |
+| 11 | 153 | 153 | – | 110 | 27 | 26 | 601 | 1373 | 6349 | 12748 | 9 |
+| 12 | 144 | 144 | – | 101 | 27 | 20 | 601 | 1445 | 6936 | 13924 | 4 |
+| 13 | 141 | 141 | – | 98 | 27 | 21 | 601 | 1518 | 7528 | 15108 | 4 |
+| 14 | 140 | 139 | – | 97 | 27 | 21 | 601 | 1591 | 8123 | 16297 | 4 |
+| 15 | 139 | 139 | – | 96 | 27 | 30 | 601 | 1663 | 8717 | 17485 | 4 |
+| 16 | 147 | 147 | – | 104 | 27 | 27 | 601 | 1736 | 9310 | 18672 | 4 |
+| 17 | 140 | 140 | – | 97 | 27 | 20 | 601 | 1808 | 9904 | 19860 | 4 |
+| 18 | 141 | 143 | – | 98 | 27 | 31 | 601 | 1881 | 10499 | 21050 | 4 |
+| 19 | 149 | 149 | – | 106 | 27 | 23 | 601 | 1954 | 11096 | 22246 | 4 |
+| 20 | 144 | 142 | – | 100 | 27 | 26 | 601 | 2026 | 11691 | 23436 | 5 |
+| 21 | 137 | 137 | – | 94 | 27 | 25 | 601 | 2098 | 12281 | 24616 | 4 |
+| 22 | 139 | 139 | – | 96 | 27 | 30 | 601 | 2171 | 12874 | 25802 | 4 |
+| 23 | 151 | 150 | – | 107 | 27 | 28 | 601 | 2244 | 13484 | 27025 | 5 |
+| 24 | 161 | 161 | – | 118 | 27 | 35 | 601 | 2316 | 14087 | 28246 | 6 |
+| 25 | 148 | 149 | – | 105 | 27 | 23 | 601 | 2388 | 14680 | 29452 | 7 |
+| 26 | 152 | 152 | – | 109 | 27 | 27 | 601 | 2459 | 15272 | 30651 | 8 |
+| 27 | 153 | 152 | – | 109 | 27 | 27 | 601 | 2531 | 15884 | 31891 | 8 |
+| 28 | 162 | 161 | – | 119 | 27 | 31 | 601 | 2602 | 16434 | 33016 | 8 |
+| 29 | 151 | 151 | – | 108 | 27 | 27 | 601 | 2671 | 16971 | 34099 | 7 |
+| 30 | 148 | 148 | – | 105 | 27 | 23 | 601 | 2745 | 17570 | 35297 | 5 |
+
+Ended after 30 minutes. Sizes in MB, as above; "malloc" holds OpenTUI's native memory on 0.8.1. "CPU %" is the minute's CPU time in % of one core.
+
+
+#### soak-0.8.1-200 (OpenTUI 0.8.1, `NODE_ENV=production`, § 9)
+
+| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames | CPU % |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 99 | 99 | – | 74 | 9 | 15 | 201 | 605 | 87 | 175 | – |
+| 1 | 103 | 103 | – | 77 | 10 | 18 | 201 | 672 | 614 | 1229 | 5 |
+| 2 | 99 | 99 | – | 72 | 11 | 15 | 201 | 744 | 1198 | 2398 | 3 |
+| 3 | 114 | 113 | – | 86 | 12 | 14 | 201 | 816 | 1802 | 3608 | 4 |
+| 4 | 111 | 111 | – | 83 | 12 | 18 | 201 | 887 | 2413 | 4825 | 6 |
+| 5 | 116 | 117 | – | 88 | 12 | 20 | 201 | 958 | 3034 | 6066 | 5 |
+| 6 | 130 | 128 | – | 101 | 12 | 25 | 201 | 1026 | 3567 | 7131 | 5 |
+| 7 | 113 | 123 | – | 84 | 12 | 16 | 201 | 1097 | 4168 | 8335 | 6 |
+| 8 | 119 | 117 | – | 91 | 12 | 20 | 201 | 1167 | 4749 | 9504 | 7 |
+| 9 | 116 | 116 | – | 87 | 12 | 19 | 201 | 1236 | 5302 | 10616 | 7 |
+| 10 | 117 | 117 | – | 89 | 12 | 19 | 201 | 1307 | 5848 | 11725 | 7 |
+| 11 | 116 | 116 | – | 88 | 12 | 20 | 201 | 1378 | 6388 | 12815 | 7 |
+| 12 | 119 | 118 | – | 90 | 12 | 22 | 201 | 1450 | 6977 | 13996 | 3 |
+| 13 | 106 | 106 | – | 77 | 12 | 18 | 201 | 1524 | 7569 | 15180 | 3 |
+| 14 | 102 | 102 | – | 74 | 12 | 19 | 201 | 1596 | 8164 | 16369 | 3 |
+| 15 | 102 | 102 | – | 73 | 12 | 24 | 201 | 1668 | 8758 | 17558 | 3 |
+| 16 | 101 | 101 | – | 72 | 12 | 22 | 201 | 1741 | 9352 | 18746 | 3 |
+| 17 | 101 | 101 | – | 72 | 12 | 17 | 201 | 1813 | 9946 | 19935 | 3 |
+| 18 | 109 | 108 | – | 80 | 12 | 29 | 201 | 1887 | 10540 | 21123 | 3 |
+| 19 | 117 | 116 | – | 88 | 12 | 22 | 201 | 1959 | 11138 | 22320 | 3 |
+| 20 | 117 | 117 | – | 88 | 12 | 22 | 201 | 2031 | 11733 | 23510 | 4 |
+| 21 | 110 | 110 | – | 82 | 12 | 22 | 201 | 2104 | 12323 | 24690 | 3 |
+| 22 | 103 | 103 | – | 75 | 12 | 14 | 201 | 2176 | 12916 | 25876 | 3 |
+| 23 | 110 | 109 | – | 81 | 12 | 15 | 201 | 2248 | 13529 | 27105 | 4 |
+| 24 | 114 | 114 | – | 85 | 12 | 20 | 201 | 2322 | 14131 | 28317 | 5 |
+| 25 | 113 | 113 | – | 85 | 12 | 14 | 201 | 2393 | 14733 | 29523 | 5 |
+| 26 | 120 | 120 | – | 91 | 12 | 21 | 201 | 2465 | 15332 | 30725 | 6 |
+| 27 | 123 | 122 | – | 94 | 12 | 20 | 201 | 2537 | 15941 | 31951 | 6 |
+| 28 | 129 | 128 | – | 100 | 12 | 24 | 201 | 2608 | 16511 | 33099 | 6 |
+| 29 | 125 | 125 | – | 96 | 12 | 27 | 201 | 2679 | 17029 | 34145 | 5 |
+| 30 | 110 | 110 | – | 82 | 12 | 14 | 201 | 2752 | 17627 | 35342 | 3 |
+
+Ended after 30 minutes. Sizes in MB, as above; "malloc" holds OpenTUI's native memory on 0.8.1. "CPU %" is the minute's CPU time in % of one core.
+
+
+#### soak-0.8.1-unbounded (OpenTUI 0.8.1, `NODE_ENV=production`, § 9)
+
+| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames | CPU % |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 110 | 111 | – | 78 | 17 | 20 | 606 | 605 | 85 | 171 | – |
+| 1 | 122 | 121 | – | 87 | 19 | 23 | 673 | 672 | 612 | 1226 | 6 |
+| 2 | 125 | 125 | – | 88 | 22 | 37 | 745 | 744 | 1196 | 2394 | 4 |
+| 3 | 137 | 137 | – | 97 | 24 | 31 | 817 | 816 | 1797 | 3602 | 6 |
+| 4 | 138 | 137 | – | 96 | 26 | 24 | 885 | 884 | 2402 | 4809 | 8 |
+| 5 | 150 | 150 | – | 103 | 31 | 32 | 955 | 954 | 3006 | 6015 | 7 |
+| 6 | 164 | 164 | – | 115 | 34 | 35 | 1022 | 1021 | 3502 | 7004 | 8 |
+| 7 | 160 | 160 | – | 108 | 36 | 34 | 1091 | 1090 | 4112 | 8221 | 10 |
+| 8 | 169 | 171 | – | 117 | 36 | 37 | 1159 | 1158 | 4683 | 9363 | 10 |
+| 9 | 184 | 184 | – | 130 | 39 | 43 | 1226 | 1225 | 5213 | 10427 | 11 |
+| 10 | 188 | 202 | – | 132 | 41 | 45 | 1296 | 1295 | 5749 | 11512 | 12 |
+| 11 | 176 | 176 | – | 117 | 43 | 29 | 1365 | 1364 | 6274 | 12576 | 12 |
+| 12 | 198 | 197 | – | 136 | 45 | 47 | 1438 | 1437 | 6862 | 13751 | 6 |
+| 13 | 180 | 180 | – | 114 | 51 | 44 | 1510 | 1509 | 7454 | 14937 | 6 |
+| 14 | 183 | 183 | – | 114 | 53 | 35 | 1582 | 1581 | 8048 | 16124 | 6 |
+| 15 | 185 | 185 | – | 114 | 56 | 34 | 1655 | 1654 | 8642 | 17314 | 6 |
+| 16 | 192 | 192 | – | 118 | 58 | 42 | 1728 | 1727 | 9236 | 18502 | 7 |
+| 17 | 193 | 192 | – | 116 | 60 | 41 | 1801 | 1800 | 9831 | 19692 | 7 |
+| 18 | 196 | 196 | – | 117 | 63 | 35 | 1873 | 1872 | 10426 | 20883 | 7 |
+| 19 | 209 | 208 | – | 128 | 65 | 47 | 1945 | 1944 | 11023 | 22080 | 8 |
+| 20 | 225 | 225 | – | 141 | 68 | 50 | 2018 | 2017 | 11617 | 23268 | 9 |
+| 21 | 216 | 215 | – | 129 | 70 | 38 | 2091 | 2090 | 12207 | 24449 | 9 |
+| 22 | 216 | 216 | – | 128 | 73 | 39 | 2164 | 2163 | 12800 | 25633 | 8 |
+| 23 | 227 | 227 | – | 136 | 76 | 39 | 2236 | 2235 | 13410 | 26858 | 10 |
+| 24 | 233 | 233 | – | 142 | 76 | 54 | 2307 | 2306 | 14005 | 28057 | 12 |
+| 25 | 241 | 241 | – | 147 | 78 | 52 | 2378 | 2377 | 14591 | 29235 | 13 |
+| 26 | 245 | 245 | – | 149 | 80 | 53 | 2449 | 2448 | 15173 | 30415 | 15 |
+| 27 | 245 | 245 | – | 146 | 83 | 58 | 2518 | 2517 | 15772 | 31613 | 15 |
+| 28 | 252 | 252 | – | 151 | 85 | 58 | 2584 | 2583 | 16319 | 32699 | 16 |
+| 29 | 261 | 261 | – | 158 | 87 | 59 | 2655 | 2654 | 16823 | 33707 | 14 |
+| 30 | 251 | 251 | – | 146 | 89 | 47 | 2727 | 2726 | 17419 | 34900 | 11 |
+
+Ended after 30 minutes. Sizes in MB, as above; "malloc" holds OpenTUI's native memory on 0.8.1. "CPU %" is the minute's CPU time in % of one core.
+
+
+#### soak-0.7.0-beside-0.8.1-600 (OpenTUI 0.7.0 beside 0.8.1, `NODE_ENV=production`, § 9)
+
+| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames | CPU % |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 116 | 116 | 22 | 76 | 3 | 19 | 601 | 605 | 81 | 162 | – |
+| 1 | 162 | 162 | 53 | 92 | 3 | 28 | 601 | 672 | 608 | 1218 | 7 |
+| 2 | 188 | 187 | 85 | 84 | 3 | 20 | 601 | 744 | 1198 | 2397 | 5 |
+| 3 | 226 | 226 | 118 | 90 | 3 | 22 | 601 | 816 | 1817 | 3638 | 6 |
+| 4 | 257 | 258 | 148 | 91 | 3 | 24 | 601 | 884 | 2396 | 4795 | 8 |
+| 5 | 291 | 290 | 179 | 94 | 3 | 24 | 601 | 954 | 2995 | 5998 | 8 |
+| 6 | 328 | 328 | 209 | 101 | 3 | 29 | 601 | 1021 | 3494 | 6992 | 8 |
+| 7 | 357 | 357 | 239 | 100 | 3 | 23 | 601 | 1089 | 4098 | 8197 | 9 |
+| 8 | 387 | 387 | 270 | 99 | 3 | 24 | 601 | 1157 | 4672 | 9359 | 9 |
+| 9 | 423 | 423 | 292 | 113 | 3 | 30 | 601 | 1224 | 5196 | 10409 | 10 |
+| 10 | 419 | 419 | 296 | 105 | 3 | 24 | 601 | 1294 | 5735 | 11500 | 10 |
+| 11 | 430 | 430 | 300 | 111 | 3 | 29 | 601 | 1364 | 6270 | 12579 | 10 |
+| 12 | 424 | 424 | 305 | 100 | 3 | 21 | 601 | 1437 | 6860 | 13759 | 6 |
+| 13 | 427 | 426 | 310 | 98 | 3 | 29 | 601 | 1509 | 7454 | 14946 | 5 |
+| 14 | 427 | 427 | 315 | 94 | 3 | 23 | 601 | 1581 | 8048 | 16135 | 6 |
+| 15 | 432 | 432 | 319 | 94 | 3 | 28 | 601 | 1654 | 8642 | 17323 | 5 |
+| 16 | 436 | 436 | 325 | 93 | 3 | 20 | 601 | 1727 | 9236 | 18511 | 6 |
+| 17 | 442 | 442 | 328 | 94 | 3 | 28 | 601 | 1800 | 9830 | 19699 | 6 |
+| 18 | 445 | 445 | 332 | 93 | 3 | 24 | 601 | 1872 | 10425 | 20888 | 6 |
+| 19 | 454 | 453 | 335 | 100 | 3 | 23 | 601 | 1944 | 11020 | 22080 | 6 |
+| 20 | 456 | 456 | 338 | 99 | 3 | 21 | 601 | 2017 | 11616 | 23272 | 6 |
+| 21 | 455 | 455 | 341 | 95 | 3 | 25 | 601 | 2090 | 12208 | 24456 | 6 |
+| 22 | 456 | 456 | 344 | 93 | 3 | 26 | 601 | 2163 | 12801 | 25641 | 5 |
+| 23 | 466 | 466 | 347 | 100 | 3 | 21 | 601 | 2235 | 13407 | 26857 | 7 |
+| 24 | 473 | 472 | 350 | 104 | 3 | 27 | 601 | 2306 | 14007 | 28064 | 8 |
+| 25 | 476 | 476 | 353 | 104 | 3 | 24 | 601 | 2378 | 14597 | 29260 | 8 |
+| 26 | 477 | 478 | 355 | 103 | 3 | 22 | 601 | 2449 | 15200 | 30483 | 9 |
+| 27 | 478 | 477 | 357 | 101 | 3 | 21 | 601 | 2520 | 15798 | 31693 | 9 |
+| 28 | 486 | 485 | 359 | 108 | 3 | 26 | 601 | 2589 | 16362 | 32838 | 10 |
+| 29 | 490 | 490 | 362 | 109 | 3 | 32 | 601 | 2660 | 16877 | 33873 | 8 |
+| 30 | 485 | 484 | 365 | 101 | 3 | 27 | 601 | 2732 | 17473 | 35069 | 6 |
+
+Ended after 30 minutes. Sizes in MB, as above; "malloc" holds OpenTUI's native memory on 0.8.1. "CPU %" is the minute's CPU time in % of one core.
+
+
+#### soak-0.7.0-beside-0.8.1-200 (OpenTUI 0.7.0 beside 0.8.1, `NODE_ENV=production`, § 9)
+
+| min | footprint | RSS | VM_ALLOCATE | Tag 240 | malloc | JS heap | mounted | appended | ticks | frames | CPU % |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 100 | 99 | 12 | 71 | 2 | 14 | 201 | 605 | 82 | 166 | – |
+| 1 | 134 | 133 | 43 | 74 | 2 | 14 | 201 | 672 | 609 | 1224 | 5 |
+| 2 | 166 | 166 | 76 | 73 | 2 | 16 | 201 | 744 | 1200 | 2406 | 3 |
+| 3 | 201 | 201 | 103 | 81 | 2 | 18 | 201 | 816 | 1805 | 3620 | 4 |
+| 4 | 201 | 201 | 105 | 79 | 2 | 16 | 201 | 886 | 2402 | 4815 | 6 |
+| 5 | 214 | 213 | 110 | 87 | 2 | 15 | 201 | 956 | 3016 | 6051 | 5 |
+| 6 | 223 | 223 | 114 | 92 | 2 | 19 | 201 | 1024 | 3540 | 7100 | 6 |
+| 7 | 220 | 220 | 116 | 87 | 2 | 15 | 201 | 1095 | 4138 | 8295 | 6 |
+| 8 | 223 | 227 | 116 | 91 | 2 | 20 | 201 | 1164 | 4737 | 9501 | 7 |
+| 9 | 236 | 235 | 118 | 100 | 2 | 24 | 201 | 1234 | 5289 | 10617 | 7 |
+| 10 | 232 | 232 | 120 | 95 | 2 | 18 | 201 | 1305 | 5823 | 11701 | 7 |
+| 11 | 227 | 227 | 122 | 87 | 2 | 15 | 201 | 1376 | 6369 | 12800 | 7 |
+| 12 | 224 | 224 | 123 | 84 | 2 | 14 | 201 | 1448 | 6958 | 13979 | 4 |
+| 13 | 222 | 222 | 124 | 81 | 2 | 21 | 201 | 1521 | 7552 | 15167 | 3 |
+| 14 | 223 | 223 | 125 | 82 | 2 | 27 | 201 | 1593 | 8145 | 16354 | 3 |
+| 15 | 218 | 217 | 124 | 76 | 2 | 14 | 201 | 1667 | 8740 | 17544 | 3 |
+| 16 | 218 | 218 | 125 | 76 | 2 | 16 | 201 | 1739 | 9333 | 18730 | 3 |
+| 17 | 219 | 219 | 126 | 75 | 2 | 15 | 201 | 1811 | 9927 | 19918 | 3 |
+| 18 | 221 | 221 | 127 | 77 | 2 | 22 | 201 | 1884 | 10522 | 21109 | 3 |
+| 19 | 229 | 229 | 128 | 83 | 2 | 18 | 201 | 1956 | 11116 | 22298 | 4 |
+| 20 | 230 | 230 | 128 | 85 | 2 | 17 | 201 | 2030 | 11712 | 23490 | 4 |
+| 21 | 226 | 226 | 129 | 79 | 2 | 17 | 201 | 2102 | 12305 | 24677 | 4 |
+| 22 | 225 | 225 | 130 | 78 | 2 | 14 | 201 | 2174 | 12898 | 25863 | 3 |
+| 23 | 236 | 236 | 131 | 88 | 2 | 20 | 201 | 2247 | 13506 | 27082 | 4 |
+| 24 | 234 | 234 | 131 | 85 | 2 | 16 | 201 | 2319 | 14110 | 28297 | 5 |
+| 25 | 237 | 237 | 134 | 85 | 2 | 17 | 201 | 2390 | 14705 | 29496 | 6 |
+| 26 | 252 | 251 | 134 | 100 | 2 | 22 | 201 | 2462 | 15296 | 30694 | 6 |
+| 27 | 248 | 248 | 135 | 95 | 2 | 16 | 201 | 2533 | 15911 | 31940 | 6 |
+| 28 | 253 | 253 | 136 | 100 | 2 | 20 | 201 | 2604 | 16476 | 33085 | 7 |
+| 29 | 245 | 245 | 136 | 91 | 2 | 19 | 201 | 2675 | 16995 | 34129 | 6 |
+| 30 | 239 | 239 | 136 | 85 | 2 | 17 | 201 | 2747 | 17591 | 35321 | 4 |
+
+Ended after 30 minutes. Sizes in MB, as above; "malloc" holds OpenTUI's native memory on 0.8.1. "CPU %" is the minute's CPU time in % of one core.

@@ -13,9 +13,11 @@ fed through `useSyncExternalStore` stores as § 3.5 describes. The findings are 
 | `store.ts` | The external store (throttled to 30 Hz) and the 10 Hz producer |
 | `app.tsx` | The React tree: the cards, the transcript |
 | `content.ts` | Deterministic Markdown, code and diffs |
-| `memory.ts` | The samples: `process.memoryUsage()`, `bun:jsc`'s heap, and on macOS `vmmap -summary` (physical footprint, regions, malloc zones) |
-| `summarize.ts` | Turns sample files into the report's tables and chart |
+| `memory.ts` | The samples: `process.memoryUsage()`, `bun:jsc`'s heap, the CPU time (`process.cpuUsage()`), and on macOS `vmmap -summary` (physical footprint, regions, malloc zones) |
+| `summarize.ts` | Turns sample files into the report's tables and chart, each minute's CPU in % of one core |
 | `checks.ts`, `probe.tsx` | The renderer-option checks: signals, `destroy()`, the theme mode |
+| `second-renderer-check.ts`, `second-renderer.tsx` | A second renderer after the first's `destroy()`: drawn, its keys heard, the terminal restored (the report's § 9) |
+| `split-input-check.ts`, `split-input.tsx` | A wheel report split across two reads (OpenTUI #1661), with OpenTUI's own stdin parser and its native one (§ 9) |
 | `test-utils-check.tsx` | `captureCharFrame` and `captureSpans` from `@opentui/react/test-utils` at a fixed size |
 | `act-probe.tsx` | Why `testRender`'s `dispose()` warns about `act()`, and the way around it |
 
@@ -25,6 +27,8 @@ bun spikes/opentui-soak/run-soak.ts --minutes 30 --window 200 --out soak-200.jso
 bun spikes/opentui-soak/run-soak.ts --minutes 30 --window unbounded --out soak-unbounded.jsonl
 bun spikes/opentui-soak/summarize.ts soak-600.jsonl soak-200.jsonl soak-unbounded.jsonl
 bun spikes/opentui-soak/checks.ts
+bun spikes/opentui-soak/second-renderer-check.ts
+bun spikes/opentui-soak/split-input-check.ts
 bun spikes/opentui-soak/test-utils-check.tsx --print
 ```
 

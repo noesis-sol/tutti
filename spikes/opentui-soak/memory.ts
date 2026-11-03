@@ -88,12 +88,16 @@ export type Sample = {
   readonly spanFeedAllocatorBytes: number
   /** Entries in the performance timeline: React's development build adds measures per render. */
   readonly performanceEntries: number
+  /** CPU time since the process started, every thread's (OpenTUI's stdout writer among them). */
+  readonly cpuUserMicros: number
+  readonly cpuSystemMicros: number
   readonly vmmap: VmmapSummary | null
 }
 
 export const sample = async (minute: number): Promise<Sample> => {
   const usage = process.memoryUsage()
   const jsc = heapStats()
+  const cpu = process.cpuUsage()
   return {
     minute,
     at: new Date().toISOString(),
@@ -106,6 +110,8 @@ export const sample = async (minute: number): Promise<Sample> => {
     jscObjects: jsc.objectCount,
     spanFeedAllocatorBytes: resolveRenderLib().getAllocatorStats().totalRequestedBytes,
     performanceEntries: performance.getEntries().length,
+    cpuUserMicros: cpu.user,
+    cpuSystemMicros: cpu.system,
     vmmap: await vmmap(process.pid),
   }
 }

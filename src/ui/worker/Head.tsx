@@ -30,7 +30,7 @@ export const aboveLines = (width: number, height: number): number =>
 /**
  * The head of a transcript's view: `link`, which a click follows as `leave`, then `head` at the
  * shell's clock and the spinner's frame, wrapped rather than cut (tutti-rfs). Its lines after the
- * first are under the link, not in the transcript's scrollbox, so their height doesn't touch #1514.
+ * first are under the link, outside the transcript's scrollbox.
  * The clock and the spinner tick here, in a leaf, so that the view over it isn't drawn anew ten
  * times a second while `spinning` (tutti-k2n1); `counted` hears how many lines it takes, as that
  * changes, for the view's request panel (tutti-7nzv). With `press`, a click on the head's

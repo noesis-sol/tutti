@@ -12,7 +12,9 @@
 //
 // Three guards sit in front of the input: mouse reports split by a late read (OpenTUI #1661) are
 // kept from becoming keys, a lone Esc waits `escapeHold` in case it is a split report's start, and
-// a bracketed paste left unterminated (#1270) is ended after `pasteLimit`.
+// a bracketed paste left unterminated (#1270) is ended after `pasteLimit`. OpenTUI 0.8.1's native
+// input parser, opt-in, mends the first split but not the Esc, so its own parser and the guards
+// stay (docs/spikes/05-opentui-soak.md § 9).
 import {
   type CliRenderer,
   type Clock,

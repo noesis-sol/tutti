@@ -24,7 +24,7 @@
 // Bounded rendering: the window of the transcript mounted is at most the last 200 items, sticking
 // to the bottom while you're there; scrolling past the top (the wheel, PgUp, `g`) loads 200 older
 // from the file, letting the newest beyond 600 go, and keeps your place. Collapsed items are a fixed
-// height, their lines wrapped beforehand to the pane's width, at most `itemLines` (#1514).
+// height, their lines wrapped beforehand to the pane's width, at most `itemLines`.
 //
 // The keys, in the view's layer: `Tab`, `Shift+Tab` and the arrows move between the items and the
 // panel's requests, and between a request's buttons; `Enter` expands or collapses the selected item
