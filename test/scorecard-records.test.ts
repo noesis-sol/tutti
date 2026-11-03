@@ -2,10 +2,10 @@
 // footprint's size on its dispatch, a follow-up's score_update as the run takes it up, a revert's as
 // a merge brings it, and the live stream's score after each ticket_end, in the file.
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Exit, Layer, type Scope } from "effect"
+import { Effect, Exit, Fiber, Layer, type Scope } from "effect"
 import { TestClock } from "effect/testing"
 import { decodeLine, type EventRecord } from "../src/run/events.ts"
 import { EventStream, eventsFile } from "../src/run/eventstream.ts"
@@ -15,15 +15,17 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
+import { run } from "../src/run/run.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
+import { claimsAndCloses } from "../src/testing/AgentHost.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { Repository } from "../src/testing/Git.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
-import { backlog, type Env, scenario } from "./harness.ts"
+import { advance, backlog, type Env, scenario, type World } from "./harness.ts"
 
 const footprints: Footprints = {
   repo: Effect.succeed(repoFiles(["src/a.ts", "src/b.ts", "src/run/loop.ts"])),
@@ -192,5 +194,63 @@ describe("the live stream", () => {
       working: 25,
       cost_usd: 0.4,
     })
+  })
+})
+
+describe("the run's end", () => {
+  test("puts a follow-up its worker filed and the run didn't take up on its ticket's scorecard", async () => {
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-scorecard-repo-")))
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "tutti-scorecard-run-")))
+    const id = "t-1" as TicketId
+    const ran = await scenario(
+      {
+        // Scoped to t-1: the follow-up, filed outside the scope, is left for a later run.
+        config: { ticket: id, repo },
+        backlog: backlog().ticket(id).seeds,
+        git: { dir: repo },
+        worktrees: { root },
+        scripts: (world: World) => ({
+          [id]: [
+            claimsAndCloses(id, {
+              claim: Effect.asVoid(
+                Effect.orDie(
+                  Effect.gen(function* () {
+                    yield* world.beads.update(id, { claim: true })
+                    yield* advance("1 second")
+                    yield* world.beads.create({ title: "Follow it up", blockedBy: [id] })
+                  }),
+                ),
+              ),
+              commit: Effect.asVoid(
+                Effect.orDie(
+                  world.repository.commit(join(root, id), `Change (${id})`, { "a.txt": "x\n" }),
+                ),
+              ),
+              close: Effect.asVoid(Effect.orDie(world.beads.close(id, "done"))),
+            }),
+          ],
+        }),
+      },
+      Effect.gen(function* () {
+        mkdirSync(join(root, id), { recursive: true })
+        yield* (yield* Git).addWorktree(repo, join(root, id), {
+          branch: `tutti/${id}`,
+          base: "main",
+        })
+        const fiber = yield* Effect.forkChild(
+          Effect.scoped(run({ version: "0.1.0-test", base: "main" })),
+        )
+        return yield* Fiber.join(fiber)
+      }),
+    )
+    if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
+    const follow = ran.issues.find((issue) => issue.title === "Follow it up")
+    expect(follow).toBeDefined()
+    const updates = ran.events.filter((each) => each.kind === "score_update")
+    expect(updates).toEqual([expect.objectContaining({ ticket: id, follow_up: follow?.id })])
+    // Before the run's end record, after the ticket's score.
+    const at = (kind: string) => ran.events.findIndex((each) => each.kind === kind)
+    expect(at("score_update")).toBeGreaterThan(at("score"))
+    expect(at("score_update")).toBeLessThan(at("end"))
   })
 })

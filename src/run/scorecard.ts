@@ -18,14 +18,15 @@
 //   its footprint named, as its `dispatch` said, in classes: 0–1, 2–3, 4–7, 8–15, 16 or more)
 //   that ended in the run before it, the latest score of each;
 // - the follow-ups and reverts its `score_update` records named so far. The run writes one when it
-//   takes up a ticket filed against it (`followUpsOf`) and when a merge brings a commit reverting
+//   takes up a ticket filed against it (`followUpsOf`), for each one its workers filed that it
+//   didn't take up, as it ends (`dependentFollowUps`), and when a merge brings a commit reverting
 //   it (`revertsIn`); they may come after its last score, in this run or a later one, and a query
 //   joins them by ticket.
 //
 // No composite: the report ranks the scorecards by their parts in a fixed order (`badness`), and
 // shows each part, so that what moved stays in sight.
 
-import type { Issue } from "../services/Beads.ts"
+import { HumanLabel, type Issue } from "../services/Beads.ts"
 import type { Commit } from "../services/Git.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import type { Event, verdicts } from "./events.ts"
@@ -269,19 +270,48 @@ export const scoreOf = (scoring: Scoring, end: TicketEnd): Score => {
  * it a follow-up of yet: those it was discovered from, and those blocking it that the run took up
  * before it was filed. A ticket blocked by one filed before is ordinary ordering, not a follow-up.
  */
-export const followUpsOf = (issue: Issue, scoring: Scoring): ReadonlyArray<string> => {
-  const filed = Date.parse(issue.createdAt)
-  return [
-    ...new Set(
-      issue.dependencies.flatMap((dependency) => {
-        const t = scoring.tallies.get(dependency.id)
-        if (dependency.id === issue.id || t?.followUps.includes(issue.id) === true) return []
-        if (dependency.type === "discovered-from") return [dependency.id]
-        if (dependency.type !== "blocks" || t?.took === undefined) return []
-        return Number.isFinite(filed) && filed > t.took ? [dependency.id] : []
-      }),
+export const followUpsOf = (issue: Issue, scoring: Scoring): ReadonlyArray<string> => [
+  ...new Set(
+    issue.dependencies.flatMap((dependency) =>
+      followsUp(scoring, dependency.id, issue.id, dependency.type, issue.createdAt)
+        ? [dependency.id]
+        : [],
     ),
-  ]
+  ),
+]
+
+/**
+ * The tickets filed against `scored`, as bd show gives its dependents (`issue.dependents`), that
+ * no score_update has named yet, by followUpsOf's rule: those discovered from it, and those it
+ * blocks filed after the run took it up. The run reads them as it ends, for the follow-ups its
+ * workers filed that it didn't take up: outside its scope, or blocked until a later run.
+ */
+export const dependentFollowUps = (scored: Issue, scoring: Scoring): ReadonlyArray<string> => [
+  ...new Set(
+    (scored.dependents ?? []).flatMap((dependent) =>
+      dependent.issue?.labels.includes(HumanLabel) !== true &&
+      followsUp(scoring, scored.id, dependent.id, dependent.type, dependent.issue?.createdAt ?? "")
+        ? [dependent.id]
+        : [],
+    ),
+  ),
+]
+
+// Whether `follow` is a follow-up of `scored` that no score_update has named: linked to it as
+// `type`, filed at `createdAt` (RFC 3339).
+const followsUp = (
+  scoring: Scoring,
+  scored: string,
+  follow: string,
+  type: string,
+  createdAt: string,
+): boolean => {
+  const t = scoring.tallies.get(scored)
+  if (scored === follow || t?.followUps.includes(follow) === true) return false
+  if (type === "discovered-from") return true
+  if (type !== "blocks" || t?.took === undefined) return false
+  const filed = Date.parse(createdAt)
+  return Number.isFinite(filed) && filed > t.took
 }
 
 // A revert's subject, as git revert writes it, `Revert "…"`, and the ticket IDs it names in

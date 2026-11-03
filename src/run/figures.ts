@@ -15,7 +15,16 @@
 import { Duration } from "effect"
 import { formatDuration } from "../project/configFile.ts"
 import type { checkResults, checkSuites, Event, Tokens } from "./events.ts"
-import { median, noScoring, type Score, type Scoring, scoreOf, scoreStep } from "./scorecard.ts"
+import {
+  badness,
+  median,
+  noScoring,
+  ranked,
+  type Score,
+  type Scoring,
+  scoreOf,
+  scoreStep,
+} from "./scorecard.ts"
 
 export { median }
 
@@ -211,7 +220,7 @@ export interface Part {
 
 /** A line of the figures: its label, and its parts, joined by ` · `. */
 export interface FiguresLine {
-  readonly label: "Time" | "Checks" | "Spent" | "Usage"
+  readonly label: "Time" | "Checks" | "Scores" | "Spent" | "Usage"
   readonly parts: ReadonlyArray<Part>
 }
 
@@ -335,6 +344,49 @@ const checksParts = (figures: Figures): ReadonlyArray<Part> => [
   ...earlyPart(figures.early),
 ]
 
+/** `n` and `noun`, `noun` made plural unless n is 1. */
+const counted = (n: number, noun: string, plural = `${noun}s`): string =>
+  `${n} ${n === 1 ? noun : plural}`
+
+/**
+ * The Scores line's parts, where a ticket ended (scorecard.ts): how many of them merged first time
+ * (no hand-back, no failed check), the verifier rounds that failed, the last fixes left unverified,
+ * the follow-ups and reverts filed against them, and, of two or more, the worst by the report's
+ * ranking, where it has anything against it.
+ */
+export const scoresParts = (scoring: Scoring): ReadonlyArray<Part> => {
+  const scores = [...scoring.scores.values()]
+  if (scores.length === 0) return []
+  const first = scores.filter(
+    (each) =>
+      (each.outcome === "merged" || each.outcome === "no_change") &&
+      each.hand_backs.resolve + each.hand_backs.fix + each.checks.failed + each.checks.timed_out ===
+        0,
+  ).length
+  const sum = (part: (score: Score) => number) => scores.reduce((n, each) => n + part(each), 0)
+  const failed = sum((each) => each.verifier.failed)
+  const unverified = sum((each) => (each.verifier.last_fix_verified === false ? 1 : 0))
+  const followUps = sum((each) => each.follow_ups?.length ?? 0)
+  const reverts = sum((each) => each.reverts?.length ?? 0)
+  // The worst, where it has anything against it but its cost and time beside the median.
+  const worst = ranked(scores)[0]
+  const against =
+    worst !== undefined &&
+    badness(worst.score, worst.median)
+      .slice(0, -2)
+      .some((n) => n > 0)
+  return [
+    { text: `${first} of ${scores.length} merged first time` },
+    ...(failed > 0 ? [{ text: counted(failed, "verifier FAIL") }] : []),
+    ...(unverified > 0
+      ? [{ text: `${counted(unverified, "last fix", "last fixes")} unverified` }]
+      : []),
+    ...(followUps > 0 ? [{ text: counted(followUps, "follow-up") }] : []),
+    ...(reverts > 0 ? [{ text: `${counted(reverts, "revert")}` }] : []),
+    ...(scores.length > 1 && against ? [{ text: `worst ${worst.score.ticket}` }] : []),
+  ]
+}
+
 /** A count of tokens to two figures at most: `950`, `12k`, `1.2M`, `53M`. */
 export const tokenCount = (n: number): string => {
   for (const [size, unit] of [
@@ -385,7 +437,7 @@ const usageParts = (figures: Figures, label: (window: string) => string): Readon
   })
 
 /**
- * The figures' lines, each left out with nothing to say: Time, Checks, Spent and, on a
+ * The figures' lines, each left out with nothing to say: Time, Checks, Scores, Spent and, on a
  * `subscription` login, Usage, its windows named by `label`, as the title line names them.
  */
 export const figuresLines = (
@@ -396,6 +448,7 @@ export const figuresLines = (
     [
       { label: "Time", parts: timeParts(figures) },
       { label: "Checks", parts: checksParts(figures) },
+      { label: "Scores", parts: scoresParts(figures.scoring) },
       { label: "Spent", parts: spentParts(figures, options.subscription) },
       {
         label: "Usage",

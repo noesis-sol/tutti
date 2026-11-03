@@ -378,12 +378,14 @@ describe("the analytics fixture's runs", () => {
     expect(first === undefined ? [] : texts(first)).toEqual([
       "Time    53% working · 17% held back (merge 17%) · 11% to merge · 8% merging · 7% queued · 3% fixing",
       "Checks  merge 1 of 3 passed, 2 failed (proj-a1, proj-a2, 3m20s) · recheck 0 of 1 passed, 1 timed out (proj-a2, 3m10s) · fix 1 of 1 · full passed",
+      "Scores  0 of 3 merged first time · 1 verifier FAIL · worst proj-a2",
       "Spent   2.3M tokens (91% from the cache) · $3.00 (estimate) · $0.80 a ticket (median)",
       "Usage   Current usage 42% → 3% · This week 30% → 36%",
     ])
     expect(second === undefined ? [] : texts(second)).toEqual([
       "Time    38% working · 27% held back (overlap 27%) · 14% merging · 9% to merge · 7% resolving · 3% queued · 2% asked",
       "Checks  merge 2 of 2 · early used 0 of 2, saved 0s, 3m24s thrown away",
+      "Scores  2 of 3 merged first time · worst proj-b1",
       "Spent   918k tokens (94% from the cache) · $1.20 (estimate) · $0.30 a ticket (median)",
       "Usage   Current usage 10% → 25% · This week 38% → 40%",
     ])
@@ -515,6 +517,9 @@ describe("a whole run", () => {
       "READY_EMPTY after 1 tickets",
     ])
     if (ran.exit._tag !== "Success") throw new Error("the run failed")
-    expect(ran.exit.value.summary.figures.map(figuresText)).toEqual(["Checks  merge 1 of 1"])
+    expect(ran.exit.value.summary.figures.map(figuresText)).toEqual([
+      "Checks  merge 1 of 1",
+      "Scores  1 of 1 merged first time",
+    ])
   })
 })

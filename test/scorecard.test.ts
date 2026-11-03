@@ -9,9 +9,10 @@ import fc from "fast-check"
 import { VerifierEvent, verdictOf, verifierEvent } from "../src/agent/hooks.ts"
 import { decodeLine, type Event, type EventRecord, kinds } from "../src/run/events.ts"
 import { EventStream } from "../src/run/eventstream.ts"
-import { addRecord, noFigures, scoreAfter } from "../src/run/figures.ts"
+import { addRecord, noFigures, scoreAfter, scoresParts } from "../src/run/figures.ts"
 import {
   badness,
+  dependentFollowUps,
   followUpsOf,
   noScoring,
   ranked,
@@ -654,5 +655,91 @@ describe("the verifier's verdict", () => {
         expect(verdictOf(answer(text))).toBeUndefined()
       }),
     )
+  })
+})
+
+describe("follow-ups the run reads as it ends", () => {
+  const took = Date.parse("2026-11-03T10:00:00Z")
+  const scoring = scoreStep(
+    noScoring,
+    { kind: "phase", ticket: "t-1", to: "Working", cause: "Dispatched" },
+    took,
+  )
+  const dependent = (
+    id: string,
+    type: DependencyType,
+    createdAt: string,
+    labels: string[] = [],
+  ) => ({
+    id: id as TicketId,
+    type,
+    issue: { ...issueOf(id, [], createdAt), labels },
+  })
+  const scored = (dependents: Issue["dependents"]): Issue => ({
+    ...issueOf("t-1", [], "2026-11-01T00:00:00Z"),
+    ...(dependents === undefined ? {} : { dependents }),
+  })
+
+  test("are those it blocks filed after the run took it up, and those discovered from it", () => {
+    expect(
+      dependentFollowUps(
+        scored([
+          dependent("t-2", "blocks", "2026-11-03T10:05:00Z"),
+          dependent("t-3", "blocks", "2026-11-02T10:05:00Z"),
+          dependent("t-4", "discovered-from", "2026-11-02T10:05:00Z"),
+          dependent("t-5", "related", "2026-11-03T10:05:00Z"),
+          dependent("t-6", "parent-child", "2026-11-03T10:05:00Z"),
+        ]),
+        scoring,
+      ),
+    ).toEqual(["t-2", "t-4"])
+  })
+
+  test("leave out a question for the maintainer, one named already, and a ticket with none", () => {
+    const named = scoreStep(scoring, { kind: "score_update", ticket: "t-1", follow_up: "t-2" }, 0)
+    expect(
+      dependentFollowUps(
+        scored([
+          dependent("t-2", "blocks", "2026-11-03T10:05:00Z"),
+          dependent("q-1", "blocks", "2026-11-03T10:05:00Z", ["human"]),
+        ]),
+        named,
+      ),
+    ).toEqual([])
+    expect(dependentFollowUps(scored(undefined), scoring)).toEqual([])
+  })
+})
+
+describe("the summary's Scores line", () => {
+  const scoring = (events: ReadonlyArray<Event>) =>
+    events.reduce((figures, each, i) => {
+      const added = addRecord(figures, each, i)
+      const score = scoreAfter(added, each)
+      return score === undefined ? added : addRecord(added, score, i)
+    }, noFigures).scoring
+
+  test("says how many merged first time, what failed or came later, and the worst", () => {
+    const parts = scoresParts(
+      scoring([
+        { kind: "verifier", ticket: "t-2", detail: "began" },
+        { kind: "verifier", ticket: "t-2", detail: "ended", verdict: "fail" },
+        ticketEnd("t-1"),
+        ticketEnd("t-2", { hand_backs: { resolve: 0, fix: 1 } }),
+        { kind: "score_update", ticket: "t-1", follow_up: "t-9" },
+      ]),
+    ).map((part) => part.text)
+    expect(parts).toEqual([
+      "1 of 2 merged first time",
+      "1 verifier FAIL",
+      "1 follow-up",
+      "worst t-2",
+    ])
+  })
+
+  test("names no worst when nothing is against any, and is left out with no ticket ended", () => {
+    expect(scoresParts(scoring([ticketEnd("t-1"), ticketEnd("t-2")])).map((p) => p.text)).toEqual([
+      "2 of 2 merged first time",
+    ])
+    expect(scoresParts(noScoring)).toEqual([])
   })
 })

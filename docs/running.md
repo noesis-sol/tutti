@@ -1260,6 +1260,7 @@ how the checks did, without opening [DuckDB](analytics.md):
 ```
   Time    63% queued · 19% held back (overlap 15%) · 14% working · 2% merging
   Checks  merge 31 of 32 passed, 1 timed out (mnemos-gts.16, 34m32s) · setup 32 of 32 · full passed
+  Scores  27 of 32 merged first time · 4 verifier FAILs · 1 follow-up · worst mnemos-gts.16
   Spent   53M tokens (94% from the cache) · $44.75 (estimate) · $1.24 a ticket (median)
   Usage   Current usage 11% → 17% · This week 40% → 41%
 ```
@@ -1275,6 +1276,11 @@ the [analytics queries](analytics.md) give over the same run:
   run, with their tickets (up to three, then `+N more`) and the longest one's time. The full check is
   counted on the summary the dashboard leaves; a plain run's summary comes before it, and its
   `FULL_CHECK` line after the closing line.
+- **Scores**: the tickets' [scorecards](events.md#scorecards): how many of those that ended merged
+  first time (no hand-back, no failed check), the verifier rounds that failed, the last fixes left
+  unverified, the follow-ups and reverts filed against them, and, of two or more, the worst by the
+  run report's ranking, where it has anything against it. The run report's Scorecards section has
+  each ticket's.
 - **Spent**: the workers' tokens, the share read from the prompt cache, the dollars, and the median
   of a ticket's dollars. The organs' calls aren't counted here. On a subscription login the dollars
   are what the turns would cost at API prices, an estimate, so they say `(estimate)` and are drawn in

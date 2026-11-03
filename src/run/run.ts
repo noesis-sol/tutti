@@ -173,7 +173,7 @@ import { backoff, failedRead, lasted, type Outage, readDue, sustained } from "./
 import { interruptedText, keptText, panicLines, type QuitRequest } from "./quit.ts"
 import { make as makeQuits, Quitting, quitStop } from "./quitting.ts"
 import { dropRechecks } from "./recheck.ts"
-import { type ReportOut, type ReportRun, runReport } from "./report.ts"
+import { type ReportOut, type ReportRun, runReport, showConcurrency } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { runRequires } from "./requires.ts"
 import { emptyStatus, type Status, showOn } from "./runView.ts"
@@ -185,7 +185,7 @@ import {
   readyPoll,
   type Scheduler,
 } from "./schedule.ts"
-import { scorecardsEvidence, scorecardsReport } from "./scorecard.ts"
+import { dependentFollowUps, scorecardsEvidence, scorecardsReport } from "./scorecard.ts"
 import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
@@ -1231,6 +1231,21 @@ const runFrom = (
     if (earlyChecks !== null) sections.push(section("Early checks", earlyChecks))
     const capped = capEvidence(yield* pressure.spent)
     if (capped !== null) sections.push(section("Workers allowed under memory pressure", capped))
+    // The follow-ups the run's workers filed that it didn't take up, on their tickets' scorecards:
+    // each scored ticket's dependents, as bd show gives them; a ticket bd can't show is left out.
+    yield* Effect.forEach(
+      [...(yield* events.figures).scoring.scores.keys()],
+      (id) =>
+        Effect.gen(function* () {
+          const read = yield* Effect.result(beads.show(id as TicketId, { dependents: true }))
+          if (Result.isFailure(read)) return
+          const filed = dependentFollowUps(read.success, (yield* events.figures).scoring)
+          for (const follow of filed) {
+            yield* events.emit({ kind: "score_update", ticket: id, follow_up: follow })
+          }
+        }),
+      { concurrency: showConcurrency, discard: true },
+    )
     // Each ended ticket's scorecard (scorecard.ts), for the reviewer and the report's section.
     const scores = [...(yield* events.figures).scoring.scores.values()]
     if (scores.length > 0) {
