@@ -85,10 +85,10 @@ describe("a spec run's startup checks", () => {
     const repo = project()
     expect(
       problems(
-        await run(repo, { spec: "missing.md", specFrom: "TUTTI_SPEC" }, { "notes.txt": "mine\n" }),
+        await run(repo, { spec: "missing.md", specFrom: "TUTTI_SPEC" }, { "README.md": "mine\n" }),
       ),
     ).toEqual([
-      "The main checkout has uncommitted changes (notes.txt). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
+      "The main checkout has uncommitted changes (README.md). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
       "Spec not found: missing.md (TUTTI_SPEC).",
     ])
   })

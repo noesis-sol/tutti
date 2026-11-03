@@ -239,7 +239,7 @@ describe("the startup checks", () => {
       ])
     })
 
-    test("uncommitted changes in the main checkout", async () => {
+    test("uncommitted changes to tracked files in the main checkout; an untracked one isn't", async () => {
       const { repo } = project()
       const failure = failed(
         await run(repo, {
@@ -249,7 +249,7 @@ describe("the startup checks", () => {
         }),
       )
       expect(failure.problems).toEqual([
-        "The main checkout has uncommitted changes (README.md, notes.txt). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
+        "The main checkout has uncommitted changes (README.md). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
       ])
     })
 
@@ -260,7 +260,9 @@ describe("the startup checks", () => {
       )
       const failure = failed(
         await run(repo, {
-          before: Effect.flatMap(Repository, (repository) => repository.write(repo, files)),
+          before: Effect.flatMap(Repository, (repository) =>
+            Effect.andThen(repository.write(repo, files), repository.stage(repo)),
+          ),
         }),
       )
       expect(failure.problems[0]).toContain(
@@ -288,11 +290,18 @@ describe("the startup checks", () => {
       const failure = failed(
         await run(repo, {
           before: Effect.flatMap(Repository, (repository) =>
-            repository.write(repo, {
-              ".tutti/worker-prompt.md": "Work on TICKET_ID.\n",
-              ".orchestra/specs/spec.md": "# spec\n",
-              ".claude/agents/verifier.md": "verify\n",
-            }),
+            Effect.andThen(
+              repository.commit(repo, "tutti init", {
+                ".tutti/worker-prompt.md": "Work on TICKET_ID.\n",
+                ".orchestra/specs/spec.md": "# spec\n",
+                ".claude/agents/verifier.md": "verify\n",
+              }),
+              repository.write(repo, {
+                ".tutti/worker-prompt.md": "Work on TICKET_ID, then close it.\n",
+                ".orchestra/specs/spec.md": "# spec, changed\n",
+                ".claude/agents/verifier.md": "verify, changed\n",
+              }),
+            ),
           ),
         }),
       )
@@ -405,13 +414,13 @@ describe("the startup checks", () => {
           }),
         ),
         before: Effect.flatMap(Repository, (repository) =>
-          repository.write(repo, { "notes.txt": "new\n" }),
+          repository.write(repo, { "README.md": "changed\n" }),
         ),
       }),
     )
     expect(failure.notSetUp).toBe(false)
     expect(failure.problems).toEqual([
-      "The main checkout has uncommitted changes (notes.txt). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
+      "The main checkout has uncommitted changes (README.md). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
       "Required command not found: bd (Beads). Install it, or let tutti init offer to.",
       "Not logged in to Claude: run claude /login, or tutti login",
       "Claude Code skips a settings file it can't read, and the permission rules in it: /home/me/.claude/settings.json: Invalid JSON",

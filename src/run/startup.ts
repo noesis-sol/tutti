@@ -36,7 +36,7 @@ import { readmeStaleLine } from "../project/requires.ts"
 import { retiredIn, settingsFile } from "../project/settings.ts"
 import { Beads, type BeadsError, HumanLabel, type TicketId } from "../services/Beads.ts"
 import { Git, gitTooOld } from "../services/Git.ts"
-import { checkoutChanges } from "../services/gitStatus.ts"
+import { checkoutTrackedChanges } from "../services/gitStatus.ts"
 import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
@@ -264,7 +264,11 @@ const checkBranch = (repo: string) =>
 /** The most changed files a clean-tree problem names. */
 const shownFiles = 5
 
-/** The problem with uncommitted changes in the main checkout (`checkoutChanges`). */
+/**
+ * The problem with uncommitted changes to tracked files in the main checkout
+ * (`checkoutTrackedChanges`). An untracked file there is left to git, as the merge's pre-check
+ * leaves it: a fast-forward refuses only one a branch would overwrite.
+ */
 const checkCleanTree = (repo: string, except: ReadonlyArray<string> = []) =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -276,7 +280,7 @@ const checkCleanTree = (repo: string, except: ReadonlyArray<string> = []) =>
       ]
     }
     // A spec run's spec may be left uncommitted: the run commits it.
-    const changed = checkoutChanges(status.success).filter((path) => !except.includes(path))
+    const changed = checkoutTrackedChanges(status.success).filter((path) => !except.includes(path))
     if (changed.length === 0) return []
     const named = changed.slice(0, shownFiles).map(sanitizeLine).join(", ")
     const more = changed.length > shownFiles ? ` and ${changed.length - shownFiles} more` : ""

@@ -137,11 +137,11 @@ describe("--ticket at startup", () => {
     const beads = TestBeads.layer([{ id: "tut-1", status: "closed" }])
     const exit = await run("tut-1" as TicketId, beads, (repo) =>
       Effect.flatMap(TestGit.Repository, (repository) =>
-        repository.write(repo, { "notes.txt": "new\n" }),
+        repository.write(repo, { "README.md": "changed\n" }),
       ),
     )
     expect(problemsOf(exit)).toEqual([
-      "The main checkout has uncommitted changes (notes.txt). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
+      "The main checkout has uncommitted changes (README.md). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
       "Ticket tut-1 (--ticket) is closed: nothing to run. Reopen it with: bd update tut-1 --status open",
     ])
     expect(exitSetup).toBe(2)
