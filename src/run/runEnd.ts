@@ -50,6 +50,11 @@ export interface Look {
   readonly triagePending: number
   /** Whether the run has a dashboard, which shows the end-of-run box. */
   readonly dashboard: boolean
+  /**
+   * Whether the run is an overnight one: nobody is there to hand a conflict over until the
+   * morning, so a hand-back waiting for its steered worker doesn't keep the run open.
+   */
+  readonly overnight?: boolean
 }
 
 /** A look, and what look.ts's untilDone reads after it. */
@@ -79,7 +84,7 @@ export const End = Data.taggedEnum<End>()
 /**
  * Whether nothing else runs, waits to merge or could start, and which workers wait on you besides:
  * those with an open request, oldest first, those past their ticket limit left out; then, with a
- * dashboard, those a conflict hand-back waits for (§ 4.3).
+ * dashboard, those a conflict hand-back waits for (§ 4.3), unless the run is an overnight one.
  */
 export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<TicketId> } => {
   const asking = new Set(look.asking)
@@ -113,12 +118,14 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<T
     look.settled &&
     look.triagePending === 0
   // With a dashboard, a conflict hand-back waiting for its steered worker keeps the run open as a
-  // request does, until you hand it over from the worker's view or release it (§ 4.3).
-  const conflicts = look.dashboard
-    ? entries
-        .filter((entry) => handBackWaits(entry) && !waiting.includes(entry.ticket))
-        .map((entry) => entry.ticket)
-    : []
+  // request does, until you hand it over from the worker's view or release it (§ 4.3). An overnight
+  // run leaves it Blocked, as a plain one does, and ends: nobody is there to hand it over.
+  const conflicts =
+    look.dashboard && look.overnight !== true
+      ? entries
+          .filter((entry) => handBackWaits(entry) && !waiting.includes(entry.ticket))
+          .map((entry) => entry.ticket)
+      : []
   return { done, waiting: [...waiting, ...conflicts] }
 }
 

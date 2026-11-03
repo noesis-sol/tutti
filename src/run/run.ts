@@ -1126,6 +1126,7 @@ const runFrom = (
         : { filing: Effect.map(SubscriptionRef.get(options.filing), (now) => now !== null) }),
       showEndOfRun: (tickets) => showEndOfRun(status, tickets),
       dashboard: screen !== null,
+      overnight: config.overnight,
     })
 
     // A panic in the loop quits the run as one in its other fibers does.

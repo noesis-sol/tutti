@@ -53,6 +53,8 @@ export interface LoopParts {
   readonly showEndOfRun: (tickets: ReadonlyArray<TicketId> | null) => Effect.Effect<void>
   /** Whether the run has a dashboard, which shows the end-of-run box. */
   readonly dashboard: boolean
+  /** Whether the run is an overnight one (runEnd.ts's Look). */
+  readonly overnight?: boolean
 }
 
 export interface Loop {
@@ -89,6 +91,7 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         settled: isSettled(yield* queue.state),
         triagePending: yield* parts.triage.pending,
         dashboard: parts.dashboard,
+        overnight: parts.overnight === true,
       }
       return look
     })
