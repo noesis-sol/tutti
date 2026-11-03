@@ -159,8 +159,9 @@ export type Answer =
   | { readonly _tag: "Decline" }
 
 /**
- * Where an answer came from (§ 10's `via`): `auto_answer` is tutti's, by --auto-answer; `overnight`
- * tutti's denial as an overnight run sets the request's ticket aside (overnightAside.ts).
+ * Where an answer came from (§ 10's `via`): `auto_answer` is tutti's, by --auto-answer;
+ * `overnight` tutti's denial as an overnight run sets the request's ticket aside
+ * (overnightAside.ts).
  */
 export type Via = "screen" | "answer_command" | "auto_answer" | "overnight"
 
@@ -262,7 +263,9 @@ export const runRules = (request: AttentionRequest): ReadonlyArray<PermissionUpd
       )
     : []
 
-/** Whether the request offers Allow for this run: a permission with rules to keep, not suppressed. */
+/**
+ * Whether the request offers Allow for this run: a permission with rules to keep, not suppressed.
+ */
 export const allowsForRun = (request: AttentionRequest): boolean =>
   !request.suppressAlwaysAllowRule && runRules(request).length > 0
 
@@ -447,7 +450,8 @@ const recommendedMark = "(recommended)"
 
 /**
  * The option --auto-answer chooses for each question, in order: the one whose label says
- * "(Recommended)" where exactly one does, else the first, as workers put their recommendation first.
+ * "(Recommended)" where exactly one does, else the first, as workers put their recommendation
+ * first.
  */
 export const recommendedChoices = (questions: ReadonlyArray<Question>): ReadonlyArray<string> =>
   questions.map((q) => {
@@ -497,8 +501,9 @@ export class Attention extends Context.Service<
     /** The ticket's worker's open requests, oldest first: now, then on each change. */
     openFor(ticket: TicketId): Stream.Stream<ReadonlyArray<AttentionRequest>>
     /**
-     * Records a call Claude Code denied the ticket's worker without asking: its `permission_denied`,
-     * and the call's input when the worker's messages gave it, summarized in the log line and event.
+     * Records a call Claude Code denied the ticket's worker without asking: its
+     * `permission_denied`, and the call's input when the worker's messages gave it, summarized in
+     * the log line and event.
      */
     denial(
       ticket: TicketId,
@@ -511,9 +516,9 @@ export class Attention extends Context.Service<
     readonly autoAnswered: Effect.Effect<ReadonlyArray<AutoAnswered>>
     /**
      * Refuses every answer from now on to the requests of the ticket's sessions so far, open or yet
-     * to open, with NotOpen: the run's end has stopped its fiber, and an answer would run its worker
-     * on unwatched. Their requests stay open until the session closes, for the end to read. A
-     * session made afterwards, the next run's, is answered as before.
+     * to open, with NotOpen: the run's end has stopped its fiber, and an answer would run its
+     * worker on unwatched. Their requests stay open until the session closes, for the end to read.
+     * A session made afterwards, the next run's, is answered as before.
      */
     refuse(ticket: TicketId): Effect.Effect<void>
   }
