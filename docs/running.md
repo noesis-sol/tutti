@@ -295,8 +295,17 @@ warning line keeps saying it while the battery stays low:
 BATTERY: 10% left, not charging: plug in or the Mac will sleep
 ```
 
-At 10% it also notifies. Plugged in, the notice goes; should the battery run down again, it says
-both again. A machine without a battery says nothing.
+At 10% it also notifies, and the run winds down as `s` does ([Winding down
+yourself](#holds-and-stops)): no new tickets, the running ones finish and merge, and the run ends
+`DRAINED`. The line says so:
+
+```
+BATTERY: 9% left, not charging: the run winds down; plug in or the Mac will sleep
+DRAIN: stopping after t-1 finishes: no new tickets will start, asked by the battery at 9%
+```
+
+Plugged in, the notice goes; should the battery run down again, it says both again. Plugging in
+doesn't take the wind-down back: `s` again does. A machine without a battery says nothing.
 
 ### Answering for you while you're away
 

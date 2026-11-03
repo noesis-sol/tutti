@@ -90,9 +90,9 @@ export const notice = (event: Event, needsYou = true): string | null => {
     case "stop":
       return `Stopped${event.detail === "" ? "" : `: ${event.detail}`}${event.ticket === undefined ? "" : ` on ${event.ticket}`}`
     case "battery":
-      // At 20% the log and the dashboard say so; at 10% it notifies too.
+      // At 20% the log and the dashboard say so; at 10%, where the run winds down, it notifies too.
       return event.threshold === 10
-        ? about(`Battery ${event.level}% left`, "plug in to keep the run going")
+        ? about(`Battery ${event.level}% left`, "the run winds down; plug in to finish what runs")
         : null
     case "full_check":
       if (event.detail !== "failed" && event.detail !== "timed out") return null

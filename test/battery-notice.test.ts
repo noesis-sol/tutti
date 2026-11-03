@@ -189,7 +189,7 @@ describe("the battery's notification", () => {
     const text = batteryLine(9, "darwin")
     expect<string>(text).toBe("BATTERY: 9% left, not charging: plug in or the Mac will sleep")
     expect(notice({ kind: "battery", level: 9, threshold: 10, text })).toBe(
-      "Battery 9% left · plug in to keep the run going",
+      "Battery 9% left · the run winds down; plug in to finish what runs",
     )
     expect(notice({ kind: "battery", level: 19, threshold: 20, text })).toBeNull()
     expect<string>(batteryLine(19, "linux")).toBe(
@@ -220,6 +220,7 @@ describe("watching the battery", () => {
             source,
             platform: "darwin",
             show: (notice) => Effect.sync(() => shown.push(notice)),
+            windDown: () => Effect.void,
           }),
         )
         yield* settle
@@ -259,7 +260,7 @@ describe("watching the battery", () => {
 
   test("discharging across 20% and 10%: a line and record each, the notice while low", async () => {
     const ran = await watched([on(22), on(19), on(15), on(9), on(8)])
-    expect(ran.log).toEqual([batteryLine(19, "darwin"), batteryLine(9, "darwin")])
+    expect(ran.log).toEqual([batteryLine(19, "darwin"), batteryLine(9, "darwin", true)])
     expect(ran.records).toEqual([
       expect.objectContaining({ kind: "battery", level: 19, threshold: 20 }),
       expect.objectContaining({ kind: "battery", level: 9, threshold: 10 }),
@@ -267,8 +268,8 @@ describe("watching the battery", () => {
     expect(ran.shown).toEqual([
       batteryLine(19, "darwin"),
       batteryLine(15, "darwin"),
-      batteryLine(9, "darwin"),
-      batteryLine(8, "darwin"),
+      batteryLine(9, "darwin", true),
+      batteryLine(8, "darwin", true),
     ])
   })
 
@@ -358,12 +359,14 @@ describe("a run on battery", () => {
     expectExitCode(ran, 0)
     expect(ran.log.filter((text) => text.startsWith("BATTERY: "))).toEqual([
       batteryLine(19, process.platform),
-      batteryLine(9, process.platform),
+      batteryLine(9, process.platform, true),
     ])
     expect(ran.events.filter((record) => record.kind === "battery")).toEqual([
       expect.objectContaining({ level: 19, threshold: 20 }),
       expect.objectContaining({ level: 9, threshold: 10 }),
     ])
-    expect(ran.notices).toContain("Battery 9% left · plug in to keep the run going")
+    expect(ran.notices).toContain(
+      "Battery 9% left · the run winds down; plug in to finish what runs",
+    )
   }, 30_000)
 })

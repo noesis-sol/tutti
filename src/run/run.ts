@@ -804,7 +804,8 @@ const runFrom = (
     // Each sleep of the machine the run notices, said with its SLEPT line (slept.ts).
     yield* watch(watchSleeps({ keepAwake: config.keepAwake }))
     // The battery, read every minute while the run goes (battery.ts): a BATTERY line and record as
-    // it falls to 20% and to 10%, discharging, and its notice on the dashboard's warning line.
+    // it falls to 20% and to 10%, discharging, and its notice on the dashboard's warning line; at
+    // 10% the run winds down as a drain request does, and plugging in doesn't take that back.
     const batterySource = yield* Battery
     if (batterySource !== null) {
       yield* watch(
@@ -812,6 +813,11 @@ const runFrom = (
           source: batterySource,
           platform: process.platform,
           show: (notice) => changeHolds((now) => withBattery(now, notice)),
+          windDown: (level) =>
+            Effect.andThen(
+              hear({ on: true, how: `by the battery at ${level}%` }, queue.rechecks),
+              wakeUp("drain"),
+            ),
         }),
       )
     }

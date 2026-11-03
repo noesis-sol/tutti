@@ -6,7 +6,10 @@
 // battery (`batteryNote`); while it goes, the run reads the battery every batteryEvery, counted
 // awake, and as it falls to 20% and to 10% says so once each per discharge: the log's BATTERY line
 // and a `battery` record (§ 10), which notifies at 10% (notices.ts), and the dashboard's warning
-// line while it stays low. Plugged in again, the notice goes, and the next discharge says both again.
+// line while it stays low. At 10% it also winds the run down, as the wind-down command does
+// (drain.ts): no new tickets, those under way finish and merge, so that the battery lasts them
+// (tutti-epza.21). Plugged in again, the notice goes, and the next discharge says both again; the
+// wind-down stays, as plugging in doesn't take it back.
 //
 // The run reads it through Battery: main.ts gives the live source, and a run without one (the
 // tests') reads nothing; src/testing/Battery.ts gives a test the battery's readings.
@@ -31,6 +34,9 @@ export type Threshold = (typeof batteryThresholds)[number]
 
 /** The level at which a notice also notifies. */
 export const notifyAt: Threshold = 10
+
+/** The level at which the run winds down. */
+export const windDownAt: Threshold = 10
 
 /** How often the run reads the battery while it goes, counted awake. */
 export const batteryEvery: Duration.Duration = Duration.minutes(1)
@@ -161,9 +167,16 @@ export const batteryNote = (battery: BatteryReading | null | undefined): string 
 const machineOf = (platform: NodeJS.Platform): string =>
   platform === "darwin" ? "the Mac" : "the machine"
 
-/** `BATTERY: 10% left, not charging: plug in or the Mac will sleep`. */
-export const batteryLine = (level: number, platform: NodeJS.Platform): Line =>
-  tagged(Tag.battery)`${level}% left, not charging: plug in or ${machineOf(platform)} will sleep`
+/**
+ * `BATTERY: 10% left, not charging: plug in or the Mac will sleep`; `winding`, the run winding down
+ * for it, `BATTERY: 10% left, not charging: the run winds down; plug in or the Mac will sleep`.
+ */
+export const batteryLine = (level: number, platform: NodeJS.Platform, winding = false): Line => {
+  const winds = winding ? "the run winds down; " : ""
+  return tagged(
+    Tag.battery,
+  )`${level}% left, not charging: ${winds}plug in or ${machineOf(platform)} will sleep`
+}
 
 /** What the watcher keeps between readings: the thresholds said in this discharge. */
 export type Said = ReadonlySet<Threshold>
@@ -193,18 +206,20 @@ export const step = (said: Said, reading: BatteryReading | null): Step => {
 
 /**
  * Reads the battery from `source` now and every batteryEvery awake after, forever: says each
- * threshold as it is reached (its BATTERY line and `battery` record), and gives `show` the
- * dashboard's notice, the line at the level last read while it is low, null once it isn't. A
- * reading that fails changes nothing.
+ * threshold as it is reached (its BATTERY line and `battery` record), runs `windDown` after
+ * saying windDownAt, and gives `show` the dashboard's notice, the line at the level last read while
+ * it is low, null once it isn't. A reading that fails changes nothing.
  */
-export const watchBattery = (options: {
+export const watchBattery = <R = never>(options: {
   readonly source: BatterySource
   readonly platform: NodeJS.Platform
   readonly show: (notice: string | null) => Effect.Effect<unknown>
+  /** Winds the run down, the battery at `level`; nothing where it already does. */
+  readonly windDown: (level: number) => Effect.Effect<unknown, never, R>
 }): Effect.Effect<
   never,
   never,
-  Log | EventStream | ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem
+  Log | EventStream | ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | R
 > =>
   Effect.gen(function* () {
     const logs = yield* Log
@@ -220,15 +235,18 @@ export const watchBattery = (options: {
       }
       const next = step(said, reading)
       said = next.said
+      // At or under windDownAt in this discharge, the run winds down.
+      const winding = said.has(windDownAt)
       if (next.say !== null && reading !== null) {
-        const text = batteryLine(reading.level, options.platform)
+        const text = batteryLine(reading.level, options.platform, winding)
         yield* logs.writeWith(
           [text],
           events.emit({ kind: "battery", level: reading.level, threshold: next.say, text }),
         )
+        if (next.say === windDownAt) yield* options.windDown(reading.level)
       }
       const notice =
-        next.low && reading !== null ? batteryLine(reading.level, options.platform) : null
+        next.low && reading !== null ? batteryLine(reading.level, options.platform, winding) : null
       if (notice !== shown) {
         shown = notice
         yield* options.show(notice)
