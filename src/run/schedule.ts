@@ -17,7 +17,10 @@
 // included, it is counted among the running tickets for an overlap with its footprint and for a solo
 // ticket, running or next. Up to `concurrent` tickets merge, or wait to merge, without a slot, so
 // that a slow merge check can't pile finished tickets up without end: beyond that, each takes a slot
-// until a merge ends, and a slot free in the meantime waits.
+// until a merge ends, and a slot free in the meantime waits. A ticket handed back to its worker,
+// Resolving or Fixing, takes a slot as a running one does, its worker being at work and running
+// checks: the hand-back goes on at once, as the merge queue is never held, and no ticket starts
+// until the workers at work are under `concurrent` again.
 //
 // A Queued or HeldBack ticket that bd ready no longer lists, closed, deferred or blocked outside the
 // run, leaves the ledger, so the In queue total counts only what may still start.
@@ -386,8 +389,9 @@ export interface Scheduler {
   /** The tickets holding a slot now. */
   readonly running: Effect.Effect<ReadonlySet<TicketId>>
   /**
-   * The slots taken now, as the scheduler counts them (slotsTaken): the running tickets', and one
-   * for each ticket past its work beyond `concurrent`. The machine's cap counts these.
+   * The slots taken now, as the scheduler counts them (slotsTaken): the running tickets', the
+   * handed-back ones', and one for each ticket waiting to merge or merging beyond `concurrent`. The
+   * machine's cap and the pressure cap count these.
    */
   readonly slots: Effect.Effect<number>
   /**
@@ -447,12 +451,23 @@ const mergingIn = (state: State, running: ReadonlySet<TicketId>): ReadonlyArray<
     .filter((entry) => merging(state, entry.ticket) && !running.has(entry.ticket))
     .map((entry) => entry.ticket)
 
+/** Whether the ticket is handed back to its worker, Resolving or Fixing: its worker is at work. */
+const handedBack = (state: State, id: TicketId): boolean => {
+  const tag = state.tickets.get(id)?.phase._tag
+  return tag !== undefined && phaseFacts[tag].pastWork && phaseFacts[tag].atWork
+}
+
 /**
- * The slots taken by `running` tickets and `merging` ones past their work without a slot: up to
- * `concurrent` of those take none, and each beyond them one.
+ * The slots taken by `running` tickets, those `handedBack` to their workers, each of which takes
+ * one as its worker is at work, and the `merging` ones past their work with no worker at it, waiting
+ * to merge or merging: up to `concurrent` of those take none, and each beyond them one.
  */
-export const slotsTaken = (running: number, merging: number, concurrent: number): number =>
-  running + Math.max(0, merging - concurrent)
+export const slotsTaken = (
+  running: number,
+  handedBack: number,
+  merging: number,
+  concurrent: number,
+): number => running + handedBack + Math.max(0, merging - concurrent)
 
 /** Whether the ticket is back in the queue as its worktree's setup failed, Waiting{setup}. */
 const setupFailed = (state: State, id: TicketId): boolean => {
@@ -530,8 +545,11 @@ const prune = (s: Slots, state: State): Slots => {
 }
 
 /** The slots taken, the running tickets and those past their work as `state` has them. */
-const taken = (s: Slots, state: State, concurrent: number): number =>
-  slotsTaken(s.running.size, mergingIn(state, s.running).length, concurrent)
+const taken = (s: Slots, state: State, concurrent: number): number => {
+  const past = mergingIn(state, s.running)
+  const atWork = past.filter((id) => handedBack(state, id)).length
+  return slotsTaken(s.running.size, atWork, past.length - atWork, concurrent)
+}
 
 /** Whether a slot is free, the running tickets and those past their work as `state` has them. */
 const slotFree = (s: Slots, state: State, concurrent: number): boolean =>

@@ -355,7 +355,7 @@ describe("a hand-back on a loaded machine", () => {
   test("is given the time the run holds at --machine-workers, with plain output", async () => {
     // A cap of 3, three slots, the other run with no worker: a, b and c start. Once b is claimed,
     // the other run has 2, so that d waits for the cap (HOLD: MACHINE) all through b's hand-back:
-    // b's ticket, handed back, takes no slot (schedule.ts's slotsTaken), but c, working for 30
+    // b's ticket, handed back, takes a slot (schedule.ts's slotsTaken), as c, working for 30
     // minutes, does.
     const dir = folder("runs")
     writeFileSync(join(dir, "run-4242-1.json"), other(0))

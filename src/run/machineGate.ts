@@ -28,7 +28,8 @@ export const hasRoom = (room: Room): boolean => room === "room" || room === "lif
 
 // Each of the gate's calls takes `own`, the run's workers the others count: the slots the scheduler
 // counts taken (slotsTaken). Tickets merging or waiting to merge take none up to concurrent of
-// them, so they hold the run at no cap; none is taken before it is given.
+// them, so they hold the run at no cap, but a ticket handed back to its worker takes one; none is
+// taken before it is given.
 export interface MachineGate {
   /**
    * Claims room on the machine for the ticket about to start. When it hasn't any, the hold at the

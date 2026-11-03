@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A ticket handed back to its worker, `Resolving` or `Fixing`, takes a slot as a running ticket does (§ 5 item 5, § 8.2's `--machine-workers`; `src/run/schedule.ts`' `slotsTaken`; tutti-epza.11): it took none until more than `concurrent` tickets were past their work, though its worker is a live session running checks, so a run at `concurrent` 4 had 6 to 8 workers at work, and in Fabrica's run of 10-30 every merge and fix check failed after 21:52 as they slowed each other. The hand-back still goes on at once, the merge queue being held by nothing, but no ticket starts or resumes until the workers at work are under `concurrent` again; `--machine-workers` and the pressure cap count the same slots. Tickets waiting to merge or merging, with no worker at work, still take none up to `concurrent` of them. `test/handback-slots.test.ts` covers it.
+
 ## [0.6.4] - 2026-11-03
 
 - The pressure cap rises again once the memory pressure is back to `normal`, however much the machine swaps (§ 5 item 17, § 10; `src/run/pressureCap.ts`' `strainOf`, `src/run/load.ts`; tutti-epza.14): swapping 600 pages a minute or more lowered the workers allowed and kept them from rising, and with gigabytes in swap a 16 GB Mac went on swapping old pages in at far more than that after the pressure had passed, holding the cap at 1 worker. The kernel's pressure level alone moves the cap, and holds the optional checks; swapping stays a figure on the load line and in the `load` records.

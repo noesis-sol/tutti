@@ -78,7 +78,8 @@ export interface Registration {
   readonly started: number
   /**
    * Its workers running: the slots it has taken (schedule.ts's slotsTaken), tickets waiting to
-   * merge or merging counted only beyond its `concurrent`, as orchestra 0.9.4 counts them.
+   * merge or merging counted only beyond its `concurrent`, as orchestra 0.9.4 counts them, and
+   * those handed back to their workers each counted.
    */
   readonly running: number
   /** The tool that runs it: tutti says so in its files, orchestra doesn't. */

@@ -163,10 +163,10 @@ const closedLine = (id: string) =>
 
 describe("slots taken", () => {
   test("up to concurrent tickets past their work take no slot, each beyond them one", () => {
-    expect(slotsTaken(1, 0, 2)).toBe(1)
-    expect(slotsTaken(1, 2, 2)).toBe(1)
-    expect(slotsTaken(1, 3, 2)).toBe(2)
-    expect(slotsTaken(0, 5, 2)).toBe(3)
+    expect(slotsTaken(1, 0, 0, 2)).toBe(1)
+    expect(slotsTaken(1, 0, 2, 2)).toBe(1)
+    expect(slotsTaken(1, 0, 3, 2)).toBe(2)
+    expect(slotsTaken(0, 0, 5, 2)).toBe(3)
   })
 })
 
