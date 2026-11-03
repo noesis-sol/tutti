@@ -104,6 +104,7 @@ import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { awakeSince } from "../services/Wake.ts"
 import { schemeNotices } from "../ui/theme.ts"
+import { make as makeApiOutage } from "./apiOutage.ts"
 import { askedLook, askedQuestions, takeAnswers } from "./asked.ts"
 import {
   AutoAnswer,
@@ -146,6 +147,7 @@ import {
   stopOfLine,
   takesBack,
   takesNew,
+  withApiHold,
   withBattery,
   withFiling,
 } from "./holds.ts"
@@ -435,6 +437,12 @@ const runFrom = (
       wakeUp: wakeUp("hold"),
       show: (view) => changeHolds((now) => showUsage(now, view)),
     })
+    // Claude's API unavailable in a worker's turn holds the run until a probe finds it answering
+    // again, its workers told then to carry on (apiOutage.ts); it follows the workers below.
+    const apiOutage = yield* makeApiOutage({
+      show: (held) => changeHolds((now) => withApiHold(now, held)),
+      wakeUp: wakeUp("hold"),
+    })
     // The account's windows on the title line all the time, each figure recorded (usageWindows.ts).
     yield* watchUsageWindows({
       show: showOn(status, "windows"),
@@ -457,13 +465,15 @@ const runFrom = (
       Effect.all([
         currentStops,
         usage.held,
+        apiOutage.held,
         commands.ended,
         ledger.current,
         Effect.flatten(Ref.get(limitReached)),
       ]),
-      ([all, usageHeld, ended, state, limit]): Gate => ({
+      ([all, usageHeld, apiHeld, ended, state, limit]): Gate => ({
         stop: firstStop(all),
         usageHeld,
+        apiHeld,
         ended,
         windingDown: state.windDown !== null,
         limitReached: limit,
@@ -741,6 +751,7 @@ const runFrom = (
         }),
       ),
     )
+    yield* watch(apiOutage.watch)
     // The title line's badge while the keep-awake command holds the machine awake.
     if (options.keepingAwake !== undefined) {
       yield* watch(Stream.runForEach(options.keepingAwake, showOn(status, "keepAwake")))

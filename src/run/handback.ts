@@ -216,6 +216,8 @@ export const away = (state: WorkerState): string | undefined => {
       return "its worker is at the account's usage limit"
     case "LoginRefused":
       return "its worker's turn was refused for Claude's login"
+    case "ApiUnavailable":
+      return "its worker waits for Claude's API to answer again"
     case "Gone":
       return `its worker is gone (${state.why})`
   }

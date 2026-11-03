@@ -31,10 +31,11 @@ Each worker runs:
 
 What it does comes from the session's own messages, so the card is exact: `starting`, `working`,
 `editing`, `reading`, `testing` (the check, or a test runner), `subagent`, `retrying 3/10 (529)`,
-`permission — waiting for you`, `usage limit · resets 14:05`, `done` once its turn has ended,
-`stopped` once interrupted, `failed` on an error its retries didn't get past, `gone` if its session
-ended without tutti closing it. A worker waiting on a background command, a subagent or a Monitor
-watch is still working.
+`permission — waiting for you`, `usage limit · resets 14:05`, `API unavailable (529)` while it waits
+for Claude's API to answer again ([Claude's API unavailable](running.md#claudes-api-unavailable)),
+`done` once its turn has ended, `stopped` once interrupted, `failed` on an error of the turn's own
+(a billing error, a bad request), `gone` if its session ended without tutti closing it. A worker
+waiting on a background command, a subagent or a Monitor watch is still working.
 
 Everything a worker's session sends is kept in `.tutti/run/workers/<id>/messages.jsonl` in the main
 checkout, with its Claude Code's stderr in `stderr.log` beside it. These outlive the worktree and the

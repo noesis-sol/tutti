@@ -1152,6 +1152,28 @@ Claude Code reports:
   (`b's worker, at the usage limit, was never handed its conflicts to resolve: its rebase is aborted,
   for the next run to merge b again`).
 
+### Claude's API unavailable
+
+A turn that fails as Claude's API is unavailable, after Claude Code's own retries (a 500 or 529, an
+overload, no connection), would fail every worker the same way, whatever its ticket. So it isn't
+read as a failed turn: its worker waits (`API unavailable (529)`), and isn't nudged, deferred,
+triaged or counted toward the environment hold, nor its wait toward the ticket limit.
+
+- **The run holds**: `API_UNAVAILABLE: t-1's turn failed as Claude's API was unavailable (API Error:
+  529 Overloaded), after Claude Code's own retries; no new tickets until it answers again, and tutti
+  asks it in 1m`. Running workers go on; those whose turns fail the same way wait too. A
+  notification says so.
+- **tutti asks the API** a minute after the hold, with the usage limit's haiku turn of a few tokens,
+  and again after each probe that gets no answer, the wait doubling up to 15 minutes (1m, 2m, 4m,
+  8m, 15m, 15m…), for as long as the outage lasts: `API_UNAVAILABLE: a probe of Claude's API got no
+  answer either (API Error: 529 Overloaded); tutti asks it again in 2m`.
+- **Once a probe is answered**, the hold lifts (`API_UNAVAILABLE: lifted: Claude's API answered a
+  probe 7m after the hold`), each waiting worker you haven't steered is told to carry on where it
+  left off, and the run takes tickets again. Another outage later holds it again, its probes from a
+  minute afresh.
+
+A 429 is the usage limit, above, not an outage.
+
 ## The full check
 
 A run that ends by itself (`READY_EMPTY`, `LIMIT_REACHED` or `DRAINED`) having merged at least one

@@ -28,8 +28,11 @@ import { advance, backlog, type Env, expectLog, type Ran, scenario, type World }
 const id = "t-1" as TicketId
 const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 
-/** A server error the API retries didn't get past: the turn's result, with is_error. */
-const serverError = apiErrorResult("API Error: 500 Internal server error", 500)
+/**
+ * An API error ending the turn, with is_error: a billing error, the turn's own. A server error is
+ * Claude's API unavailable, which doesn't settle (api-outage.test.ts).
+ */
+const serverError = apiErrorResult("API Error: 400 Your credit balance is too low", 400)
 
 /** A merge queue that only puts the ticket in line, ToMerge. */
 const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* () {

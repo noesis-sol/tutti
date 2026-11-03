@@ -611,6 +611,8 @@ export const activityOf = (
     case "Working":
       return state.doing
     case "Retrying":
+    // It waits for the API-outage hold to tell it to carry on: retrying, the run's way.
+    case "ApiUnavailable":
       return "retrying"
     case "NeedsYou":
       return "allow"
@@ -705,6 +707,8 @@ export const stateStatus = (
         : `usage limit · resets ${resetLabel(state.resetsAt, now ?? state.resetsAt)}`
     case "LoginRefused":
       return "login refused"
+    case "ApiUnavailable":
+      return state.status === null ? "API unavailable" : `API unavailable (${state.status})`
     case "Idle":
       return "done"
     case "Failed":
@@ -770,6 +774,7 @@ export const statusTone = (
       return state.doing === "testing" ? "testing" : "picked"
     case "Retrying":
     case "UsageLimited":
+    case "ApiUnavailable":
       return "deferred"
     case "Idle":
       return "done"

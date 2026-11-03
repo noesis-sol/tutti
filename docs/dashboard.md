@@ -67,7 +67,9 @@ On the right, the banners:
   turns bold at 100%.
 - **Holds**: `BLOCKED`, `PAUSED` and the like while something holds the run, and
   `USAGE_LIMIT · resets 14:05` while the usage limit does, with `· in 1h12m` while the run has
-  nothing else to do but wait for it (see [The usage limit](running.md#the-usage-limit)).
+  nothing else to do but wait for it (see [The usage limit](running.md#the-usage-limit)), and
+  `API_UNAVAILABLE` while a worker's turn failing on Claude's API does
+  (see [Claude's API unavailable](running.md#claudes-api-unavailable)).
 
 In a narrow pane the line gives up the least needed first: the keep-awake badge, then the
 auto-answer pill, then the branch and
@@ -243,9 +245,10 @@ or the last line the worker wrote).
   merges, and `•` once the worker's turn has ended: motion means a worker at work.
 - **The status** is the worker's (`working`, `editing`, `reading`, `testing`, `subagent`,
   `starting`, `retrying 3/10 (529)`, `done`, `stopped`, `failed`, `gone`,
-  `usage limit · resets 14:05`, `permission — waiting for you`, `question — waiting for you`) or the
-  ticket's (`resolving`, `fixing check`, `to merge (2nd)`, `merging`). `steered` follows it for a
-  worker you have steered (see [Steering](workers.md#steering)).
+  `usage limit · resets 14:05`, `API unavailable (529)`, `permission — waiting for you`,
+  `question — waiting for you`) or the ticket's (`resolving`, `fixing check`, `to merge (2nd)`,
+  `merging`). `steered` follows it for a worker you have steered (see
+  [Steering](workers.md#steering)).
 - **The action line** of a ticket merging says the step: `rebasing onto <branch>`,
   `running the setup`, `running the check on <branch>`, `merging into <branch>`, or for a ticket
   checked once more, `checking again: <branch> moved on since its check failed`. A ticket waiting
@@ -536,12 +539,13 @@ folder name (`jswallet`), as orchestra's do:
 | a ticket waits on a question for you | `jswallet-12 needs your answer · Which name should the flag have?` |
 | a worker asks you something (the first request in 30 seconds) | `jswallet-12 needs you · Allow Bash(rm -rf build)?` |
 | the account's usage limit holds the run (once per hold) | `The five-hour limit is reached; the run holds until it resets at 14:05` |
+| Claude's API unavailable holds the run (once per hold) | `Claude's API is unavailable; the run holds until it answers again` |
 | the run stops | `Stopped: PAUSED on jswallet-12`, or `Stopped: INTERRUPTED` when no ticket stopped it |
 | the run finishes | `Finished the run · 12 tickets closed · 2 set aside · 1 needs you`, counting the tickets as the dashboard's totals do as it ends: set aside if deferred or left for review, needing you if blocked from merging or waiting on a question |
 | the full check after the run fails | `Full check failed · test/e2e`, or `Full check failed · setup` |
 
 A title or reason longer than 60 characters is cut with `…`; the log has the rest. Holds other than
-the usage limit's, probes, the warnings that set no ticket aside (`LIKELY_CONFLICT`,
+the usage limit's and the API outage's, probes, the warnings that set no ticket aside (`LIKELY_CONFLICT`,
 `LONG_RUNNING`, …), triage and the run report don't notify, nor does a run with nothing to run.
 
 - On macOS, with `osascript`, titled with the repository's folder name.

@@ -289,7 +289,8 @@ describe("when the hold lifts", () => {
   })
 
   test("a turn failing for another reason after the lift is a failed turn, not the limit", async () => {
-    const serverError = apiErrorResult("API Error: 500 Internal server error", 500)
+    // A billing error, the turn's own: a server error is Claude's API unavailable, which waits.
+    const serverError = apiErrorResult("API Error: 400 Your credit balance is too low", 400)
     const limited = hitsUsageLimit(hour)
     const ran = await runs({
       tickets: ["t-1"],
@@ -379,8 +380,8 @@ describe("a worker's rejection", () => {
   test("goes with its turn: a later turn failing otherwise is Failed", () => {
     const limited = [...begins, rejected, errorResult(429, "API Error: limit"), idle]
     expect(stateAfter(...limited)).toEqual(WorkerState.UsageLimited({ resetsAt: hour * 1000 }))
-    const failed = stateAfter(...limited, ...begins, errorResult(529, "API Error: 529"), idle)
+    const failed = stateAfter(...limited, ...begins, errorResult(400, "API Error: 400"), idle)
     expect(failed._tag).toBe("Failed")
-    expect(failed).toMatchObject({ error: "API Error: 529", interrupted: false })
+    expect(failed).toMatchObject({ error: "API Error: 400", interrupted: false })
   })
 })

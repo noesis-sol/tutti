@@ -114,10 +114,12 @@ describe("the probe's session ending without running its command", () => {
   })
 
   test("Failed: its turn fails, with the turn's error", async () => {
-    const ran = await probes(turn([], apiErrorResult("API Error: 500 Internal server error", 500)))
+    const ran = await probes(
+      turn([], apiErrorResult("API Error: 400 Your credit balance is too low", 400)),
+    )
     expectProbeFailed(
       ran,
-      "its turn failed without running its command: API Error: 500 Internal server error",
+      "its turn failed without running its command: API Error: 400 Your credit balance is too low",
     )
   })
 

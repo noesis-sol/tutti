@@ -191,7 +191,10 @@ export const logSuspends = (
 
 /** Whether a worker in `state` has no turn to wait for: its result is in, or it can't come. */
 const answered = (state: WorkerState): boolean =>
-  settled(state) || state._tag === "UsageLimited" || state._tag === "LoginRefused"
+  settled(state) ||
+  state._tag === "UsageLimited" ||
+  state._tag === "LoginRefused" ||
+  state._tag === "ApiUnavailable"
 
 /**
  * Interrupts the workers of `tickets` at once and waits for their results, `wait` at most for all

@@ -17,10 +17,14 @@ export const interviewWorker = "tutti-interview" as TicketId
 
 /**
  * Whether the session's turn is over, so a filed tree or a given answer can end it: idle, failed,
- * or refused for Claude's login (§ 4.13), which no later turn gets past until the login is renewed.
+ * refused for Claude's login (§ 4.13), which no later turn gets past until the login is renewed,
+ * or failed on Claude's API unavailable (§ 4.2), which you can send to again.
  */
 export const turnOver = (state: WorkerState): boolean =>
-  state._tag === "Idle" || state._tag === "Failed" || state._tag === "LoginRefused"
+  state._tag === "Idle" ||
+  state._tag === "Failed" ||
+  state._tag === "LoginRefused" ||
+  state._tag === "ApiUnavailable"
 
 /** `text` between pasted_content tags carrying `id`, each tag on its own line. */
 export const pasted = (text: string, id: string): string =>

@@ -44,12 +44,14 @@ export type Reading = Data.TaggedEnum<{
   RateLimit: { readonly info: RateLimit; readonly windows: ReadonlyMap<string, WindowFigure> }
   /**
    * An assistant message: its tool calls, its subagents' too, and whether it has the error
-   * `rate_limit`, or `authentication_failed` (Claude's login refused, § 4.13).
+   * `rate_limit`, `authentication_failed` (Claude's login refused, § 4.13), or `overloaded` or
+   * `server_error` (Claude's API unavailable, § 4.2).
    */
   Assistant: {
     readonly calls: ReadonlyArray<Call>
     readonly rateLimited: boolean
     readonly loginRefused: boolean
+    readonly serverError: boolean
   }
   /** A `permission_denied`: a call Claude Code denied without asking. */
   Denied: { readonly message: SDKPermissionDeniedMessage }
@@ -158,6 +160,7 @@ const rateLimit: Reader = (raw, kind) => {
 const assistant: Reader = (raw) => {
   const rateLimited = raw.error === "rate_limit"
   const loginRefused = raw.error === "authentication_failed"
+  const serverError = raw.error === "overloaded" || raw.error === "server_error"
   const content = Predicate.isObject(raw.message) ? raw.message.content : undefined
   let calls: Array<Call> | undefined
   if (Array.isArray(content)) {
@@ -169,7 +172,7 @@ const assistant: Reader = (raw) => {
       calls.push([id, input])
     }
   }
-  return Reading.Assistant({ calls: calls ?? noCalls, rateLimited, loginRefused })
+  return Reading.Assistant({ calls: calls ?? noCalls, rateLimited, loginRefused, serverError })
 }
 
 const denied: Reader = (raw) =>

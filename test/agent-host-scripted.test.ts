@@ -205,8 +205,9 @@ describe("the helper scripts drive WorkerState", () => {
 
 describe("scripted cases", () => {
   test("an is_error result is a failed turn: Failed, not Idle", async () => {
-    const failed = WorkerState.Failed({ at: 0, error: "API Error: 500", interrupted: false })
-    const script = turn([apiRetry(2, 500)], apiErrorResult("API Error: 500", 500))
+    // A 400 after a retry, the turn's own error: a 5xx is Claude's API unavailable instead.
+    const failed = WorkerState.Failed({ at: 0, error: "API Error: 400", interrupted: false })
+    const script = turn([apiRetry(2, 500)], apiErrorResult("API Error: 400", 400))
     const done = await run(
       { "t-1": [script] },
       Effect.gen(function* () {

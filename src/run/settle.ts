@@ -1,5 +1,6 @@
 // Settling (§ 5 item 6, § 4.2 Settled, § 4.3 the continue nudge): the per-ticket fiber waits until
-// its worker has settled (Idle, Closed or Gone; never NeedsYou, Retrying or UsageLimited), then reads
+// its worker has settled (Idle, Closed or Gone; never NeedsYou, Retrying, UsageLimited or
+// ApiUnavailable, which wait for their holds to tell them to carry on), then reads
 // the ticket in Beads and its worktree in git, as orchestra's settle step does. What they say is a
 // Reading, which work.ts turns into the ticket's next phase.
 //

@@ -12,7 +12,7 @@
 import { Clock, Duration, Effect, Option, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { type AttentionRequest, describe } from "../agent/Attention.ts"
-import type { WorkerState } from "../agent/WorkerState.ts"
+import { type WorkerState, waitsForHold } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Dependency, type Issue, type TicketId } from "../services/Beads.ts"
@@ -414,6 +414,11 @@ export interface Gate {
   readonly stop: StopReason | null
   /** Whether the account's usage limit holds the run (usageLimit.ts). */
   readonly usageHeld: boolean
+  /**
+   * Whether Claude's API being unavailable holds the run (apiOutage.ts); not when left out. A
+   * failed check is handed back all the same: its worker waits for the API as the others do.
+   */
+  readonly apiHeld?: boolean
   /** Whether the run has ended (screenCommands.ts): nothing starts after it. */
   readonly ended: boolean
   /** Whether the run winds down (the ledger's windDown): it takes up only what is running. */
@@ -432,10 +437,11 @@ export const openGate: Gate = {
 }
 
 /**
- * Whether the run holds: a stop, the usage limit, or its end. A ticket set aside is taken
- * back into the queue only while it doesn't.
+ * Whether the run holds: a stop, the usage limit, Claude's API unavailable, or its end. A ticket
+ * set aside is taken back into the queue only while it doesn't.
  */
-export const holds = (gate: Gate): boolean => gate.stop !== null || gate.usageHeld || gate.ended
+export const holds = (gate: Gate): boolean =>
+  gate.stop !== null || gate.usageHeld || gate.apiHeld === true || gate.ended
 
 /**
  * Whether the run takes back the work it has: the workers carried over and the answered tickets,
@@ -512,6 +518,8 @@ export interface RunHolds {
    * (pressureCap.ts); none when left out.
    */
   readonly pressure?: boolean
+  /** Claude's API unavailable holds the run (apiOutage.ts); not when left out. */
+  readonly api?: boolean
   /** What the usage limit's hold shows: the usage line, its banner and its notice. */
   readonly usage: UsageView
   /** The battery's notice while it runs low (battery.ts): it holds nothing, but shows beside them. */
@@ -567,6 +575,10 @@ export const withMachineHold = (holds: RunHolds, full: boolean): RunHolds =>
 export const withPressureHold = (holds: RunHolds, full: boolean): RunHolds =>
   (holds.pressure ?? false) === full ? holds : { ...holds, pressure: full }
 
+/** `holds` with the API-outage hold on (`held`) or off. */
+export const withApiHold = (holds: RunHolds, held: boolean): RunHolds =>
+  (holds.api ?? false) === held ? holds : { ...holds, api: held }
+
 /** `holds` showing the battery's `notice`, or none. */
 export const withBattery = (holds: RunHolds, notice: string | null): RunHolds =>
   holds.battery === notice ? holds : { ...holds, battery: notice }
@@ -582,7 +594,10 @@ export const showUsage = (holds: RunHolds, view: UsageView): RunHolds => ({ ...h
 export interface ShownHolds {
   /** A stop holds the run, and the running tickets are finishing. */
   readonly stopping: boolean
-  /** The banners, BLOCKED first, then the usage limit's, the machine's and the pressure cap's. */
+  /**
+   * The banners, BLOCKED first, then the usage limit's, the API outage's, the machine's and the
+   * pressure cap's.
+   */
   readonly holds: ReadonlyArray<RunHold>
   readonly usage: Usage | null
   /** The usage limit's notice, if it holds the run. */
@@ -594,6 +609,7 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
   holds: [
     ...(blockedTickets(holds).size > 0 ? [{ word: Tag.blocked, resetsAt: null }] : []),
     ...(holds.usage.hold === null ? [] : [holds.usage.hold]),
+    ...(holds.api === true ? [{ word: Tag.apiUnavailable, resetsAt: null }] : []),
     ...(holds.machine ? [{ word: machineWord, resetsAt: null }] : []),
     ...(holds.pressure === true ? [{ word: pressureWord, resetsAt: null }] : []),
     ...(holds.filing == null ? [] : [{ word: holds.filing, resetsAt: null }]),
@@ -606,11 +622,12 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
 // dispatch holds the run with TICKET_LIMIT: it isn't interrupted and goes on, the run doesn't wait
 // for it to end, and the run's end suspends it (§ 4.8). Without a limit, one still going after
 // longRunning is said once, LONG_RUNNING. As orchestra's overTime, the time a worker waits for the
-// usage limit to reset (UsageLimited, § 4.12) doesn't count, nor the time the machine sleeps
-// (Wake.ts). An attention request unanswered for Attention's blockedAfter, with the machine awake,
-// holds the run with BLOCKED, for its ticket (a question --auto-answer takes after a time, only
-// blockedAfter past it: Attention's blocksAfter); once that ticket has no request open, the hold is
-// lifted, as what held the run is gone. run.ts keeps these stops.
+// usage limit to reset (UsageLimited, § 4.12) doesn't count, nor the time it waits for Claude's API
+// to answer again (ApiUnavailable, § 4.2), nor the time the machine sleeps (Wake.ts). An attention
+// request unanswered for Attention's blockedAfter, with the machine awake, holds the run with
+// BLOCKED, for its ticket (a question --auto-answer takes after a time, only blockedAfter past it:
+// Attention's blocksAfter); once that ticket has no request open, the hold is lifted, as what held
+// the run is gone. run.ts keeps these stops.
 
 /** How long a worker may go on, without a ticket limit, before the log says LONG_RUNNING. */
 export const longRunning: Duration.Duration = Duration.hours(2)
@@ -692,7 +709,7 @@ const until = (ticket: TicketId, wanted: (state: WorkerState) => boolean) =>
 
 /**
  * Waits until `ticket`'s worker has gone on for `span` since `since`, the time it was UsageLimited
- * and the time the machine slept not counted.
+ * or ApiUnavailable and the time the machine slept not counted.
  */
 export const goneOn = (
   ticket: TicketId,
@@ -705,14 +722,11 @@ export const goneOn = (
       const from = yield* Clock.currentTimeMillis
       const limited = yield* Effect.raceFirst(
         Effect.as(sleepAwake(Duration.millis(Math.max(0, left))), false),
-        Effect.as(
-          until(ticket, (state) => state._tag === "UsageLimited"),
-          true,
-        ),
+        Effect.as(until(ticket, waitsForHold), true),
       )
       if (!limited) return
       left -= yield* awakeSince(from)
-      yield* until(ticket, (state) => state._tag !== "UsageLimited")
+      yield* until(ticket, (state) => !waitsForHold(state))
     }
   })
 

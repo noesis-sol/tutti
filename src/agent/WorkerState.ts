@@ -4,8 +4,8 @@
 //
 // The reducer keeps a Worker: the state and what it is derived from. Each step updates the facts
 // the event changes, then derives the state from them afresh, so no order of events can leave a
-// stale state behind; only Idle's and Failed's `at` carries over, from the step that first made it
-// so.
+// stale state behind; only Idle's, Failed's and ApiUnavailable's `at` carries over, from the step
+// that first made it so.
 //
 // The reducer folds a message as the host read it, once (src/agent/reading.ts): a message a CLI of
 // another version sent without a field it reads is Unreadable, and no change. Each reading, and
@@ -43,6 +43,13 @@ export type WorkerState = Data.TaggedEnum<{
    */
   LoginRefused: { readonly error: string; readonly told: ReadonlyArray<string> }
   /**
+   * The turn ended on Claude's API unavailable after Claude Code's own retries (apiOutage): a
+   * server error, an overload or no connection. `error` is its result's text, `status` its API
+   * status, null without a response, and `at` when the worker first became so. It never settles:
+   * the API-outage hold (src/run/apiOutage.ts) tells it to carry on once the API answers again.
+   */
+  ApiUnavailable: { readonly at: number; readonly error: string; readonly status: number | null }
+  /**
    * The turns are over (`idle` after the last result, which was clean), none of tutti's sends is
    * outstanding and no background task is live or report to come, since `at`.
    */
@@ -69,6 +76,14 @@ export const settled = (state: WorkerState): boolean =>
   state._tag === "Failed" ||
   state._tag === "Closed" ||
   state._tag === "Gone"
+
+/**
+ * Whether a worker in `state` waits for a hold of the run to tell it to carry on: the usage limit's
+ * (UsageLimited, § 4.12) or the API outage's (ApiUnavailable, § 4.2). Its time waiting is the
+ * account's or the API's, not its own.
+ */
+export const waitsForHold = (state: WorkerState): boolean =>
+  state._tag === "UsageLimited" || state._tag === "ApiUnavailable"
 
 /**
  * What reaches the reducer: an SDK message, a send of tutti's or its cancellation, a hook callback,
@@ -134,6 +149,35 @@ export const classify = (
   return isCheck || testRunner.test(command) ? "testing" : doing
 }
 
+/** What apiOutage reads of a turn that ended is_error, not on the limit nor the login refused. */
+export interface FailedTurn {
+  /** Its result's `api_error_status`: null without a response. */
+  readonly status: number | null
+  /** The status of the turn's last `api_retry`, null without a response; undefined for none. */
+  readonly retried: number | null | undefined
+  /** Whether an assistant message of the turn said `overloaded` or `server_error`. */
+  readonly serverError: boolean
+  /** Whether the turn was cut off (`error_during_execution`). */
+  readonly interrupted: boolean
+}
+
+/** Whether `status` is a server's error or overload: 5xx, 529 among them. */
+const serverStatus = (status: number): boolean => status >= 500 && status <= 599
+
+/**
+ * Whether a turn that failed so failed as Claude's API was unavailable, Claude Code's own retries
+ * spent: a 5xx or 529 result, an assistant message saying `overloaded` or `server_error`, or a
+ * result with no status after retries of no response or a server error (a connection error). A
+ * 4xx other than the usage limit (billing, a bad request) is the turn's, not the API's, and an
+ * interrupt is yours.
+ */
+export const apiOutage = (turn: FailedTurn): boolean => {
+  if (turn.interrupted) return false
+  if (turn.status !== null) return serverStatus(turn.status)
+  if (turn.serverError) return true
+  return turn.retried === null || (turn.retried !== undefined && serverStatus(turn.retried))
+}
+
 /** How the session's last turn went. */
 export type Turn = Data.TaggedEnum<{
   /** No turn has started yet. */
@@ -149,6 +193,8 @@ export type Turn = Data.TaggedEnum<{
    * `authentication_failed`; `told` the texts of the sends it listed.
    */
   LoginRefused: { readonly error: string; readonly told: ReadonlyArray<string> }
+  /** The turn's result arrived with is_error as Claude's API was unavailable (apiOutage). */
+  Unavailable: { readonly error: string; readonly status: number | null }
   /** The turn's result arrived with is_error for another reason: a failed turn. */
   Failed: { readonly error: string; readonly interrupted: boolean }
 }>
@@ -194,6 +240,13 @@ export interface Worker {
     readonly max: number
     readonly status: number | null
   } | null
+  /**
+   * The status of the turn's last `api_retry`, kept to its result (null without a response);
+   * undefined when the turn retried nothing.
+   */
+  readonly retried: number | null | undefined
+  /** Whether an assistant message of this turn said `overloaded` or `server_error`. */
+  readonly serverError: boolean
   /** The current tool call's category; null between tool calls. */
   readonly tool: Doing | null
   /** Subagents started and not stopped in this turn, by agent ID. */
@@ -219,6 +272,8 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   pending: 0,
   requiresAction: false,
   retry: null,
+  retried: undefined,
+  serverError: false,
   tool: null,
   subagents: [],
   limit: noTurnLimit,
@@ -238,6 +293,8 @@ const newTurn = (worker: Worker): Worker => ({
   idle: false,
   report: null,
   retry: null,
+  retried: undefined,
+  serverError: false,
   limit: noTurnLimit,
   loginRefused: false,
 })
@@ -289,7 +346,11 @@ const onReading: Handlers<Reading> = {
     }
     return next
   },
-  Retry: (worker, { attempt, max, status }) => ({ ...worker, retry: { attempt, max, status } }),
+  Retry: (worker, { attempt, max, status }) => ({
+    ...worker,
+    retry: { attempt, max, status },
+    retried: status,
+  }),
   Tasks: (worker, { live, counted }, now) => {
     const next = unretried(worker)
     // A task that counted and has ended, between idle and the next running: the CLI starts a turn
@@ -309,9 +370,10 @@ const onReading: Handlers<Reading> = {
     const next = unretried(worker)
     const limit = turnLimitStep(next.limit, reading)
     const refused = next.loginRefused || reading.loginRefused
-    return limit === next.limit && refused === next.loginRefused
+    const serverError = next.serverError || reading.serverError
+    return limit === next.limit && refused === next.loginRefused && serverError === next.serverError
       ? next
-      : { ...next, limit, loginRefused: refused }
+      : { ...next, limit, loginRefused: refused, serverError }
   },
   Denied: unretried,
   Result: (worker, result) => {
@@ -340,6 +402,16 @@ const onReading: Handlers<Reading> = {
         return text === undefined ? [] : [text]
       })
       return { ...ended, turn: Turn.LoginRefused({ error: result.error, told }) }
+    }
+    if (
+      apiOutage({
+        status: result.apiStatus,
+        retried: next.retried,
+        serverError: next.serverError,
+        interrupted: result.interrupted,
+      })
+    ) {
+      return { ...ended, turn: Turn.Unavailable({ error: result.error, status: result.apiStatus }) }
     }
     return {
       ...ended,
@@ -405,6 +477,14 @@ const derive = (worker: Worker, now: number): WorkerState => {
       return worker.state._tag === "LoginRefused"
         ? worker.state
         : WorkerState.LoginRefused({ error: worker.turn.error, told: worker.turn.told })
+    case "Unavailable":
+      return worker.state._tag === "ApiUnavailable"
+        ? worker.state
+        : WorkerState.ApiUnavailable({
+            at: now,
+            error: worker.turn.error,
+            status: worker.turn.status,
+          })
     case "Ended":
       if (over) {
         return worker.state._tag === "Idle" ? worker.state : WorkerState.Idle({ at: now })

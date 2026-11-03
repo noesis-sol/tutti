@@ -113,6 +113,7 @@ export const Tag = {
   predictFailed: "PREDICT_FAILED",
   usage: "USAGE",
   usageLimit: "USAGE_LIMIT",
+  apiUnavailable: "API_UNAVAILABLE",
   phaseBug: "PHASE_BUG",
 } as const
 

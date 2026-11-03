@@ -79,6 +79,14 @@ export const resetText = (id: TicketId): string =>
   `tutti: the account's usage limit has reset. Carry on with your ticket ${id} where you left off.`
 
 /**
+ * The message a worker whose turn failed as Claude's API was unavailable (apiOutage.ts) is sent once
+ * the API answers again: whatever it was doing, its ticket or a hand-back, it carries on with.
+ */
+export const apiBackText =
+  "tutti: your last turn failed as Claude's API was unavailable, after Claude Code's own retries; " +
+  "it answers again. Carry on where you left off."
+
+/**
  * The message a worker waiting for the limit on its hand-back onto `base` (handback.ts) is sent once
  * it has reset: the hand-back to carry on with, not its ticket, which it closed already, as orchestra
  * tells it.

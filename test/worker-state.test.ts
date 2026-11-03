@@ -358,13 +358,14 @@ describe("tutti's sends", () => {
 
 describe("error results", () => {
   test("a success result with is_error true is Failed and settled, from when it came", () => {
-    const apiError = result({ is_error: true, api_error_status: 500, result: "API Error: 500" })
+    // A 400, the turn's own: a 5xx is Claude's API unavailable (api-outage-state.test.ts).
+    const apiError = result({ is_error: true, api_error_status: 400, result: "API Error: 400" })
     const worker = fold([init, apiError, idle])
     expect(worker.state).toEqual(
-      WorkerState.Failed({ at: 2, error: "API Error: 500", interrupted: false }),
+      WorkerState.Failed({ at: 2, error: "API Error: 400", interrupted: false }),
     )
     expect(settled(worker.state)).toBe(true)
-    expect(failure(worker)).toBe("API Error: 500")
+    expect(failure(worker)).toBe("API Error: 400")
   })
 
   test("an interrupted turn (error_during_execution) is Failed and interrupted", () => {

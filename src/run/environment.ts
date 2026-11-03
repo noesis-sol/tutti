@@ -401,6 +401,8 @@ export const make = (options: {
           return "it reached the account's usage limit without running its command"
         case "LoginRefused":
           return `Claude's login was refused without its command run: ${worker.error}`
+        case "ApiUnavailable":
+          return `Claude's API was unavailable without its command run: ${worker.error}`
       }
       return undefined
     }
@@ -429,7 +431,10 @@ export const make = (options: {
         Effect.map(ran, (ok) =>
           ok
             ? null
-            : isSettled(worker) || worker._tag === "UsageLimited" || worker._tag === "LoginRefused"
+            : isSettled(worker) ||
+                worker._tag === "UsageLimited" ||
+                worker._tag === "LoginRefused" ||
+                worker._tag === "ApiUnavailable"
               ? unran(worker)
               : undefined,
         )
