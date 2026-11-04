@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- An answered question's row and Up next line say `the next run`, not `the next free slot`, while the run quits, as a quit takes nothing back (§ 5.1; `src/run/runView.ts`' `resumesAt`; tutti-0ucl).
+
 ## [0.6.8] - 2026-11-04
 
 - An answered question's `↻ answered` row sorts with the rest of the tickets table, below what wants you and what is set aside, and can fold into `+N earlier tickets` (§ 5.1, § 7.2; `src/run/runView.ts`' `project`; tutti-hv7z).

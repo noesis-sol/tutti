@@ -709,15 +709,6 @@ export const attentionOf = (phase: TicketPhase, activity: Activity = "starting")
 /** The status of an Asked ticket's row once its question is answered, as it waits for a slot. */
 export const answeredRow: Shown = { mark: "answered", word: "answered", tone: "dim", faint: true }
 
-/**
- * When an Asked ticket whose question is answered comes back: a run winding down or stopping takes
- * back nothing, so not in this run; a stop that lifts says the next free slot again.
- */
-export const resumesAt = (
-  ledger: Pick<State, "windDown">,
-  status: Pick<Status, "stopping">,
-): string => (ledger.windDown === null && !status.stopping ? "the next free slot" : "the next run")
-
 /** Whether the run goes on, winds down or holds a stop, as a Blocked ticket's need says of it. */
 export type RunGoes = "on" | "windingDown" | "stopping"
 
@@ -730,6 +721,15 @@ export const runGoes = (
     : ledger.windDown === null
       ? "on"
       : "windingDown"
+
+/**
+ * When an Asked ticket whose question is answered comes back: a run winding down, stopping or
+ * quitting takes back nothing, so not in this run; a stop that lifts says the next free slot again.
+ */
+export const resumesAt = (
+  ledger: Pick<State, "windDown">,
+  status: Pick<Status, "stopping" | "quitting">,
+): string => (runGoes(ledger, status) === "on" ? "the next free slot" : "the next run")
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
