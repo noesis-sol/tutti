@@ -146,6 +146,45 @@ describe("the worker view of a ticket left Blocked on its merge conflict", () =>
     )
   })
 
+  test("a hand-back waiting for its steered worker keeps its own words and button", async () => {
+    const commands = Effect.runSync(makeCommands)
+    const waiting = project({
+      ledger: {
+        tickets: new Map([
+          [t1, { ...entry("MERGE_CONFLICT"), worker: 1, handBack: true, steered: true }],
+        ]),
+        rows: 1,
+        windDown: null,
+        bugs: [],
+      },
+      workers: new Map(),
+      requests: [],
+      status: { ...emptyStatus, version: "0.1.0", branch: "batch", began, concurrency: 1 },
+      actions: new Map(),
+    })
+    await withRender(
+      <Root
+        value={{
+          view: external(waiting),
+          screen: external<Screen>(view),
+          commands,
+          appearance: external<Appearance>("dark"),
+          themeOf,
+          now: () => began + 67_000,
+          transcripts: feed,
+          handBacks: external<ReadonlyArray<string>>([t1]),
+        }}
+      />,
+      { width: 100, height: 34 },
+      async (rendered) => {
+        const frame = await until(rendered, (now) => now.chars.includes("[ Hand it"))
+        expect(frame.chars).toContain("[ Hand it the conflict now ]")
+        expect(frame.chars).toContain("A merge conflict waits for this worker")
+        expect(frame.chars).not.toContain(button)
+      },
+    )
+  })
+
   test("blocked on anything else, has no notice", async () => {
     await scene(view, "DIRTY_TREE", { width: 100, height: 34 }, async ({ commands, rendered }) => {
       const frame = await until(rendered, (now) => now.chars.includes("← Dashboard"))
