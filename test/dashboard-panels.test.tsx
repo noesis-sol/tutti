@@ -855,7 +855,10 @@ describe("1–9", () => {
       wide,
       async ({ commands, pass, rendered }) => {
         pass(settle)
-        await press(rendered, "2", "down", "enter", "enter")
+        await press(rendered, "2")
+        expect(hintOf(await rendered.capture())).toContain("arrows select")
+        expect(taken(commands)).toEqual([])
+        await press(rendered, "enter")
         expect(taken(commands)).toEqual([
           UiCommand.Answer({
             requestId: "c1",

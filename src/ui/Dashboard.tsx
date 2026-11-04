@@ -1031,8 +1031,11 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
         answer: unlessHelp((card: Card, key: AnswerKey) => answering.key(card.requests[0], key)),
         denyWithReason: unlessHelp((card: Card) => answering.denyWithReason(card.requests[0])),
         openAnswer: unlessHelp((card: Card) => box.set(Box.Answer({ ticket: card.ticket }))),
+        // A pick from the top level goes into Current on its card, the option ready for Enter.
         pick: unlessHelp((card: Card, n: number) => {
-          answering.pick(card.requests[0], n)
+          if (!answering.pick(card.requests[0], n) || insideOf("current")) return
+          choose(card.ticket)
+          focusOn("current", true)
         }),
         stop: unlessHelp(() => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
         endRun: unlessHelp(() => command(UiCommand.EndRun())),
