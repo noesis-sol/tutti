@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
+import { maxHandBacks, mostHandBacks } from "../src/run/handback.ts"
 import { type BlockedAbout, Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
@@ -86,7 +87,13 @@ const about = (ran: Ran<{ readonly about?: BlockedAbout | undefined } | undefine
 
 const idle = [init(), sessionState("running"), result(), sessionState("idle")]
 
-const resolvesThenMainMoves = (world: World, files: Files, then: Files, message: string) =>
+const resolvesThenMainMoves = (
+  world: World,
+  files: Files,
+  then: Files,
+  message: string,
+  conflicts = false,
+) =>
   turn([
     run(
       Effect.suspend(() =>
@@ -94,6 +101,7 @@ const resolvesThenMainMoves = (world: World, files: Files, then: Files, message:
       ),
     ),
     run(Effect.asVoid(world.repository.commit(world.repository.dir, message, then))),
+    ...(conflicts ? [run(world.repository.conflict("tutti/a", ["a.txt"]))] : []),
   ])
 
 describe("a ticket blocked on its conflict", () => {
@@ -103,18 +111,14 @@ describe("a ticket blocked on its conflict", () => {
         a: [
           [
             ...idle,
-            ...resolvesThenMainMoves(
-              world,
-              { "a.txt": "both\n" },
-              { "a.txt": "again\n" },
-              "Land b (b)",
-            ),
-            ...resolvesThenMainMoves(
-              world,
-              { "a.txt": "all\n" },
-              { "a.txt": "more\n" },
-              "Land b more (b)",
-            ),
+            ...Array.from({ length: mostHandBacks }, (_, i) =>
+              resolvesThenMainMoves(
+                world,
+                { "a.txt": `both ${i}\n` },
+                { "a.txt": `main ${i}\n` },
+                `Land b ${i} (b)`,
+              ),
+            ).flat(),
           ],
         ],
       }),
@@ -123,8 +127,31 @@ describe("a ticket blocked on its conflict", () => {
     expect(about(ran)).toEqual({
       worktree: worktrees.get("a") ?? "",
       files: ["a.txt"],
-      reason: "2 hand-backs used; main moved on as b merged",
+      reason: `${mostHandBacks} hand-backs used; main moved on as b merged`,
     })
+  })
+
+  test("hand-backs used on a conflict nothing merged made: says only those", async () => {
+    const ran = await merging(
+      (world) => ({
+        a: [
+          [
+            ...idle,
+            ...[0, 1].flatMap((i) =>
+              resolvesThenMainMoves(
+                world,
+                { "a.txt": `both ${i}\n` },
+                { "z.txt": `main ${i}\n` },
+                `Land b ${i} (b)`,
+                true,
+              ),
+            ),
+          ],
+        ],
+      }),
+      "Land something else",
+    )
+    expect(about(ran)?.reason).toBe(`${maxHandBacks} hand-backs used`)
   })
 
   test("a commit that names no ticket of the run is named by its hash", async () => {

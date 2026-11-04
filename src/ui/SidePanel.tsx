@@ -135,7 +135,7 @@ export const beside = (
 export const panelTargets = {
   /** Other…: the questions box, to type your own. */
   other: 100,
-  /** The question's title or its cut description, or a Blocked ticket's cut text: to read it all. */
+  /** The question's title or its cut description, or a Blocked ticket's cut foot: to read it all. */
   read: 101,
 } as const
 
@@ -155,6 +155,17 @@ const afterConflict =
 const afterStop =
   "The merges have stopped and no new ticket starts. The run's end labels it unmerged; the next run checks and merges it."
 
+/** The most of a merge's reason a need says: a stop's line can list every file in its way. */
+const reasonLimit = 300
+
+/** `reason`, cut at reasonLimit, whose line is in the log whole. */
+const briefly = (reason: string): string => {
+  const chars = [...reason]
+  return chars.length <= reasonLimit
+    ? reason
+    : `${chars.slice(0, reasonLimit).join("")}… (the log has it all)`
+}
+
 /**
  * What a Blocked ticket's need says, a paragraph each, what to do first, as a short panel cuts the
  * end: what to run, the worktree, the first files, why it is so and what comes next. A hand-back is
@@ -163,7 +174,8 @@ const afterStop =
 export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArray<string> => {
   const { base, about, handBack } = need
   const rebase = `git rebase ${base} in ${about?.worktree ?? "its worktree"}`
-  const stopped = (fallback: string) => `Its merge stopped: ${about?.reason ?? fallback}`
+  const reason = about === null ? null : briefly(about.reason)
+  const stopped = (fallback: string) => `Its merge stopped: ${reason ?? fallback}`
   switch (need.why) {
     case "MERGE_CONFLICT": {
       const files = about?.files ?? []
@@ -175,16 +187,16 @@ export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArra
             : `Its branch can't merge onto ${base}.`
       return handBack
         ? [
-            "You steered its worker, so its conflict's hand-back waits for you: 'Hand it the conflict now' in its worker view hands it over.",
-            `Or take it up yourself: ${rebase}.`,
+            "'Hand it the conflict now' in its worker view hands it over: you steered its worker, so its conflict's hand-back waits for you.",
+            `Or run ${rebase} to take it up yourself.`,
             conflict,
             "An overnight run doesn't wait for it; any other waits at its end until you hand it over, release its worker or press q.",
             afterConflict,
           ]
         : [
-            `To take it up yourself: ${rebase}.`,
+            `Run ${rebase} to take it up yourself.`,
             conflict,
-            ...(about === null ? [] : [`Set aside: ${about.reason}.`]),
+            ...(reason === null ? [] : [`Set aside: ${reason}.`]),
             afterConflict,
           ]
     }
@@ -307,24 +319,28 @@ export const needsLines = (
   } else if (need?._tag === "Blocked") {
     const title = wrapped([seg(need.title, styles.key)], 2)
     const paragraphs = clearsOf(need).map((text) => wrapped([dim(text)]))
-    const cut = blockedCut(need, width, lines)
-    const read = cut && room >= 3 ? [[dim("… click to read it all", panelTargets.read)]] : []
-    // Too short for it all: what to do is its first paragraph, which goes before the title.
-    const spare = room - 2 - read.length
-    const titled = !cut || spare - title.length >= (paragraphs[0]?.length ?? 0) ? title : []
+    const short = blockedCut(need, width, lines)
+    // Too short for it all: what to do is its first paragraph, which goes before the title, as much
+    // of it as fits, and the foot, to click, says how to read the rest.
+    const spare = room - 2
+    const titled = !short || spare - title.length >= (paragraphs[0]?.length ?? 0) ? title : []
     const clears = paragraphs.flat()
-    const shown = cut ? clears.slice(0, Math.max(spare - titled.length, 0)) : clears
-    const keys = !at.focused
-      ? "Tab to choose"
-      : cut
-        ? "Enter reads it all"
-        : "Enter opens its worker view"
+    const keys = !short
+      ? at.focused
+        ? "Enter opens its worker view"
+        : "Tab to choose"
+      : at.focused
+        ? "… click or Enter reads it all"
+        : "… click reads it all · Tab to choose"
     body.push(
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],
       ...titled,
-      ...shown,
-      ...read,
-      footOf(keys, needs.length).map((each) => ({ ...each, look: styles.dim })),
+      ...(short ? clears.slice(0, Math.max(spare - titled.length, 0)) : clears),
+      footOf(keys, needs.length).map((each) => ({
+        ...each,
+        look: styles.dim,
+        ...(short ? { target: panelTargets.read } : {}),
+      })),
     )
   }
   const kept = body.slice(0, room)

@@ -108,7 +108,13 @@ export const Modal = ({
     seg(" · ", theme.styles.dim),
     inner,
   )
-  const rows = boxed([...lines, [], ...keys], outer, frame)
+  // A pane too short for it all keeps the keys and what comes first.
+  const room = Math.max(height - keys.length - 3, 1)
+  const shown =
+    lines.length <= room
+      ? lines
+      : [...lines.slice(0, room - 1), [seg("… no room here for the rest", theme.styles.dim)]]
+  const rows = boxed([...shown, [], ...keys], outer, frame)
   return (
     <>
       <Backdrop />

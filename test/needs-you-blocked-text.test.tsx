@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import fc from "fast-check"
-import { makeCommands, UiCommand } from "../src/run/commands.ts"
+import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, type Need, project, type RunView } from "../src/run/runView.ts"
@@ -16,6 +16,8 @@ import { clearsOf, needsLines, panelTargets } from "../src/ui/SidePanel.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, withRender } from "./render.ts"
+
+type Rendered = Parameters<Parameters<typeof withRender>[2]>[0]
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -65,7 +67,7 @@ const textOf = (fields: Partial<LedgerEntry> = {}) => clearsOf(needOf(fields)).j
 describe("what Needs you says of a conflict", () => {
   test("left by the run: its files, worktree, why, what to run and what comes next", () => {
     expect(clearsOf(needOf())).toEqual([
-      "To take it up yourself: git rebase trunk in /wt/fab-mgi.7.9.",
+      "Run git rebase trunk in /wt/fab-mgi.7.9 to take it up yourself.",
       "Its rebase onto trunk conflicts in loop.ts, cli.test.ts.",
       "Set aside: 2 hand-backs used; main moved on as fab-mgi.7.7 merged.",
       "The run's end labels it unmerged; the next run checks and merges it once it rebases cleanly.",
@@ -165,110 +167,152 @@ describe("the panel's lines", () => {
     expect(lines).not.toContain("click to read it all")
   })
 
-  test("at any height: its foot, and from 7 lines what to run, however long the rest", () => {
+  test("at any height: its foot, and what to do first, however long the rest", () => {
     const long = "/Users/someone/.tutti/worktrees/fabrica/fab-mgi.7.9"
     const title = "Make the loop's merge step keep what it read of the ticket across a restart"
     const files = Array.from({ length: 14 }, (_, i) => `packages/engine/src/file-${i}.ts`)
-    for (const need of [
-      needOf({ title, about: { ...about, worktree: long } }),
-      needOf({ about: { ...about, worktree: long, files } }),
-      needOf({ title, about: { ...about, worktree: long, files } }),
-    ]) {
-      for (let height = 5; height <= 30; height++) {
-        const said = texts(needsLines([need], at, theme, 51, height)).join("\n")
-        expect(said).toMatch(/Enter (reads it all|opens its worker view)/)
-        if (height >= 7) expect(said).toContain("git rebase trunk")
+    const cases = [
+      { title, about: { ...about, worktree: long } },
+      { about: { ...about, worktree: long, files } },
+      { title, about: { ...about, worktree: long, files } },
+    ]
+    for (const fields of cases) {
+      for (let height = 6; height <= 30; height++) {
+        const shown = (handBack: boolean) =>
+          texts(needsLines([needOf({ ...fields, handBack })], at, theme, 51, height)).join("\n")
+        expect(shown(false)).toMatch(/Enter (reads it all|opens its worker view)/)
+        expect(shown(false)).toContain("git rebase trunk")
+        expect(shown(true)).toMatch(/Enter (reads it all|opens its worker view)/)
+        expect(shown(true)).toContain("'Hand it the conflict now'")
       }
     }
   })
 
-  test("very short: the line to read it all in place of the title, and the foot", () => {
-    const lines = texts(needsLines([needOf()], at, theme, 60, 6)).join("\n")
-    expect(lines).not.toContain("Merge the loop")
-    expect(lines).toContain("click to read it all")
-    expect(lines).toContain("Enter reads it all")
+  test("very short: what to do in place of the title, and the foot, to click", () => {
+    const lines = needsLines([needOf()], at, theme, 60, 6)
+    const said = texts(lines).join("\n")
+    expect(said).not.toContain("Merge the loop")
+    expect(said).toContain("git rebase trunk")
+    expect(said).toContain("… click or Enter reads it all")
+    const read = lines.flat().find((segment) => segment.text.includes("reads it all"))
+    expect(read?.target).toBe(panelTargets.read)
   })
 
-  test("too short: what to do first, a line to read it all, and still the foot", () => {
-    const lines = needsLines([needOf()], at, theme, 60, 12)
-    const said = texts(lines).join("\n")
+  test("too short: what to do first, and the foot says how to read the rest", () => {
+    const said = texts(needsLines([needOf()], { ...at, focused: false }, theme, 60, 9)).join("\n")
     expect(said).toContain("loop.ts, cli.test.ts")
     expect(said).toContain("git rebase trunk")
     expect(said).not.toContain("next run checks")
-    expect(said).toContain("Enter reads it all")
-    const read = lines.flat().find((segment) => segment.text.includes("click to read it all"))
-    expect(read?.target).toBe(panelTargets.read)
+    expect(said).toContain("… click reads it all · Tab to choose")
   })
 })
 
+/** Draws the run's dashboard for `each`, in a pane `width` by `height`. */
+const dashboard = async (
+  each: LedgerEntry,
+  size: { readonly width: number; readonly height: number },
+  body: (rendered: Rendered, commands: Commands) => Promise<void>,
+) => {
+  const commands = Effect.runSync(makeCommands)
+  await withRender(
+    <Root
+      value={{
+        view: external(viewOf(each)),
+        screen: external<Screen>(Screen.Dashboard()),
+        commands,
+        appearance: external<Appearance>("dark"),
+        themeOf,
+        now: () => began + 60_000,
+      }}
+    />,
+    size,
+    (rendered) => body(rendered, commands),
+  )
+}
+
+const placeOf = (frame: Frame, text: string) => {
+  const lines = frame.chars.split("\n")
+  const y = lines.findIndex((line) => line.includes(text))
+  return { x: lines[y]?.indexOf(text) ?? -1, y }
+}
+
+const flat = (frame: Frame) => frame.chars.replace(/[\s│┃]+/g, " ")
+
+const openWorker = UiCommand.OpenWorker({ ticket: "fab-mgi.7.9" as TicketId })
+
 describe("the panel's cut text", () => {
-  test("its box fits a pane, with its keys, however many files conflict", async () => {
-    const files = Array.from({ length: 80 }, (_, i) => `src/packages/module-${i}/index.ts`)
-    const commands = Effect.runSync(makeCommands)
-    await withRender(
-      <Root
-        value={{
-          view: external(viewOf(entry({ about: { ...about, files } }))),
-          screen: external<Screen>(Screen.Dashboard()),
-          commands,
-          appearance: external<Appearance>("dark"),
-          themeOf,
-          now: () => began + 60_000,
-        }}
-      />,
-      { width: 140, height: 30 },
-      async (rendered) => {
-        const lines = (await rendered.capture()).chars.split("\n")
-        const y = lines.findIndex((line) => line.includes("click to read it all"))
-        const x = lines[y]?.indexOf("click to read it all") ?? -1
-        await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
-        const box = (await rendered.capture()).chars.replace(/\s+/g, " ")
-        expect(box).toContain("next run checks")
-        expect(box).toContain("Esc close")
-      },
-    )
+  test("a click opens a box saying all of it, which Esc closes; Enter there, its worker view", async () => {
+    await dashboard(entry(), { width: 140, height: 25 }, async (rendered, commands) => {
+      const frame = await rendered.capture()
+      const { x, y } = placeOf(frame, "click reads it all")
+      expect(y).toBeGreaterThan(-1)
+      expect(frame.chars).not.toContain("next run checks")
+      await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      expect(flat(await rendered.capture())).toContain("next run checks")
+      await rendered.input(pressEscape)
+      expect((await rendered.capture()).chars).not.toContain("next run checks")
+      // Tab to the panel; Enter reads it all; Enter there opens its worker view.
+      await rendered.input((setup) => setup.mockInput.pressTab())
+      await rendered.input((setup) => setup.mockInput.pressEnter())
+      expect(flat(await rendered.capture())).toContain("next run checks")
+      expect(Effect.runSync(Queue.clear(commands))).not.toContainEqual(openWorker)
+      await rendered.input((setup) => setup.mockInput.pressEnter())
+      expect(Effect.runSync(Queue.clear(commands))).toContainEqual(openWorker)
+    })
   })
 
-  test("a click opens a box saying all of it, which Esc closes; Enter there, its worker view", async () => {
-    const placeOf = (frame: Frame, text: string) => {
-      const lines = frame.chars.split("\n")
-      const y = lines.findIndex((line) => line.includes(text))
-      return { x: lines[y]?.indexOf(text) ?? -1, y }
-    }
-    const commands = Effect.runSync(makeCommands)
-    await withRender(
-      <Root
-        value={{
-          view: external(viewOf(entry())),
-          screen: external<Screen>(Screen.Dashboard()),
-          commands,
-          appearance: external<Appearance>("dark"),
-          themeOf,
-          now: () => began + 60_000,
-        }}
-      />,
-      { width: 140, height: 25 },
-      async (rendered) => {
-        const frame = await rendered.capture()
-        const { x, y } = placeOf(frame, "click to read it all")
-        expect(y).toBeGreaterThan(-1)
-        expect(frame.chars).not.toContain("next run checks")
-        await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
-        const box = await rendered.capture()
-        expect(box.chars.replace(/\s+/g, " ")).toContain("next run checks")
-        await rendered.input(pressEscape)
-        const closed = await rendered.capture()
-        expect(closed.chars).not.toContain("next run checks")
-        // Tab to the panel; Enter reads it all; Enter there opens its worker view.
-        await rendered.input((setup) => setup.mockInput.pressTab())
-        await rendered.input((setup) => setup.mockInput.pressEnter())
-        const read = await rendered.capture()
-        expect(read.chars.replace(/\s+/g, " ")).toContain("next run checks")
-        await rendered.input((setup) => setup.mockInput.pressEnter())
-        expect(Effect.runSync(Queue.clear(commands))).toEqual(
-          expect.arrayContaining([UiCommand.OpenWorker({ ticket: "fab-mgi.7.9" as TicketId })]),
-        )
-      },
-    )
+  test("its box fits a pane, with its keys, however many files conflict", async () => {
+    const files = Array.from({ length: 80 }, (_, i) => `src/packages/module-${i}/index.ts`)
+    const each = entry({ about: { ...about, files } })
+    await dashboard(each, { width: 140, height: 30 }, async (rendered) => {
+      const { x, y } = placeOf(await rendered.capture(), "click reads it all")
+      await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      const box = flat(await rendered.capture())
+      expect(box).toContain("next run checks")
+      expect(box).toContain("Esc close")
+    })
+  })
+
+  test("a stop's line that lists every file: cut, the rest said, its keys on screen", async () => {
+    const list = Array.from({ length: 40 }, (_, i) => `generated/client/model-${i}.ts`).join(", ")
+    const reason = `uncommitted changes in /repo to ${list}, which tutti/a changes`
+    const each = entry({
+      phase: TicketPhase.Blocked({ why: "DIRTY_TREE" }),
+      about: { ...about, files: [], reason },
+    })
+    expect(clearsOf(needOf(each)).join("\n")).toContain("… (the log has it all)")
+    await dashboard(each, { width: 140, height: 30 }, async (rendered) => {
+      const { x, y } = placeOf(await rendered.capture(), "click reads it all")
+      await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      const box = flat(await rendered.capture())
+      expect(box).toContain("The merges have stopped")
+      expect(box).toContain("Esc close")
+    })
+  })
+
+  test("a box too tall for its pane keeps its keys and what comes first", async () => {
+    await dashboard(entry(), { width: 140, height: 25 }, async (rendered) => {
+      const { x, y } = placeOf(await rendered.capture(), "click reads it all")
+      await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      await rendered.input((setup) => setup.resize(140, 9))
+      const box = flat(await rendered.capture())
+      expect(box).toContain("no room here for the rest")
+      expect(box).toContain("git rebase trunk")
+      expect(box).toContain("Esc close")
+    })
+  })
+})
+
+describe("Enter on a panel that shows it all", () => {
+  test("opens its worker view at once", async () => {
+    const each = entry({ about: undefined })
+    await dashboard(each, { width: 140, height: 44 }, async (rendered, commands) => {
+      await rendered.input((setup) => setup.mockInput.pressTab())
+      const frame = await rendered.capture()
+      expect(flat(frame)).toContain("next run checks")
+      expect(frame.chars).toContain("Enter opens its worker view")
+      await rendered.input((setup) => setup.mockInput.pressEnter())
+      expect(Effect.runSync(Queue.clear(commands))).toContainEqual(openWorker)
+    })
   })
 })
