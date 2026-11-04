@@ -459,8 +459,8 @@ the keys are still on this worker's card, and open the other's (an arrow, then `
 The dashboard's keys work at two levels. At the top level the arrows move the focus between its
 panels, **Tickets** top left, **Needs you** top right, **Current** below, `Tab` and `Shift+Tab` to the
 next and previous, and the focused panel's frame is drawn bright (the table's lines between its
-columns stay dim). `Enter`, or a click, goes into a panel, where the keys select in it (a row of the
-table is one band across it), and `Esc` comes out, an open box closing first. So opening a
+columns stay dim). `Enter`, or a click, goes into a panel, where the keys select in it (the table's row
+selected has a `▸` before it), and `Esc` comes out, an open box closing first. So opening a
 worker from the top is `↓ Enter Enter`, or a click on its card; a request's `d` and `a` work from any
 panel at the top level.
 
@@ -470,7 +470,7 @@ panel at the top level.
 | `↑`, `↓` | at the top, move between the panels; inside, select a row, an option or a card | move between items |
 | `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
 | `1`–`9` | answer **Needs you**'s question at once, but a digit a highlighted card's question takes, with the focus on it in Current | |
-| `Enter`, a click | at the top, go into the panel, a click to what it clicked; inside, press the focused button, or open the card (in the one-line layout, open its request) or the row: a `? for you` row's question, what clears a blocked one; on the totals' Needs you, the list of what needs you | expand or collapse the item; press the focused button |
+| `Enter`, a click | at the top, go into the panel, a click to what it clicked; inside, press the focused button, or open the card (in the one-line layout, open its request) or the row: a `? for you` row's question, what clears a blocked one, a worker's view, or for a row with none (done, set aside) a box with what the panel says of it; on the totals' Needs you, the list of what needs you | expand or collapse the item; press the focused button |
 | `d` | deny the request (decline an MCP server's) | the same |
 | `Shift+D` | deny, with a reason you type for the worker | the same |
 | `a` | allow, when the request has a one-key allow | the same |

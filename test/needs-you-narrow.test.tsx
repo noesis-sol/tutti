@@ -19,6 +19,7 @@ import { Root } from "../src/ui/App.tsx"
 import { answerButton } from "../src/ui/Composer.tsx"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
 import type { Segments } from "../src/ui/line.tsx"
+import { marks } from "../src/ui/marks.ts"
 import { emptyLife, listReadingText } from "../src/ui/NeedsList.tsx"
 import { noneOpenText } from "../src/ui/QuestionsBox.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
@@ -195,6 +196,29 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<"tab" | "enter" | "esc
 const focused = (lines: ReadonlyArray<Segments>, text: string): boolean =>
   lines.flat().some((each) => each.text.includes(text) && each.look === theme.form.focusedButton)
 
+/** Whether the table's row holding `text`, in `lines`, has the pointer before its state. */
+const pointedIn = (lines: ReadonlyArray<Segments>, text: string): boolean =>
+  lines.some(
+    (line) =>
+      line.some((each) => each.text.includes(marks.selected)) &&
+      line.some((each) => each.text.includes(text)),
+  )
+
+/** Whether the table's pointer, `│ ▸`, is on a row of `frame` whose cells hold `text`. */
+const pointed = (frame: Frame, text: string): boolean =>
+  frame.chars.split("\n").some((line) => {
+    const at = line.indexOf(`│ ${marks.selected}`)
+    return (
+      at !== -1 &&
+      line
+        .slice(at + 1)
+        .split("│")
+        .slice(0, 3)
+        .join("│")
+        .includes(text)
+    )
+  })
+
 /** Whether `text` is drawn in `frame` on the focus's fill, as the highlight draws it. */
 const lit = (frame: Frame, text: string): boolean =>
   frame.spans.lines.some((line) =>
@@ -213,17 +237,17 @@ describe("an Asked row", () => {
     expect(row(viewOf([asked], false))?.note).toBe("Add the flag")
   })
 
-  test("is drawn in the focus's look while selected, as Needs you is while the focus is on it", () => {
+  test("has the pointer while selected, and Needs you the focus's look while the focus is on it", () => {
     const view = viewOf([asked, blocked])
     const side = { needs: view.needs, at: { focused: false, inside: false, choice: 0 } }
     const inTable = { panel: "tickets", inside: true } as const
     const onRow = dashboardLayout(view, theme, 100, 30, null, side, inTable, "t-1" as TicketId)
-    expect(focused(onRow.tickets, "Which flag name?")).toBe(true)
+    expect(pointedIn(onRow.tickets, "Which flag name?")).toBe(true)
     expect(focused(onRow.totals, "Needs you")).toBe(false)
     const onCell = { panel: "cell", inside: false } as const
     const onNeeds = dashboardLayout(view, theme, 100, 30, null, side, onCell, "t-1" as TicketId)
     expect(focused(onNeeds.totals, "Needs you")).toBe(true)
-    expect(focused(onNeeds.tickets, "Which flag name?")).toBe(false)
+    expect(pointedIn(onNeeds.tickets, "Which flag name?")).toBe(false)
   })
 
   test("Enter on it opens the questions box at its question", async () => {
@@ -253,7 +277,7 @@ describe("an Asked row", () => {
         const table = await until(rendered, has("Which flag name?"))
         const { x, y } = placeOf(table, "Which flag name?")
         await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
-        expect(lit(await rendered.capture(), "Which flag name?")).toBe(true)
+        expect(pointed(await rendered.capture(), "Which flag name?")).toBe(true)
         await press(rendered, "enter")
         const uuid = await readUuid(rendered, commands)
         expect(uuid).not.toBe("")
@@ -279,7 +303,7 @@ describe("a click on Needs you, or on an Asked row", () => {
       await press(rendered, "escape")
       const after = await until(rendered, (now) => !now.chars.includes(listReadingText))
       expect(lit(after, "Needs you")).toBe(true)
-      expect(lit(after, "Which flag name?")).toBe(false)
+      expect(pointed(after, "Which flag name?")).toBe(false)
     })
   })
 
@@ -292,7 +316,7 @@ describe("a click on Needs you, or on an Asked row", () => {
       const { x, y } = placeOf(onNeeds, "Which flag name?")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
       const after = await rendered.capture()
-      expect(lit(after, "Which flag name?")).toBe(true)
+      expect(pointed(after, "Which flag name?")).toBe(true)
       expect(lit(after, "Needs you")).toBe(false)
     })
   })

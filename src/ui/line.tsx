@@ -441,47 +441,33 @@ export const Section = ({
     </box>
   )
 
-/** How framed draws what is inside its frame: the lines between its columns, and a row's band. */
-export interface FramedInside {
-  /** The look of the lines between the columns; the frame's, where not given. */
-  readonly columns?: Look
-  /**
-   * The row at this index drawn as one band in `band.look` from the frame's one side to the other:
-   * its cells, the spaces round them and the lines between them alike.
-   */
-  readonly band?: { readonly row: number; readonly look: Look }
-}
-
 /**
  * A rounded frame around `rows`, each of cells in columns `widths` wide (a space each side besides),
- * its borders in `frame` and what is inside them as `inside` says: one line a row, and the top and
- * bottom borders.
+ * its borders in `frame` and the lines between its columns in `columns`, the frame's where not
+ * given: one line a row, and the top and bottom borders.
  */
 export const framed = (
   rows: ReadonlyArray<ReadonlyArray<Segments>>,
   widths: ReadonlyArray<number>,
   frame: Look,
-  inside: FramedInside = {},
+  columns: Look = frame,
 ): ReadonlyArray<Segments> => {
   const edge = (left: string, join: string, right: string): Segments => [
     seg(left + widths.map((w) => "─".repeat(w + 2)).join(join) + right, frame),
   ]
   const bar = seg("│", frame)
-  const between = seg("│", inside.columns ?? frame)
+  const between = seg("│", columns)
   return [
     edge("╭", "┬", "╮"),
-    ...rows.map((cells, r) => {
-      const band = inside.band?.row === r ? inside.band.look : null
-      const drawn = (segments: Segments): Segments =>
-        band === null ? segments : segments.map((each) => ({ ...each, look: band }))
-      return [
-        bar,
-        ...widths.flatMap((w, i) => [
-          ...drawn([seg(" "), ...padded(cut(cells[i] ?? [], w), w), seg(" ")]),
-          ...(i === widths.length - 1 ? [bar] : drawn([between])),
-        ]),
-      ]
-    }),
+    ...rows.map((cells) => [
+      bar,
+      ...widths.flatMap((w, i) => [
+        seg(" "),
+        ...padded(cut(cells[i] ?? [], w), w),
+        seg(" "),
+        i === widths.length - 1 ? bar : between,
+      ]),
+    ]),
     edge("╰", "┴", "╯"),
   ]
 }

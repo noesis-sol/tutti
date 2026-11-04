@@ -4,6 +4,7 @@
 // focus off it.
 
 import { describe, expect, test } from "bun:test"
+import { TextAttributes } from "@opentui/core"
 import { Effect, Queue } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
@@ -16,6 +17,7 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { dashboardHint, dashboardLayout } from "../src/ui/Dashboard.tsx"
+import { marks } from "../src/ui/marks.ts"
 import {
   type Direction,
   focusAmong,
@@ -261,17 +263,38 @@ const where = (frame: Frame, text: string) => {
 const has = (frame: Frame, text: string) => frame.chars.includes(text)
 
 /**
- * The table's row holding `text`, in `frame`, char by char with its colours, from its frame's left
- * side to its right: the first `│` of its line and the fourth, as the table has three columns.
+ * The table's row holding `text`, in `frame`, char by char with its colours and boldness, from its
+ * frame's left side to its right: the first `│` of its line and the fourth, as the table has three
+ * columns.
  */
 const tableRow = (frame: Frame, text: string) => {
   const line = frame.spans.lines[where(frame, text).y]
   const chars = (line?.spans ?? []).flatMap((span) =>
-    Array.from(span.text).map((char) => ({ char, fg: span.fg.toInts(), bg: span.bg.toInts() })),
+    Array.from(span.text).map((char) => ({
+      char,
+      fg: span.fg.toInts(),
+      bg: span.bg.toInts(),
+      bold: (span.attributes & TextAttributes.BOLD) !== 0,
+    })),
   )
   const bars = chars.flatMap((each, i) => (each.char === "│" ? [i] : []))
   return chars.slice(bars[0], (bars[3] ?? chars.length) + 1)
 }
+
+/** Whether the table's pointer, `│ ▸`, is on a row of `frame` whose cells hold `text`. */
+const pointed = (frame: Frame, text: string): boolean =>
+  linesOf(frame).some((line) => {
+    const at = line.indexOf(`│ ${marks.selected}`)
+    return (
+      at !== -1 &&
+      line
+        .slice(at + 1)
+        .split("│")
+        .slice(0, 3)
+        .join("│")
+        .includes(text)
+    )
+  })
 
 /** Whether a card's heavy frame is drawn round `ticket`. */
 const heavyOn = (frame: Frame, ticket: string) =>
@@ -490,34 +513,43 @@ describe("at the top level", () => {
 })
 
 describe("inside Tickets", () => {
-  test("↑↓ move through the rows, round; Esc comes out and the row is no longer lit", async () => {
+  test("↑↓ move through the rows, round; Esc comes out and the row is no longer pointed at", async () => {
     await scene(viewOf(0), narrow, async ({ rendered }) => {
       await press(rendered, "enter")
-      expect(lit(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
       await press(rendered, "down")
       const second = await rendered.capture()
-      expect(lit(second, "b-1")).toBe(false)
-      expect(lit(second, "d-")).toBe(true)
+      expect(pointed(second, "b-1")).toBe(false)
+      expect(pointed(second, "d-")).toBe(true)
       await press(rendered, "up", "up")
-      expect(lit(await rendered.capture(), "d-1")).toBe(true)
+      expect(pointed(await rendered.capture(), "d-1")).toBe(true)
       await press(rendered, "escape")
       const out = await rendered.capture()
-      expect(lit(out, "d-")).toBe(false)
-      expect(lit(out, "b-1")).toBe(false)
+      expect(pointed(out, "d-")).toBe(false)
+      expect(pointed(out, "b-1")).toBe(false)
     })
   })
 
-  test("the row selected is one band across the frame; the lines between the columns stay dim", async () => {
+  test("the row selected has the pointer and goes bold, with no fill; the lines between the columns stay dim", async () => {
     await scene(viewOf(0), narrow, async ({ rendered }) => {
       await press(rendered, "enter")
       const frame = await rendered.capture()
-      const fill = theme.form.focusedButton.bg?.toInts()
       const selected = tableRow(frame, "b-1")
-      // Inside its frame's sides every cell has the focus's fill: its text, its padding, the spaces
-      // round its cells and the lines between them.
-      expect(selected.slice(1, -1).every((each) => Bun.deepEquals(each.bg, fill))).toBe(true)
-      expect(Bun.deepEquals(selected[0]?.bg, fill)).toBe(false)
-      expect(Bun.deepEquals(selected.at(-1)?.bg, fill)).toBe(false)
+      // The pointer is in its gutter inside the frame's left side, in the key's look.
+      expect(selected[2]?.char).toBe(marks.selected)
+      expect(selected[2]?.fg).toEqual(theme.styles.key.fg?.toInts())
+      // Its text is bold in its own colours, on no fill: the row unselected is drawn in the same.
+      const text = selected.filter((each) => each.char.trim() !== "" && each.char !== "│")
+      expect(text.slice(1).every((each) => each.bold)).toBe(true)
+      const fill = theme.form.focusedButton.bg?.toInts()
+      expect(selected.some((each) => Bun.deepEquals(each.bg, fill))).toBe(false)
+      await press(rendered, "down")
+      const after = await rendered.capture()
+      expect(tableRow(after, "b-1")[2]?.char).toBe(" ")
+      const plain = tableRow(after, "b-1").filter(
+        (each) => each.char.trim() !== "" && each.char !== "│",
+      )
+      expect(plain.map((each) => each.fg)).toEqual(text.slice(1).map((each) => each.fg))
       // Another row's lines between the columns keep the dim frame's colour, while its sides, as
       // the frame's top, go bright.
       const other = tableRow(frame, "d-1")
@@ -534,10 +566,10 @@ describe("inside Tickets", () => {
   test("← → do nothing, and Tab comes out to the next panel", async () => {
     await scene(viewOf(1), narrow, async ({ rendered }) => {
       await press(rendered, "enter", "left", "right")
-      expect(lit(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
       await press(rendered, "tab")
       const frame = await rendered.capture()
-      expect(lit(frame, "b-1")).toBe(false)
+      expect(pointed(frame, "b-1")).toBe(false)
       expect(lit(frame, "Needs you")).toBe(true)
       expect(hintOf(frame)).toContain("arrows panels")
     })
@@ -550,9 +582,29 @@ describe("inside Tickets", () => {
       await press(rendered, "escape")
       const closed = await rendered.capture()
       expect(has(closed, "Leave the main checkout clean")).toBe(false)
-      expect(lit(closed, "b-1")).toBe(true)
+      expect(pointed(closed, "b-1")).toBe(true)
       await press(rendered, "escape")
-      expect(lit(await rendered.capture(), "b-1")).toBe(false)
+      expect(pointed(await rendered.capture(), "b-1")).toBe(false)
+    })
+  })
+
+  test("Enter on a row with no worker view opens its box, beside the panel too", async () => {
+    await scene(viewOf(1), wide, async ({ commands, rendered }) => {
+      // Going in selects b-1; ↓ a merged row, whose worker is gone (w-1's is on its card).
+      await press(rendered, "enter", "down")
+      const before = await rendered.capture()
+      expect(pointed(before, "d-2")).toBe(true)
+      expect(has(before, "Esc close")).toBe(false)
+      await press(rendered, "enter")
+      // Its box, saying what the panel does of it; no open the run would drop.
+      const opened = await rendered.capture()
+      expect(has(opened, "Esc close")).toBe(true)
+      expect(has(opened, "Merged as ffd6ce4")).toBe(true)
+      expect(taken(commands)).toEqual([])
+      await press(rendered, "escape")
+      const closed = await rendered.capture()
+      expect(has(closed, "Esc close")).toBe(false)
+      expect(pointed(closed, "d-2")).toBe(true)
     })
   })
 
@@ -560,7 +612,7 @@ describe("inside Tickets", () => {
     await scene(viewOf(0), narrow, async ({ view, rendered }) => {
       await press(rendered, "enter", "down")
       const selected = await rendered.capture()
-      const name = ["d-1", "d-2"].find((each) => lit(selected, each)) ?? ""
+      const name = ["d-1", "d-2"].find((each) => pointed(selected, each)) ?? ""
       expect(name).not.toBe("")
       // Another ticket blocks, and goes above it.
       await rendered.input(() =>
@@ -572,7 +624,7 @@ describe("inside Tickets", () => {
           ]),
         ),
       )
-      expect(lit(await rendered.capture(), name)).toBe(true)
+      expect(pointed(await rendered.capture(), name)).toBe(true)
     })
   })
 })
@@ -668,7 +720,7 @@ describe("a click goes straight in", () => {
       const { x, y } = where(frame, "Title of b-1")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
       const after = await rendered.capture()
-      expect(lit(after, "b-1")).toBe(true)
+      expect(pointed(after, "b-1")).toBe(true)
       expect(hintOf(after)).toContain("arrows select")
       expect(taken(commands)).toEqual([])
     })
@@ -711,11 +763,11 @@ describe("a click goes straight in", () => {
       expect(heavyOn(inCurrent, "w-1")).toBe(true)
       const tickets = where(inCurrent, "Tickets")
       await rendered.input((setup) => setup.mockMouse.click(tickets.x + 1, tickets.y))
-      expect(lit(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
       const panel = where(await rendered.capture(), "Needs you ·")
       await rendered.input((setup) => setup.mockMouse.click(panel.x + 1, panel.y))
       expect(has(await rendered.capture(), "┏")).toBe(true)
-      expect(lit(await rendered.capture(), "b-1")).toBe(false)
+      expect(pointed(await rendered.capture(), "b-1")).toBe(false)
     })
   })
 })
@@ -735,7 +787,7 @@ describe("a resize", () => {
   test("that drops the table moves the focus off it, inside it or not", async () => {
     await scene(viewOf(1), { width: 80, height: 40 }, async ({ rendered }) => {
       await press(rendered, "enter")
-      expect(lit(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
       await rendered.input((setup) => setup.resize(80, 16))
       const frame = await rendered.capture()
       expect(has(frame, "Tickets")).toBe(false)

@@ -165,11 +165,11 @@ describe("frames", () => {
       │ ✓ 1 Completed │ ↷ 1 Set aside │ 1 Needs you │ 1 of 16 In queue · 1 held back │
       ╰───────────────┴───────────────┴─────────────┴────────────────────────────────╯
         Tickets
-      ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-      │ ■ allow?    │ tut-9a1 │ Remove the build cache                               │
-      │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted        │
-      │             │ +3      │ earlier tickets, see the log                         │
-      ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
+      ╭───────────────┬─────────┬────────────────────────────────────────────────────╮
+      │   ■ allow?    │ tut-9a1 │ Remove the build cache                             │
+      │   ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted      │
+      │               │ +3      │ earlier tickets, see the log                       │
+      ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
       │ ⣾ picking the next ticket…                                                   │
@@ -197,15 +197,15 @@ describe("frames", () => {
       │ ✓ 1 Completed         │ ↷ 1 Set aside · ◆ 1 triaged │ 1 Needs you           │ 1 of 16 In queue · 1 held back         │
       ╰───────────────────────┴─────────────────────────────┴───────────────────────┴────────────────────────────────────────╯
         Tickets
-      ╭─────────────┬─────────┬──────────────────────────────────────────────────────────────────────────────────────────────╮
-      │ ■ allow?    │ tut-9a1 │ Remove the build cache                                                                       │
-      │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted                                                │
-      │ ▶ testing   │ tut-zq4 │ Add an undo stack for property edits                                                         │
-      │ ◆ merging   │ tut-kco │ Open the property model: Interpolatable protocol and custom key-path properties              │
-      │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                                                         │
-      │             │         │                                                                                              │
-      │             │         │                                                                                              │
-      ╰─────────────┴─────────┴──────────────────────────────────────────────────────────────────────────────────────────────╯
+      ╭───────────────┬─────────┬────────────────────────────────────────────────────────────────────────────────────────────╮
+      │   ■ allow?    │ tut-9a1 │ Remove the build cache                                                                     │
+      │   ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted                                              │
+      │   ▶ testing   │ tut-zq4 │ Add an undo stack for property edits                                                       │
+      │   ◆ merging   │ tut-kco │ Open the property model: Interpolatable protocol and custom key-path properties            │
+      │   ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                                                       │
+      │               │         │                                                                                            │
+      │               │         │                                                                                            │
+      ╰───────────────┴─────────┴────────────────────────────────────────────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
       │ ⣾ picking the next ticket…                                                                                           │
@@ -441,7 +441,7 @@ describe("the tickets table", () => {
   ])("%s", async (word, phase, note, style) => {
     const { frame, line } = await rowOf(phase)
     const literal = (text: string) => text.replace(/[?]/g, "\\?")
-    expect(line).toMatch(new RegExp(`^│ ${literal(word)} +│ tut-1 +│ ${note} +│$`))
+    expect(line).toMatch(new RegExp(`^│   ${literal(word)} +│ tut-1 +│ ${note} +│$`))
     looksLike(frame, word, style)
     looksLike(frame, "tut-1", style)
   })
@@ -498,8 +498,8 @@ describe("the tickets table", () => {
       const frame = linesOf(await rendered.capture())
       expect(await rows()).toEqual(["tut-3", "tut-2", "tut-1"])
       expect(
-        frame.filter((line) => line.includes("tut-")).map((l) => l.slice(0, 13).trimEnd()),
-      ).toEqual(["│ ◷ waiting", "│ ✓ done", "│ ◆ merging"])
+        frame.filter((line) => line.includes("tut-")).map((l) => l.slice(0, 15).trimEnd()),
+      ).toEqual(["│   ◷ waiting", "│   ✓ done", "│   ◆ merging"])
     })
   })
 
@@ -517,9 +517,9 @@ describe("the tickets table", () => {
     )
     const { text } = await draw(many, { width: 80, height: 35 })
     const lines = text.split("\n")
-    const top = lines.findIndex((line) => line.startsWith("╭─────────────┬"))
+    const top = lines.findIndex((line) => line === "  Tickets") + 1
     // 10 lines in all: the label, the frame, and 7 rows.
-    expect(lines[top - 1]).toBe("  Tickets")
+    expect(lines[top]).toStartWith("╭───────────────┬")
     expect(lines.slice(top + 1, top + 7).map((line) => line.split("│")[2]?.trim())).toEqual([
       "tut-9",
       "tut-8",

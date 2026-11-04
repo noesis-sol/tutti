@@ -43,6 +43,9 @@ export const fewestTableLines = minRows + sectionChrome
 /** The state column's width: its glyph and its longest word, `⟳ resolving`. */
 const stateWidth = 11
 
+/** The pointer's gutter before the state on the dashboard: `▸ ` on the row selected, else blank. */
+const pointerWidth = 2
+
 /** The narrowest an ID column and the last column are. */
 const minIdWidth = 7
 const minAboutWidth = 8
@@ -173,30 +176,39 @@ export const ticketsLines = (
   reach?: TableReach,
 ): ReadonlyArray<Segments> => {
   const { styles } = theme
+  // On the dashboard the state column has the pointer's gutter before it.
+  const gutter = reach === undefined ? 0 : pointerWidth
+  const stateColumn = stateWidth + gutter
   // A worker files tickets, so an ID is untrusted, and one longer than a third of the table is cut.
   const idWidth = Math.max(
     Math.min(
       Math.max(minIdWidth, ...rows.map((row) => Bun.stringWidth(row.label))),
       Math.max(Math.floor(width / 3), minIdWidth),
-      width - 4 - (stateWidth + 2) - 2 - (minAboutWidth + 2),
+      width - 4 - (stateColumn + 2) - 2 - (minAboutWidth + 2),
     ),
     1,
   )
-  const aboutWidth = Math.max(width - 4 - (stateWidth + 2) - (idWidth + 2) - 2, 1)
+  const aboutWidth = Math.max(width - 4 - (stateColumn + 2) - (idWidth + 2) - 2, 1)
   const limit = "lines" in size ? Math.max(size.lines - sectionChrome, 1) : rows.length
   const shown = shownRows(rows, size)
   const drawnRows = new Set(shown)
   const hidden = rows.filter((row) => !drawnRows.has(row))
   const cells: Array<ReadonlyArray<Segments>> = []
-  let band: number | undefined
   for (const row of shown) {
     const style = lookOf(row.tone, theme)
     const about =
       row.verdict !== null
         ? seg(fit(`${marks.verdict} ${row.verdict}`, aboutWidth), styles.organ)
         : seg(fit(row.note, aboutWidth), row.faint ? styles.dim : null)
+    // The highlighted row has the pointer in its gutter, and its text goes bold in its own colours:
+    // no fill hides them, and neither is colour alone (§ 7.11).
+    const selected = reach?.highlighted === row.ticket
+    const pointer =
+      gutter === 0
+        ? []
+        : [selected ? seg(`${marks.selected} `, styles.key) : seg(" ".repeat(gutter))]
     const drawn: ReadonlyArray<Segments> = [
-      [seg(fit(`${marks[row.mark]} ${row.word}`, stateWidth), style)],
+      [...pointer, seg(fit(`${marks[row.mark]} ${row.word}`, stateWidth), style)],
       [
         reach?.copied === row.ticket
           ? seg(copiedCell(idWidth), styles.closed)
@@ -204,16 +216,16 @@ export const ticketsLines = (
       ],
       [about],
     ]
-    // The highlighted row is one band in the focus's look across the frame (framed's band), which
-    // shows without colour (§ 7.11).
-    if (reach?.highlighted === row.ticket) band = cells.length
+    const bold = (cell: Segments): Segments =>
+      cell.map((each) => ({ ...each, look: each.look?.bold() ?? theme.look(null, "bold") }))
     // A click anywhere on a row with a target presses it, but on its ID cell, which copies the ID;
     // the cells with a target are padded to their widths.
     const target = reach?.target(row)
     const targets = [target, reach?.idTarget(row), target]
-    const widths = [stateWidth, idWidth, aboutWidth]
+    const widths = [stateColumn, idWidth, aboutWidth]
     cells.push(
-      drawn.map((cell, i) => {
+      drawn.map((shown, i) => {
+        const cell = selected ? bold(shown) : shown
         const each = targets[i]
         return each === undefined ? cell : targeting(padded(cell, widths[i] ?? 0), each)
       }),
@@ -227,12 +239,9 @@ export const ticketsLines = (
     [seg("  "), seg("Tickets", styles.tickets)],
     ...framed(
       cells,
-      [stateWidth, idWidth, aboutWidth],
+      [stateColumn, idWidth, aboutWidth],
       reach?.focused === true ? theme.look("emphasis", "bold") : theme.look("frame"),
-      {
-        columns: theme.look("frame"),
-        ...(band === undefined ? {} : { band: { row: band, look: theme.form.focusedButton } }),
-      },
+      theme.look("frame"),
     ),
   ]
 }

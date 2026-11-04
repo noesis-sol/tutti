@@ -914,15 +914,17 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     open(ticket)
   })
   // Enter on a row: an Asked row's question, what clears a Blocked row, or its worker's view; with
-  // no panel to read it in, what the panel would say of it.
+  // no panel to read it in, or no worker view to open (a ticket done or set aside, whose open the
+  // run would drop), what the panel would say of it.
   const openRow = () => {
     const ticket = rowNow()
     if (ticket === null) return
     const need = needs.find((each) => each.ticket === ticket)
+    const hasWorker = view.rows.some((row) => row.ticket === ticket && row.hasWorker)
     if (need?._tag === "Question") {
       box.set(Box.Questions({ first: need.question?.id ?? (need.id as TicketId) }))
     } else if (need?._tag === "Blocked") box.set(Box.Blocked({ ticket }))
-    else if (laid.panel === 0) box.set(Box.Row({ ticket }))
+    else if (laid.panel === 0 || !hasWorker) box.set(Box.Row({ ticket }))
     else open(ticket)
   }
   // A click on a row selects it, going into the table; on its ID, copies it and stays put.
