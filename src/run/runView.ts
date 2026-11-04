@@ -35,6 +35,7 @@ import type { FullCheckRun } from "./fullcheck.ts"
 import { type BlockedAbout, type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
 import { resetLabel } from "./localTime.ts"
+import { Tag } from "./log.ts"
 import type { CheckAhead } from "./mergetrain.ts"
 import { asideOvernight } from "./overnightAside.ts"
 import {
@@ -552,6 +553,10 @@ export type Need = Data.TaggedEnum<{
 }>
 
 export const Need = Data.taggedEnum<Need>()
+
+/** A need that is a ticket Blocked on its merge conflict, which `h` hands back (§ 4.3). */
+export const isConflict = (need: Need | undefined): need is Extract<Need, { _tag: "Blocked" }> =>
+  need?._tag === "Blocked" && need.why === Tag.mergeConflict
 
 export interface RunView {
   readonly title: TitleView

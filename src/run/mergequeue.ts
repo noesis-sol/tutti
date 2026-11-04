@@ -62,7 +62,8 @@ import {
 } from "./handback.ts"
 import { mergedByHand as handMerged } from "./handMerged.ts"
 import { type Held, makeHeld } from "./held.ts"
-import { Ledger } from "./ledger.ts"
+import { handBackWaits, Ledger } from "./ledger.ts"
+import { Tag } from "./log.ts"
 import {
   closeUnchanged,
   type FinishedTicket,
@@ -287,6 +288,27 @@ export const make = (
         }),
       )
 
+    // A ticket left Blocked on its conflict, no hand-back waiting, is kept with where its branch is
+    // now: you may hand it back once more, or rebase its branch by hand (§ 4.3).
+    const keepAside = (ticket: FinishedTicket) =>
+      Effect.gen(function* () {
+        const entry = (yield* ledger.current).tickets.get(ticket.id)
+        if (entry?.phase._tag !== "Blocked" || entry.phase.why !== Tag.mergeConflict) return
+        if (handBackWaits(entry)) return
+        const { repo, base } = options
+        const where = yield* Effect.result(
+          Effect.all({
+            head: git.revParse(repo, ticket.branch),
+            fork: git.mergeBase(repo, base, ticket.branch),
+          }),
+        )
+        yield* handBacks.keepAside(
+          Result.isSuccess(where)
+            ? { ticket, ...where.success }
+            : { ticket, head: undefined, fork: undefined },
+        )
+      })
+
     const handBacksSet = yield* fibers.make("hand-backs")
 
     // A ticket merged by hand since the base last moved on isn't checked again: it is looked for
@@ -353,6 +375,7 @@ export const make = (
               Effect.gen(function* () {
                 // Back in line in the same merge: checked in its turn, not ahead of it.
                 if (yield* work) yield* offer(ticket, undefined, false)
+                else yield* keepAside(ticket)
                 yield* fit(id, rechecks, handBacks)
               }),
             ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
@@ -427,6 +450,7 @@ export const make = (
             yield* takeSettings(ticket.id, options, setUps, prepared.onto, prepared.at)
             yield* Effect.exit(restore(recheckFrom(prepared.at)))
           }
+          if (prepared._tag === "Over") yield* keepAside(ticket)
           yield* heldMessages.over(ticket.id)
           yield* merged(stop)
           yield* fit(ticket.id, rechecks, handBacks)

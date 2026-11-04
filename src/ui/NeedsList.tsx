@@ -5,7 +5,8 @@
 // as it opens (ReadQuestions, under a quiet uuid: having none open needs no toast). ↑↓ or Tab move
 // between them, Enter or a click opens one: a question in the questions box at it (QuestionsBox.tsx),
 // which opens the list again once it is answered, the next one chosen; a Blocked ticket in a box
-// saying what clears it, Enter there opening its worker view, Esc back to the list at the next one.
+// saying what clears it, Enter there opening its worker view, `h` handing back one blocked on its
+// merge conflict (§ 4.3), Esc back to the list at the next one.
 // A list with nothing in it once the questions are read says Nothing needs you for `emptyLife`, on
 // the toasts' timer, and closes by itself, unless a need comes in meanwhile; Esc, Enter or a click
 // anywhere closes it sooner. A read that failed has its own toast, and the empty list closes at
@@ -15,7 +16,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { QuestionNews } from "../run/questionNews.ts"
-import type { Need } from "../run/runView.ts"
+import { isConflict, type Need } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { clickable } from "./click.ts"
 import { type Command, isOn, useCommands } from "./keyCommands.ts"
@@ -217,6 +218,18 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
             },
             hint: { keys: "Enter", does: "open its worker view" },
           },
+          ...(isConflict(blocked)
+            ? [
+                {
+                  keys: ["h"],
+                  run: () => {
+                    command(UiCommand.HandBackNow({ ticket: blocked.ticket }))
+                    back()
+                  },
+                  hint: { keys: "h", does: "hand it back" },
+                },
+              ]
+            : []),
           { keys: ["escape"], run: back, hint: { keys: "Esc", does: "back" } },
         ]
       : empty

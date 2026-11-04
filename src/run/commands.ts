@@ -26,7 +26,10 @@ export type UiCommand = Data.TaggedEnum<{
   Interrupt: { readonly ticket: TicketId }
   /** Hand a steered worker back to the run, and the conflict waiting for it, if one is (§ 4.3). */
   Release: { readonly ticket: TicketId }
-  /** Hand the ticket's steered worker the conflict waiting for it now (§ 4.3). */
+  /**
+   * Hand the ticket's steered worker the conflict waiting for it now, or back a ticket left Blocked
+   * on its conflict, with one more hand-back allowed (§ 4.3).
+   */
   HandBackNow: { readonly ticket: TicketId }
   /**
    * File what you wrote in the view of `from`, whose worker has finished, as a new ticket, under the
@@ -122,10 +125,13 @@ const withWorker = (
 /** Resolves `command`'s IDs against `current`; Stale when one no longer names anything. */
 export const resolve = (command: UiCommand, current: Current): Result.Result<Resolved, Stale> => {
   switch (command._tag) {
-    case "OpenWorker":
-      return current.ledger.tickets.get(command.ticket)?.worker == null
+    case "OpenWorker": {
+      // A Blocked ticket's session has closed, but its view still shows what its worker did (§ 7.2).
+      const entry = current.ledger.tickets.get(command.ticket)
+      return entry === undefined || (entry.worker == null && entry.phase._tag !== "Blocked")
         ? Result.fail(new Stale({ command: command._tag, why: `${command.ticket} has no worker` }))
         : Result.succeed({ command, ticket: command.ticket })
+    }
     case "Answer": {
       const request = current.requests.find((open) => open.id === command.requestId)
       return request === undefined

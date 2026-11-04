@@ -18,12 +18,18 @@
 //   hears the view close.
 // - HandBackNow hands over the conflict that waited for a steered worker: the ticket, Blocked on
 //   MERGE_CONFLICT, goes back in the merge queue (Blocked → ToMerge, HandedOver), is rebased again,
-//   and its conflict is handed back with the steered check waived for that once (handback.ts).
+//   and its conflict is handed back with the steered check waived for that once (handback.ts). A
+//   ticket left Blocked on its conflict with no hand-back waiting, its hand-backs used up or its
+//   worker not able to take one then, goes back in the merge queue the same way, with one more
+//   hand-back allowed, its session resumed for it as for any (handback.ts); its branch, rebased by
+//   you meanwhile, just merges. A worktree you are still working in stays as it is (handRebased.ts).
 import { Effect, Result } from "effect"
 import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import type { TicketId } from "../services/Beads.ts"
+import type { Git } from "../services/Git.ts"
 import { EventStream } from "./eventstream.ts"
 import type { RebaseStop } from "./handback.ts"
+import { stillWorkedIn } from "./handRebased.ts"
 import { Ledger } from "./ledger.ts"
 import * as log from "./log.ts"
 import { detail, type Line, Log, Tag } from "./log.ts"
@@ -157,24 +163,78 @@ const handOver = (
   })
 
 /**
+ * Puts the ticket left Blocked on its conflict back in the merge queue, Blocked → ToMerge by
+ * HandedOver, with one more hand-back allowed and the steered check waived: you asked for it. Whether
+ * it went back; one not set aside, no longer Blocked on its conflict, or whose worktree you are still
+ * working in, stays as it is.
+ */
+const handBackOnceMore = (
+  ticket: TicketId,
+  queue: HandBackQueue,
+  options: MergeTarget,
+): Effect.Effect<boolean, never, Git | Ledger | Log | EventStream> =>
+  Effect.gen(function* () {
+    const ledger = yield* Ledger
+    const aside = yield* queue.handBacks.takeAside(ticket)
+    if (aside === undefined) {
+      yield* Effect.logDebug(`dropped HandBackNow: ${ticket} has no conflict set aside`)
+      return false
+    }
+    const phase = (yield* ledger.current).tickets.get(ticket)?.phase
+    if (phase?._tag !== "Blocked" || phase.why !== Tag.mergeConflict) {
+      yield* Effect.logDebug(`dropped HandBackNow: ${ticket} is not blocked on its conflict`)
+      return false
+    }
+    const worked = yield* stillWorkedIn(aside.ticket)
+    if (worked !== undefined) {
+      yield* info(
+        detail`${ticket} stays blocked though you handed it back: ${worked}; finish there, and hand it back again`,
+        ticket,
+      )
+      yield* queue.handBacks.keepAside(aside)
+      return false
+    }
+    // Said before the queue can take it up, so its merge's lines come after.
+    yield* info(
+      detail`you handed ${ticket} back; ${aside.ticket.branch} is back in the merge queue, to be rebased onto ${options.base} if need be, its worker allowed one more hand-back should it conflict`,
+      ticket,
+    )
+    yield* queue.handBacks.allowOneMore(ticket)
+    yield* queue.handBacks.giveBack(ticket)
+    yield* queue.handBacks.waive(ticket)
+    const moved = yield* queue.offer(aside.ticket, (place) => Move.HandedOver({ place }), false)
+    if (Result.isSuccess(moved)) return true
+    // The ledger refused (PHASE_BUG, logged): it stays set aside.
+    yield* queue.handBacks.waived(ticket)
+    yield* queue.handBacks.keepAside(aside)
+    return false
+  })
+
+/**
  * Hands the ticket's steered worker the conflict that waited for it: back in the merge queue,
  * Blocked → ToMerge by HandedOver, its next rebase's conflict handed back to it though it is steered.
- * Whether it went back; a ticket with no hand-back waiting, or no longer Blocked on its conflict,
- * stays as it is.
+ * With no hand-back waiting, hands back the ticket left Blocked on its conflict once more
+ * (handBackOnceMore). Whether it went back; a ticket with neither, or no longer Blocked on its
+ * conflict, stays as it is.
  */
 export const handBackNow = (
   ticket: TicketId,
   queue: HandBackQueue,
   options: MergeTarget,
-): Effect.Effect<boolean, never, Ledger | Log | EventStream> =>
-  handOver(
-    ticket,
-    queue,
-    (stop) =>
-      detail`you handed ${ticket}'s conflict with ${options.base} to its worker; ${stop.ticket.branch} is back in the merge queue, to be rebased again and the conflict handed back`,
-    true,
-    "HandBackNow",
-  )
+): Effect.Effect<boolean, never, Git | Ledger | Log | EventStream> =>
+  Effect.gen(function* () {
+    if ((yield* queue.handBacks.waiting).every((stop) => stop.ticket.id !== ticket)) {
+      return yield* handBackOnceMore(ticket, queue, options)
+    }
+    return yield* handOver(
+      ticket,
+      queue,
+      (stop) =>
+        detail`you handed ${ticket}'s conflict with ${options.base} to its worker; ${stop.ticket.branch} is back in the merge queue, to be rebased again and the conflict handed back`,
+      true,
+      "HandBackNow",
+    )
+  })
 
 /**
  * Releases the ticket's steered worker, as `release` does, and hands over the conflict that waited

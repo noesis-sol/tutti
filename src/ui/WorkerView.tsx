@@ -256,6 +256,8 @@ export interface WorkerViewAt {
   readonly ticketOpen?: boolean
   /** Whether its ticket waits on a question, Asked: `A` and Answer open the box at it. */
   readonly asked?: boolean
+  /** Whether a merge conflict of its ticket's is yours to hand over: `h` does (§ 4.3). */
+  readonly conflict?: boolean
 }
 
 /** What the worker view's keys do: the transcript's, and its own. */
@@ -267,6 +269,8 @@ export interface WorkerViewActions extends TranscriptActions {
   readonly ticket: () => void
   /** `A`, Answer: the questions box at the question an Asked ticket waits on. */
   readonly answerQuestion: () => void
+  /** `h`, the notice's button: hands over the merge conflict of its ticket's (§ 4.3). */
+  readonly handBack: () => void
 }
 
 const nothing = () => {}
@@ -279,6 +283,7 @@ const inertWorkerView: WorkerViewActions = {
   fileAsTicket: nothing,
   ticket: nothing,
   answerQuestion: nothing,
+  handBack: nothing,
 }
 
 const writeRow: HelpRow = [
@@ -348,6 +353,13 @@ export const workerViewCommands = (
       run: act.ticket,
       hint: named(viewing && at.ticketOpen !== true, "t", "ticket"),
       help: ["t, ▾ whole ticket", "the whole ticket; t, ▴ less or Esc closes it"],
+    },
+    {
+      keys: ["h"],
+      when: () => viewing && at.conflict === true,
+      run: act.handBack,
+      hint: named(viewing && at.conflict === true, "h", "hand it back"),
+      help: ["h, the notice's button", "hand over the merge conflict of its ticket's"],
     },
     { ...keys.deny, hint: named(viewing && at.requests, "d", "deny"), help: denyRow },
     { ...keys.denyWithReason, help: denyRow },
@@ -431,8 +443,18 @@ export const ViewHint = ({
 /** The view of the ticket's worker, while the run shows it. */
 export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) => {
   const screen = useWorkerScreen(viewed)
-  const { card, resources, finished, holding, steered, handBack, transcript, composer, commands } =
-    screen
+  const {
+    card,
+    resources,
+    finished,
+    holding,
+    steered,
+    handBack,
+    aside,
+    transcript,
+    composer,
+    commands,
+  } = screen
   const theme = useTheme()
   const looks = useSyntaxStyles(theme)
   const { width, height } = useTerminalDimensions()
@@ -490,13 +512,15 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
     finished,
     ticketOpen: ticketPanel.open,
     asked: screen.question !== null,
+    conflict: handBack || aside,
   })
   // The hint's lines with requests, for the panel's room, and as they are: each worked out once.
   const hintWith = (requests: boolean) =>
     hintLines(hintOf(workerViewCommands(at(requests))), theme, inner)
   const askedHint = hintWith(true)
   // The hand-back notice's lines, unselected: the selection draws them again only to show it.
-  const handBackDrawn = handBack ? handBackLines(theme, { width: panelWidth, selected: false }) : []
+  const handBackDrawn =
+    handBack || aside ? handBackLines(theme, { width: panelWidth, selected: false, aside }) : []
   const chrome = (hint: ReadonlyArray<Segments>): ViewChrome => ({
     above: aboveLines(width, height),
     head: headLines,
@@ -519,7 +543,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
   const requests = panel.requests.length > 0
   const hint = requests ? askedHint : hintWith(false)
   const laid = viewLayout(height, chrome(hint), fit.lines(panel.requests, panel.more))
-  const selection = useSelection(transcript, panel, handBack ? [handBackKey] : [])
+  const selection = useSelection(transcript, panel, handBack || aside ? [handBackKey] : [])
   const { help, actions, unlessHelp } = useTranscriptKeys({
     transcript,
     panel,
@@ -539,6 +563,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
       fileAsTicket: unlessHelp(commands.fileAsTicket),
       ticket: unlessHelp(ticketPanel.toggle),
       answerQuestion: unlessHelp(commands.answerQuestion),
+      handBack: unlessHelp(commands.handBackNow),
     }),
   )
 
@@ -615,7 +640,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
           <Lines
             lines={
               selection.selected === handBackKey
-                ? handBackLines(theme, { width: panelWidth, selected: true })
+                ? handBackLines(theme, { width: panelWidth, selected: true, aside })
                 : handBackDrawn
             }
             press={commands.handBackNow}

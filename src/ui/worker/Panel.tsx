@@ -145,20 +145,37 @@ export const PanelBox = ({
   )
 }
 
-/** The hand-back notice's lines (§ 4.3): a conflict waits for the steered worker. */
+/**
+ * The hand-back notice's lines (§ 4.3): a conflict waits for the steered worker, or, `aside`, its
+ * ticket is left Blocked on one, for you to hand back once more.
+ */
 export const handBackLines = (
   theme: Theme,
-  options: { readonly width: number; readonly selected: boolean },
+  options: { readonly width: number; readonly selected: boolean; readonly aside?: boolean },
 ): ReadonlyArray<Segments> => {
   const button = seg(
-    "[ Hand it the conflict now ]",
+    options.aside === true ? "[ Hand it back once more ]" : "[ Hand it the conflict now ]",
     options.selected ? theme.form.focusedButton : theme.form.button,
     0,
   )
   return boxed(
     [
-      [seg("A merge conflict waits for this worker", theme.styles.deferred)],
-      [seg("You steered it, so it wasn't handed over.", theme.styles.dim)],
+      [
+        seg(
+          options.aside === true
+            ? "Its merge conflict is set aside"
+            : "A merge conflict waits for this worker",
+          theme.styles.deferred,
+        ),
+      ],
+      [
+        seg(
+          options.aside === true
+            ? "Hand it back, or rebase its branch in its worktree: the run merges it then."
+            : "You steered it, so it wasn't handed over.",
+          theme.styles.dim,
+        ),
+      ],
       [button],
     ],
     options.width,

@@ -12,6 +12,7 @@ import * as TestAgentHost from "../src/testing/AgentHost.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestAttention from "../src/testing/Attention.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
+import * as TestGit from "../src/testing/Git.ts"
 import * as TestLedger from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
 import * as TestTranscripts from "../src/testing/Transcripts.ts"
@@ -23,6 +24,7 @@ const commandsLayer = Layer.mergeAll(
     Layer.provideMerge(Layer.mergeAll(attentionLayer, TestTranscripts.layer())),
   ),
   TestBeads.layer(),
+  TestGit.layer(),
   TestAppConfig.layer(TestAppConfig.appConfig({}, "/repo")),
 )
 

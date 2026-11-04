@@ -14,7 +14,7 @@
 // A narrower pane has no panel, and the table its whole width, as before.
 import { afterParts } from "../run/after.ts"
 import { someFiles } from "../run/merge.ts"
-import type { Need, QueueRow, Totals } from "../run/runView.ts"
+import { isConflict, type Need, type QueueRow, type Totals } from "../run/runView.ts"
 import { type Border, boxed, cut, fit, padded, type Segments, seg, wrap } from "./line.tsx"
 import { marks } from "./marks.ts"
 import { queueDivider } from "./Totals.tsx"
@@ -173,7 +173,8 @@ const briefly = (reason: string): string => {
 /**
  * What a Blocked ticket's need says, a paragraph each, what to do first, as a short panel cuts the
  * end: what to run, the worktree, the first files, why it is so and what comes next. A hand-back is
- * offered only where an action does it: 'Hand it the conflict now' for a steered worker's (§ 4.3).
+ * offered only where an action does it: 'Hand it the conflict now' for a steered worker's, `h` for
+ * one left on its conflict (§ 4.3).
  */
 export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArray<string> => {
   const { base, about, handBack } = need
@@ -198,7 +199,7 @@ export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArra
             afterConflict,
           ]
         : [
-            `Run ${rebase} to take it up yourself.`,
+            `Press h to hand it back to its worker, or run ${rebase} to take it up yourself.`,
             conflict,
             ...(reason === null ? [] : [`Set aside: ${reason}.`]),
             afterConflict,
@@ -329,12 +330,13 @@ export const needsLines = (
     const spare = room - 2
     const titled = !short || spare - title.length >= (paragraphs[0]?.length ?? 0) ? title : []
     const clears = paragraphs.flat()
+    const handsBack = isConflict(need) ? " · h hands it back" : ""
     const keys = !short
       ? at.focused
-        ? "Enter opens its worker view"
+        ? `Enter opens its worker view${handsBack}`
         : "Tab to choose"
       : at.focused
-        ? "… click or Enter reads it all"
+        ? `… click or Enter reads it all${handsBack}`
         : "… click reads it all · Tab to choose"
     body.push(
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],

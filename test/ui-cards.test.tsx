@@ -757,6 +757,7 @@ describe("the hint and the key help", () => {
       │ r                       allow for this run                                   │
       │ 1–4, 1–9 on the panel   pick a question's option                             │
       │ ] and [                 the next or previous of what needs you, in the panel │
+      │ h                       hand back a ticket blocked on its merge conflict     │
       │ s                       stop after current, or keep taking tickets           │
       │ A                       answer the open questions, one by one                │
       │ q                       end the run, from the end-of-run box                 │

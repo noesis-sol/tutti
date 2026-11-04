@@ -48,7 +48,14 @@
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
-import type { Card, Key, Need, Row, RunView } from "../run/runView.ts"
+import {
+  type Card,
+  isConflict,
+  type Key,
+  type Need,
+  type Row,
+  type RunView,
+} from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { allot } from "./allot.ts"
 import { type AnswerKey, keyAnswer, settle, useAnswering } from "./attentionKeys.ts"
@@ -346,8 +353,15 @@ export interface DashboardAt {
   readonly buttons: boolean
   /** The highlighted card, as the key is pressed. */
   readonly highlighted: () => Card | undefined
-  /** The panel beside the tickets table: whether the highlight is on it, and its needs. */
-  readonly panel?: { readonly on: () => boolean; readonly needs: number }
+  /**
+   * The panel beside the tickets table: whether the highlight is on it, its needs, and whether the
+   * need it shows is a ticket Blocked on its merge conflict.
+   */
+  readonly panel?: {
+    readonly on: () => boolean
+    readonly needs: number
+    readonly conflict?: () => boolean
+  }
 }
 
 /** What the dashboard's keys do. */
@@ -374,6 +388,8 @@ export interface DashboardActions {
   readonly panelPick: (n: number) => void
   /** `]` and `[`: the next or previous need in the panel. */
   readonly panelNext: (by: 1 | -1) => void
+  /** `h` on the panel: hands back the ticket Blocked on its merge conflict it shows (§ 4.3). */
+  readonly panelHandBack: () => void
 }
 
 const nothing = () => {}
@@ -393,6 +409,7 @@ const inertDashboard: DashboardActions = {
   questions: nothing,
   panelPick: nothing,
   panelNext: nothing,
+  panelHandBack: nothing,
 }
 
 const moveRow: HelpRow = [
@@ -512,6 +529,13 @@ export const dashboardCommands = (
       when: () => (at.panel?.needs ?? 0) > 1,
       run: () => act.panelNext(-1),
       help: ["] and [", "the next or previous of what needs you, in the panel"],
+    },
+    {
+      keys: ["h"],
+      when: () => at.panel?.on() === true && at.panel.conflict?.() === true,
+      run: act.panelHandBack,
+      hint: { keys: "h", does: "hand it back" },
+      help: ["h", "hand back a ticket blocked on its merge conflict"],
     },
     // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
     {
@@ -840,7 +864,15 @@ export const Dashboard = () => {
     "view",
     dashboardCommands(
       view,
-      { buttons, highlighted: highlightedCard, panel: { on: onPanel, needs: needs.length } },
+      {
+        buttons,
+        highlighted: highlightedCard,
+        panel: {
+          on: onPanel,
+          needs: needs.length,
+          conflict: () => isConflict(shownNow().need),
+        },
+      },
       {
         help: () => showHelp(!helpOpen()),
         escape: () => {
@@ -861,6 +893,10 @@ export const Dashboard = () => {
         questions: unlessHelp(() => box.set(Box.Questions({}))),
         panelPick: unlessHelp((n: number) => answerWith(n - 1)),
         panelNext: unlessHelp(panelNext),
+        panelHandBack: unlessHelp(() => {
+          const { need } = shownNow()
+          if (isConflict(need)) command(UiCommand.HandBackNow({ ticket: need.ticket }))
+        }),
       },
     ),
   )

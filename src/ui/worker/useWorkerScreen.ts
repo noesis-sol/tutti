@@ -2,7 +2,7 @@
 // drawn: its card, kept once the worker has finished, what it consumes, whether the run holds your
 // messages or a conflict waits for it, its transcript and the composer, and the commands the view's
 // keys and buttons send: a message, Ctrl+X's interrupt and its question, Release, Hand it the
-// conflict now, File as ticket, Answer for an Asked ticket, and leaving the view. The pieces in Head, Story and Panel take
+// conflict now or back once more, File as ticket, Answer for an Asked ticket, and leaving the view. The pieces in Head, Story and Panel take
 // plain props from it.
 
 import { useEffect, useRef } from "react"
@@ -10,8 +10,9 @@ import { MessageUuid } from "../../agent/AgentHost.ts"
 import { settled as hasSettled } from "../../agent/WorkerState.ts"
 import { UiCommand } from "../../run/commands.ts"
 import { holdsMessages } from "../../run/held.ts"
+import { TicketPhase } from "../../run/phase.ts"
 import type { Resources } from "../../run/resources.ts"
-import type { Card } from "../../run/runView.ts"
+import { type Card, isConflict, type Need } from "../../run/runView.ts"
 import type { TicketId } from "../../services/Beads.ts"
 import { fileWords, finishedWords, interruptCommands } from "../Composer.tsx"
 import { useFilingDesk } from "../filingDesk.tsx"
@@ -37,7 +38,7 @@ export interface WorkerCommands {
   readonly answerInterrupt: (yes: boolean) => void
   /** Ctrl+R, Release: releases a steered worker. */
   readonly release: () => void
-  /** Hand it the conflict now (§ 4.3). */
+  /** Hand it the conflict now; hand it back once more, set aside (§ 4.3). */
   readonly handBackNow: () => void
   /** Shift+A, Answer: the questions box at the question its ticket waits on, Asked (tutti-fdv1). */
   readonly answerQuestion: () => void
@@ -60,12 +61,32 @@ export interface WorkerScreen {
   readonly steered: boolean
   /** Whether a merge conflict waits for it, steered (§ 4.3). */
   readonly handBack: boolean
+  /** Whether its ticket is left Blocked on its merge conflict, to hand back once more (§ 4.3). */
+  readonly aside: boolean
   /** The question its ticket waits on, Asked; null while it waits on none. */
   readonly question: TicketId | null
   readonly transcript: TranscriptWindow
   readonly composer: ComposerState
   readonly commands: WorkerCommands
 }
+
+/** A card for the view of a Blocked ticket, which the dashboard draws none of: `need`'s. */
+const blockedCard = (need: Extract<Need, { _tag: "Blocked" }>, since: number): Card => ({
+  ticket: need.ticket,
+  label: need.label,
+  title: need.title,
+  worker: 0,
+  phase: TicketPhase.Blocked({ why: need.why }),
+  state: null,
+  status: "blocked",
+  tone: "stop",
+  motion: "idle",
+  since,
+  action: null,
+  latest: null,
+  steered: false,
+  requests: [],
+})
 
 /** The worker of `viewed`'s view, and what its keys and buttons send. */
 export const useWorkerScreen = (viewed: TicketId): WorkerScreen => {
@@ -75,7 +96,16 @@ export const useWorkerScreen = (viewed: TicketId): WorkerScreen => {
   const handBacks = useHandBacks()
   const last = useRef<Card | undefined>(found)
   if (found !== undefined) last.current = found
-  const card = found ?? last.current
+  // A Blocked ticket's session has closed, and the view may be opened after its card has gone.
+  const blocked = useRunViewPart((view) => {
+    const need = view.needs.find((each) => each._tag === "Blocked" && each.ticket === viewed)
+    return need?._tag === "Blocked" ? need : undefined
+  })
+  const opened = useRef(Date.now())
+  const card =
+    found ??
+    last.current ??
+    (blocked === undefined ? undefined : blockedCard(blocked, opened.current))
   const ticket = card?.ticket
   const foundResources = useRunViewPart((view) =>
     view.resources.find((each) => each.ticket === viewed),
@@ -177,6 +207,7 @@ export const useWorkerScreen = (viewed: TicketId): WorkerScreen => {
     merging: found?.phase._tag === "Merging",
     steered: card?.steered === true,
     handBack: ticket !== undefined && handBacks.includes(ticket),
+    aside: isConflict(blocked) && !handBacks.includes(viewed),
     question,
     transcript,
     composer,

@@ -15,6 +15,7 @@ import { Attention } from "../agent/Attention.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import type { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
+import type { Git } from "../services/Git.ts"
 import { resolve, type UiCommand } from "./commands.ts"
 import { hear } from "./drain.ts"
 import { fileTicket } from "./fileTicket.ts"
@@ -73,9 +74,15 @@ export const make = (options: {
   readonly repo: string
   readonly base: string
   readonly scope?: TicketId | null
-}): Effect.Effect<ScreenCommands, never, SteerEnv | Attention | Beads | AppConfig | Transcripts> =>
+}): Effect.Effect<
+  ScreenCommands,
+  never,
+  SteerEnv | Git | Attention | Beads | AppConfig | Transcripts
+> =>
   Effect.gen(function* () {
-    const context = yield* Effect.context<SteerEnv | Attention | Beads | AppConfig | Transcripts>()
+    const context = yield* Effect.context<
+      SteerEnv | Git | Attention | Beads | AppConfig | Transcripts
+    >()
     const attention = yield* Attention
     const ledger = yield* Ledger
     const ending = yield* Ref.make(false)
