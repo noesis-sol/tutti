@@ -150,6 +150,8 @@ export interface PanelAt {
   readonly inside: boolean
   /** The focused choice: an option's index, or the options' count for Other. */
   readonly choice: number
+  /** How many of `1`–`9`, from 1, a card's question takes from it: the focus is on that card. */
+  readonly taken?: number
 }
 
 type Blocked = Extract<Need, { _tag: "Blocked" }>
@@ -335,17 +337,26 @@ export const needsLines = (
           panelTargets.other,
         ),
       ]
-      // What is true from where the focus is: `1`–`9` from elsewhere, Enter once it is on the panel.
-      const digits = options.length === 0 ? "" : `1–${options.length} answer`
+      // What is true from where the focus is: the digits left it from elsewhere, Enter once it is on
+      // the panel.
+      const first = (at.taken ?? 0) + 1
+      const digits =
+        first > options.length
+          ? ""
+          : first === options.length
+            ? `${first} answers`
+            : `${first}–${options.length} answer`
       const keys = at.inside
         ? options.length === 0
           ? "Enter answer"
           : `↑↓ 1–${options.length} · Enter answer`
         : at.focused
           ? [digits, "Enter goes in"].filter((each) => each !== "").join(" · ")
-          : digits === ""
-            ? "click to answer"
-            : digits
+          : digits !== ""
+            ? digits
+            : options.length === 0
+              ? "click to answer"
+              : "move here to answer"
       const foot = footOf(keys, needs.length).map((each) => ({ ...each, look: styles.dim }))
       const fixed = title.length + 1 + choices.length + 1
       const space = room - fixed

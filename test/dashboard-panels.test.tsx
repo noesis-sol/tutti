@@ -135,7 +135,11 @@ const cardQuestion = (id: string, ticket: string): AttentionRequest => ({
 })
 
 /** q-1 is put to the maintainer, and a-1 waits on it, in Needs you. */
-const askingView = (requests: ReadonlyArray<AttentionRequest> = [], workers = 0): RunView =>
+const askingView = (
+  requests: ReadonlyArray<AttentionRequest> = [],
+  workers = 0,
+  options: ReadonlyArray<string> = ["Use --flag", "Use --other"],
+): RunView =>
   projected(
     [
       ...doneRows,
@@ -153,10 +157,7 @@ const askingView = (requests: ReadonlyArray<AttentionRequest> = [], workers = 0)
             id: "q-1" as TicketId,
             title: "Which flag name?",
             description: "",
-            options: [
-              { label: "Use --flag", description: "" },
-              { label: "Use --other", description: "" },
-            ],
+            options: options.map((label) => ({ label, description: "" })),
             maintainerOnly: false,
             waiting: ["a-1" as TicketId],
           },
@@ -772,17 +773,61 @@ describe("1–9", () => {
     )
   })
 
-  test("leave the panel's question alone with the focus on an attention card, its keys", async () => {
+  test("answer the panel's question with the focus on a card whose request has no options", async () => {
     await scene(
       askingView([permission("r1", "w-1")], 1),
       wide,
       async ({ commands, pass, rendered }) => {
         pass(settle)
         await Bun.sleep(settle + 50)
-        await press(rendered, "down", "1", "5")
+        await press(rendered, "down")
+        expect(has(await rendered.capture(), "1–2 answer")).toBe(true)
+        await press(rendered, "enter", "2")
+        expect(taken(commands)).toMatchObject([
+          { _tag: "AnswerQuestion", question: "q-1", answer: "Use --other" },
+        ])
+      },
+    )
+  })
+
+  test("leave a card's question its digits, the panel's foot saying what is left it", async () => {
+    await scene(
+      askingView([cardQuestion("c1", "w-1")], 1),
+      wide,
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        await Bun.sleep(settle + 50)
+        await press(rendered, "down")
+        const frame = await rendered.capture()
+        expect(has(frame, "move here to answer")).toBe(true)
+        expect(has(frame, "1–2 answer")).toBe(false)
+        await press(rendered, "1", "2", "enter")
         expect(taken(commands)).toEqual([])
-        await press(rendered, "enter", "1", "5")
-        expect(taken(commands)).toEqual([])
+        await press(rendered, "enter")
+        expect(taken(commands)).toEqual([
+          UiCommand.Answer({
+            requestId: "c1",
+            answer: { _tag: "Choose", answers: ["Write a new"] },
+          }),
+        ])
+      },
+    )
+  })
+
+  test("answer the panel's question with a digit the card's question doesn't take", async () => {
+    const five = ["One", "Two", "Three", "Four", "Five"]
+    await scene(
+      askingView([cardQuestion("c1", "w-1")], 1, five),
+      wide,
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        await Bun.sleep(settle + 50)
+        await press(rendered, "down")
+        expect(has(await rendered.capture(), "3–5 answer")).toBe(true)
+        await press(rendered, "5")
+        expect(taken(commands)).toMatchObject([
+          { _tag: "AnswerQuestion", question: "q-1", answer: "Five" },
+        ])
       },
     )
   })

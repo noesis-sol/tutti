@@ -214,8 +214,9 @@ IDs are bold, so they still stand out from the reason.
 While something needs you it shows that instead, one at a time, `Needs you · 1 of 2` above it: a
 question an Asked ticket waits on, with its title, the ticket waiting on it, as much of its
 description as fits and its options, the recommended one first; or a Blocked ticket, why, and what
-clears it. With the focus on the panel its frame is heavy, and `1`–`9` answer with an option at once,
-but with the focus on an attention card in Current, as `Shift+A`'s box does. `Enter` goes in: there `↑` and `↓` move between the
+clears it. With the focus on the panel its frame is heavy, and `1`–`9` answer with an option at once, as
+`Shift+A`'s box does, but a digit a highlighted card's question takes, with the focus on it in
+Current; the panel's foot says which are left. `Enter` goes in: there `↑` and `↓` move between the
 options and `Other…`, `Enter` answers with an option, and `Enter` on `Other…` opens that box at the
 question to read it all or type your own; on a Blocked ticket `Enter` opens its worker view, and on one blocked on its merge conflict
 `h` hands it back to its worker. `]` and `[` go to the next or previous of what needs you. A click on an option answers with it, and one on the title or a cut description
@@ -451,7 +452,7 @@ panel at the top level.
 | `Tab`, `Shift+Tab`, `←`, `→` | at the top, move between the panels; inside Current, between a card's buttons, then on to the next card | move between a request's buttons, else between items |
 | `↑`, `↓` | at the top, move between the panels; inside, select a row, an option or a card | move between items |
 | `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
-| `1`–`9` | answer **Needs you**'s question at once, but with the focus on an attention card in Current | |
+| `1`–`9` | answer **Needs you**'s question at once, but a digit a highlighted card's question takes, with the focus on it in Current | |
 | `Enter`, a click | at the top, go into the panel, a click to what it clicked; inside, press the focused button, or open the card (in the one-line layout, open its request) or the row: a `? for you` row's question, what clears a blocked one; on the totals' Needs you, the list of what needs you | expand or collapse the item; press the focused button |
 | `d` | deny the request (decline an MCP server's) | the same |
 | `Shift+D` | deny, with a reason you type for the worker | the same |

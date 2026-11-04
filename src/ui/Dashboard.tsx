@@ -31,8 +31,8 @@
 // card as other cards come and go. Coming back from a worker's view finds the keys where they were
 // (DashboardMemory), so switching workers is `Esc`, the arrows and `Enter`; opening one from the top
 // is `↓ Enter Enter`, with no shortcut, as `Enter` on Current means one thing whatever it shows.
-// `1`–`9` answer Needs you's question at once, unless the focus is on Current with an attention card
-// highlighted, whose keys they are. `s` opens the stop question.
+// `1`–`9` answer Needs you's question at once, but a digit the question of the card highlighted in
+// Current takes, with the focus there. `s` opens the stop question.
 // `Shift+A` opens the questions box (QuestionsBox.tsx), the open questions in the run's scope put
 // one by one; the hint names it while a ticket waits on one. With the key help open, `?` and `Esc`
 // close it and the other keys do nothing. A click on a row's ID, on every row, copies it
@@ -66,7 +66,14 @@ import {
 } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { allot } from "./allot.ts"
-import { type AnswerKey, keyAnswer, settle, useAnswering } from "./attentionKeys.ts"
+import {
+  type AnswerKey,
+  buttonsOf,
+  keyAnswer,
+  picksOptions,
+  settle,
+  useAnswering,
+} from "./attentionKeys.ts"
 import {
   Cards,
   type CardsLayout,
@@ -149,6 +156,12 @@ export const idTarget = 2000
 
 /** The click target of the totals' Needs you. */
 export const needsTarget = 0
+
+/** How many of `1`–`9`, from 1, the card's question picks an option with: none but a question's. */
+const digitsOf = (card: Card | undefined): number => {
+  const request = card?.requests[0]
+  return request !== undefined && picksOptions(request) ? buttonsOf(request).length : 0
+}
 
 /** How the dashboard's lines are handed out (dashboardLayout): each section's, adding up to the pane's. */
 export interface DashboardLayout {
@@ -325,9 +338,14 @@ export const dashboardLayout = (
       },
     )
     if (panel === 0) return lines
+    // With the focus on Current, the question of the card highlighted, drawn with its buttons, takes
+    // its digits from the panel.
+    const cardsDrawn = view.endOfRun === null && layoutOf(cards, width, room)._tag === "Cards"
+    const card = cards.find((each) => each.ticket === highlighted)
+    const taken = focus.panel === "current" && cardsDrawn ? digitsOf(card) : 0
     const shownSide =
       side.needs.length > 0
-        ? needsLines(side.needs, side.at, theme, panel, table)
+        ? needsLines(side.needs, { ...side.at, taken }, theme, panel, table)
         : upNextLines(view.queue, view.totals, theme, panel, table)
     return beside(lines, shownSide, narrower)
   }
@@ -382,14 +400,14 @@ export interface DashboardAt {
   /** Whether the focus has gone into a panel, as the hint is drawn: the top level when left out. */
   readonly inside?: boolean
   /**
-   * The panel beside the tickets table: whether the focus is on it, its needs, whether `1`–`9`
-   * answer its question as the key is pressed, and whether the need it shows is a ticket Blocked on
-   * its merge conflict.
+   * The panel beside the tickets table: whether the focus is on it, its needs, whether a digit
+   * answers its question as the key is pressed, and whether the need it shows is a ticket Blocked
+   * on its merge conflict.
    */
   readonly panel?: {
     readonly on: () => boolean
     readonly needs: number
-    readonly answers?: () => boolean
+    readonly answers?: (n: number) => boolean
     readonly conflict?: () => boolean
   }
 }
@@ -545,10 +563,11 @@ export const dashboardCommands = (
       help: denyRow,
     },
     // `1`–`9` answer the question of the panel beside the tickets table with that option at once,
-    // but with the focus on an attention card in Current; no number opens a worker.
+    // but a digit the highlighted card's question takes, with the focus on it; no number opens a
+    // worker.
     ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
       keys: [String(n)],
-      when: () => at.panel?.answers?.() === true,
+      when: () => at.panel?.answers?.(n) === true,
       run: () => act.panelPick(n),
       help: pickRow,
     })),
@@ -992,9 +1011,9 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
         panel: {
           on: onPanel,
           needs: needs.length,
-          answers: () =>
+          answers: (n: number) =>
             panelShown() &&
-            (focusNow().panel !== "current" || inCard() === undefined) &&
+            (focusNow().panel !== "current" || n > digitsOf(inCard())) &&
             shownNow().need?._tag === "Question",
           conflict: () => isConflict(shownNow().need),
         },
