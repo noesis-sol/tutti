@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.6.9] - 2026-11-04
+
 - `h` hands back the ticket Blocked on its merge conflict that Needs you's panel shows wherever the focus is, in the tickets table too, rather than only with the focus on the panel while the panel said `Press h` everywhere, and the panel's foot says so; like the digits it waits until the row has been drawn for half a second (§ 7.3; `src/ui/Dashboard.tsx`, `src/ui/SidePanel.tsx`; tutti-aeah).
 - A question whose answer on the panel bd refuses comes back to the panel and the strip's **Needs you**, rather than stay hidden for the run with only its toast saying so (§ 5.1, § 7.2; `src/ui/Dashboard.tsx`; tutti-kojj). `test/panel-answer-refused.test.tsx` covers it.
 - An answered question's row and Up next line say `the next run`, not `the next free slot`, while the run quits, as a quit takes nothing back (§ 5.1; `src/run/runView.ts`' `resumesAt`; tutti-0ucl).
