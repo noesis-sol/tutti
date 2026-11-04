@@ -279,7 +279,8 @@ describe("the card", () => {
         ┃   Path is outside allowed working directories                                ┃
         ┃   [ Deny ]  [ Allow ]  [ Allow for this run ]  +2 more                       ┃
         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-          arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys
+          Tab select · arrows panels · Enter go in · d deny · a allow
+          s stop after current · ? keys
         "
       `)
     })
@@ -375,7 +376,8 @@ describe("the card", () => {
           │   https://docs.example/login                                                 │
           │   [ Decline ]  [ Open URL ]                                                  │
           ╰──────────────────────────────────────────────────────────────────────────────╯
-            arrows panels · Enter go in · d deny · s stop after current · ? keys
+            Tab select · arrows panels · Enter go in · d deny · s stop after current
+            ? keys
           "
         `)
       },
@@ -507,7 +509,7 @@ describe("answering by key", () => {
         await press(rendered, "3")
         expect(taken(commands)).toEqual([])
       },
-      { workers: 3 },
+      { workers: 3, size: { width: 80, height: 41 } },
     )
   })
 
@@ -540,7 +542,7 @@ describe("defaultToNo", () => {
       const lines = linesOf(frame)
       expect(lines.some((line) => line.includes("[ Deny ]  [ Allow ]"))).toBe(true)
       expect(lines.some((line) => line.includes("Allow for this run"))).toBe(false)
-      const hint = lines.find((line) => line.includes("? keys")) ?? ""
+      const hint = lines.slice(-3).join(" ")
       expect(hint).toContain("d deny")
       expect(hint).not.toContain("a allow")
       const deny = where(frame, "[ Deny ]")

@@ -19,7 +19,7 @@
 //
 // The keys (§ 7.3), in the view's input layer (keys.ts), work at two levels (panelFocus.ts). At the
 // top level the arrows move the focus between the panels, Tickets top left, Needs you top right,
-// Current below, `Tab` and `Shift+Tab` through them, and the focused panel's frame is drawn bright;
+// Current below, and the focused panel's frame is drawn bright;
 // where there is no panel beside the table, the totals' Needs you cell takes its place over the
 // table, and `Enter` on it, or a click, opens the list of what needs you (NeedsList.tsx). `Enter`
 // goes into the focused panel, as a click does to what it clicked, and `Esc` comes out, an open box
@@ -33,7 +33,10 @@
 // OpenWorker command naming the card's ticket. The highlight names a ticket too, so it stays on its
 // card as other cards come and go. Coming back from a worker's view finds the keys where they were
 // (DashboardMemory), so switching workers is `Esc`, the arrows and `Enter`; opening one from the top
-// is `↓ Enter Enter`, with no shortcut, as `Enter` on Current means one thing whatever it shows.
+// is `Tab Enter`, as `Enter` on Current means one thing whatever it shows. `Tab` and `Shift+Tab` start
+// the box selection from the top level, going into Current on its first or last card, and move on
+// from anywhere: an attention card's buttons, the next card, past the last Needs you, or the totals'
+// Needs you, then the rows that want you, and round. With no cards drawn they start at what needs you.
 // `1`–`9` answer Needs you's question at once, but a digit the question of the card highlighted in
 // Current takes, with the focus there. `h` hands back the ticket Blocked on its merge conflict that
 // the panel shows, wherever the focus is, as the panel says to press it. `s` opens the stop question.
@@ -102,9 +105,10 @@ import {
   focusAmong,
   gridMove,
   type Panel,
-  panelAfter,
   panelTowards,
   startFocus,
+  type TabStop,
+  tabStop,
 } from "./panelFocus.ts"
 import {
   beside,
@@ -118,6 +122,7 @@ import {
   selectedTicket,
   tableWidth,
   upNextLines,
+  wantingRows,
 } from "./SidePanel.tsx"
 import {
   byAttention,
@@ -460,7 +465,7 @@ export interface DashboardActions {
   readonly escape: () => void
   /** An arrow: moves between the panels at the top level, and selects inside one. */
   readonly arrow: (direction: Direction) => void
-  /** `Tab`, `Shift+Tab`: the next or previous panel; inside Current, the buttons, then the cards. */
+  /** `Tab`, `Shift+Tab`: into Current on its first or last card, then on: panelFocus.ts' tabStop. */
   readonly tab: (by: 1 | -1) => void
   /** `Enter`: goes into the panel; inside one, opens or presses what is selected. */
   readonly enter: () => void
@@ -501,12 +506,16 @@ const inertDashboard: DashboardActions = {
   panelHandBack: nothing,
 }
 
-const moveRow: HelpRow = [
-  "Tab, Shift+Tab, arrows",
-  "move between the panels; inside one, select in it",
-]
+const moveRow: HelpRow = ["arrows", "move between the panels; inside one, select in it"]
+const tabRow: HelpRow = ["Tab, Shift+Tab", "select the cards and buttons, then what needs you"]
 const denyRow: HelpRow = ["d, Shift+D", "deny the request; deny with a reason"]
 const pickRow: HelpRow = ["1–4, 1–9 on the panel", "pick a question's option"]
+
+/** Whether `Tab` has somewhere to go: a card drawn, or something that wants you. */
+const tabGoes = (view: RunView): boolean =>
+  (view.endOfRun === null && view.cards.length > 0) ||
+  view.needs.length > 0 ||
+  view.rows.some((row) => row.attention !== "rest")
 
 /** Whether a ticket waits on your answer to a question: one Asked. */
 export const questionsWaiting = (view: RunView): boolean => view.totals.asked > 0
@@ -542,6 +551,14 @@ export const dashboardCommands = (
   }
   const named = (shown: boolean, keys: string, does: string) => (shown ? { keys, does } : undefined)
   return [
+    // Tab starts the box selection from the top level, where the hint names it.
+    {
+      keys: ["tab"],
+      run: () => act.tab(1),
+      hint: named(!inside && tabGoes(view), "Tab", "select"),
+      help: tabRow,
+    },
+    { keys: ["shift+tab"], run: () => act.tab(-1), help: tabRow },
     // The two levels (panelFocus.ts): the hint follows the one the focus is at.
     {
       keys: ["left"],
@@ -552,8 +569,6 @@ export const dashboardCommands = (
     { keys: ["right"], run: () => act.arrow("right"), help: moveRow },
     { keys: ["up"], run: () => act.arrow("up"), help: moveRow },
     { keys: ["down"], run: () => act.arrow("down"), help: moveRow },
-    { keys: ["tab"], run: () => act.tab(1), help: moveRow },
-    { keys: ["shift+tab"], run: () => act.tab(-1), help: moveRow },
     {
       keys: ["return", "enter"],
       run: act.enter,
@@ -669,18 +684,6 @@ export const dashboardHint = (
       highlighted: () => view.cards.find((card) => card.ticket === highlighted),
     }),
   )
-
-/** The ticket of the card `step` cards on from `from`'s, round; the first or last from none. */
-export const moveHighlight = (
-  cards: ReadonlyArray<Card>,
-  from: string | null,
-  step: 1 | -1,
-): string | null => {
-  if (cards.length === 0) return null
-  const at = cards.findIndex((card) => card.ticket === from)
-  const next = at === -1 ? (step === 1 ? 0 : cards.length - 1) : at + step
-  return cards[(next + cards.length) % cards.length]?.ticket ?? null
-}
 
 /** Where the dashboard's keys are, kept while it isn't drawn: a worker's view opened from it. */
 export interface DashboardMemory {
@@ -1017,12 +1020,36 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     const rowSize = layout._tag === "Cards" ? layout.across : 1
     choose(cards[gridMove(cards.length, rowSize, at, direction)]?.ticket ?? null)
   }
+  // Tab's order, as it comes (panelFocus.ts): the cards, unless the end-of-run box has their place,
+  // what the panel shows or the totals' cell, then the rows drawn that want you.
+  const tabStops = (): ReadonlyArray<TabStop> => [
+    ...(ending === null
+      ? cards.map((card) => ({ panel: "current" as const, ticket: card.ticket }))
+      : []),
+    ...(filled.includes("needs") ? [{ panel: "needs" as const, ticket: null }] : []),
+    ...(laid.panel === 0 && needs.length > 0 ? [{ panel: "cell" as const, ticket: null }] : []),
+    ...wantingRows(laid.rows, needs, view.needs).map((each) => ({
+      panel: "tickets" as const,
+      ticket: each.ticket,
+    })),
+  ]
+  // The stop the keys are on. The cell has no inside, so that the focus on it is at its stop.
+  const tabStopNow = (): TabStop | null => {
+    const { panel, inside } = focusNow()
+    if (panel === "cell") return { panel, ticket: null }
+    if (!inside) return null
+    const ticket = panel === "current" ? current() : panel === "tickets" ? rowNow() : null
+    return { panel, ticket }
+  }
   const tab = (by: 1 | -1) => {
-    if (!insideOf("current")) return focusOn(panelAfter(panels, focusNow().panel, by), false)
-    const card = inCard()
+    const card = insideOf("current") ? inCard() : undefined
     if (card !== undefined && answering.step(card.requests[0], by)) return
     answering.reset()
-    choose(moveHighlight(cards, current(), by))
+    const stop = tabStop(tabStops(), tabStopNow(), by)
+    if (stop === undefined) return
+    if (stop.panel === "current") choose(stop.ticket)
+    if (stop.panel === "tickets") setRow(() => stop.ticket as TicketId)
+    focusOn(stop.panel, stop.panel !== "cell")
   }
   const enter = () => {
     const { panel, inside } = focusNow()

@@ -30,7 +30,7 @@ import {
   layoutOf,
   statusLook,
 } from "../src/ui/Card.tsx"
-import { dashboardCommands, dashboardHint, moveHighlight } from "../src/ui/Dashboard.tsx"
+import { dashboardCommands, dashboardHint } from "../src/ui/Dashboard.tsx"
 import { hintSegments } from "../src/ui/Hint.tsx"
 import { keyHelpLines, screenHelp } from "../src/ui/KeyHelp.tsx"
 import { helpOf } from "../src/ui/keyCommands.ts"
@@ -439,7 +439,7 @@ describe("the Current section", () => {
       │   Title of tut-9a1                                       ││   Title of tut-b7c                                       │
       │                                                          ││                                                          │
       ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
-        arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
   })
@@ -459,7 +459,7 @@ describe("the Current section", () => {
       │   Title of tut-zq4                                                           │
       │   ▸ Bash(scripts/check-fast.sh)                                              │
       ╰──────────────────────────────────────────────────────────────────────────────╯
-        arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
   })
@@ -481,7 +481,7 @@ describe("the Current section", () => {
       │ ◼ tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                           │
       ┃ • tut-b7c  ■ allow?        1m07s  Title of tut-b7c                           │
       ╰──────────────────────────────────────────────────────────────────────────────╯
-        arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
     // The card of the oldest request is highlighted, with none chosen (§ 4.5). Any worker in the
@@ -623,14 +623,6 @@ describe("opening a worker", () => {
       },
     )
   })
-
-  test("the highlight moves round, and from none to the first or the last", () => {
-    expect(moveHighlight(view.cards, null, 1)).toBe("tut-kco")
-    expect(moveHighlight(view.cards, null, -1)).toBe("tut-b7c")
-    expect(moveHighlight(view.cards, "tut-b7c", 1)).toBe("tut-kco")
-    expect(moveHighlight(view.cards, "tut-kco", -1)).toBe("tut-b7c")
-    expect(moveHighlight([], null, 1)).toBe(null)
-  })
 })
 
 describe("the wind-down line", () => {
@@ -693,7 +685,7 @@ describe("the wind-down line", () => {
     const lines = linesOf(await draw(view, { width: 80, height: 24 }))
     expect(lines.slice(-2)).toEqual([
       "  ■  Winding down · 1 running, no new tickets",
-      "  arrows panels · Enter go in · s keep taking tickets · ? keys",
+      "  Tab select · arrows panels · Enter go in · s keep taking tickets · ? keys",
     ])
   })
 })
@@ -702,7 +694,7 @@ describe("the hint and the key help", () => {
   test("the hint's keys emphasis bold, their words and the dots faint", () => {
     const line = hintSegments(dashboardHint(viewOf(four), true), theme, 120)
     expect(line.map((s) => s.text).join("")).toBe(
-      "  arrows panels · Enter go in · s stop after current · ? keys",
+      "  Tab select · arrows panels · Enter go in · s stop after current · ? keys",
     )
     sameLook(lookOf([line], "arrows"), theme.styles.key)
     sameLook(lookOf([line], " panels"), theme.styles.dim)
@@ -746,27 +738,28 @@ describe("the hint and the key help", () => {
       ),
     ).toMatchInlineSnapshot(`
       "
-      ╭─────────────────────────────────────────────────────────────────────────────╮
-      │ Keys                                                                        │
-      │                                                                             │
-      │ Tab, Shift+Tab, arrows  move between the panels; inside one, select in it   │
-      │ Enter, a click          go into the panel; inside it, open what is selected │
-      │ Esc                     come out of the panel; an open box closes first     │
-      │ d, Shift+D              deny the request; deny with a reason                │
-      │ a                       allow the request, unless it opens on Deny          │
-      │ r                       allow for this run                                  │
-      │ 1–4, 1–9 on the panel   pick a question's option                            │
-      │ h                       hand back a ticket blocked on its merge conflict    │
-      │ s                       stop after current, or keep taking tickets          │
-      │ A                       answer the open questions, one by one               │
-      │ q                       end the run, from the end-of-run box                │
-      │ ?                       these keys                                          │
-      │ Ctrl+C                  quit: stop after current, or quit now               │
-      │ Ctrl+Z                  a toast: tutti can't be suspended                   │
-      │ a drag                  select text and copy it                             │
-      │                                                                             │
-      │ Esc close                                                                   │
-      ╰─────────────────────────────────────────────────────────────────────────────╯
+      ╭────────────────────────────────────────────────────────────────────────────╮
+      │ Keys                                                                       │
+      │                                                                            │
+      │ Tab, Shift+Tab         select the cards and buttons, then what needs you   │
+      │ arrows                 move between the panels; inside one, select in it   │
+      │ Enter, a click         go into the panel; inside it, open what is selected │
+      │ Esc                    come out of the panel; an open box closes first     │
+      │ d, Shift+D             deny the request; deny with a reason                │
+      │ a                      allow the request, unless it opens on Deny          │
+      │ r                      allow for this run                                  │
+      │ 1–4, 1–9 on the panel  pick a question's option                            │
+      │ h                      hand back a ticket blocked on its merge conflict    │
+      │ s                      stop after current, or keep taking tickets          │
+      │ A                      answer the open questions, one by one               │
+      │ q                      end the run, from the end-of-run box                │
+      │ ?                      these keys                                          │
+      │ Ctrl+C                 quit: stop after current, or quit now               │
+      │ Ctrl+Z                 a toast: tutti can't be suspended                   │
+      │ a drag                 select text and copy it                             │
+      │                                                                            │
+      │ Esc close                                                                  │
+      ╰────────────────────────────────────────────────────────────────────────────╯
       "
     `)
   })

@@ -1,4 +1,4 @@
-// The dashboard's two levels (§ 7.3, tutti-149z.2): at the top the arrows and Tab move the focus
+// The dashboard's two levels (§ 7.3, tutti-149z.2): at the top the arrows move the focus
 // between its panels, the focused panel's frame bright; Enter or a click goes into one, where the
 // keys select in it; Esc comes out, closing an open box first. A panel gone from the pane moves the
 // focus off it.
@@ -23,7 +23,6 @@ import {
   focusAmong,
   gridMove,
   type Panel,
-  panelAfter,
   panelTowards,
 } from "../src/ui/panelFocus.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -231,7 +230,7 @@ const linesOf = (frame: Frame) => frame.chars.split("\n")
 const hintOf = (frame: Frame) => {
   const lines = linesOf(frame)
   return lines
-    .slice(lines.findIndex((line) => line.trimStart().startsWith("arrows")))
+    .slice(lines.findIndex((line) => /^\s*(Tab select|arrows)/.test(line)))
     .map((line) => line.trim())
     .join(" ")
     .trim()
@@ -333,15 +332,6 @@ describe("the focus's moves", () => {
     expect(panelTowards(["cell", "current"], "cell", "down")).toBe("current")
   })
 
-  test("Tab and Shift+Tab go round the panels there are", () => {
-    expect(panelAfter(upper, "tickets", 1)).toBe("needs")
-    expect(panelAfter(upper, "needs", 1)).toBe("current")
-    expect(panelAfter(upper, "current", 1)).toBe("tickets")
-    expect(panelAfter(upper, "tickets", -1)).toBe("current")
-    expect(panelAfter(tall, "tickets", 1)).toBe("cell")
-    expect(panelAfter(["current"], "current", 1)).toBe("current")
-  })
-
   test("a panel gone moves the focus off it, to the top level; an emptied one out of it", () => {
     const inside = (panel: Panel) => ({ panel, inside: true })
     expect(focusAmong(inside("needs"), tall, tall)).toEqual({ panel: "tickets", inside: false })
@@ -384,10 +374,10 @@ describe("the hint follows the level", () => {
   const view = viewOf(1)
   const words = (inside: boolean) =>
     dashboardHint(view, true, null, inside)
-      .slice(0, inside ? 3 : 2)
+      .slice(0, 3)
       .map((key) => `${key.keys} ${key.does}`)
   test("names the keys of each", () => {
-    expect(words(false)).toEqual(["arrows panels", "Enter go in"])
+    expect(words(false)).toEqual(["Tab select", "arrows panels", "Enter go in"])
     expect(words(true)).toEqual(["arrows select", "Enter open", "Esc back"])
   })
 
@@ -445,19 +435,6 @@ describe("at the top level", () => {
       expect(await panelHeavy()).toBe(false)
       await press(rendered, "down", "up")
       expect(tableFrameColour(await rendered.capture())).toEqual(theme.rgba("emphasis").toInts())
-    })
-  })
-
-  test("Tab and Shift+Tab go to the next and previous panel", async () => {
-    await scene(viewOf(1), wide, async ({ rendered }) => {
-      await press(rendered, "tab")
-      expect(has(await rendered.capture(), "┏")).toBe(true)
-      await press(rendered, "tab")
-      expect(heavyOn(await rendered.capture(), "w-1")).toBe(true)
-      await press(rendered, "tab")
-      expect(tableFrameColour(await rendered.capture())).toEqual(theme.rgba("emphasis").toInts())
-      await press(rendered, "shift+tab")
-      expect(heavyOn(await rendered.capture(), "w-1")).toBe(true)
     })
   })
 
@@ -563,11 +540,11 @@ describe("inside Tickets", () => {
     })
   })
 
-  test("← → do nothing, and Tab comes out to the next panel", async () => {
+  test("← → do nothing inside; Esc, then →, moves on", async () => {
     await scene(viewOf(1), narrow, async ({ rendered }) => {
       await press(rendered, "enter", "left", "right")
       expect(pointed(await rendered.capture(), "b-1")).toBe(true)
-      await press(rendered, "tab")
+      await press(rendered, "escape", "right")
       const frame = await rendered.capture()
       expect(pointed(frame, "b-1")).toBe(false)
       expect(lit(frame, "Needs you")).toBe(true)

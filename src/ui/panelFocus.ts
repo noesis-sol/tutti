@@ -1,7 +1,8 @@
 // The dashboard's focus (§ 7.3): which of its panels the keys are on, and whether they have gone
-// into it. At the top level the arrows move spatially between the panels and Tab through them;
-// inside one they select in it. Worked out here apart from the keys and the drawing, as what a
-// panel's neighbours are depends only on which panels there are.
+// into it. At the top level the arrows move spatially between the panels; inside one they select in
+// it. Tab goes its own way, through the cards and what needs you, going in as it does. Worked out
+// here apart from the keys and the drawing, as what a panel's neighbours are depends only on which
+// panels there are.
 
 /**
  * A panel the focus can be on: the tickets table, the Needs you panel beside it, Current, or, where
@@ -20,9 +21,6 @@ export interface Focus {
 export const startFocus: Focus = { panel: "tickets", inside: false }
 
 export type Direction = "left" | "right" | "up" | "down"
-
-/** The panels in Tab's order, of those a pane has; Current is always there. */
-const tabOrder: ReadonlyArray<Panel> = ["tickets", "needs", "cell", "current"]
 
 /** Where each panel's arrows go, the first of each list that is there: as the panels are laid out. */
 const routes: {
@@ -50,12 +48,30 @@ export const panelTowards = (
   return [...back, ...way].find((panel) => panels.includes(panel)) ?? from
 }
 
-/** The panel `by` on from `from` in Tab's order, round; the first or last from one not there. */
-export const panelAfter = (panels: ReadonlyArray<Panel>, from: Panel, by: 1 | -1): Panel => {
-  const shown = tabOrder.filter((panel) => panels.includes(panel))
-  const at = shown.indexOf(from)
-  const next = at === -1 ? (by === 1 ? 0 : shown.length - 1) : at + by
-  return shown[(next + shown.length) % shown.length] ?? from
+/**
+ * A stop of Tab's order (§ 7.3), as they come: a card, Needs you or the totals' cell in its place,
+ * then a row that wants you. A card's and a row's `ticket` names it, as the highlight does.
+ */
+export interface TabStop {
+  readonly panel: Panel
+  readonly ticket: string | null
+}
+
+/**
+ * The stop `by` on from `from` in `stops`, round. From none of them, the top level or a row that
+ * doesn't want you, Tab starts the box selection: the first or last card, or where there is none,
+ * the first or last of what needs you. Undefined with no stops.
+ */
+export const tabStop = (
+  stops: ReadonlyArray<TabStop>,
+  from: TabStop | null,
+  by: 1 | -1,
+): TabStop | undefined => {
+  const at = stops.findIndex((stop) => stop.panel === from?.panel && stop.ticket === from.ticket)
+  if (at !== -1) return stops[(at + by + stops.length) % stops.length]
+  const cards = stops.filter((stop) => stop.panel === "current")
+  const among = cards.length > 0 ? cards : stops
+  return by === 1 ? among[0] : among.at(-1)
 }
 
 /** Where a panel that has gone leaves the focus, the first of these that is there. */

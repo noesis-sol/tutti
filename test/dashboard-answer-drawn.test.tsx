@@ -106,8 +106,9 @@ const shows = (frame: Frame, text: string): boolean =>
 /** The hint: the last line that isn't blank. */
 const hintOf = (frame: Frame): string =>
   linesOf(frame)
-    .findLast((line) => line.trim() !== "")
-    ?.trim() ?? ""
+    .filter((line) => line.trim() !== "")
+    .slice(-2)
+    .join(" ")
 
 const taken = (commands: Commands) => Effect.runSync(Queue.clear(commands))
 
@@ -236,17 +237,17 @@ describe("the dashboard's hint", () => {
 
   test("names d and a with the buttons drawn, and neither without", () => {
     const view = viewOf([permission("r1", "t-1" as TicketId)], 2)
-    expect(words(view, true)).toEqual(["arrows", "Enter", "d", "a", "s", "?"])
-    expect(words(view, false)).toEqual(["arrows", "Enter", "s", "?"])
+    expect(words(view, true)).toEqual(["Tab", "arrows", "Enter", "d", "a", "s", "?"])
+    expect(words(view, false)).toEqual(["Tab", "arrows", "Enter", "s", "?"])
   })
 
   test("names a only where it allows the highlighted card's request", () => {
     const view = viewOf([{ ...permission("r1", "t-1" as TicketId), defaultToNo: true }], 2)
-    expect(words(view, true)).toEqual(["arrows", "Enter", "d", "s", "?"])
+    expect(words(view, true)).toEqual(["Tab", "arrows", "Enter", "d", "s", "?"])
   })
 
   test("names neither on a card with no request highlighted, where they answer nothing", () => {
     const view = viewOf([permission("r1", "t-1" as TicketId)], 2)
-    expect(words(view, true, "t-2")).toEqual(["arrows", "Enter", "s", "?"])
+    expect(words(view, true, "t-2")).toEqual(["Tab", "arrows", "Enter", "s", "?"])
   })
 })

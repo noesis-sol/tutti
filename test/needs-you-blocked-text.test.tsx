@@ -311,7 +311,6 @@ describe("Enter on a panel that shows it all", () => {
     const each = entry({ phase: TicketPhase.Blocked({ why: "DIRTY_TREE" }), about: undefined })
     await dashboard(each, { width: 140, height: 44 }, async (rendered, commands) => {
       await rendered.input((setup) => setup.mockInput.pressTab())
-      await rendered.input((setup) => setup.mockInput.pressEnter())
       const frame = await rendered.capture()
       expect(flat(frame)).toContain("next run checks")
       expect(frame.chars).toContain("Enter opens its worker view")

@@ -35,7 +35,7 @@ terminal shows what it showed before, followed by the run's summary.
 │   rm -rf build                                                       │
 │   [ Deny ]  [ Allow ]                                                │
 ╰──────────────────────────────────────────────────────────────────────╯
-  arrows panels · Enter go in · d deny · s stop after current · ? keys
+  Tab select · arrows panels · Enter go in · d deny · s stop after current · ? keys
 ```
 
 ### The title line
@@ -336,7 +336,7 @@ on you: `■ ■ ■ ■  Winding down · 3 running, no new tickets`. Warnings t
 as a colour scheme that can't be used or the usage limit's hold
 (`usage limit (five-hour) · resets 14:05 · 3 workers wait for it`).
 
-The hint names the keys there are, and follows the level the keys are at: `arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys` at the top, `arrows select · Enter open · Esc back · …` inside a panel.
+The hint names the keys there are, and follows the level the keys are at: `Tab select · arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys` at the top, `arrows select · Enter open · Esc back · …` inside a panel.
 
 ### The end-of-run box
 
@@ -457,16 +457,22 @@ the keys are still on this worker's card, and open the other's (an arrow, then `
 ## Keys
 
 The dashboard's keys work at two levels. At the top level the arrows move the focus between its
-panels, **Tickets** top left, **Needs you** top right, **Current** below, `Tab` and `Shift+Tab` to the
-next and previous, and the focused panel's frame is drawn bright (the table's lines between its
-columns stay dim). `Enter`, or a click, goes into a panel, where the keys select in it (the table's row
-selected has a `▸` before it), and `Esc` comes out, an open box closing first. So opening a
-worker from the top is `↓ Enter Enter`, or a click on its card; a request's `d` and `a` work from any
-panel at the top level.
+panels, **Tickets** top left, **Needs you** top right, **Current** below, and the focused panel's frame
+is drawn bright (the table's lines between its columns stay dim). `Enter`, or a click, goes into a
+panel, where the keys select in it (the table's row selected has a `▸` before it), and `Esc` comes
+out, an open box closing first. A request's `d` and `a` work from any panel at the top level.
+
+`Tab` starts the box selection: from the top level it goes into **Current** on its first card, and
+`Shift+Tab` on its last, so `Tab Enter` opens a worker and `Esc` comes back out. From there they go on
+through an attention card's buttons, the next card, past the last **Needs you**, then the table's rows
+that want you, and round. With no cards drawn (no worker running, or the end-of-run box in their
+place), `Tab` goes to what needs you, and with nothing there does nothing. `↓ Enter Enter`, or a click
+on its card, opens a worker too.
 
 | Key | Dashboard | Worker view |
 |---|---|---|
-| `Tab`, `Shift+Tab`, `←`, `→` | at the top, move between the panels; inside Current, between a card's buttons, then on to the next card | move between a request's buttons, else between items |
+| `Tab`, `Shift+Tab` | at the top, go into Current on its first or last card; from there through a card's buttons, the next card, then **Needs you** and the rows that want you | move between a request's buttons, else between items |
+| `←`, `→` | at the top, move between the panels; inside Current, between a card's buttons, then on to the next card | move between a request's buttons, else between items |
 | `↑`, `↓` | at the top, move between the panels; inside, select a row, an option or a card | move between items |
 | `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
 | `1`–`9` | answer **Needs you**'s question at once, but a digit a highlighted card's question takes, with the focus on it in Current | |

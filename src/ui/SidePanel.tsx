@@ -168,6 +168,20 @@ export const panelTargets = {
   read: 101,
 } as const
 
+/** The tickets of `all` the run's needs answered here, gone from `needs`: their rows stand no more. */
+const answeredHereOf = (needs: ReadonlyArray<Need>, all: ReadonlyArray<Need>) =>
+  new Set(all.filter((need) => !needs.includes(need)).map((need) => need.ticket))
+
+/** Those of `rows` that want you, a question answered here gone from them at once. */
+export const wantingRows = (
+  rows: ReadonlyArray<Row>,
+  needs: ReadonlyArray<Need>,
+  all: ReadonlyArray<Need>,
+): ReadonlyArray<Row> => {
+  const answeredHere = answeredHereOf(needs, all)
+  return rows.filter((row) => row.attention !== "rest" && !answeredHere.has(row.ticket))
+}
+
 /**
  * The row the panel shows, of the table's `rows` by attention, those with no room among them, with `needs` not answered here of `all` the run's:
  * `chosen` while it is a row and isn't answered here (the dashboard lets it go as its ticket stops
@@ -181,10 +195,9 @@ export const selectedTicket = (
   needs: ReadonlyArray<Need>,
   all: ReadonlyArray<Need>,
 ): TicketId | null => {
-  const answeredHere = new Set(all.filter((need) => !needs.includes(need)).map((n) => n.ticket))
-  const stands = (row: Row) => !answeredHere.has(row.ticket)
-  if (rows.some((row) => row.ticket === chosen && stands(row))) return chosen
-  const wanting = rows.filter((row) => row.attention !== "rest" && stands(row))
+  const answeredHere = answeredHereOf(needs, all)
+  if (rows.some((row) => row.ticket === chosen && !answeredHere.has(row.ticket))) return chosen
+  const wanting = wantingRows(rows, needs, all)
   const asks = wanting.find((row) => row.attention !== "setAside")
   const unrowed = needs.find((need) => !rows.some((row) => row.ticket === need.ticket))
   return asks?.ticket ?? unrowed?.ticket ?? wanting[0]?.ticket ?? null

@@ -1260,7 +1260,7 @@ describe("layouts", () => {
 
 
 
-        arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
     },
@@ -1313,7 +1313,7 @@ describe("layouts", () => {
 
 
 
-        arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys
       "
     `)
     },
@@ -1345,8 +1345,8 @@ describe("layouts", () => {
 
 
 
-        arrows panels · Enter go in · s stop after current
-        ? keys
+        Tab select · arrows panels · Enter go in
+        s stop after current · ? keys
       "
     `)
     },
@@ -1425,7 +1425,7 @@ describe("layouts", () => {
 
 
 
-        arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
     },
@@ -1466,7 +1466,7 @@ describe("layouts", () => {
 
 
 
-        arrows panels · Enter go in · q end the run · ? keys
+        Tab select · arrows panels · Enter go in · q end the run · ? keys
       "
     `)
     },
@@ -1531,7 +1531,7 @@ describe("layouts", () => {
 
 
         ■ ■ ■ ■  Winding down · 1 running, no new tickets
-        arrows panels · Enter go in · s keep taking tickets · ? keys
+        Tab select · arrows panels · Enter go in · s keep taking tickets · ? keys
       "
     `)
     },
@@ -1649,7 +1649,7 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
     ToMerge:
 
@@ -1672,7 +1672,7 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
     Merging:
 
@@ -1695,7 +1695,7 @@ test(
     │   rebasing onto batch/2026-10-20                                             │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
     Resolving:
 
@@ -1718,7 +1718,7 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
     Fixing:
 
@@ -1741,7 +1741,7 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
     Done:
 
@@ -1786,8 +1786,8 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · A answer questions
-      ? keys
+      Tab select · arrows panels · Enter go in · s stop after current
+      A answer questions · ? keys
 
     Waiting:
 
@@ -1833,7 +1833,7 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
     Review:
 
@@ -1856,7 +1856,7 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
     Blocked:
 
@@ -1879,7 +1879,7 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
     Stopped:
 
@@ -1902,7 +1902,7 @@ test(
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      arrows panels · Enter go in · s stop after current · ? keys
+      Tab select · arrows panels · Enter go in · s stop after current · ? keys
     "
   `)
     // Two frames a phase.

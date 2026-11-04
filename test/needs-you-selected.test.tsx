@@ -100,7 +100,7 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
       if (key === "tab") setup.mockInput.pressTab()
       else if (key === "enter") setup.mockInput.pressEnter()
       else if (key === "escape") await pressEscape(setup)
-      else if (key === "up" || key === "down") setup.mockInput.pressArrow(key)
+      else if (key === "up" || key === "down" || key === "left") setup.mockInput.pressArrow(key)
       else await setup.mockInput.typeText(key)
     }
   })
@@ -224,8 +224,9 @@ describe("a row you choose", () => {
 
   test("Esc from the table's top level lets go of it too", async () => {
     await scene(projected(two), wide, async ({ rendered }) => {
-      // Enter, ↓ on the Asked row, out to the panel, on round to Tickets at the top level.
-      await press(rendered, "enter", "down", "tab", "tab", "tab")
+      // Enter, ↓ on the Asked row, Tab round to the panel, out, and across to Tickets' top level.
+      await press(rendered, "enter", "down", "tab", "escape")
+      await press(rendered, "left")
       expect(panelOf(await rendered.capture())).toContain("Which flag name?")
       await press(rendered, "escape")
       expect(panelOf(await rendered.capture())).toContain("b-1 blocked: DIRTY_TREE")
@@ -296,7 +297,9 @@ describe("a row you choose", () => {
 
     test("going back into Tickets keeps it", async () => {
       await pushed(async ({ rendered }) => {
-        await press(rendered, "tab", "tab", "tab", "enter")
+        // No longer drawn, it is no stop of Tab's: on to the panel, out, across and back in.
+        await press(rendered, "tab", "escape")
+        await press(rendered, "left", "enter")
         expect(panelOf(await rendered.capture())).toContain("Question q-9")
       })
     })
@@ -417,7 +420,7 @@ describe("with no row that wants you", () => {
   test("Needs you isn't among the panels until there is a row to show", async () => {
     await scene(projected(done), wide, async ({ rendered }) => {
       await press(rendered, "tab")
-      // Tab goes on to Current: the panel's frame is no heavier for it.
+      // Tab has nowhere to go: the panel's frame is no heavier for it.
       const frame = await rendered.capture()
       const under = frame.chars.split("\n").findIndex((line) => line.includes("Up next")) + 1
       expect(frame.chars.split("\n")[under]).not.toContain("┏")

@@ -208,7 +208,7 @@ describe("the end-of-run box on a short dashboard", () => {
 
 
 
-        arrows panels · Enter go in · q end the run · ? keys
+        Tab select · arrows panels · Enter go in · q end the run · ? keys
 
       "
     `)

@@ -180,7 +180,7 @@ describe("frames", () => {
 
 
 
-        arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
   })
@@ -218,7 +218,7 @@ describe("frames", () => {
 
 
 
-        arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
   })
@@ -241,8 +241,8 @@ describe("frames", () => {
 
 
 
-        arrows panels · Enter go in · s stop after current
-        ? keys
+        Tab select · arrows panels · Enter go in
+        s stop after current · ? keys
       "
     `)
   })
@@ -256,7 +256,8 @@ describe("frames", () => {
       const lines = text.trim().split("\n")
       expect(lines[0]).toBe("✓ 1 · ↷ 1 ◆ 1 · ? 1 · ▶ 2/3 · queue 1 of 16 · 1 held back")
       const hint = lines.slice(1).filter((line) => line !== "")
-      expect(hint[0]).toContain("arrows panels · Enter go in · s stop after current")
+      expect(hint[0]).toContain("Tab select · arrows panels · Enter go in")
+      expect(hint.join(" ")).toContain("s stop after current")
       expect(hint.at(-1)).toContain("? keys")
       expect(hint.length).toBeLessThanOrEqual(2)
     }
