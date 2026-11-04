@@ -246,13 +246,17 @@ describe("a row you choose", () => {
     const urgent = entryOf("b-0", 10, dirty)
     // The last of 10 Asked rows chosen, then a Blocked ticket on top: it has no room left.
     const pushed = async (
-      body: (at: { readonly commands: Commands; readonly rendered: Rendered }) => Promise<void>,
+      body: (at: {
+        readonly view: Settable<RunView>
+        readonly commands: Commands
+        readonly rendered: Rendered
+      }) => Promise<void>,
     ) =>
       scene(projected(asks, { questions }), wide, async ({ view, commands, rendered }) => {
         await press(rendered, "enter", "up")
         expect(panelOf(await rendered.capture())).toContain("Question q-9")
         await merge(rendered, view, projected([...asks, urgent], { questions }))
-        await body({ commands, rendered })
+        await body({ view, commands, rendered })
       })
 
     test("stays, bumping the count only, until Esc", async () => {
@@ -270,6 +274,23 @@ describe("a row you choose", () => {
         await Bun.sleep(settle + 50)
         await press(rendered, "1")
         expect(taken(commands)).toMatchObject([{ question: "q-9", answer: "Use --flag" }])
+      })
+    })
+
+    test("goes back to automatic once answered", async () => {
+      await pushed(async ({ view, rendered }) => {
+        const answered = new Set(["q-9"])
+        await merge(rendered, view, projected([...asks, urgent], { questions, answered }))
+        expect(panelOf(await rendered.capture())).toContain("b-0 blocked: DIRTY_TREE")
+      })
+    })
+
+    test("goes back to automatic once merged", async () => {
+      await pushed(async ({ view, rendered }) => {
+        const rest = asks.filter((each) => each.ticket !== "a-9")
+        const done = entryOf("a-9", 9, merged)
+        await merge(rendered, view, projected([...rest, done, urgent], { questions }))
+        expect(panelOf(await rendered.capture())).toContain("b-0 blocked: DIRTY_TREE")
       })
     })
 

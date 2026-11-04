@@ -262,7 +262,7 @@ Tickets, and `Enter` on a `? for you` row opens `Shift+A`'s box at its question,
 box saying what clears it, and on any other a box with what the panel would say of it.
 
 Where there is no panel, `Enter` on **Needs you**, or a click on it, opens a list of what needs you,
-a line each, as the panel shows them one at a time: `? <question> <title>` for each question an Asked
+a line each: `? <question> <title>` for each question an Asked
 ticket waits on, `■ <ticket> blocked: <why>` for each Blocked ticket, then, faint, the open questions
 in the run's scope that no ticket in the run waits on. `↑`/`↓` choose, `Enter` or a click opens one:
 a question in `Shift+A`'s box at it, a Blocked ticket in a box saying what clears it, where `Enter`
