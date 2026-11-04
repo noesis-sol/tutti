@@ -256,7 +256,11 @@ export const dashboardLayout = (
   const { take, rest } = allot(height)
   const small = width < minWidth || height < minHeight
   const hintAt = (buttons: boolean, inside = focus.inside, card = highlighted) =>
-    hintLines(dashboardHint(view, buttons, card, inside), theme, width)
+    hintLines(
+      dashboardHint(view, buttons, card, inside, tabGoes(view, side.needs, small)),
+      theme,
+      width,
+    )
   // Below the minimum size and behind the end-of-run box no card's buttons are drawn.
   const drawnButtons = !small && view.endOfRun === null
   const allHint = hintAt(drawnButtons)
@@ -447,6 +451,8 @@ export interface DashboardAt {
   readonly highlighted: () => Card | undefined
   /** Whether the focus has gone into a panel, as the hint is drawn: the top level when left out. */
   readonly inside?: boolean
+  /** Whether `Tab` has somewhere to go, as the hint is drawn: tabGoes when left out. */
+  readonly tabGoes?: boolean
   /**
    * The panel beside the tickets table: whether a digit answers its question as the key is pressed,
    * and whether it shows a ticket Blocked on its merge conflict.
@@ -511,11 +517,15 @@ const tabRow: HelpRow = ["Tab, Shift+Tab", "select the cards and buttons, then w
 const denyRow: HelpRow = ["d, Shift+D", "deny the request; deny with a reason"]
 const pickRow: HelpRow = ["1–4, 1–9 on the panel", "pick a question's option"]
 
-/** Whether `Tab` has somewhere to go: a card drawn, or something that wants you. */
-const tabGoes = (view: RunView): boolean =>
-  (view.endOfRun === null && view.cards.length > 0) ||
-  view.needs.length > 0 ||
-  view.rows.some((row) => row.attention !== "rest")
+/**
+ * Whether `Tab` has somewhere to go, with `needs` not answered here: a card drawn, or something that
+ * wants you. Below the minimum size, only the totals' Needs you is drawn of them.
+ */
+const tabGoes = (view: RunView, needs: ReadonlyArray<Need>, small: boolean): boolean =>
+  needs.length > 0 ||
+  (!small &&
+    ((view.endOfRun === null && view.cards.length > 0) ||
+      wantingRows(view.rows, needs, view.needs).length > 0))
 
 /** Whether a ticket waits on your answer to a question: one Asked. */
 export const questionsWaiting = (view: RunView): boolean => view.totals.asked > 0
@@ -555,7 +565,7 @@ export const dashboardCommands = (
     {
       keys: ["tab"],
       run: () => act.tab(1),
-      hint: named(!inside && tabGoes(view), "Tab", "select"),
+      hint: named(!inside && (at.tabGoes ?? tabGoes(view, view.needs, false)), "Tab", "select"),
       help: tabRow,
     },
     { keys: ["shift+tab"], run: () => act.tab(-1), help: tabRow },
@@ -669,18 +679,21 @@ export const dashboardCommands = (
 
 /**
  * The dashboard's hint, `highlighted`'s card highlighted (the target's when left out), where
- * `buttons` a request's buttons drawn, and `inside` a panel or at the top level.
+ * `buttons` a request's buttons drawn, `inside` a panel or at the top level, and where `Tab` has
+ * somewhere to go, as tabGoes says when left out.
  */
 export const dashboardHint = (
   view: RunView,
   buttons: boolean,
   highlighted: string | null = targetOf(view),
   inside = false,
+  tabs = tabGoes(view, view.needs, false),
 ): ReadonlyArray<Key> =>
   hintOf(
     dashboardCommands(view, {
       buttons,
       inside,
+      tabGoes: tabs,
       highlighted: () => view.cards.find((card) => card.ticket === highlighted),
     }),
   )
@@ -714,6 +727,9 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   // Which panel the keys are on, and whether they have gone into it (panelFocus.ts). It is key
   // state, as all of these, so that keys arriving together each see the one before them.
   const [focus, setFocus, focusState] = useKeyState<Focus>(() => kept.current.focus)
+  // Whether Tab brought the focus to the totals' cell, which has no inside: Tab goes on from there,
+  // and starts over from a cell the arrows came to, as from any panel.
+  const [, setTabbedToCell, tabbedToCell] = useKeyState(() => false)
   // The panel above Current the focus last left, where ↑ goes back to.
   const [upper, setUpper, upperNow] = useKeyState<Panel>(() => kept.current.upper)
   // The highlight names a ticket; a card that has gone takes it with it.
@@ -896,6 +912,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     if (from !== "current") setUpper(() => from)
     if (from === "current" && (panel !== "current" || !inside)) answering.reset()
     if (from !== panel || !inside) setChoice(() => 0)
+    if (panel !== "cell") setTabbedToCell(() => false)
     setFocus(() => ({ panel, inside }))
   }
   // The list of what needs you, where there is no panel.
@@ -1020,10 +1037,11 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     const rowSize = layout._tag === "Cards" ? layout.across : 1
     choose(cards[gridMove(cards.length, rowSize, at, direction)]?.ticket ?? null)
   }
-  // Tab's order, as it comes (panelFocus.ts): the cards, unless the end-of-run box has their place,
-  // what the panel shows or the totals' cell, then the rows drawn that want you.
+  // Tab's order, as it comes (panelFocus.ts): the cards drawn, none below the minimum size or where
+  // the end-of-run box has their place, what the panel shows or the totals' cell, then the rows drawn
+  // that want you.
   const tabStops = (): ReadonlyArray<TabStop> => [
-    ...(ending === null
+    ...(ending === null && !small
       ? cards.map((card) => ({ panel: "current" as const, ticket: card.ticket }))
       : []),
     ...(filled.includes("needs") ? [{ panel: "needs" as const, ticket: null }] : []),
@@ -1033,10 +1051,10 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
       ticket: each.ticket,
     })),
   ]
-  // The stop the keys are on. The cell has no inside, so that the focus on it is at its stop.
+  // The stop the keys are on: none at the top level, but the cell Tab came to.
   const tabStopNow = (): TabStop | null => {
     const { panel, inside } = focusNow()
-    if (panel === "cell") return { panel, ticket: null }
+    if (panel === "cell" && tabbedToCell()) return { panel, ticket: null }
     if (!inside) return null
     const ticket = panel === "current" ? current() : panel === "tickets" ? rowNow() : null
     return { panel, ticket }
@@ -1049,6 +1067,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     if (stop === undefined) return
     if (stop.panel === "current") choose(stop.ticket)
     if (stop.panel === "tickets") setRow(() => stop.ticket as TicketId)
+    if (stop.panel === "cell") setTabbedToCell(() => true)
     focusOn(stop.panel, stop.panel !== "cell")
   }
   const enter = () => {
@@ -1083,6 +1102,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
           if (helpOpen()) return showHelp(false)
           const { panel, inside } = focusNow()
           if (inside) focusOn(panel, false)
+          setTabbedToCell(() => false)
           // Out of the table, the panel goes back to selecting by itself.
           if (panel === "tickets") setRow(() => null)
         },

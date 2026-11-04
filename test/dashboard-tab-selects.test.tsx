@@ -295,6 +295,17 @@ describe("Tab at the top level", () => {
     })
   })
 
+  test("starts at the first card from a totals' Needs you the arrows came to", async () => {
+    await scene(wanting(2), narrow, async ({ rendered }) => {
+      await press(rendered, "up")
+      expect(lit(await rendered.capture(), "Needs you")).toBe(true)
+      await press(rendered, "tab")
+      const frame = await rendered.capture()
+      expect(heavyOn(frame, "w-1")).toBe(true)
+      expect(pointed(frame, "b-1")).toBe(false)
+    })
+  })
+
   test("Enter then opens the card, in one press", async () => {
     await scene(quiet(2), narrow, async ({ commands, rendered }) => {
       await press(rendered, "tab", "enter")
@@ -418,6 +429,15 @@ describe("Tab past the last card", () => {
     })
   })
 
+  test("Esc on the totals' Needs you it came to, and Tab starts over", async () => {
+    await scene(wanting(1), narrow, async ({ rendered }) => {
+      await press(rendered, "tab", "tab", "escape")
+      expect(lit(await rendered.capture(), "Needs you")).toBe(true)
+      await press(rendered, "tab")
+      expect(heavyOn(await rendered.capture(), "w-1")).toBe(true)
+    })
+  })
+
   test("a row Tab reached opens as any row does", async () => {
     await scene(wanting(0), wide, async ({ rendered }) => {
       await press(rendered, "tab", "tab", "enter")
@@ -491,6 +511,68 @@ describe("Tab with no cards", () => {
       await press(rendered, "shift+tab")
       expect((await rendered.capture()).chars).toBe(before.chars)
       expect(taken(commands)).toEqual([])
+    })
+  })
+
+  test("once the only question is answered here, does nothing, and the hint doesn't name it", async () => {
+    await scene(asking(0), wide, async ({ commands, rendered }) => {
+      expect(hintOf(await rendered.capture())).toContain("Tab select")
+      await Bun.sleep(settle + 50)
+      await press(rendered, "1")
+      expect(taken(commands)).toMatchObject([{ question: "q-1", answer: "Use --flag" }])
+      const before = await rendered.capture()
+      expect(hintOf(before)).not.toContain("Tab select")
+      await press(rendered, "tab")
+      expect((await rendered.capture()).chars).toBe(before.chars)
+    })
+  })
+
+  describe("below the minimum size, which draws none", () => {
+    const small = { width: 50, height: 20 }
+
+    test("goes to the totals' Needs you, not a hidden card", async () => {
+      await scene(wanting(2), small, async ({ commands, rendered }) => {
+        expect((await rendered.capture()).chars).toContain("Tab select")
+        await press(rendered, "tab")
+        const frame = await rendered.capture()
+        expect(frame.chars).toContain("Enter go in")
+        expect(frame.chars).not.toContain("Esc back")
+        expect(taken(commands)).toEqual([])
+        await press(rendered, "enter")
+        expect(taken(commands).some((command) => command._tag === "OpenWorker")).toBe(false)
+      })
+    })
+
+    test("does nothing with nothing needing you, though workers run, and isn't named", async () => {
+      await scene(quiet(2), small, async ({ commands, rendered }) => {
+        expect((await rendered.capture()).chars).not.toContain("Tab select")
+        await press(rendered, "tab")
+        expect((await rendered.capture()).chars).toContain("arrows panels")
+        await press(rendered, "shift+tab")
+        expect((await rendered.capture()).chars).toContain("arrows panels")
+        expect(taken(commands)).toEqual([])
+      })
+    })
+
+    test("a row only set aside is no stop, as the table isn't drawn, and isn't named", async () => {
+      const aside = TicketPhase.Deferred({ why: "by the worker" })
+      await scene(projected([entryOf("s-1", 0, aside, null)]), small, async ({ rendered }) => {
+        const before = await rendered.capture()
+        expect(before.chars).not.toContain("Tab select")
+        await press(rendered, "tab")
+        expect((await rendered.capture()).chars).toBe(before.chars)
+      })
+    })
+
+    test("beside the end-of-run box too", async () => {
+      const ended = { ...quiet(1), endOfRun: [{ ticket: "w-1", asks: ["a question"] }] }
+      await scene(ended, small, async ({ commands, rendered }) => {
+        await press(rendered, "tab")
+        const frame = await rendered.capture()
+        expect(frame.chars).not.toContain("Tab select")
+        expect(frame.chars).not.toContain("Esc back")
+        expect(taken(commands)).toEqual([])
+      })
     })
   })
 

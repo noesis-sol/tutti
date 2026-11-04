@@ -185,13 +185,7 @@ describe("the dashboard's hint", () => {
     expect(laid.small).toBe(true)
     expect(laid.hint.length).toBeGreaterThan(1)
     const foot = footOf(await draw(viewOf(1), size), size.height, laid.hint.length)
-    for (const key of [
-      "Tab select",
-      "arrows panels",
-      "Enter go in",
-      "s stop after current",
-      "? keys",
-    ]) {
+    for (const key of ["arrows panels", "Enter go in", "s stop after current", "? keys"]) {
       expect(foot).toContain(key)
     }
     expect(foot).not.toContain("a allow")
