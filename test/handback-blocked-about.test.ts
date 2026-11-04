@@ -183,6 +183,7 @@ describe("a ticket blocked on its conflict", () => {
     expect(kept?.reason).toBe(
       `not handed back to its worker: resolving conflicts is turned off; main moved on as ${head.slice(0, 7)} merged`,
     )
+    expect(kept?.handBacksOff).toBe(true)
   })
 })
 

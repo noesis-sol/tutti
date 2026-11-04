@@ -70,6 +70,7 @@ describe("what Needs you says of a conflict", () => {
       "Run git rebase trunk in /wt/fab-mgi.7.9 to take it up yourself.",
       "Its rebase onto trunk conflicts in loop.ts, cli.test.ts.",
       "Press h to hand it back to its worker, with one more hand-back.",
+      "The run takes it back once its branch has moved on, its worktree is clean and it rebases cleanly.",
       "Set aside: 2 hand-backs used; main moved on as fab-mgi.7.7 merged.",
       "The run's end labels it unmerged; the next run checks and merges it once it rebases cleanly.",
     ])
@@ -79,7 +80,7 @@ describe("what Needs you says of a conflict", () => {
     expect(textOf()).toContain("Press h to hand it back")
     expect(textOf()).not.toContain("'Hand it the conflict now'")
     const waits = textOf({ handBack: true })
-    expect(waits).toContain("'Hand it the conflict now' in its worker view hands it over")
+    expect(waits).toContain("Press h, or 'Hand it the conflict now' in its worker view")
     expect(waits).toContain("git rebase trunk in /wt/fab-mgi.7.9")
     expect(waits).toContain("An overnight run doesn't wait for it")
     expect(waits).toContain("press q")
@@ -306,7 +307,7 @@ describe("the panel's cut text", () => {
 
 describe("Enter on a panel that shows it all", () => {
   test("opens its worker view at once", async () => {
-    const each = entry({ about: undefined })
+    const each = entry({ phase: TicketPhase.Blocked({ why: "DIRTY_TREE" }), about: undefined })
     await dashboard(each, { width: 140, height: 44 }, async (rendered, commands) => {
       await rendered.input((setup) => setup.mockInput.pressTab())
       const frame = await rendered.capture()

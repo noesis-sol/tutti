@@ -549,6 +549,8 @@ export type Need = Data.TaggedEnum<{
     readonly handBack: boolean
     /** What stopped its merge, sanitised; null where the ledger has nothing of it. */
     readonly about: BlockedAbout | null
+    /** What the run is doing: only one going on takes a conflict fixed by hand back (§ 5 item 8). */
+    readonly run: RunGoes
   }
 }>
 
@@ -710,6 +712,14 @@ export const resumesAt = (
   ledger: Pick<State, "windDown">,
   status: Pick<Status, "stopping">,
 ): string => (ledger.windDown === null && !status.stopping ? "the next free slot" : "the next run")
+
+/** Whether the run goes on, winds down or holds a stop, as a Blocked ticket's need says of it. */
+export type RunGoes = "on" | "windingDown" | "stopping"
+
+export const runGoes = (
+  ledger: Pick<State, "windDown">,
+  status: Pick<Status, "stopping">,
+): RunGoes => (status.stopping ? "stopping" : ledger.windDown === null ? "on" : "windingDown")
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -1010,6 +1020,7 @@ const textsOf = (entry: Entry) => {
 
 /** What stopped a ticket's merge, its worktree, files and reason sanitised (§ 7.2). */
 const sanitisedAbout = (about: BlockedAbout): BlockedAbout => ({
+  ...about,
   worktree: sanitizeLine(about.worktree),
   files: about.files.map(sanitizeLine),
   reason: sanitizeLine(about.reason),
@@ -1084,6 +1095,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const blocked: Array<Need> = []
   const answered: Array<QueueRow> = []
   const resumes = resumesAt(ledger, status)
+  const run = runGoes(ledger, status)
   const cards: Array<Card> = []
   const resources: Array<Resources> = []
   for (const entry of ledger.tickets.values()) {
@@ -1119,7 +1131,16 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       const about = entry.about === undefined ? null : sanitisedAbout(entry.about)
       const handBack = handBackWaits(entry)
       blocked.push(
-        Need.Blocked({ ticket: entry.ticket, label, title, why, base: branch, handBack, about }),
+        Need.Blocked({
+          ticket: entry.ticket,
+          label,
+          title,
+          why,
+          base: branch,
+          handBack,
+          about,
+          run,
+        }),
       )
     }
     if (phaseFacts[phase._tag].inQueue) {

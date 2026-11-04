@@ -115,6 +115,8 @@ export interface BlockedAbout {
   readonly files: ReadonlyArray<string>
   /** Why it was left so: `2 hand-backs used; main moved on as t-1 merged`. */
   readonly reason: string
+  /** The settings turn hand-backs off: `h` tries its merge again, and no worker takes it. */
+  readonly handBacksOff?: boolean
 }
 
 /** A ticket's time and hand-backs in the run. Times are epoch milliseconds. */

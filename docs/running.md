@@ -1142,6 +1142,13 @@ said once (`… but still conflicts with main in <files>; it stays blocked`). A 
 `unmerged` on its conflict is taken back the same way by a later run. None is while the run holds or
 winds down, or while a solo ticket runs or is next.
 
+`h`, in [Needs you](dashboard.md#what-needs-you-in-any-pane) or the ticket's worker view, doesn't wait
+for that: it puts the ticket back in the merge queue at once, with one more hand-back allowed. A branch
+that rebases cleanly just merges; one that conflicts goes to its worker. A worktree you are still
+working in stays as it is, and the log says so. A steered worker's hand-back waiting is never taken
+back: `h` or **Hand it the conflict now** hands it over, your fixed branch merging if it rebases
+cleanly.
+
 **A ticket merged by hand during the run.** You may merge a ticket set aside or blocked yourself
 while the run goes on. Each time the base moves on, and once more as the run ends, the run asks git
 of each ticket closed but not merged, as it does of those left `unmerged` as it starts. One on the

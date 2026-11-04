@@ -304,6 +304,8 @@ export interface NotHandedBack {
   readonly waits: boolean
   /** What Needs you says in place of `why`: `2 hand-backs used` (§ 7.2). */
   readonly brief?: string
+  /** The settings turn hand-backs off, so none comes of asking for one (§ 4.3). */
+  readonly off?: boolean
 }
 
 /** Why a ticket you fixed by hand isn't handed back (HandBacks' takeUp). */
@@ -346,9 +348,10 @@ export const toHandBack = (
     const ledger = yield* Ledger
     const { id } = stop.ticket
     const not = (why: string, waits = false) => Result.fail({ why, waits })
-    if (!config.settings.merge.resolve_conflicts) return not("resolving conflicts is turned off")
+    const off = (why: string) => Result.fail({ why, waits: false, off: true })
+    if (!config.settings.merge.resolve_conflicts) return off("resolving conflicts is turned off")
     if (config.settings.checks.fast.command === null) {
-      return not("there is no check command in .tutti/settings.json to check a resolution with")
+      return off("there is no check command in .tutti/settings.json to check a resolution with")
     }
     const handedBack = yield* handBacks.count(id)
     const used = (why: string) =>
@@ -446,7 +449,8 @@ const movedOnBy = (
 
 /**
  * Blocks the ticket on its conflicts (MERGE_CONFLICT), saying why (`brief`, in place of `why`, for
- * Needs you): by Block from Merging or Resolving, by Aside from Fixing{afterResolution}.
+ * Needs you, with `off` where the settings turn hand-backs off): by Block from Merging or Resolving,
+ * by Aside from Fixing{afterResolution}.
  */
 const block = (
   stop: RebaseStop,
@@ -454,6 +458,7 @@ const block = (
   why: string,
   by: "Block" | "Aside" = "Block",
   brief: string = why,
+  off = false,
 ) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
@@ -466,6 +471,7 @@ const block = (
       worktree: stop.ticket.worktree,
       files,
       reason: moved === undefined ? brief : `${brief}; ${moved}`,
+      ...(off ? { handBacksOff: true } : {}),
     }
     const move =
       by === "Block"
@@ -514,7 +520,8 @@ export const notHandedBack = (
       yield* (yield* Ledger).handBackWaits(stop.ticket.id)
     }
     const why = `not handed back to its worker: ${not.why}${left}`
-    yield* block(stop, options, why, "Block", not.brief === undefined ? why : `${not.brief}${left}`)
+    const brief = not.brief === undefined ? why : `${not.brief}${left}`
+    yield* block(stop, options, why, "Block", brief, not.off === true)
   })
 
 /**

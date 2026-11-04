@@ -217,13 +217,25 @@ description as fits and its options, the recommended one first; or a Blocked tic
 clears it. `Tab` past the last card moves the highlight onto the panel, its frame heavy: there `↑`
 and `↓` move between the options and `Other…`, `Enter` or `1`–`9` answer with an option, as
 `Shift+A`'s box does, and `Enter` on `Other…` opens that box at the question to read it all or type
-your own; on a Blocked ticket `Enter` opens its worker view. `]` and `[` go to the next or previous
-of what needs you. A click on an option answers with it, and one on the title or a cut description
+your own; on a Blocked ticket `Enter` opens its worker view, and on one blocked on its merge conflict
+`h` hands it back to its worker. `]` and `[` go to the next or previous of what needs you. A click on an option answers with it, and one on the title or a cut description
 opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
 half a second. An answered question leaves the panel and **Needs you** at once, and the answer wakes
 the run, which takes its ticket back. With no slot free, its row says `↻ answered` until one is, and
 Up next lists it first, `answered · the next free slot`, or `the next run` in a run winding down or
 stopping. A narrower pane has no panel.
+
+**What a conflict says.** A ticket blocked with `MERGE_CONFLICT` says what to run in its worktree, the
+files in conflict, why it was set aside and what comes next, with the two ways out: `h`, to hand it
+back to its worker with one more hand-back, or your own `git rebase`, which the run
+[takes back](running.md#the-merge-queue) once its branch has moved on, its worktree is clean and it rebases
+cleanly. A steered worker's hand-back waiting says `h` too, or **Hand it the conflict now**; the run
+leaves that one to you, so a branch you fixed is merged by `h`, not taken back. While the run winds
+down or is stopping it takes nothing back, and the text says so: the run's end labels the ticket
+`unmerged`, and the next run checks and merges it once it rebases cleanly. A stopping run doesn't
+offer `h` either, as its merge may not come. With hand-backs off
+(`"merge": { "resolve_conflicts": false }`, or no check command) `h` only tries its merge again, and
+says that.
 
 ### What needs you, in any pane
 
@@ -238,7 +250,7 @@ a line each, as the panel shows them one at a time: `? <question> <title>` for e
 ticket waits on, `■ <ticket> blocked: <why>` for each Blocked ticket, then, faint, the open questions
 in the run's scope that no ticket in the run waits on. `↑`/`↓` choose, `Enter` or a click opens one:
 a question in `Shift+A`'s box at it, a Blocked ticket in a box saying what clears it, where `Enter`
-opens its worker view. Once the question is answered, or the box closed, you are back in the list,
+opens its worker view and, on one blocked on its merge conflict, `h` hands it back. Once the question is answered, or the box closed, you are back in the list,
 the next one chosen; `Esc` closes it. With nothing in it once the questions are read, the list
 says `Nothing needs you`, faint, for 2 seconds, then closes by itself; `Esc`, `Enter` or a click
 anywhere closes it sooner, and something that comes to need you meanwhile is listed and keeps it
@@ -416,7 +428,9 @@ When the run ends, the dashboard closes and the main screen gets:
 - **Interrupting.** `Ctrl+X` asks `Interrupt <id>'s turn?`; `y` stops the worker's turn, cancels the
   messages still queued and its background tasks, and steers it.
 - **A hand-back waiting.** A steered worker isn't handed a conflict or a failing check. The view
-  says `A merge conflict waits for this worker` with **Hand it the conflict now**.
+  says `A merge conflict waits for this worker` with **Hand it the conflict now**, which `h` presses.
+- **A conflict set aside.** A ticket left blocked on its merge conflict, with no hand-back waiting,
+  says `Its merge conflict is set aside` with **Hand it back once more**, which `h` presses.
 - **A question waiting.** Once its worker has filed a question and finished, the ticket waits on
   it (`? for you`): the line over the composer has **Answer**, and `Shift+A` does the same, opening
   the dashboard's questions box at that question.
@@ -441,6 +455,7 @@ open its card (`Tab`, then `Enter`).
 | `q` | end the run, while the end-of-run box shows | |
 | `i` | | focus the composer |
 | `t` | | open or close the whole ticket |
+| `h` | on Needs you, for a ticket blocked on its merge conflict: hand it back | the same, for the ticket in view |
 | `Ctrl+X` | | interrupt the worker's turn (asks first) |
 | `Ctrl+R` | | release a steered worker |
 | the wheel, `PgUp`, `PgDn` | | scroll the transcript, or the whole ticket while it is open |

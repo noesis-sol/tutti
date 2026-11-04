@@ -110,6 +110,7 @@ const blockedFields = {
   base: "main",
   about: null,
   handBack: false,
+  run: "on" as const,
 }
 const button = "[ Hand it back once more ]"
 

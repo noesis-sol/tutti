@@ -14,7 +14,7 @@
 // A narrower pane has no panel, and the table its whole width, as before.
 import { afterParts } from "../run/after.ts"
 import { someFiles } from "../run/merge.ts"
-import { isConflict, type Need, type QueueRow, type Totals } from "../run/runView.ts"
+import { isConflict, type Need, type QueueRow, type RunGoes, type Totals } from "../run/runView.ts"
 import { type Border, boxed, cut, fit, padded, type Segments, seg, wrap } from "./line.tsx"
 import { marks } from "./marks.ts"
 import { queueDivider } from "./Totals.tsx"
@@ -151,9 +151,26 @@ export interface PanelAt {
   readonly choice: number
 }
 
-/** What comes of a ticket left on its conflict: nothing in the run takes it up again. */
+type Blocked = Extract<Need, { _tag: "Blocked" }>
+
+/** What comes of a ticket left on its conflict that nothing takes up meanwhile. */
 const afterConflict =
   "The run's end labels it unmerged; the next run checks and merges it once it rebases cleanly."
+
+/** Whether the run takes it back, fixed by hand (§ 5 item 8): none while it winds down or stops. */
+const ifFixed: Record<RunGoes, string> = {
+  on: "The run takes it back once its branch has moved on, its worktree is clean and it rebases cleanly.",
+  windingDown: "The run is winding down, so it takes nothing back.",
+  stopping: "The run is stopping, so it takes nothing back.",
+}
+
+/** What `h` does for a ticket left on its conflict with no hand-back waiting; null where it can't. */
+const handBackOffer = ({ about, run }: Blocked): string | null =>
+  run === "stopping"
+    ? null
+    : about?.handBacksOff === true
+      ? "Press h to try its merge again: hand-backs are off, so no worker takes it should it conflict."
+      : "Press h to hand it back to its worker, with one more hand-back."
 
 /** What comes of a ticket whose merge stopped the merges: the run holds, then ends (§ 5 item 10). */
 const afterStop =
@@ -170,13 +187,21 @@ const briefly = (reason: string): string => {
     : `${chars.slice(0, reasonLimit).join("")}… (the log has it all)`
 }
 
+/** What the panel's foot says of `h`, by what it does for `need`. */
+const handBackKey = (need: Blocked): string => {
+  if (!isConflict(need) || (!need.handBack && need.run === "stopping")) return ""
+  return !need.handBack && need.about?.handBacksOff === true
+    ? " · h tries its merge again"
+    : " · h hands it back"
+}
+
 /**
  * What a Blocked ticket's need says, a paragraph each, what to do first, as a short panel cuts the
  * end: what to run, the worktree, the first files, why it is so and what comes next. A hand-back is
- * offered only where an action does it: 'Hand it the conflict now' for a steered worker's, `h` for
- * one left on its conflict (§ 4.3).
+ * offered only where an action does it: `h` or 'Hand it the conflict now' for a steered worker's, `h`
+ * for one left on its conflict (§ 4.3), which the run also takes back, fixed by hand (§ 5 item 8).
  */
-export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArray<string> => {
+export const clearsOf = (need: Blocked): ReadonlyArray<string> => {
   const { base, about, handBack } = need
   const rebase = `git rebase ${base} in ${about?.worktree ?? "its worktree"}`
   const reason = about === null ? null : briefly(about.reason)
@@ -184,6 +209,7 @@ export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArra
   switch (need.why) {
     case "MERGE_CONFLICT": {
       const files = about?.files ?? []
+      const offer = handBackOffer(need)
       const conflict =
         files.length > 0
           ? `Its rebase onto ${base} conflicts in ${someFiles(files)}.`
@@ -192,8 +218,8 @@ export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArra
             : `Its branch can't merge onto ${base}.`
       return handBack
         ? [
-            "'Hand it the conflict now' in its worker view hands it over: you steered its worker, so its conflict's hand-back waits for you.",
-            `Or run ${rebase} to take it up yourself.`,
+            "Press h, or 'Hand it the conflict now' in its worker view, to hand it over: you steered its worker, so its conflict's hand-back waits for you.",
+            `Or run ${rebase} to take it up yourself, then press h: it merges once it rebases cleanly.`,
             conflict,
             "An overnight run doesn't wait for it; any other waits at its end until you hand it over, release its worker or press q.",
             afterConflict,
@@ -201,7 +227,8 @@ export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArra
         : [
             `Run ${rebase} to take it up yourself.`,
             conflict,
-            "Press h to hand it back to its worker, with one more hand-back.",
+            ...(offer === null ? [] : [offer]),
+            ifFixed[need.run],
             ...(reason === null ? [] : [`Set aside: ${reason}.`]),
             afterConflict,
           ]
@@ -230,11 +257,7 @@ export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArra
  * Whether a panel `width` wide and `lines` tall cuts what clears `need`: its Enter then opens the
  * box saying all of it (Box.Blocked), rather than the worker view.
  */
-export const blockedCut = (
-  need: Extract<Need, { _tag: "Blocked" }>,
-  width: number,
-  lines: number,
-): boolean => {
+export const blockedCut = (need: Blocked, width: number, lines: number): boolean => {
   const inner = Math.max(width - 4, 1)
   const height = (text: string, limit?: number) =>
     wrap([seg(text, null)], inner, limit === undefined ? {} : { limit }).length
@@ -331,7 +354,7 @@ export const needsLines = (
     const spare = room - 2
     const titled = !short || spare - title.length >= (paragraphs[0]?.length ?? 0) ? title : []
     const clears = paragraphs.flat()
-    const handsBack = isConflict(need) ? " · h hands it back" : ""
+    const handsBack = handBackKey(need)
     const keys = !short
       ? at.focused
         ? `Enter opens its worker view${handsBack}`
