@@ -68,7 +68,8 @@ export const rebasedByHand = (
       const fork = yield* Effect.result(git.mergeBase(repo, base, branch))
       if (Result.isFailure(fork) || fork.success === aside.fork) continue
       if ((yield* stillWorkedIn(aside.ticket)) !== undefined) continue
-      yield* queue.handBacks.takeAside(id)
+      // `h` may have taken it up while git was read: it isn't put back twice.
+      if ((yield* queue.handBacks.takeAside(id)) === undefined) continue
       // Said before the queue can take it up, so its merge's lines come after.
       yield* info(
         detail`${branch} was rebased by hand: ${id} is back in the merge queue, to be checked and merged onto ${base}`,

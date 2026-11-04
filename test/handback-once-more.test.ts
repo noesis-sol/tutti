@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { makeHandBacks, maxHandBacks } from "../src/run/handback.ts"
+import { rebasedByHand } from "../src/run/handRebased.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
@@ -187,6 +188,18 @@ describe("handed back once more", () => {
     ])
   })
 
+  test("a resolution left undone is set aside too: handed back, its worker resolves it", async () => {
+    const ran = await blocked(
+      settings(true),
+      (world) => ({
+        a: [finishedSession(turn([])), turn([resolving(world, { "a.txt": "both\n" })])],
+      }),
+      (queue) => Effect.andThen(sessionClosed, handBackNow(a, queue, options)),
+    )
+    expect(phaseIn(ran)).toEqual(expect.objectContaining({ _tag: "Done" }))
+    expect(attempts(ran)).toEqual([1, 2])
+  })
+
   test("a branch you rebased meanwhile just merges, with nothing sent to its worker", async () => {
     const ran = await blocked(
       settings(false),
@@ -250,6 +263,48 @@ describe("a branch rebased by hand while the run goes on", () => {
           yield* rebaseByHand(false)
           yield* queue.recheck
           expect((yield* phaseOf)._tag).toBe("Blocked")
+        }),
+    )
+    expect(phaseIn(ran)._tag).toBe("Blocked")
+  })
+})
+
+describe("a worktree with uncommitted changes to tracked files", () => {
+  test("is left alone by the look and by `h`, and merges once it is clean", async () => {
+    const ran = await blocked(
+      settings(false),
+      () => ({ a: [finishedSession()] }),
+      (queue) =>
+        Effect.gen(function* () {
+          const repository = yield* Repository
+          yield* rebaseByHand(true)
+          yield* repository.write(worktreeOf("a"), { "a.txt": "not done yet\n" })
+          yield* queue.recheck
+          expect((yield* phaseOf)._tag).toBe("Blocked")
+          expect(yield* handBackNow(a, queue, options)).toBe(false)
+          expect((yield* phaseOf)._tag).toBe("Blocked")
+          yield* repository.write(worktreeOf("a"), { "a.txt": "by hand\n" })
+          yield* queue.recheck
+        }),
+    )
+    expect(phaseIn(ran)).toEqual(expect.objectContaining({ _tag: "Done" }))
+    expectLog(ran, [
+      /a stays blocked though you handed it back: its worktree .* uncommitted changes/,
+    ])
+  })
+})
+
+describe("the look and `h` at once", () => {
+  test("a ticket `h` took up as the look read git isn't put back twice", async () => {
+    const ran = await blocked(
+      settings(false),
+      () => ({ a: [finishedSession()] }),
+      (queue) =>
+        Effect.gen(function* () {
+          yield* rebaseByHand(true)
+          const taken = { ...queue.handBacks, takeAside: () => Effect.succeed(undefined) }
+          const back = yield* rebasedByHand({ offer: queue.offer, handBacks: taken }, options)
+          expect(back).toEqual([])
         }),
     )
     expect(phaseIn(ran)._tag).toBe("Blocked")

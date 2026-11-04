@@ -213,6 +213,40 @@ describe("Needs you beside the tickets table", () => {
   })
 })
 
+describe("the box Needs you's list opens, on a pane with no panel", () => {
+  const narrow = { width: 100, height: 34 }
+  const open = async (rendered: Rendered, line: string) => {
+    await until(rendered, (now) => now.chars.includes("Needs you"))
+    await rendered.input((setup) => {
+      setup.mockInput.pressTab()
+      setup.mockInput.pressEnter()
+    })
+    await until(rendered, (now) => now.chars.includes(line))
+    await rendered.input((setup) => setup.mockInput.pressEnter())
+    return until(rendered, (now) => now.chars.includes("open its worker view"))
+  }
+
+  test("`h` hands back a ticket blocked on its merge conflict", async () => {
+    await scene(Screen.Dashboard(), "MERGE_CONFLICT", narrow, async ({ commands, rendered }) => {
+      const frame = await open(rendered, "■ t-1 blocked: MERGE_CONFLICT")
+      expect(frame.chars).toContain("h hand it back")
+      taken(commands)
+      await rendered.input((setup) => setup.mockInput.typeText("h"))
+      expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: t1 })])
+    })
+  })
+
+  test("blocked on anything else, it has no `h`", async () => {
+    await scene(Screen.Dashboard(), "DIRTY_TREE", narrow, async ({ commands, rendered }) => {
+      const frame = await open(rendered, "■ t-1 blocked: DIRTY_TREE")
+      expect(frame.chars).not.toContain("hand it back")
+      taken(commands)
+      await rendered.input((setup) => setup.mockInput.typeText("h"))
+      expect(taken(commands)).toEqual([])
+    })
+  })
+})
+
 function viewless() {
   return { tickets: new Map([[t1, entry("MERGE_CONFLICT")]]), rows: 1, windDown: null, bugs: [] }
 }
