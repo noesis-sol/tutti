@@ -289,8 +289,8 @@ export interface Totals {
 
 /**
  * What a row wants of you, which places it in the dashboard's tickets table (§ 5.1): `blocked`; or
- * `asked`, a question or a request of its worker's; `setAside`, left undone with nothing asked of
- * you; or `rest`.
+ * `asked`, a question not answered yet or a request of its worker's; `setAside`, left undone with
+ * nothing asked of you; or `rest`, an Asked ticket whose question is answered among them.
  */
 export type Attention = "blocked" | "asked" | "setAside" | "rest"
 
@@ -1143,7 +1143,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           ...(slotOnly ? answeredRow : rowStatus(phase, activity)),
           note: noteOf(entry, title, branch, status, resumes),
           verdict: verdict === null ? null : sanitizeLine(verdict),
-          attention: attentionOf(phase, activity),
+          attention: slotOnly ? "rest" : attentionOf(phase, activity),
           since: entry.since,
         },
       })

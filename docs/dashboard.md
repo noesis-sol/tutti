@@ -149,7 +149,7 @@ comes first, whenever it came:
 1. `■ blocked`, oldest first: the one waiting longest has cost the most.
 2. What waits on your answer, `? for you`, `■ allow?` and `■ answer?`, oldest first.
 3. What is set aside, `↷ deferred`, `! review` and `■ stopped`, newest first.
-4. The rest, `✓ done` and the like, newest first.
+4. The rest, `✓ done` and the like, and `↻ answered`, which asks nothing of you, newest first.
 
 A row changes as the ticket moves through its phases, and moves with it to its group:
 
