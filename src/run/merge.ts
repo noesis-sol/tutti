@@ -120,6 +120,7 @@ import {
   type RebaseStop,
   takenUpByYou,
   toHandBack,
+  whyHandBacksOff,
 } from "./handback.ts"
 import { type Entry, Ledger } from "./ledger.ts"
 import { type Arg, branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
@@ -333,12 +334,17 @@ const closedBut =
 
 /**
  * The ticket can't merge until you act, for `reason`: Merging → Blocked, with `record` and its line
- * beside it.
+ * beside it; `off` where the settings turn hand-backs off.
  */
-const block = (ticket: FinishedTicket, why: string, reason: string, record: Said) =>
+const block = (ticket: FinishedTicket, why: string, reason: string, record: Said, off = false) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const about = { worktree: ticket.worktree, files: [], reason }
+    const about = {
+      worktree: ticket.worktree,
+      files: [],
+      reason,
+      ...(off ? { handBacksOff: true } : {}),
+    }
     yield* ledger.transition(ticket.id, Move.Block({ why }), { about, said: [record] })
   })
 
@@ -1145,14 +1151,16 @@ export const keptChanging = (
       ticket,
       Tag.mergeConflict,
     )`${what} while its checks ran (commits made by hand?); worktree ${ticket.worktree} left for review`
-    yield* block(ticket, Tag.mergeConflict, line`${what} while its checks ran`, {
+    const off = whyHandBacksOff(yield* AppConfig) !== undefined
+    const record: Said = {
       kind: "warn",
       ticket: ticket.id,
       aside: true,
       detail: what,
       blocked: what,
       text,
-    })
+    }
+    yield* block(ticket, Tag.mergeConflict, line`${what} while its checks ran`, record, off)
     return Prepared.Over({})
   })
 

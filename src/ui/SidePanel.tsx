@@ -165,8 +165,8 @@ const ifFixed: Record<RunGoes, string> = {
 }
 
 /** What `h` does for a ticket left on its conflict with no hand-back waiting; null where it can't. */
-const handBackOffer = ({ about, run }: Blocked): string | null =>
-  run === "stopping"
+const handBackOffer = ({ about, mergesOver }: Blocked): string | null =>
+  mergesOver
     ? null
     : about?.handBacksOff === true
       ? "Press h to try its merge again: hand-backs are off, so no worker takes it should it conflict."
@@ -189,7 +189,7 @@ const briefly = (reason: string): string => {
 
 /** What the panel's foot says of `h`, by what it does for `need`. */
 const handBackKey = (need: Blocked): string => {
-  if (!isConflict(need) || (!need.handBack && need.run === "stopping")) return ""
+  if (!isConflict(need) || (!need.handBack && need.mergesOver)) return ""
   return !need.handBack && need.about?.handBacksOff === true
     ? " · h tries its merge again"
     : " · h hands it back"

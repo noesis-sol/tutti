@@ -232,8 +232,8 @@ back to its worker with one more hand-back, or your own `git rebase`, which the 
 cleanly. A steered worker's hand-back waiting says `h` too, or **Hand it the conflict now**; the run
 leaves that one to you, so a branch you fixed is merged by `h`, not taken back. While the run winds
 down or is stopping it takes nothing back, and the text says so: the run's end labels the ticket
-`unmerged`, and the next run checks and merges it once it rebases cleanly. A stopping run doesn't
-offer `h` either, as its merge may not come. With hand-backs off
+`unmerged`, and the next run checks and merges it once it rebases cleanly. Once a merge has stopped
+the merges, or the run is quitting, it doesn't offer `h` either, as no merge comes. With hand-backs off
 (`"merge": { "resolve_conflicts": false }`, or no check command) `h` only tries its merge again, and
 says that.
 

@@ -308,6 +308,14 @@ export interface NotHandedBack {
   readonly off?: boolean
 }
 
+/** Why the settings turn conflicts' hand-backs off; undefined where they don't. */
+export const whyHandBacksOff = ({ settings }: Pick<AppConfig["Service"], "settings">) =>
+  !settings.merge.resolve_conflicts
+    ? "resolving conflicts is turned off"
+    : settings.checks.fast.command === null
+      ? "there is no check command in .tutti/settings.json to check a resolution with"
+      : undefined
+
 /** Why a ticket you fixed by hand isn't handed back (HandBacks' takeUp). */
 export const takenUpByYou: NotHandedBack = {
   why: "you fixed its branch by hand, so its worker isn't handed it",
@@ -348,11 +356,8 @@ export const toHandBack = (
     const ledger = yield* Ledger
     const { id } = stop.ticket
     const not = (why: string, waits = false) => Result.fail({ why, waits })
-    const off = (why: string) => Result.fail({ why, waits: false, off: true })
-    if (!config.settings.merge.resolve_conflicts) return off("resolving conflicts is turned off")
-    if (config.settings.checks.fast.command === null) {
-      return off("there is no check command in .tutti/settings.json to check a resolution with")
-    }
+    const off = whyHandBacksOff(config)
+    if (off !== undefined) return Result.fail({ why: off, waits: false, off: true })
     const handedBack = yield* handBacks.count(id)
     const used = (why: string) =>
       Result.fail({

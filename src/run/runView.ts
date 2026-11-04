@@ -551,6 +551,8 @@ export type Need = Data.TaggedEnum<{
     readonly about: BlockedAbout | null
     /** What the run is doing: only one going on takes a conflict fixed by hand back (§ 5 item 8). */
     readonly run: RunGoes
+    /** No merge comes in this run: a merge stopped the merges, or the run is quitting. */
+    readonly mergesOver: boolean
   }
 }>
 
@@ -720,6 +722,20 @@ export const runGoes = (
   ledger: Pick<State, "windDown">,
   status: Pick<Status, "stopping">,
 ): RunGoes => (status.stopping ? "stopping" : ledger.windDown === null ? "on" : "windingDown")
+
+/**
+ * Whether no merge comes in this run: a ticket is Blocked on a merge that stopped the merges, none of
+ * which lifts (§ 5 item 10), or the run is quitting. Any other stop holds the run with its merges
+ * going on.
+ */
+export const mergesOver = (
+  ledger: Pick<State, "tickets">,
+  status: Pick<Status, "quitting">,
+): boolean =>
+  status.quitting !== null ||
+  [...ledger.tickets.values()].some(
+    ({ phase }) => phase._tag === "Blocked" && phase.why !== Tag.mergeConflict,
+  )
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -1096,6 +1112,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const answered: Array<QueueRow> = []
   const resumes = resumesAt(ledger, status)
   const run = runGoes(ledger, status)
+  const merges = mergesOver(ledger, status)
   const cards: Array<Card> = []
   const resources: Array<Resources> = []
   for (const entry of ledger.tickets.values()) {
@@ -1140,6 +1157,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           handBack,
           about,
           run,
+          mergesOver: merges,
         }),
       )
     }
