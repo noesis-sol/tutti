@@ -84,12 +84,18 @@ export type Box = Data.TaggedEnum<{
 export const Box = Data.taggedEnum<Box>()
 
 /**
- * Where the Needs you list is: the item `at` chosen, and the questions answered from it, left out
- * until the run's look takes their tickets back.
+ * Where the Needs you list is: the item `at` chosen, and the answers given from it, whose questions
+ * are left out until the run's look takes their tickets back, or bd refuses the answer.
  */
 export interface NeedsAt {
   readonly at: number
-  readonly answered: ReadonlyArray<string>
+  readonly answered: ReadonlyArray<NeedsAnswer>
+}
+
+/** An answer given from the Needs you list: its question, and the uuid the run's news names it by. */
+export interface NeedsAnswer {
+  readonly uuid: string
+  readonly question: string
 }
 
 /** What the input layers share: the box open, and the toasts. */

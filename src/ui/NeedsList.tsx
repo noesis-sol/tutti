@@ -4,7 +4,8 @@
 // faint, the open questions in the run's scope no ticket in the run waits on, which the list reads
 // as it opens (ReadQuestions, under a quiet uuid: having none open needs no toast). ↑↓ or Tab move
 // between them, Enter or a click opens one: a question in the questions box at it (QuestionsBox.tsx),
-// which opens the list again once it is answered, the next one chosen; a Blocked ticket in a box
+// which opens the list again once it is answered, the next one chosen, that question left out unless
+// bd refuses the answer (RefusedAnswers); a Blocked ticket in a box
 // saying what clears it, Enter there opening its worker view, `h` handing back one blocked on its
 // merge conflict (§ 4.3), Esc back to the list at the next one.
 // A list with nothing in it once the questions are read says Nothing needs you for `emptyLife`, on
@@ -206,7 +207,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   )
   // The questions answered from the list, or recorded since: left out until the look has them.
   const done = new Set([
-    ...answered,
+    ...answered.map((each) => each.question),
     ...news.flatMap((each) => (each._tag === "Answered" ? [each.question] : [])),
   ])
   const items = needsItems(needs, done, read?._tag === "Read" ? read.questions : undefined)

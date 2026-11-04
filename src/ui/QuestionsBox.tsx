@@ -15,7 +15,8 @@
 // answered, at the same one otherwise; a toast says why a talk that wasn't left gave no answer.
 //
 // Opened from the Needs you list (NeedsList.tsx, tutti-fdv1), the box puts that question alone, and
-// once it is answered, left open or closed with Esc opens the list again at the next item.
+// once it is answered, left open or closed with Esc opens the list again at the next item. An answer
+// bd refuses leaves the list's answers (RefusedAnswers), which brings its question back to the list.
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
@@ -104,6 +105,43 @@ export const TalkReturn = () => {
       const to = returnTo(item)
       if (to !== null && box.get() === null) box.set(Box.Questions(to))
     }
+  }, [news, box])
+  return null
+}
+
+/**
+ * `open` with the answers under the uuids `refused` gone from the Needs you list's, whether the list
+ * is open or the questions box over it; `open` itself when it holds none of them.
+ */
+export const withoutRefused = (open: Box | null, refused: ReadonlySet<string>): Box | null => {
+  const left = (at: NeedsAt): NeedsAt | null => {
+    const answered = at.answered.filter((each) => !refused.has(each.uuid))
+    return answered.length === at.answered.length ? null : { ...at, answered }
+  }
+  if (open?._tag === "Needs") {
+    const at = left(open)
+    return at === null ? open : Box.Needs(at)
+  }
+  if (open?._tag === "Questions" && open.back !== undefined) {
+    const back = left(open.back)
+    return back === null ? open : Box.Questions({ ...open, back })
+  }
+  return open
+}
+
+/**
+ * Takes each answer bd refuses out of the Needs you list's (withoutRefused): by the answer's uuid, as
+ * a failure of an earlier try says nothing of the answer given since, and in the box, as the news
+ * drops what is past newsKept.
+ */
+export const RefusedAnswers = () => {
+  const news = useQuestionNews()
+  const { box } = useInput()
+  useEffect(() => {
+    const refused = new Set(news.flatMap((each) => (each._tag === "NotAnswered" ? each.uuid : [])))
+    const open = box.get()
+    const left = withoutRefused(open, refused)
+    if (left !== open) box.set(left)
   }, [news, box])
   return null
 }
@@ -215,21 +253,19 @@ export const QuestionsBox = ({
       )
       return box.set(null)
     }
+    const uuid = crypto.randomUUID()
     if (given._tag === "Answer") {
-      command(
-        UiCommand.AnswerQuestion({
-          question: question.id,
-          answer: given.answer,
-          uuid: crypto.randomUUID(),
-        }),
-      )
+      command(UiCommand.AnswerQuestion({ question: question.id, answer: given.answer, uuid }))
     }
     // Back to the list it came from: an answered question leaves it, so the next is at its place.
     if (back !== undefined) {
       const answered = given._tag === "Answer"
       return box.set(
         answered
-          ? Box.Needs({ at: back.at, answered: [...back.answered, question.id] })
+          ? Box.Needs({
+              at: back.at,
+              answered: [...back.answered, { uuid, question: question.id }],
+            })
           : nextIn(back),
       )
     }
