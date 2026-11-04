@@ -5,8 +5,8 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Exit, Fiber, type Scope } from "effect"
-import { askedLook, takeAnswers } from "../src/run/asked.ts"
+import { Duration, Effect, Exit, Fiber, type Scope } from "effect"
+import { askedLook, readAnswers, takeAnswers } from "../src/run/asked.ts"
 import { makeHandBacks } from "../src/run/handback.ts"
 import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
@@ -15,7 +15,7 @@ import { Move } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { type WorkOptions, work } from "../src/run/work.ts"
-import { Beads, type TicketId } from "../src/services/Beads.ts"
+import { Beads, BeadsTimedOut, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { filesQuestion, turn } from "../src/testing/AgentHost.ts"
 import { Repository } from "../src/testing/Git.ts"
@@ -69,6 +69,10 @@ interface Looked {
 const looked = (plan: {
   readonly answer: boolean
   readonly slot: boolean
+  /** The look takes nothing back: the run holds or winds down. */
+  readonly holding?: boolean
+  /** bd can't show the ticket, and the look before found its question answered. */
+  readonly unread?: boolean
 }): Promise<Ran<Looked>> => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "tutti-asked-no-slot-")))
   return scenario(
@@ -113,20 +117,40 @@ const looked = (plan: {
         }
       }
       const fibers: Array<Fiber.Fiber<unknown, unknown>> = []
-      const look = askedLook(yield* beads.list())
-      const resumed = yield* takeAnswers(
-        {
-          ...options,
-          carry: (_, start) =>
-            Effect.gen(function* () {
-              if (!plan.slot) return false
-              const fiber = yield* start
-              if (fiber !== undefined) fibers.push(yield* Effect.forkChild(fiber))
-              return true
-            }),
-        },
-        look,
+      const question = (yield* beads.show(id)).dependencies[0]?.id ?? ""
+      const look = askedLook(
+        plan.unread === true ? undefined : yield* beads.list(),
+        plan.unread === true ? new Set([question]) : new Set(),
       )
+      const reads =
+        plan.unread === true
+          ? Beads.of({
+              ...beads,
+              show: (shown, as) =>
+                shown === id
+                  ? Effect.fail(
+                      new BeadsTimedOut({ command: "show", timeLimit: Duration.seconds(1) }),
+                    )
+                  : beads.show(shown, as),
+            })
+          : beads
+      const resumed = yield* (
+        plan.holding === true
+          ? Effect.as(readAnswers(look), [] as ReadonlyArray<string>)
+          : takeAnswers(
+              {
+                ...options,
+                carry: (_, start) =>
+                  Effect.gen(function* () {
+                    if (!plan.slot) return false
+                    const fiber = yield* start
+                    if (fiber !== undefined) fibers.push(yield* Effect.forkChild(fiber))
+                    return true
+                  }),
+              },
+              look,
+            )
+      ).pipe(Effect.provideService(Beads, reads))
       for (const fiber of fibers) yield* Fiber.interrupt(fiber)
       return {
         noSlot: [...look.noSlot],
@@ -155,5 +179,22 @@ describe("what a look tells of an answered question", () => {
     const seen = resultOf(await looked({ answer: false, slot: false }))
     expect(seen.phase).toBe("Asked")
     expect(seen.noSlot).toEqual([])
+  })
+
+  test("a look that takes nothing back reads it too, and leaves its ticket Asked", async () => {
+    const answered = resultOf(await looked({ answer: true, slot: true, holding: true }))
+    expect(answered.phase).toBe("Asked")
+    expect(answered.resumed).toEqual([])
+    expect(answered.noSlot).toHaveLength(1)
+    const open = resultOf(await looked({ answer: false, slot: true, holding: true }))
+    expect(open.noSlot).toEqual([])
+  })
+
+  test("bd can't show the ticket: what the look before found stands", async () => {
+    for (const holding of [true, false]) {
+      const seen = resultOf(await looked({ answer: true, slot: false, holding, unread: true }))
+      expect(seen.phase).toBe("Asked")
+      expect(seen.noSlot).toHaveLength(1)
+    }
   })
 })

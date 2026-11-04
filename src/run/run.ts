@@ -105,7 +105,7 @@ import { outputMode, Tty } from "../services/Tty.ts"
 import { awakeSince } from "../services/Wake.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { make as makeApiOutage } from "./apiOutage.ts"
-import { askedLook, askedQuestions, takeAnswers } from "./asked.ts"
+import { askedLook, askedQuestions, readAnswers, takeAnswers } from "./asked.ts"
 import { off as auditorOff, followEnds, make as makeAuditor } from "./auditor.ts"
 import {
   AutoAnswer,
@@ -1104,7 +1104,8 @@ const runFrom = (
       // The workers carried over that waited for a slot, then the answered tickets, come back
       // before new ones start, each in a slot of its own and counting toward no limit (carry.ts,
       // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
-      // winds down, which takes up only what is running: the next run resumes them.
+      // winds down, which takes up only what is running: the next run resumes them, though the look
+      // still reads which questions are answered.
       yield* Ref.set(unslotted, new Set())
       const gateNow = yield* gate
       // bd's open list, read here once where a ticket is Asked, for the answers and the fill both:
@@ -1115,18 +1116,20 @@ const runFrom = (
           Effect.provideContext(context),
         )
         yield* Ref.set(carrying, waitingOf(left))
-        const asked = [...(yield* ledger.current).tickets.values()].some(
-          (entry) => entry.phase._tag === "Asked",
-        )
-        const listed = asked ? yield* Effect.result(beads.list()) : undefined
-        open = listed !== undefined && Result.isSuccess(listed) ? listed.success : undefined
-        // The panel beside the tickets table shows the questions Asked tickets wait on, from the
-        // list read for them; with none Asked, none.
-        if (!asked) yield* showOn(status, "questions")(new Map())
-        else if (open !== undefined) {
-          yield* showOn(status, "questions")(askedQuestions(yield* ledger.current, open))
-        }
-        const look = askedLook(open)
+      }
+      const asked = [...(yield* ledger.current).tickets.values()].some(
+        (entry) => entry.phase._tag === "Asked",
+      )
+      const listed = asked ? yield* Effect.result(beads.list()) : undefined
+      open = listed !== undefined && Result.isSuccess(listed) ? listed.success : undefined
+      // The panel beside the tickets table shows the questions Asked tickets wait on, from the
+      // list read for them; with none Asked, none.
+      if (!asked) yield* showOn(status, "questions")(new Map())
+      else if (open !== undefined) {
+        yield* showOn(status, "questions")(askedQuestions(yield* ledger.current, open))
+      }
+      const look = askedLook(open, (yield* SubscriptionRef.get(status)).answered)
+      if (takesBack(gateNow)) {
         // --auto-answer's questions first, so that takeAnswers resumes their tickets at once; one
         // still waiting for its time keeps the run from ending on it.
         const before = (yield* answeredQuestions).length
@@ -1134,14 +1137,16 @@ const runFrom = (
         // A question answered closed since the list was read: the fill reads it afresh.
         if ((yield* answeredQuestions).length !== before) open = undefined
         yield* takeAnswers(carryOptions, look)
-        // Those answered with no slot for them need you no longer: a later look brings them back.
-        yield* showOn(status, "answered")(look.noSlot)
       } else {
         yield* Ref.set(autoAnswering, false)
         // Winding down, it answers none: the questions --auto-answer took at once, which notified
         // nothing, notify now. A hold only puts their answer off.
         if (gateNow.windingDown) yield* notifyLeftOpen
+        // A question answered meanwhile needs you no longer, though its ticket comes back later.
+        yield* readAnswers(look)
       }
+      // Those answered with no slot for them need you no longer: a later look brings them back.
+      yield* showOn(status, "answered")(look.noSlot)
       // A fill bd can't read the queue for leaves the slots as they are, and a later look reads it
       // again; bd failing every read for beadsOutage stops the run (queueOutage.ts).
       const failing = yield* Ref.get(outage)

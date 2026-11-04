@@ -46,9 +46,6 @@ export const tableWidth = (width: number, panel: number): number =>
 /** The word of a ticket only a free slot holds back. */
 const readyWord = "ready"
 
-/** The words of an Asked ticket whose question is answered, which only a free slot holds back. */
-const answeredWords = "answered · next free slot"
-
 /**
  * The look of the tickets a held ticket waits for: the live role, bold where the scheme leaves it
  * the terminal's default colour, as every role is under NO_COLOR, so that they stand out still.
@@ -96,7 +93,7 @@ export const upNextLines = (
       idWidth,
     )
     if (each.held === null) {
-      const word = each.answered === true ? answeredWords : readyWord
+      const word = each.answered === undefined ? readyWord : `answered · ${each.answered}`
       return [[...id, seg("  "), seg(word, styles.quiet)]]
     }
     const reason = afterParts(each.held).map((part) =>

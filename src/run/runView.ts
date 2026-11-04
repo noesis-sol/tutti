@@ -509,8 +509,8 @@ export const shownRequest = (request: AttentionRequest): ShownRequest => ({
 /**
  * A ticket waiting in the queue, for the Up next panel (§ 7.2): Queued, HeldBack or Waiting, in the
  * order the run took them in, with why it waits; `held` null for one only a free slot holds back.
- * An Asked ticket whose question is answered waits for a slot too, `answered`, and goes first: the
- * run takes them back before new tickets start.
+ * An Asked ticket whose question is answered waits too, `answered` saying until when, and goes
+ * first: the run takes them back before new tickets start.
  */
 export interface QueueRow {
   readonly ticket: TicketId
@@ -519,7 +519,7 @@ export interface QueueRow {
   readonly title: string
   /** Why it waits, as the log says it: `after t-1: both touch src/a.ts`; null for none. */
   readonly held: string | null
-  readonly answered?: true
+  readonly answered?: string
 }
 
 /**
@@ -697,8 +697,12 @@ export const attentionOf = (phase: TicketPhase, activity: Activity = "starting")
 /** The status of an Asked ticket's row once its question is answered, as it waits for a slot. */
 export const answeredRow: Shown = { mark: "answered", word: "answered", tone: "dim", faint: true }
 
-/** What the row of an Asked ticket whose question is answered says before its ticket's title. */
-export const answeredNote = "(resumes at the next free slot)"
+/**
+ * When an Asked ticket whose question is answered comes back: a run winding down takes back nothing,
+ * so not in this run.
+ */
+export const resumesAt = (ledger: Pick<State, "windDown">): string =>
+  ledger.windDown === null ? "the next free slot" : "the next run"
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -932,11 +936,12 @@ const noteOf = (
   title: string,
   branch: string,
   status: Pick<Status, "questions" | "answered">,
+  resumes: string,
 ): string => {
   // An Asked ticket says the question it waits on, once the look has read it (§ 7.2); answered, that
-  // it waits only for a slot.
+  // when it comes back.
   if (entry.phase._tag === "Asked") {
-    if (status.answered.has(entry.phase.question)) return `${answeredNote} ${title}`
+    if (status.answered.has(entry.phase.question)) return `(resumes at ${resumes}) ${title}`
     return status.questions.get(entry.phase.question)?.title ?? title
   }
   // A ticket an overnight run set aside says why before its title.
@@ -1071,6 +1076,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const asked: Array<Need> = []
   const blocked: Array<Need> = []
   const answered: Array<QueueRow> = []
+  const resumes = resumesAt(ledger)
   const cards: Array<Card> = []
   const resources: Array<Resources> = []
   for (const entry of ledger.tickets.values()) {
@@ -1096,7 +1102,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       else totals[total]++
     }
     if (slotOnly) {
-      answered.push({ ticket: entry.ticket, label, title, held: null, answered: true })
+      answered.push({ ticket: entry.ticket, label, title, held: null, answered: resumes })
     } else if (phase._tag === "Asked") {
       const question = status.questions.get(phase.question) ?? null
       const id = sanitizeLine(phase.question)
@@ -1128,7 +1134,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           label,
           title,
           ...(slotOnly ? answeredRow : rowStatus(phase, activity)),
-          note: noteOf(entry, title, branch, status),
+          note: noteOf(entry, title, branch, status, resumes),
           verdict: verdict === null ? null : sanitizeLine(verdict),
           attention: attentionOf(phase, activity),
           since: entry.since,

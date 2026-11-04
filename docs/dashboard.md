@@ -222,7 +222,8 @@ of what needs you. A click on an option answers with it, and one on the title or
 opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
 half a second. An answered question leaves the panel and **Needs you** at once, and the answer wakes
 the run, which takes its ticket back. With no slot free, its row says `↻ answered` until one is, and
-Up next lists it first, `answered · next free slot`. A narrower pane has no panel.
+Up next lists it first, `answered · the next free slot`, or `the next run` in a run winding down. A
+narrower pane has no panel.
 
 ### What needs you, in any pane
 

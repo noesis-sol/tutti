@@ -147,9 +147,28 @@ describe("a question answered, its ticket with no slot yet", () => {
     expect(view.totals.queued).toBe(1)
     const lines = upNextLines(view.queue, view.totals, theme, 50, 6).map(text)
     expect(lines.slice(2, 4).map((line) => line.replace(/^│ | *│$/g, "").trimEnd())).toEqual([
-      "fab-a  answered · next free slot",
+      "fab-a  answered · the next free slot",
       "fab-q  ready",
     ])
+  })
+
+  test("in a run winding down, the next run takes it back: its row and Up next say so", () => {
+    const view = project({
+      ledger: {
+        tickets: new Map([["fab-a" as TicketId, asked("fab-a", "q-a", 0)]]),
+        rows: 1,
+        windDown: { since: began, tickets: [] },
+        bugs: [],
+      },
+      workers: new Map(),
+      requests: [],
+      status: { ...emptyStatus, answered: new Set(["q-a"]) },
+      actions: new Map(),
+    })
+    expect(rowOf(view, "fab-a")?.note).toBe("(resumes at the next run) Title of fab-a")
+    expect(text(upNextLines(view.queue, view.totals, theme, 50, 6)[2] ?? [])).toContain(
+      "answered · the next run",
+    )
   })
 })
 

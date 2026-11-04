@@ -13,7 +13,8 @@
 // one does: settled, read, and moved as its worker leaves it. With no slot for it (every slot
 // taken, a solo ticket running, the machine at --machine-workers, a hold), it stays Asked, and a
 // later poll brings it back; until then it no longer needs you, as the look tells RunView (the
-// look's noSlot, Status's answered), so its row says `↻ answered`. Within a look, answerQuestions and takeAnswers share what they read
+// look's noSlot, Status's answered), so its row says `↻ answered`. A look that takes nothing back,
+// the run holding or winding down, still reads which are answered (readAnswers). Within a look, answerQuestions and takeAnswers share what they read
 // (AskedLook): bd's open list, read once at the look's start where a ticket is Asked, and each
 // Asked ticket's bd show. A ticket whose question that list has still open, labelled human, isn't
 // shown at all, as it can't come back yet; one answered by hand drops out of the list and is shown
@@ -62,12 +63,20 @@ export interface AnswerOptions extends WorkOptions {
 export interface AskedLook {
   readonly open: Set<string> | undefined
   readonly shown: Map<TicketId, Issue>
-  /** The questions takeAnswers found answered whose tickets had no slot to come back in. */
+  /** The questions this look found answered whose tickets have no slot to come back in. */
   readonly noSlot: Set<string>
+  /** Those the look before found so: one whose ticket bd can't show now stays so. */
+  readonly known: ReadonlySet<string>
 }
 
-/** A look's reads (AskedLook) from bd's open list, `open`, as the look read it at its start. */
-export const askedLook = (open: ReadonlyArray<Issue> | undefined): AskedLook => ({
+/**
+ * A look's reads (AskedLook) from bd's open list, `open`, as the look read it at its start, and the
+ * questions the look before found answered with no slot, `known`.
+ */
+export const askedLook = (
+  open: ReadonlyArray<Issue> | undefined,
+  known: ReadonlySet<string> = new Set(),
+): AskedLook => ({
   open:
     open === undefined
       ? undefined
@@ -78,6 +87,7 @@ export const askedLook = (open: ReadonlyArray<Issue> | undefined): AskedLook => 
         ),
   shown: new Map(),
   noSlot: new Set(),
+  known,
 })
 
 /**
@@ -138,6 +148,25 @@ export const answeredIn = (
 const titleOf = (issue: Issue, question: string): string =>
   issue.dependencies.find((dependency) => dependency.id === question)?.issue?.title ?? question
 
+/** `question`, whose ticket bd couldn't show: as the look before found it, answered or not. */
+const unread = (look: AskedLook | undefined, question: string): void => {
+  if (look?.known.has(question) === true) look.noSlot.add(question)
+}
+
+/**
+ * For a look that takes nothing back, the run holding or winding down: which Asked tickets' questions
+ * are answered, by the reads takeAnswers makes, each left Asked for when the run takes back again.
+ */
+export const readAnswers = (look: AskedLook): Effect.Effect<void, never, Beads | Ledger> =>
+  Effect.gen(function* () {
+    for (const { phase, ticket } of (yield* (yield* Ledger).current).tickets.values()) {
+      if (phase._tag !== "Asked" || stillOpen(look, phase.question)) continue
+      const issue = yield* Effect.result(shownIn(look, ticket))
+      if (Result.isFailure(issue)) unread(look, phase.question)
+      else if (openQuestion(issue.success) === undefined) look.noSlot.add(phase.question)
+    }
+  })
+
 /**
  * Resumes each Asked ticket whose question is answered (§ 5.1's Asked → Working): its session
  * told so and its fiber carried on in a slot; one with no slot for it stays Asked. With the look's
@@ -157,8 +186,12 @@ export const takeAnswers = (
       const { phase, ticket: id, title } = entry
       if (phase._tag !== "Asked" || stillOpen(look, phase.question)) continue
       const issue = yield* Effect.result(shownIn(look, id))
-      if (Result.isFailure(issue) || openQuestion(issue.success) !== undefined) continue
       const { question } = phase
+      if (Result.isFailure(issue)) {
+        unread(look, question)
+        continue
+      }
+      if (openQuestion(issue.success) !== undefined) continue
       const asked = titleOf(issue.success, question)
       let resumed = false
       // The option --auto-answer chose, when it answered the question rather than you.
