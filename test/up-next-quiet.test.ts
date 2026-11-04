@@ -53,7 +53,7 @@ describe("Up next's quiet parts", () => {
     for (const appearance of ["dark", "light"] as const) {
       const theme = themeOf(appearance)
       const { styles } = theme
-      const lines = upNextLines(queue, totals, theme, 50, 8)
+      const lines = upNextLines(queue, totals, theme, 50, 9)
       expect(segmentOf(lines, "ready")?.look).toBe(styles.quiet)
       expect(segmentOf(lines, "› ")?.look).toBe(styles.quiet)
       expect(segmentOf(lines, "after ")?.look).toBe(styles.quiet)
@@ -79,7 +79,7 @@ describe("Up next's quiet parts", () => {
 
   test("is faint, in the text's colour, under NO_COLOR", () => {
     const theme = themeOf("dark", true)
-    const lines = upNextLines(queue, totals, theme, 50, 8)
+    const lines = upNextLines(queue, totals, theme, 50, 9)
     for (const text of ["ready", "t-1 not merged yet", "+2 more"]) {
       const look = segmentOf(lines, text)?.look
       expect(look?.fg).toBeUndefined()

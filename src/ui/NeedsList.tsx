@@ -10,7 +10,7 @@
 // A list with nothing in it once the questions are read says Nothing needs you for `emptyLife`, on
 // the toasts' timer, and closes by itself, unless a need comes in meanwhile; Esc, Enter or a click
 // anywhere closes it sooner. A read that failed has its own toast, and the empty list closes at
-// once. Esc closes it.
+// once. Esc closes it. RowBox (Box.Row, tutti-149z.3) says of a row with no need what the panel would.
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
@@ -25,13 +25,10 @@ import { boxed, cut, fit, Lines, type Segments, seg } from "./line.tsx"
 import { Backdrop, choiceRows, Modal, modalMaxWidth } from "./Modal.tsx"
 import { quietUuid } from "./QuestionsBox.tsx"
 import type { OpenQuestion } from "./questions.ts"
-import { clearsOf } from "./SidePanel.tsx"
+import { clearsOf, nothingNeedsYou, rowParagraphs } from "./SidePanel.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { useCommand, useQuestionNews, useRunViewPart, useTheme } from "./useRunView.ts"
-
-/** What a list with nothing in it says, faint, in place of its items. */
-export const nothingNeedsYou = "Nothing needs you"
 
 /** How long a list with nothing in it stays open, in ms, before it closes by itself. */
 export const emptyLife = 2000
@@ -157,6 +154,39 @@ export const BlockedBox = ({ ticket }: { readonly ticket: TicketId }) => {
       paragraphs={blockedParagraphs(need, theme)}
       choices={commands}
     />
+  )
+}
+
+/**
+ * A row's box over a dashboard with no panel (Box.Row): what the panel says of it, for a row with no
+ * need. Enter opens its worker view while it has one, Esc closes it, as does its row's leaving.
+ */
+export const RowBox = ({ ticket }: { readonly ticket: TicketId }) => {
+  const theme = useTheme()
+  const command = useCommand()
+  const { box } = useInput()
+  const rows = useRunViewPart((view) => view.rows)
+  const row = rows.find((each) => each.ticket === ticket)
+  const gone = row === undefined
+  useEffect(() => {
+    if (gone) box.set(null)
+  }, [gone, box])
+  const commands: ReadonlyArray<Command> = [
+    {
+      keys: ["return", "enter"],
+      when: () => row?.hasWorker === true,
+      run: () => {
+        box.set(null)
+        command(UiCommand.OpenWorker({ ticket }))
+      },
+      hint: { keys: "Enter", does: "open its worker view" },
+    },
+    { keys: ["escape"], run: () => box.set(null), hint: { keys: "Esc", does: "close" } },
+  ]
+  useCommands("box", commands, "Row")
+  if (row === undefined) return null
+  return (
+    <Modal frame={theme.look("frame")} paragraphs={rowParagraphs(row, theme)} choices={commands} />
   )
 }
 

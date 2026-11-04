@@ -4,6 +4,7 @@
 
 - An answered question's row and Up next line say `the next run`, not `the next free slot`, while the run quits, as a quit takes nothing back (§ 5.1; `src/run/runView.ts`' `resumesAt`; tutti-0ucl).
 - The tickets table's selected row is one band across the table, its padding and the lines between its columns too, rather than a patch on each cell's text, and with the focus on the table only its frame goes bright, the lines between its columns staying dim, rather than drawing a bright grid (§ 7.2; `src/ui/line.tsx`' `framed`, `src/ui/TicketsTable.tsx`). `test/dashboard-panels.test.tsx` covers it.
+- Needs you is the tickets table's selected row and what you can do about it, rather than a list of its own (§ 5.1, § 7.2, § 7.3; `src/ui/SidePanel.tsx`' `selectedTicket`, `rowParagraphs`, `src/ui/Dashboard.tsx`, `src/ui/NeedsList.tsx`' `RowBox`, `src/run/runView.ts`' `RowDetail`, `src/run/ledger.ts`' `checkLog`; tutti-149z.3): with nothing chosen the first row that wants you is selected by itself, a row you choose stays on its ticket as rows re-sort until you `Esc` out of the table or it stops needing you, and with neither the panel says `Nothing needs you` over Up next. A set-aside row shows triage's verdict and `bd undefer <id>`, or, left for review, its failed check's log; a done row its merge commit and time; an answered row when it resumes. The header counts what needs you as the totals do, `[` and `]` are gone, and a pane with no panel opens the same detail in a box on `Enter`.
 
 ## [0.6.8] - 2026-11-04
 

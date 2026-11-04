@@ -56,6 +56,8 @@ export interface Review {
   readonly detail: string
   /** The log's line, which the ticket's notes have too. */
   readonly text: Line
+  /** Where its failed check's output is, for Needs you to say (§ 7.2). */
+  readonly checkLog?: string
 }
 
 /** The note a ticket left for review gets: the log's line, without its indent. */
@@ -73,6 +75,7 @@ export const leaveForReview = (
     yield* Effect.ignore(beads.update(id, { appendNotes: reviewNote(review.text) }))
     yield* ledger.transition(id, Move.Aside({ why: review.why }), {
       said: [{ kind: "warn", ticket: id, aside: true, detail: review.detail, text: review.text }],
+      ...(review.checkLog === undefined ? {} : { checkLog: review.checkLog }),
     })
     const record = yield* store.ticket(id)
     if (record !== undefined && record.suspended === undefined) {

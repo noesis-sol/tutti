@@ -119,7 +119,11 @@ const withQueue = <E>(
  * files on main and a's branch's tip.
  */
 const merged = (checks: ReadonlyArray<CheckFailed>) => {
-  const after = { files: new Map<string, string>() as ReadonlyMap<string, string>, tip: "" }
+  const after = {
+    files: new Map<string, string>() as ReadonlyMap<string, string>,
+    tip: "",
+    checkLog: undefined as string | undefined,
+  }
   const ran = scenario(
     {
       backlog: backlog().ticket("a").seeds,
@@ -136,6 +140,7 @@ const merged = (checks: ReadonlyArray<CheckFailed>) => {
         yield* queue.settled
         after.files = yield* repository.tree("main")
         after.tip = yield* repository.head(ticket.branch)
+        after.checkLog = (yield* (yield* Ledger).current).tickets.get(ticket.id)?.checkLog
       }),
     ),
   )
@@ -177,10 +182,12 @@ describe("a check hand-back whose worker commits nothing", () => {
   })
 
   test("is set aside when the second check fails too, with no further hand-back", async () => {
-    const { ran, files, tip } = await merged([failing(), failing()])
+    const { ran, files, tip, checkLog } = await merged([failing(), failing()])
     expect(resultOf(ran).a).toEqual(
       expect.objectContaining({ _tag: "Review", why: "CHECKS_FAILED" }),
     )
+    // Needs you names where its output is, as its line in the log does.
+    expect(ran.log.some((each) => each.includes(`(output is in ${checkLog})`))).toBe(true)
     expect(pathOf(ran, "a").slice(-3)).toEqual(["Merging", "Fixing", "Review"])
     expectLog(ran, [
       `  FIXING: '${check}' fails on tutti/a rebased onto main; handed back to its worker to fix (1 of 2, up to 20m)`,

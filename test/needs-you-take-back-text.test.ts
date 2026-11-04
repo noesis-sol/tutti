@@ -68,7 +68,7 @@ const textOf = (need: Extract<Need, { _tag: "Blocked" }>) => clearsOf(need).join
 
 /** The panel's foot, focused, tall enough to show it all. */
 const footOf = (need: Need) =>
-  needsLines([need], { index: 0, focused: true, inside: true, choice: 0 }, theme, 60, 40)
+  needsLines(need, 1, { focused: true, inside: true, choice: 0 }, theme, 60, 40)
     .map((line) => line.map((segment) => segment.text).join(""))
     .join("\n")
 

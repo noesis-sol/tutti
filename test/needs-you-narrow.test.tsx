@@ -19,9 +19,10 @@ import { Root } from "../src/ui/App.tsx"
 import { answerButton } from "../src/ui/Composer.tsx"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
 import type { Segments } from "../src/ui/line.tsx"
-import { emptyLife, listReadingText, nothingNeedsYou } from "../src/ui/NeedsList.tsx"
+import { emptyLife, listReadingText } from "../src/ui/NeedsList.tsx"
 import { noneOpenText } from "../src/ui/QuestionsBox.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
+import { nothingNeedsYou } from "../src/ui/SidePanel.tsx"
 import type { Timer } from "../src/ui/Toasts.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
@@ -214,7 +215,7 @@ describe("an Asked row", () => {
 
   test("is drawn in the focus's look while selected, as Needs you is while the focus is on it", () => {
     const view = viewOf([asked, blocked])
-    const side = { needs: view.needs, at: { index: 0, focused: false, inside: false, choice: 0 } }
+    const side = { needs: view.needs, at: { focused: false, inside: false, choice: 0 } }
     const inTable = { panel: "tickets", inside: true } as const
     const onRow = dashboardLayout(view, theme, 100, 30, null, side, inTable, "t-1" as TicketId)
     expect(focused(onRow.tickets, "Which flag name?")).toBe(true)
@@ -615,7 +616,7 @@ describe("the Needs you list, without the panel", () => {
       viewOf([asked, blocked]),
       Screen.Dashboard(),
       async ({ commands, rendered }) => {
-        await until(rendered, has("Needs you · 1 of 2"))
+        await until(rendered, has("Needs you · 2"))
         const frame = await rendered.capture()
         const { x, y } = placeOf(frame, "2 Needs you")
         await rendered.input((setup) => setup.mockMouse.click(x + 1, y))

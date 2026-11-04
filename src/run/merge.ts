@@ -321,15 +321,16 @@ const closedButLine =
 
 /**
  * Sets the ticket aside for review, Merging → Review{tag}, `short` its warn record's detail, with
- * its note and the line `<tag>: <id> closed, but …`.
+ * its note and the line `<tag>: <id> closed, but …`; `checkLog` where its failed check's output is.
  */
 const closedBut =
-  (ticket: FinishedTicket, tag: string, short: string) =>
+  (ticket: FinishedTicket, tag: string, short: string, checkLog?: string) =>
   (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>) =>
     leaveForReview(ticket.id, {
       why: tag,
       detail: short,
       text: closedButLine(ticket, tag)(strings, ...args),
+      ...(checkLog === undefined ? {} : { checkLog }),
     })
 
 /**
@@ -1133,6 +1134,7 @@ export const checksFailed = (
       ticket,
       Tag.checksFailed,
       `${checksFailedDetail(error)}${again}`,
+      error._tag === "CheckNotRun" ? undefined : output,
     )`${failedHow(error)}${again} on ${branchOn(ticket.branch, options.base, onTop)}${tried}; worktree ${ticket.worktree} left for review${where}${later}`
     const said = saidOf(error)
     if (said.length > 0) yield* log.write(...said.map((each) => detail`  ${each}`))

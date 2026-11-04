@@ -145,8 +145,8 @@ describe("a question answered, its ticket with no slot yet", () => {
     )
     expect(view.queue.map((each) => each.ticket)).toEqual(["fab-a", "fab-q"] as Array<TicketId>)
     expect(view.totals.queued).toBe(1)
-    const lines = upNextLines(view.queue, view.totals, theme, 50, 6).map(text)
-    expect(lines.slice(2, 4).map((line) => line.replace(/^│ | *│$/g, "").trimEnd())).toEqual([
+    const lines = upNextLines(view.queue, view.totals, theme, 50, 7).map(text)
+    expect(lines.slice(3, 5).map((line) => line.replace(/^│ | *│$/g, "").trimEnd())).toEqual([
       "fab-a  answered · the next free slot",
       "fab-q  ready",
     ])
@@ -177,7 +177,7 @@ describe("a question answered, its ticket with no slot yet", () => {
       actions: new Map(),
     })
     expect(rowOf(view, "fab-a")?.note).toBe("(resumes at the next run) Title of fab-a")
-    expect(text(upNextLines(view.queue, view.totals, theme, 50, 6)[2] ?? [])).toContain(
+    expect(text(upNextLines(view.queue, view.totals, theme, 50, 7)[3] ?? [])).toContain(
       "answered · the next run",
     )
   })
@@ -195,14 +195,14 @@ describe("the strip and the panel", () => {
 
   test("a question answered on the panel leaves both, before the next look", () => {
     const answeredHere = view.needs.filter((need) => need.ticket !== ("fab-a" as TicketId))
-    const at = { index: 0, focused: false, inside: false, choice: 0 }
+    const at = { focused: false, inside: false, choice: 0 }
     expect(needsCount(dashboardLayout(view, theme, 155, 36))).toBe("5")
     const laid = dashboardLayout(view, theme, 155, 36, null, { needs: answeredHere, at })
     expect(needsCount(laid)).toBe(String(answeredHere.length))
     expect(view.totals.needsYou).toBe(5)
   })
 
-  test("drawn: 1 Needs you and `Needs you · 1 of 1`, the row saying `↻ answered`", async () => {
+  test("drawn: 1 Needs you and `Needs you · 1`, the row saying `↻ answered`", async () => {
     await withRender(
       <Root
         value={{
@@ -218,7 +218,7 @@ describe("the strip and the panel", () => {
       async (rendered) => {
         const { chars } = await rendered.capture()
         expect(chars).toContain("1 Needs you")
-        expect(chars).toContain("Needs you · 1 of 1")
+        expect(chars).toContain("Needs you · 1")
         expect(chars).toContain("fab-e blocked: MERGE_CONFLICT")
         expect(chars).toContain("↻ answered")
         expect(chars).not.toContain("? for you")

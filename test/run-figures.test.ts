@@ -24,7 +24,7 @@ import {
 import { line } from "../src/run/log.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
+import { emptyView, type Row, RowDetail, rowStatus } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
@@ -270,6 +270,8 @@ const row = (ticket: TicketId): Row => ({
   verdict: null,
   attention: "rest",
   since: 0,
+  detail: RowDetail.Other(),
+  hasWorker: false,
 })
 
 const mnemos = figuresOf([

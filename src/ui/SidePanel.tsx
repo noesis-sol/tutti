@@ -6,17 +6,38 @@
 // waiting in the queue, those only a free slot holds back first (an Asked ticket whose question is
 // answered, then `ready`), then each held back or
 // waiting with why, as the log says it (`› after t-1: both touch scripts/check.sh`, tutti-zv69), the
-// tickets it waits for in the live role, wrapped under its text; `+N more` for those that don't fit. While something needs you (tutti-07nj) it shows
-// that instead, one at a time: an Asked ticket's question, its title, which ticket waits on it, as
-// much of its description as fits and its options, the recommended one first, to answer in place;
-// or a Blocked ticket, why, and what clears it. The dashboard's keys and clicks act on it
-// (Dashboard.tsx); a click target names an option by its index, or one of panelTargets.
+// tickets it waits for in the live role, wrapped under its text; `+N more` for those that don't fit,
+// under `Nothing needs you`. With a row of the table selected (tutti-149z.3), by you or by itself
+// (selectedTicket), it shows that row's detail instead (tutti-07nj): an Asked ticket's question, its
+// title, which ticket waits on it, as much of its description as fits and its options, the
+// recommended one first, to answer in place; a Blocked ticket, why, and what clears it; any other
+// row's rowParagraphs. The dashboard's keys and clicks act on it (Dashboard.tsx); a click target
+// names an option by its index, or one of panelTargets.
 // A narrower pane has no panel, and the table its whole width, as before.
 import { afterParts } from "../run/after.ts"
+import { clock } from "../run/localTime.ts"
 import { someFiles } from "../run/merge.ts"
-import { isConflict, type Need, type QueueRow, type RunGoes, type Totals } from "../run/runView.ts"
-import { type Border, boxed, cut, fit, padded, type Segments, seg, wrap } from "./line.tsx"
-import { marks } from "./marks.ts"
+import {
+  isConflict,
+  type Need,
+  type QueueRow,
+  type Row,
+  type RunGoes,
+  type Totals,
+} from "../run/runView.ts"
+import type { TicketId } from "../services/Beads.ts"
+import {
+  type Border,
+  boxed,
+  cut,
+  fit,
+  padded,
+  type Segment,
+  type Segments,
+  seg,
+  wrap,
+} from "./line.tsx"
+import { lookOf, marks } from "./marks.ts"
 import { queueDivider } from "./Totals.tsx"
 import type { Style, Theme } from "./theme.ts"
 
@@ -43,6 +64,9 @@ export const panelWidth = (width: number): number =>
 export const tableWidth = (width: number, panel: number): number =>
   panel === 0 ? width : width - panel - panelGap
 
+/** What the panel, and the Needs you list, say with nothing that needs you. */
+export const nothingNeedsYou = "Nothing needs you"
+
 /** The word of a ticket only a free slot holds back. */
 const readyWord = "ready"
 
@@ -60,7 +84,8 @@ export const waitedForLook = (theme: Theme): Style =>
 
 /**
  * Up next's lines, `width` wide, `lines` tall with its label: the label, `Up next · 4 held back`,
- * then the queue in its frame, blank rows filling it.
+ * then in its frame `Nothing needs you`, unless a card's request does (its Totals count it), and the
+ * queue, blank rows filling it.
  */
 export const upNextLines = (
   queue: ReadonlyArray<QueueRow>,
@@ -107,7 +132,7 @@ export const upNextLines = (
       ...(part as Segments),
     ])
   })
-  const body: Array<Segments> = []
+  const body: Array<Segments> = totals.needsYou === 0 ? [[seg(nothingNeedsYou, styles.quiet)]] : []
   if (queue.length === 0) body.push([seg("nothing queued", styles.quiet)])
   for (const [i, entry] of entries.entries()) {
     const left = queue.length - i
@@ -143,9 +168,47 @@ export const panelTargets = {
   read: 101,
 } as const
 
-/** Which need the panel shows, whether the focus is on it or gone into it, at which choice. */
+/**
+ * The row the panel shows, of `rows` by attention, with `needs` not answered here of `all` the run's:
+ * `chosen` while it is a row and isn't answered here (the dashboard lets it go as its ticket stops
+ * needing you); else by itself the first that wants you, a ticket with a need and no row (a conflict
+ * hand-back waiting keeps its card) before one only set aside; else none. A ticket that comes in
+ * more urgent bumps the count, and takes no chosen row's place.
+ */
+export const selectedTicket = (
+  rows: ReadonlyArray<Row>,
+  chosen: TicketId | null,
+  needs: ReadonlyArray<Need>,
+  all: ReadonlyArray<Need>,
+): TicketId | null => {
+  const answeredHere = new Set(all.filter((need) => !needs.includes(need)).map((n) => n.ticket))
+  const stands = (row: Row) => !answeredHere.has(row.ticket)
+  if (rows.some((row) => row.ticket === chosen && stands(row))) return chosen
+  const wanting = rows.filter((row) => row.attention !== "rest" && stands(row))
+  const asks = wanting.find((row) => row.attention !== "setAside")
+  const unrowed = needs.find((need) => !rows.some((row) => row.ticket === need.ticket))
+  return asks?.ticket ?? unrowed?.ticket ?? wanting[0]?.ticket ?? null
+}
+
+/** What the panel shows of `ticket`: its need, if it has one, else its row. */
+export const detailOf = (
+  ticket: TicketId | null,
+  needs: ReadonlyArray<Need>,
+  rows: ReadonlyArray<Row>,
+): Need | Row | undefined =>
+  needs.find((need) => need.ticket === ticket) ?? rows.find((row) => row.ticket === ticket)
+
+/** Whether the focus, gone into the panel, has something to do on what it shows. */
+export const goesIn = (detail: Need | Row | undefined): boolean =>
+  detail !== undefined && ("_tag" in detail || detail.hasWorker)
+
+/** Whether the panel, on what it shows, waits on you, which its frame's colour says. */
+const waitsOnYou = (detail: Need | Row | undefined): boolean =>
+  detail !== undefined &&
+  ("_tag" in detail || detail.attention === "blocked" || detail.attention === "asked")
+
+/** Whether the focus is on the panel or gone into it, at which choice. */
 export interface PanelAt {
-  readonly index: number
   readonly focused: boolean
   readonly inside: boolean
   /** The focused choice: an option's index, or the options' count for Other. */
@@ -277,29 +340,83 @@ export const blockedCut = (need: Blocked, width: number, lines: number): boolean
   return said > Math.max(lines - 3, 1) - 2 - height(need.title, 2)
 }
 
-/** The keys the panel's foot names, with the needs it can go to. */
-const footOf = (keys: string, count: number): Segments => [
-  seg(count > 1 ? `${keys} · ] next` : keys, null),
-]
+/**
+ * What the panel, or its box in a pane with no panel, says of a selected row with no need (§ 7.2), a
+ * paragraph each: its state, its title, triage's verdict, and what comes of it or what to do. A
+ * Review ticket is closed, not deferred, so `bd undefer` is only a Deferred one's.
+ */
+export const rowParagraphs = (row: Row, theme: Theme): ReadonlyArray<Segment> => {
+  const { styles } = theme
+  const { detail } = row
+  const head = (why?: string) =>
+    seg(
+      `${marks[row.mark]} ${row.label} ${row.word}${why === undefined ? "" : `: ${why}`}`,
+      lookOf(row.tone, theme),
+    )
+  const title = seg(row.title, styles.key)
+  const said = (text: string) => seg(text, styles.dim)
+  const verdict = row.verdict === null ? [] : [seg(`${marks.verdict} ${row.verdict}`, styles.organ)]
+  switch (detail._tag) {
+    case "Answered":
+      return [head(), title, said(`Its question is answered; it resumes at ${detail.resumes}.`)]
+    case "Deferred":
+      return [
+        head(detail.why),
+        title,
+        ...verdict,
+        said(`Run bd undefer ${row.label} to bring it back.`),
+      ]
+    case "Review":
+      return [
+        head(detail.why),
+        title,
+        ...verdict,
+        ...(detail.checkLog === null ? [] : [said(`The check's log: ${detail.checkLog}`)]),
+        said(
+          "Its worktree is left for review. The run's end labels it unmerged: the tickets it blocks wait until its branch is on the base.",
+        ),
+      ]
+    case "Stopped":
+      return [head(detail.why), title, said("The next run resumes it.")]
+    case "Merged":
+      return [
+        head(),
+        title,
+        said(`Merged as ${detail.commit} into ${detail.base} at ${clock(row.since)}.`),
+      ]
+    case "NoChange":
+      return [head(), title, said(`No change to merge; closed at ${clock(row.since)}.`)]
+    case "Other":
+      return [
+        head(),
+        title,
+        ...(row.note === row.title ? [] : [said(row.note)]),
+        ...(row.attention === "asked"
+          ? [said("Its worker waits on you, in its worker view.")]
+          : []),
+      ]
+  }
+}
 
 /**
- * The Needs you panel's lines, `width` wide, `lines` tall with its label: `Needs you · 1 of 2`,
- * then the need `at.index` shows in a frame in the needsYou colour, heavy while the focus is on it.
+ * The Needs you panel's lines, `width` wide, `lines` tall with its label: `Needs you · 2`, `count`
+ * as the totals count it, faint at 0, then what it shows of the selected row in a frame in the
+ * needsYou colour while that waits on you, heavy while the focus is on it.
  */
 export const needsLines = (
-  needs: ReadonlyArray<Need>,
+  detail: Need | Row | undefined,
+  count: number,
   at: PanelAt,
   theme: Theme,
   width: number,
   lines: number,
 ): ReadonlyArray<Segments> => {
   const { styles } = theme
-  const index = Math.min(Math.max(at.index, 0), needs.length - 1)
-  const need = needs[index]
+  const need = detail !== undefined && "_tag" in detail ? detail : undefined
   const label: Segments = [
     seg("  "),
-    seg("Needs you", styles.stop),
-    seg(` · ${index + 1} of ${needs.length}`, styles.dim),
+    seg("Needs you", count === 0 ? styles.dim : styles.stop),
+    seg(` · ${count}`, styles.dim),
   ]
   const inner = Math.max(width - 4, 1)
   const room = Math.max(lines - 3, 1)
@@ -357,7 +474,7 @@ export const needsLines = (
             : options.length === 0
               ? "click to answer"
               : "move here to answer"
-      const foot = footOf(keys, needs.length).map((each) => ({ ...each, look: styles.dim }))
+      const foot = [dim(keys)]
       const fixed = title.length + 1 + choices.length + 1
       const space = room - fixed
       const description = question.description === "" ? [] : wrapped([dim(question.description)])
@@ -394,15 +511,19 @@ export const needsLines = (
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],
       ...titled,
       ...(short ? clears.slice(0, Math.max(spare - titled.length, 0)) : clears),
-      footOf(keys, needs.length).map((each) => ({
-        ...each,
-        look: styles.dim,
-        ...(short ? { target: panelTargets.read } : {}),
-      })),
+      [short ? dim(keys, panelTargets.read) : dim(keys)],
     )
+  } else if (detail !== undefined && !("_tag" in detail)) {
+    body.push(...rowParagraphs(detail, theme).flatMap((each) => wrapped([each])))
+    if (detail.hasWorker) {
+      body.push([
+        dim(at.inside ? "Enter opens its worker view" : at.focused ? "Enter goes in" : ""),
+      ])
+    }
   }
   const kept = body.slice(0, room)
   while (kept.length < room) kept.push([])
   const border: Border = at.focused ? "heavy" : "rounded"
-  return [padded(cut(label, width), width), ...boxed(kept, width, theme.look("needsYou"), border)]
+  const frame = theme.look(waitsOnYou(detail) ? "needsYou" : "frame")
+  return [padded(cut(label, width), width), ...boxed(kept, width, frame, border)]
 }

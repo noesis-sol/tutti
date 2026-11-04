@@ -100,6 +100,8 @@ export interface Entry {
   readonly handBack?: boolean
   /** What stopped its merge, for Needs you to say (§ 7.2): kept only while it is Blocked. */
   readonly about?: BlockedAbout | undefined
+  /** Where its failed check's output is, for Needs you to say (§ 7.2): kept only while in Review. */
+  readonly checkLog?: string | undefined
   /** When you last sent its worker a message; its idle grace for PAUSED counts from then. */
   readonly lastMessage: number | null
   readonly tallies: Tallies
@@ -362,6 +364,7 @@ const moved = (state: State, entry: Entry, phase: TicketPhase, move: Move, now: 
     rechecking,
     handBack,
     about: phase._tag === "Blocked" ? entry.about : undefined,
+    checkLog: phase._tag === "Review" ? entry.checkLog : undefined,
   })
   return {
     ...state,
@@ -436,7 +439,8 @@ export class Ledger extends Context.Service<
      * `said` and `beside` (the orchestra-era records its row names), with each of `said`'s texts
      * and then `lines` logged in the same write.
      * `title` sets its title, as a ticket entering the run needs, `issue` the issue it was read as,
-     * and `about` what stopped its merge, as it is Blocked; a ticket leaving it (null) leaves the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
+     * `about` what stopped its merge, as it is Blocked, and `checkLog` where its failed check's output
+     * is, as it is left for review; a ticket leaving it (null) leaves the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
      * was.
      */
     transition(
@@ -446,6 +450,7 @@ export class Ledger extends Context.Service<
         readonly title?: string
         readonly issue?: Issue
         readonly about?: BlockedAbout
+        readonly checkLog?: string
         readonly said?: ReadonlyArray<Said>
         readonly beside?: ReadonlyArray<Event>
         readonly lines?: ReadonlyArray<log.Line>
@@ -571,6 +576,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
             ...(options.title === undefined ? {} : { title: options.title }),
             ...(options.issue === undefined ? {} : { issue: options.issue }),
             ...(options.about === undefined ? {} : { about: options.about }),
+            ...(options.checkLog === undefined ? {} : { checkLog: options.checkLog }),
           }
           return changed(next, moved(state, titled, next.success, move, now))
         }),

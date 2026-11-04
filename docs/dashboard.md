@@ -191,8 +191,8 @@ the strip's line runs down into it, with the table's right border left of it and
 border right of it. The panel reaches the pane's right edge: it is as wide as In queue's cell less
 the gap, about two fifths of the pane, at least 44 columns. Beside it the strip's first three cells
 keep a fifth each, so that the bar doesn't move as verdicts arrive: Set aside's triage note is cut
-to ` · ◆ n`, then left out, where it would widen its cell. While nothing needs you it shows **Up
-next**: the tickets waiting in the queue, those only a free slot holds back first (`ready`), then
+to ` · ◆ n`, then left out, where it would widen its cell. With no row selected it shows **Up
+next**, under `Nothing needs you` unless a worker's request does: the tickets waiting in the queue, those only a free slot holds back first (`ready`), then
 each held back or waiting with why, as the log says it, after a `›`, and `+N more` for those that
 don't fit. Each reason starts `after` and names the ticket or tickets it waits for, in the live
 colour, the rest of it in the quiet grey, and wraps under its text:
@@ -211,15 +211,30 @@ several); one behind a solo ticket, `after <id> (solo)`; an epic, `after its sub
 <id>, then +N`. Under `NO_COLOR`, or with a scheme that leaves `live` to the terminal's colour, the
 IDs are bold, so they still stand out from the reason.
 
-While something needs you it shows that instead, one at a time, `Needs you · 1 of 2` above it: a
-question an Asked ticket waits on, with its title, the ticket waiting on it, as much of its
-description as fits and its options, the recommended one first; or a Blocked ticket, why, and what
-clears it. With the focus on the panel its frame is heavy, and `1`–`9` answer with an option at once, as
+With a row of the table selected, the panel is that row's detail, `Needs you · 2` above it, counting
+what needs you as the totals do:
+
+- a `? for you` row: the question, with its title, the ticket waiting on it, as much of its
+  description as fits and its options, the recommended one first;
+- a `■ blocked` row: why, and what clears it;
+- a `↻ answered` row: when it resumes;
+- a `↷ deferred` row: triage's verdict, and `bd undefer <id>`;
+- a `! review` row: triage's verdict and the failed check's log, its worktree being left for review;
+- a `■ stopped` row: that the next run resumes it;
+- a `✓ done` row: its merge commit and time, or that it had no change to merge.
+
+With nothing chosen, the first row that wants you is selected by itself. Go into Tickets and move, or
+click a row, to choose another: the panel stays on that ticket as rows re-sort, and a new, more urgent
+ticket goes to the top and bumps the count without taking it. `Esc` out of Tickets goes back to
+automatic, as does the ticket's no longer needing you: answered, merged, taken back. With no row that
+wants you and none chosen, the panel says `Nothing needs you`, over Up next.
+
+With the focus on the panel its frame is heavy, and `1`–`9` answer with an option at once, as
 `Shift+A`'s box does, but a digit a highlighted card's question takes, with the focus on it in
 Current; the panel's foot says which are left. `Enter` goes in: there `↑` and `↓` move between the
 options and `Other…`, `Enter` answers with an option, and `Enter` on `Other…` opens that box at the
 question to read it all or type your own; on a Blocked ticket `Enter` opens its worker view, and on one blocked on its merge conflict
-`h` hands it back to its worker. `]` and `[` go to the next or previous of what needs you. A click on an option answers with it, and one on the title or a cut description
+`h` hands it back to its worker. A click on an option answers with it, and one on the title or a cut description
 opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
 half a second. An answered question leaves the panel and **Needs you** at once, and the answer wakes
 the run, which takes its ticket back. With no slot free, its row says `↻ answered` until one is, and
@@ -243,7 +258,8 @@ says that.
 An Asked row says the question its ticket waits on, rather than the ticket's title, in any pane.
 Where there is no panel, the totals' **Needs you** takes its place among [the panels](#keys), over
 the table, drawn highlighted while the focus is on it. A click on a row selects it, going into
-Tickets, and `Enter` on a `? for you` row opens `Shift+A`'s box at its question.
+Tickets, and `Enter` on a `? for you` row opens `Shift+A`'s box at its question, on a blocked row a
+box saying what clears it, and on any other a box with what the panel would say of it.
 
 Where there is no panel, `Enter` on **Needs you**, or a click on it, opens a list of what needs you,
 a line each, as the panel shows them one at a time: `? <question> <title>` for each question an Asked
@@ -469,7 +485,7 @@ panel at the top level.
 | `Ctrl+R` | | release a steered worker |
 | the wheel, `PgUp`, `PgDn` | | scroll the transcript, or the whole ticket while it is open |
 | `g`, `G` | | jump to the top or the end |
-| `Esc` | close a box or the key help, else come out of the panel | leave the composer, then close the whole ticket, then the view |
+| `Esc` | close a box or the key help, else come out of the panel; out of Tickets, Needs you goes back to the first row that wants you | leave the composer, then close the whole ticket, then the view |
 | `?` | key help | key help |
 | `Ctrl+C` | the quit box | the quit box |
 | `Ctrl+Z` | a toast: tutti can't be suspended | the same |

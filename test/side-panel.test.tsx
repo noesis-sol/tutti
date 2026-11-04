@@ -186,7 +186,8 @@ describe("the panel beside the tickets table", () => {
       "│ 2 In queue · 3 held back                                   │",
     )
     const panel = panelOf(frame, 155 - 61).filter((line) => line.startsWith("│"))
-    expect(panel.slice(0, 6)).toEqual([
+    expect(panel.slice(0, 7)).toEqual([
+      "│ Nothing needs you                                         │",
       "│ tutti-gr4z.11  ready                                      │",
       "│ tutti-h2o9     ready                                      │",
       "│ tutti-gr4z.9   › after tutti-gr4z.7: both touch           │",
@@ -265,9 +266,9 @@ describe("the panel beside the tickets table", () => {
       },
       actions: new Map(),
     })
-    const lines = upNextLines(view.queue, view.totals, theme, 76, 6)
+    const lines = upNextLines(view.queue, view.totals, theme, 76, 7)
     expect(
-      lines.slice(2, 4).map((line) =>
+      lines.slice(3, 5).map((line) =>
         line
           .map((each) => each.text)
           .join("")
@@ -286,20 +287,46 @@ describe("the panel beside the tickets table", () => {
 
   test("Up next says how many don't fit", () => {
     const view = viewOf()
-    const lines = upNextLines(view.queue, view.totals, theme, 50, 6).map((line) =>
+    const lines = upNextLines(view.queue, view.totals, theme, 50, 7).map((line) =>
       line.map((each) => each.text).join(""),
     )
     expect(lines[0]?.trim()).toBe("Up next · 3 held back")
-    expect(lines.slice(2, 5).map((line) => line.replace(/^│ | *│$/g, "").trimEnd())).toEqual([
+    expect(lines.slice(2, 6).map((line) => line.replace(/^│ | *│$/g, "").trimEnd())).toEqual([
+      "Nothing needs you",
       "tutti-gr4z.11  ready",
       "tutti-h2o9     ready",
       "+3 more",
     ])
   })
 
+  test("Needs you: the Blocked row by itself, as the first that wants you", async () => {
+    const { chars } = await drawn(155, 36, needingView())
+    expect(chars).toContain("Needs you · 2")
+    expect(chars).toContain("tutti-125 blocked: DIRTY_TREE")
+    expect(chars).not.toContain("Round 2 holds")
+  })
+
   test("Needs you: the question, the ticket waiting on it and its options", async () => {
-    const chars = (await drawn(155, 36, needingView())).chars
-    expect(chars).toContain("Needs you · 1 of 2")
+    const chars = await withRender(
+      <Root
+        value={{
+          view: external(needingView()),
+          screen: external<Screen>(Screen.Dashboard()),
+          commands: Effect.runSync(makeCommands),
+          appearance: external<Appearance>("dark"),
+          themeOf,
+          now: () => began + 67_000,
+        }}
+      />,
+      { width: 155, height: 36 },
+      async (rendered) => {
+        await rendered.input((setup) => {
+          setup.mockInput.pressEnter()
+          setup.mockInput.pressArrow("down")
+        })
+        return (await rendered.capture()).chars
+      },
+    )
     expect(chars).toContain("Does a spec run's START note print?")
     expect(chars).toContain("tutti-t6dv · tutti-kkb.28 waits on it")
     expect(chars).toContain("1 Round 2 holds: the note prints  recommended")
@@ -328,7 +355,12 @@ describe("answering on the panel", () => {
       />,
       { width: 155, height: 36 },
       async (rendered) => {
-        await rendered.input((setup) => setup.mockInput.pressTab())
+        // The Asked row, selected, then Tab to the panel, which shows its question.
+        await rendered.input((setup) => {
+          setup.mockInput.pressEnter()
+          setup.mockInput.pressArrow("down")
+          setup.mockInput.pressTab()
+        })
         const focused = await rendered.capture()
         expect(focused.chars).not.toContain("> 1 Round 2 holds")
         expect(focused.chars).toContain("┏")
@@ -344,31 +376,7 @@ describe("answering on the panel", () => {
         ])
         // The answered question leaves the panel: the blocked ticket is next.
         expect(after.chars).toContain("tutti-125 blocked: DIRTY_TREE")
-        expect(after.chars).toContain("Needs you · 1 of 1")
-      },
-    )
-  })
-})
-
-describe("moving between needs", () => {
-  test("] shows the next, [ the previous", async () => {
-    await withRender(
-      <Root
-        value={{
-          view: external(needingView()),
-          screen: external<Screen>(Screen.Dashboard()),
-          commands: Effect.runSync(makeCommands),
-          appearance: external<Appearance>("dark"),
-          themeOf,
-          now: () => began + 67_000,
-        }}
-      />,
-      { width: 155, height: 36 },
-      async (rendered) => {
-        await rendered.input((setup) => setup.mockInput.pressKey("]"))
-        expect((await rendered.capture()).chars).toContain("Needs you · 2 of 2")
-        await rendered.input((setup) => setup.mockInput.pressKey("["))
-        expect((await rendered.capture()).chars).toContain("Needs you · 1 of 2")
+        expect(after.chars).toContain("Needs you · 1")
       },
     )
   })

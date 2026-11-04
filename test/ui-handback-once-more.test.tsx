@@ -249,7 +249,7 @@ describe("Needs you beside the tickets table", () => {
     const at = (on: boolean, conflict: boolean) => ({
       buttons: true,
       highlighted: () => undefined,
-      panel: { on: () => on, needs: 1, conflict: () => conflict },
+      panel: { on: () => on, conflict: () => conflict },
     })
     expect(commandFor(dashboardCommands(view, at(true, true)), "h")).toBeDefined()
     expect(commandFor(dashboardCommands(view, at(false, true)), "h")).toBeUndefined()
@@ -260,8 +260,9 @@ describe("Needs you beside the tickets table", () => {
     const theme = themeOf("dark")
     const drawn = (why: string) =>
       needsLines(
-        [Need.Blocked({ ...blockedFields, title: "Title", why })],
-        { index: 0, focused: true, inside: true, choice: 0 },
+        Need.Blocked({ ...blockedFields, title: "Title", why }),
+        1,
+        { focused: true, inside: true, choice: 0 },
         theme,
         60,
         12,

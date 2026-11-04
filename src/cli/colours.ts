@@ -8,7 +8,14 @@ import { Console, Effect } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { WorkerState } from "../agent/WorkerState.ts"
 import { Finished, TicketPhase } from "../run/phase.ts"
-import { type Card, type Key, type Row, rowStatus, shownRequest } from "../run/runView.ts"
+import {
+  type Card,
+  type Key,
+  type Row,
+  RowDetail,
+  rowStatus,
+  shownRequest,
+} from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Tty } from "../services/Tty.ts"
 import { attentionLines } from "../ui/AttentionCard.tsx"
@@ -161,6 +168,8 @@ const rows: ReadonlyArray<Row> = [
     verdict: null,
     attention: "rest",
     since: 0,
+    detail: RowDetail.Other(),
+    hasWorker: false,
   },
   {
     ticket: "tut-12" as TicketId,
@@ -171,6 +180,8 @@ const rows: ReadonlyArray<Row> = [
     verdict: null,
     attention: "rest",
     since: 0,
+    detail: RowDetail.Other(),
+    hasWorker: false,
   },
   {
     ticket: "tut-13" as TicketId,
@@ -181,6 +192,8 @@ const rows: ReadonlyArray<Row> = [
     verdict: null,
     attention: "rest",
     since: 0,
+    detail: RowDetail.Other(),
+    hasWorker: false,
   },
   {
     ticket: "tut-14" as TicketId,
@@ -191,6 +204,8 @@ const rows: ReadonlyArray<Row> = [
     verdict: null,
     attention: "asked",
     since: 0,
+    detail: RowDetail.Other(),
+    hasWorker: false,
   },
 ]
 

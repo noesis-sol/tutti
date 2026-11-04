@@ -8,7 +8,7 @@ import fc from "fast-check"
 import { initSummary } from "../src/print/initSummary.ts"
 import { type Summary, summary } from "../src/print/summary.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
-import { attentionOf, emptyView, type Row, rowStatus } from "../src/run/runView.ts"
+import { attentionOf, emptyView, type Row, RowDetail, rowStatus } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { boxed, paint, type Segments, seg, wrap } from "../src/ui/line.tsx"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
@@ -120,6 +120,8 @@ const row = (ticket: TicketId, phase: TicketPhase, note: string): Row => ({
   verdict: null,
   attention: attentionOf(phase),
   since: 0,
+  detail: RowDetail.Other(),
+  hasWorker: false,
 })
 
 const ended = (rows: ReadonlyArray<Row>): Summary => ({

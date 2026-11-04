@@ -375,7 +375,7 @@ describe("the hint follows the level", () => {
       const inside = { panel: "tickets", inside: true } as const
       const side = {
         needs: start.needs,
-        at: { index: 0, focused: false, inside: false, choice: 0 },
+        at: { focused: false, inside: false, choice: 0 },
       }
       const within = dashboardLayout(start, theme, width, 40, null, side, inside, "b-1" as TicketId)
       expect([within.table, within.current]).toEqual([top.table, top.current])

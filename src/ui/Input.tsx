@@ -15,7 +15,7 @@ import { useCopyOnSelect } from "./clipboard.ts"
 import { globalCommands, useCommands } from "./keyCommands.ts"
 import { Box, guardInput, InputContext, type InputState, useInput } from "./keys.ts"
 import { SelectionLook, selectionLookOf } from "./line.tsx"
-import { BlockedBox, NeedsList } from "./NeedsList.tsx"
+import { BlockedBox, NeedsList, RowBox } from "./NeedsList.tsx"
 import { QuestionsBox, QuestionsKeys, QuestionToasts, TalkReturn } from "./QuestionsBox.tsx"
 import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
@@ -74,6 +74,8 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
       return <NeedsList at={box.at} answered={box.answered} />
     case "Blocked":
       return <BlockedBox ticket={box.ticket} />
+    case "Row":
+      return <RowBox ticket={box.ticket} />
   }
 }
 

@@ -159,10 +159,10 @@ describe("what the view gives Needs you", () => {
 describe("the panel's lines", () => {
   const texts = (lines: ReadonlyArray<ReadonlyArray<{ readonly text: string }>>) =>
     lines.map((line) => line.map((segment) => segment.text).join(""))
-  const at = { index: 0, focused: true, inside: true, choice: 0 }
+  const at = { focused: true, inside: true, choice: 0 }
 
   test("tall enough: all of it, then the foot", () => {
-    const lines = texts(needsLines([needOf()], at, theme, 60, 20)).join("\n")
+    const lines = texts(needsLines(needOf(), 1, at, theme, 60, 20)).join("\n")
     expect(lines).toContain("loop.ts, cli.test.ts")
     expect(lines).toContain("next run checks")
     expect(lines).toContain("Enter opens its worker view")
@@ -181,7 +181,7 @@ describe("the panel's lines", () => {
     for (const fields of cases) {
       for (let height = 6; height <= 30; height++) {
         const shown = (handBack: boolean) =>
-          texts(needsLines([needOf({ ...fields, handBack })], at, theme, 51, height)).join("\n")
+          texts(needsLines(needOf({ ...fields, handBack }), 1, at, theme, 51, height)).join("\n")
         expect(shown(false)).toMatch(/Enter (reads it all|opens its worker view)/)
         expect(shown(false)).toContain("git rebase trunk")
         expect(shown(true)).toMatch(/Enter (reads it all|opens its worker view)/)
@@ -191,7 +191,7 @@ describe("the panel's lines", () => {
   })
 
   test("very short: what to do in place of the title, and the foot, to click", () => {
-    const lines = needsLines([needOf()], at, theme, 60, 6)
+    const lines = needsLines(needOf(), 1, at, theme, 60, 6)
     const said = texts(lines).join("\n")
     expect(said).not.toContain("Merge the loop")
     expect(said).toContain("git rebase trunk")
@@ -202,7 +202,7 @@ describe("the panel's lines", () => {
 
   test("too short: what to do first, and the foot says how to read the rest", () => {
     const said = texts(
-      needsLines([needOf()], { ...at, focused: false, inside: false }, theme, 60, 9),
+      needsLines(needOf(), 1, { ...at, focused: false, inside: false }, theme, 60, 9),
     ).join("\n")
     expect(said).toContain("loop.ts, cli.test.ts")
     expect(said).toContain("git rebase trunk")

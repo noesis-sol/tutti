@@ -315,7 +315,28 @@ export interface Row extends Shown {
   readonly attention: Attention
   /** When its ticket's phase began: the time the dashboard's table orders a group by. */
   readonly since: number
+  /** What the panel beside the table says of it, once it is selected (§ 7.2). */
+  readonly detail: RowDetail
+  /** Its worker view opens: it has a worker. A Blocked ticket's opens without, by its need. */
+  readonly hasWorker: boolean
 }
+
+/**
+ * What the panel beside the tickets table says of a selected row besides its Need (§ 7.2), its
+ * texts sanitised: an Asked ticket's question answered, and when it comes back; a ticket left undone,
+ * why and, where a check failed, where its output is; one merged or closed with nothing to merge.
+ */
+export type RowDetail = Data.TaggedEnum<{
+  Answered: { readonly resumes: string }
+  Deferred: { readonly why: string }
+  Review: { readonly why: string; readonly checkLog: string | null }
+  Stopped: { readonly why: string }
+  Merged: { readonly commit: string; readonly base: string }
+  NoChange: Record<never, never>
+  Other: Record<never, never>
+}>
+
+export const RowDetail = Data.taggedEnum<RowDetail>()
 
 /**
  * A link of a ticket's to another, as bd show gives it: `parent-child`, `blocks`, …; `dependent`
@@ -982,6 +1003,29 @@ const noteOf = (
     : "no change to merge"
 }
 
+/** What a row says of its ticket once selected; `resumes` when an Asked one comes back, if answered. */
+const detailOf = (entry: Entry, branch: string, resumes: string | null): RowDetail => {
+  const { phase } = entry
+  if (resumes !== null) return RowDetail.Answered({ resumes })
+  switch (phase._tag) {
+    case "Deferred":
+      return RowDetail.Deferred({ why: sanitizeLine(phase.why) })
+    case "Review":
+      return RowDetail.Review({
+        why: sanitizeLine(phase.why),
+        checkLog: entry.checkLog === undefined ? null : sanitizeLine(entry.checkLog),
+      })
+    case "Stopped":
+      return RowDetail.Stopped({ why: sanitizeLine(phase.why) })
+    case "Done":
+      return phase.outcome._tag === "Merged"
+        ? RowDetail.Merged({ commit: sanitizeLine(shortHash(phase.outcome.commit)), base: branch })
+        : RowDetail.NoChange()
+    default:
+      return RowDetail.Other()
+  }
+}
+
 const latestOf = (action: LatestAction | undefined): LatestAction | null =>
   action === undefined ? null : { text: sanitizeLine(action.text), denied: action.denied }
 
@@ -1178,6 +1222,8 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           verdict: verdict === null ? null : sanitizeLine(verdict),
           attention: slotOnly ? "rest" : attentionOf(phase, activity),
           since: entry.since,
+          detail: detailOf(entry, branch, slotOnly ? resumes : null),
+          hasWorker: entry.worker !== null,
         },
       })
     }
