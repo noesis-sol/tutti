@@ -100,7 +100,7 @@ export interface Entry {
   readonly handBack?: boolean
   /** What stopped its merge, for Needs you to say (§ 7.2): kept only while it is Blocked. */
   readonly about?: BlockedAbout | undefined
-  /** Where its failed check's output is, for Needs you to say (§ 7.2): kept only while in Review. */
+  /** Where its failed check's or setup's output is, for Needs you to say (§ 7.2): kept while set aside. */
   readonly checkLog?: string | undefined
   /** When you last sent its worker a message; its idle grace for PAUSED counts from then. */
   readonly lastMessage: number | null
@@ -364,7 +364,7 @@ const moved = (state: State, entry: Entry, phase: TicketPhase, move: Move, now: 
     rechecking,
     handBack,
     about: phase._tag === "Blocked" ? entry.about : undefined,
-    checkLog: phase._tag === "Review" ? entry.checkLog : undefined,
+    checkLog: phase._tag === "Review" || phase._tag === "Deferred" ? entry.checkLog : undefined,
   })
   return {
     ...state,
@@ -439,8 +439,8 @@ export class Ledger extends Context.Service<
      * `said` and `beside` (the orchestra-era records its row names), with each of `said`'s texts
      * and then `lines` logged in the same write.
      * `title` sets its title, as a ticket entering the run needs, `issue` the issue it was read as,
-     * `about` what stopped its merge, as it is Blocked, and `checkLog` where its failed check's output
-     * is, as it is left for review; a ticket leaving it (null) leaves the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
+     * `about` what stopped its merge, as it is Blocked, and `checkLog` where its failed check's or setup's
+     * output is, as it is set aside; a ticket leaving it (null) leaves the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
      * was.
      */
     transition(

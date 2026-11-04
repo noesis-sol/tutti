@@ -119,6 +119,7 @@ import {
   upNextLines,
 } from "./SidePanel.tsx"
 import {
+  byAttention,
   fewestTableLines,
   rowsBesideCurrent,
   shownRows,
@@ -189,6 +190,8 @@ export interface DashboardLayout {
   readonly panel: number
   /** The rows the tickets table draws, by attention (shownRows); none where it is left out. */
   readonly rows: ReadonlyArray<Row>
+  /** Every row the table has, by attention, those with no room among them; what `selected` is of. */
+  readonly selectable: ReadonlyArray<Row>
   /** The ticket the panel shows, and the table's keys are on (selectedTicket); null with none. */
   readonly selected: TicketId | null
   /**
@@ -277,7 +280,14 @@ export const dashboardLayout = (
     const totals = allTotals.slice(0, take(allTotals.length))
     const cards: CardsLayout = { _tag: "Compact" }
     const none = { title: 0, load: 0, gap: 0, table: 0, panel: 0, current: 0, windDown: 0 }
-    const blank = { loadLine: [], tickets: [], rows: [], selected: null, windDownLine: null }
+    const blank = {
+      loadLine: [],
+      tickets: [],
+      rows: [],
+      selectable: [],
+      selected: null,
+      windDownLine: null,
+    }
     return {
       ...none,
       ...blank,
@@ -332,7 +342,8 @@ export const dashboardLayout = (
     if (table === 0) return []
     const narrower = tableWidth(width, panel)
     const shown = shownRows(rows, { lines: table })
-    const selected = selectedTicket(shown, row, side.needs, view.needs)
+    const ordered = byAttention(rows)
+    const selected = selectedTicket(ordered, row, side.needs, view.needs)
     const lines = ticketsLines(
       rows,
       theme,
@@ -355,7 +366,7 @@ export const dashboardLayout = (
     const shownSide =
       selected !== null
         ? needsLines(
-            detailOf(selected, side.needs, shown),
+            detailOf(selected, side.needs, ordered),
             counted.needsYou,
             { ...side.at, taken },
             theme,
@@ -366,7 +377,10 @@ export const dashboardLayout = (
     return beside(lines, shownSide, narrower)
   }
   const rowsOf = (rows: RunView["rows"]) => (table === 0 ? [] : shownRows(rows, { lines: table }))
-  const selectedIn = (rows: ReadonlyArray<Row>) => selectedTicket(rows, row, side.needs, view.needs)
+  const selectionOf = (rows: ReadonlyArray<Row>) => {
+    const selectable = table === 0 ? [] : byAttention(rows)
+    return { selectable, selected: selectedTicket(selectable, row, side.needs, view.needs) }
+  }
   if (view.endOfRun !== null && whole !== null) {
     // The box keeps to the room left, naming fewer workers, but always saying what q does.
     const lit: Border = focus.panel === "current" ? "heavy" : "rounded"
@@ -375,12 +389,11 @@ export const dashboardLayout = (
     const tickets = ticketsOf(view.rows)
     const rows = rowsOf(view.rows)
     const spare = room - ending.length + hintSpare
-    const selected = selectedIn(rows)
     return {
       ...drawn,
       tickets,
       rows,
-      selected,
+      ...selectionOf(view.rows),
       current: ending.length,
       cards: compact,
       ending,
@@ -390,12 +403,12 @@ export const dashboardLayout = (
   const besideCurrent = rowsBesideCurrent(view.rows, cards)
   const tickets = ticketsOf(besideCurrent)
   const rows = rowsOf(besideCurrent)
-  const selected = selectedIn(rows)
+  const selection = selectionOf(besideCurrent)
   const layout = layoutOf(cards, width, room)
   const current = Math.min(sectionLines(layout, cards.length), room)
   const spare = room - current + hintSpare
   if (layout._tag === "Cards") {
-    return { ...drawn, tickets, rows, selected, current, cards: layout, ending: null, spare }
+    return { ...drawn, tickets, rows, ...selection, current, cards: layout, ending: null, spare }
   }
   const fewer = hintAt(false).slice(0, hint.length)
   const freed = hint.length - fewer.length
@@ -403,7 +416,7 @@ export const dashboardLayout = (
     ...drawn,
     tickets,
     rows,
-    selected,
+    ...selection,
     hint: fewer,
     current,
     cards: layout,
@@ -791,7 +804,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   ]
   const filled: ReadonlyArray<Panel> = [
     ...(laid.rows.length > 0 ? (["tickets"] as const) : []),
-    ...(panelShown() && goesIn(detailOf(laid.selected, needs, laid.rows))
+    ...(panelShown() && goesIn(detailOf(laid.selected, needs, laid.selectable))
       ? (["needs"] as const)
       : []),
     ...(cards.length > 0 ? (["current"] as const) : []),
@@ -808,15 +821,16 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   const firstRow = laid.rows[0]?.ticket ?? null
   // The row the keys go to with none chosen: what the panel selects by itself, where it has a row.
   const automaticRow = () => {
-    const ticket = selectedTicket(laid.rows, null, needs, view.needs)
+    const ticket = selectedTicket(laid.selectable, null, needs, view.needs)
     return laid.rows.some((each) => each.ticket === ticket) ? ticket : firstRow
   }
   // A chosen row goes back to automatic as its ticket stops needing you (answered, merged, taken
   // back): answered here, gone from the table, or no longer asking anything. A row that never wanted
-  // you stays while it is drawn. Inside Tickets the keys stay on a row: the one it goes back to.
+  // you stays while it is the table's, as one pushed past the rows with room does. Inside Tickets the
+  // keys stay on a row: the one it goes back to.
   useEffect(() => {
     if (row !== null && laid.table > 0) {
-      const at = laid.rows.find((each) => each.ticket === row)
+      const at = laid.selectable.find((each) => each.ticket === row)
       const stopped = wanted.current === row && at?.attention === "rest"
       const lets = laid.selected !== row || stopped
       wanted.current = !lets && at?.attention !== "rest" ? row : null
@@ -846,7 +860,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     return card !== undefined && grows(card) && buttons ? card : undefined
   }
   const shownNow = () => {
-    const ticket = selectedTicket(laid.rows, rowNow(), needs, view.needs)
+    const ticket = selectedTicket(laid.selectable, rowNow(), needs, view.needs)
     return { need: needs.find((each) => each.ticket === ticket) }
   }
   // Answers the panel's question with its option `n`, from 0: it leaves the panel, its row let go.
@@ -884,7 +898,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
       return openNeeds()
     }
     if (!filled.includes(panel)) return focusOn(panel, false)
-    if (panel === "tickets" && !laid.rows.some((each) => each.ticket === rowNow())) {
+    if (panel === "tickets" && !laid.selectable.some((each) => each.ticket === rowNow())) {
       setRow(automaticRow)
     }
     if (panel === "current") {

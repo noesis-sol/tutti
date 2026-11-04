@@ -324,11 +324,11 @@ export interface Row extends Shown {
 /**
  * What the panel beside the tickets table says of a selected row besides its Need (§ 7.2), its
  * texts sanitised: an Asked ticket's question answered, and when it comes back; a ticket left undone,
- * why and, where a check failed, where its output is; one merged or closed with nothing to merge.
+ * why and, where a check or its setup failed, where its output is; one merged or closed with nothing to merge.
  */
 export type RowDetail = Data.TaggedEnum<{
   Answered: { readonly resumes: string }
-  Deferred: { readonly why: string }
+  Deferred: { readonly why: string; readonly checkLog: string | null }
   Review: { readonly why: string; readonly checkLog: string | null }
   Stopped: { readonly why: string }
   Merged: { readonly commit: string; readonly base: string }
@@ -1006,15 +1006,13 @@ const noteOf = (
 /** What a row says of its ticket once selected; `resumes` when an Asked one comes back, if answered. */
 const detailOf = (entry: Entry, branch: string, resumes: string | null): RowDetail => {
   const { phase } = entry
+  const checkLog = entry.checkLog === undefined ? null : sanitizeLine(entry.checkLog)
   if (resumes !== null) return RowDetail.Answered({ resumes })
   switch (phase._tag) {
     case "Deferred":
-      return RowDetail.Deferred({ why: sanitizeLine(phase.why) })
+      return RowDetail.Deferred({ why: sanitizeLine(phase.why), checkLog })
     case "Review":
-      return RowDetail.Review({
-        why: sanitizeLine(phase.why),
-        checkLog: entry.checkLog === undefined ? null : sanitizeLine(entry.checkLog),
-      })
+      return RowDetail.Review({ why: sanitizeLine(phase.why), checkLog })
     case "Stopped":
       return RowDetail.Stopped({ why: sanitizeLine(phase.why) })
     case "Done":

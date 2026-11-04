@@ -218,7 +218,7 @@ what needs you as the totals do:
   description as fits and its options, the recommended one first;
 - a `■ blocked` row: why, and what clears it;
 - a `↻ answered` row: when it resumes;
-- a `↷ deferred` row: triage's verdict, and `bd undefer <id>`;
+- a `↷ deferred` row: triage's verdict, its failed setup's log where it has one, and `bd undefer <id>`;
 - a `! review` row: triage's verdict and the failed check's log, its worktree being left for review;
 - a `■ stopped` row: that the next run resumes it;
 - a `✓ done` row: its merge commit and time, or that it had no change to merge.

@@ -46,6 +46,8 @@ export interface Aside {
   readonly failed: string
   /** What DEFER_FAILED says after `kept out of this run, `: what to do instead. */
   readonly instead: string
+  /** Where its failed setup's output is, for Needs you to say (§ 7.2). */
+  readonly checkLog?: string
 }
 
 /** What leaving a ticket for review says, and where. */
@@ -109,6 +111,7 @@ export const putAside = (
             text: aside.deferred,
           },
         ],
+        ...(aside.checkLog === undefined ? {} : { checkLog: aside.checkLog }),
       })
       return true
     }

@@ -169,7 +169,7 @@ export const panelTargets = {
 } as const
 
 /**
- * The row the panel shows, of `rows` by attention, with `needs` not answered here of `all` the run's:
+ * The row the panel shows, of the table's `rows` by attention, those with no room among them, with `needs` not answered here of `all` the run's:
  * `chosen` while it is a row and isn't answered here (the dashboard lets it go as its ticket stops
  * needing you); else by itself the first that wants you, a ticket with a need and no row (a conflict
  * hand-back waiting keeps its card) before one only set aside; else none. A ticket that comes in
@@ -356,6 +356,7 @@ export const rowParagraphs = (row: Row, theme: Theme): ReadonlyArray<Segment> =>
   const title = seg(row.title, styles.key)
   const said = (text: string) => seg(text, styles.dim)
   const verdict = row.verdict === null ? [] : [seg(`${marks.verdict} ${row.verdict}`, styles.organ)]
+  const log = (path: string | null) => (path === null ? [] : [said(`Check log: ${path}`)])
   switch (detail._tag) {
     case "Answered":
       return [head(), title, said(`Its question is answered; it resumes at ${detail.resumes}.`)]
@@ -364,6 +365,7 @@ export const rowParagraphs = (row: Row, theme: Theme): ReadonlyArray<Segment> =>
         head(detail.why),
         title,
         ...verdict,
+        ...log(detail.checkLog),
         said(`Run bd undefer ${row.label} to bring it back.`),
       ]
     case "Review":
@@ -371,7 +373,7 @@ export const rowParagraphs = (row: Row, theme: Theme): ReadonlyArray<Segment> =>
         head(detail.why),
         title,
         ...verdict,
-        ...(detail.checkLog === null ? [] : [said(`The check's log: ${detail.checkLog}`)]),
+        ...log(detail.checkLog),
         said(
           "Its worktree is left for review. The run's end labels it unmerged: the tickets it blocks wait until its branch is on the base.",
         ),

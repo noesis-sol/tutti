@@ -12,6 +12,7 @@ import { clock } from "../src/run/localTime.ts"
 import { Finished, Move, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
+import { setupFailedOnBranch } from "../src/run/start.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { init, result, sessionState } from "../src/testing/AgentHost.ts"
 import { Root } from "../src/ui/App.tsx"
@@ -230,6 +231,43 @@ describe("a row you choose", () => {
     })
   })
 
+  test("stays as a more urgent ticket pushes it past the rows the table has room for", async () => {
+    const asks = Array.from({ length: 10 }, (_, i) =>
+      entryOf(`a-${i}`, i, TicketPhase.Asked({ question: `q-${i}` })),
+    )
+    const question = (i: number) => ({
+      ...q1,
+      id: `q-${i}` as TicketId,
+      title: `Question q-${i}`,
+      waiting: [`a-${i}` as TicketId],
+    })
+    const questions = new Map(asks.map((_, i) => [`q-${i}`, question(i)]))
+    await scene(projected(asks, { questions }), wide, async ({ view, rendered }) => {
+      await press(rendered, "enter", "up")
+      expect(panelOf(await rendered.capture())).toContain("Question q-9")
+      const urgent = entryOf("b-0", 10, dirty)
+      await merge(rendered, view, projected([...asks, urgent], { questions }))
+      const panel = panelOf(await rendered.capture())
+      expect(panel).toContain("Question q-9")
+      expect(panel).toContain("Needs you · 11")
+      await press(rendered, "escape")
+      expect(panelOf(await rendered.capture())).toContain("b-0 blocked: DIRTY_TREE")
+    })
+  })
+
+  test("that was set aside stays as newer ones push it past the rows with room", async () => {
+    const set = (ticket: string, row: number) =>
+      entryOf(ticket, row, TicketPhase.Deferred({ why: "by the worker" }))
+    const start = Array.from({ length: 10 }, (_, i) => set(`s-${i}`, i))
+    await scene(projected(start), wide, async ({ view, rendered }) => {
+      // Newest first: ↑ from the first goes round to the oldest, s-0.
+      await press(rendered, "enter", "up")
+      expect(panelOf(await rendered.capture())).toContain("s-0 deferred")
+      await merge(rendered, view, projected([...start, set("s-new", 10)]))
+      expect(panelOf(await rendered.capture())).toContain("s-0 deferred")
+    })
+  })
+
   test("goes back to automatic once merged, gone from the table or no longer blocked", async () => {
     const start = [entryOf("b-1", 0, dirty), entryOf("b-2", 1, conflict)]
     await scene(projected(start), wide, async ({ view, rendered }) => {
@@ -420,13 +458,24 @@ describe("each kind of row's detail", () => {
     expect(panel).toContain("Run bd undefer s-1 to bring it back.")
   })
 
+  test("a deferred row whose setup failed: that log's path too", async () => {
+    const why = "its setup failed on its branch"
+    const panel = await picked(
+      entryOf("s-1", 0, TicketPhase.Deferred({ why }), {
+        checkLog: "/repo/.tutti/run/workers/s-1/checks/setup-1.log",
+      }),
+    )
+    expect(panel).toContain("Check log: /repo/.tutti/run/workers/s-1/checks/setup-1.log")
+    expect(panel).toContain("Run bd undefer s-1 to bring it back.")
+  })
+
   test("a row left for review: its check log's path, and no bd undefer", async () => {
     const review = TicketPhase.Review({ why: "CHECKS_FAILED" })
     const panel = await picked(
       entryOf("r-1", 0, review, { checkLog: "/repo/.tutti/run/workers/r-1/checks/fast-1.log" }),
     )
     expect(panel).toContain("r-1 review: CHECKS_FAILED")
-    expect(panel).toContain("The check's log: /repo/.tutti/run/workers/r-1/checks/fast-1.log")
+    expect(panel).toContain("Check log: /repo/.tutti/run/workers/r-1/checks/fast-1.log")
     expect(panel).not.toContain("bd undefer")
   })
 
@@ -515,5 +564,18 @@ describe("the check log's path on the ledger", () => {
     expect(ran.exit.value.inReview?.checkLog).toBe("/repo/fast-1.log")
     expect(ran.exit.value.after?.phase._tag).toBe("ToMerge")
     expect(ran.exit.value.after?.checkLog).toBeUndefined()
+  })
+
+  test("a setup that failed on a ticket's branch names its log for the row", () => {
+    const output = "/repo/.tutti/run/workers/s-1/checks/setup-1.log"
+    const aside = setupFailedOnBranch({
+      id: "s-1" as TicketId,
+      worktree: "/w/s-1",
+      command: "bun install",
+      how: "fails",
+      output,
+      commits: 2,
+    })
+    expect(aside.checkLog).toBe(output)
   })
 })

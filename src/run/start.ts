@@ -357,6 +357,7 @@ export const setupFailedOnBranch = ({
     )`'${command}' ${how} in ${worktree} for ${id}, whose branch has ${own} -> deferred without starting a worker; the whole output is in ${output}`,
     failed: `${why}, and bd could not defer ${id}`,
     instead: `worktree ${worktree} left as it is`,
+    checkLog: output,
   }
 }
 
