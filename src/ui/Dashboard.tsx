@@ -131,7 +131,7 @@ import { useLinesUnderToasts } from "./Toasts.tsx"
 import { totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { useCommand, useEvent, useRunView, useTheme } from "./useRunView.ts"
+import { useCommand, useEvent, useQuestionNews, useRunView, useTheme } from "./useRunView.ts"
 import { windDownSegments } from "./WindDown.tsx"
 
 /** The smallest pane the whole dashboard is drawn in (§ 7.7). */
@@ -722,13 +722,23 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   const wanted = useRef(kept.current.wanted)
   const [help, setHelp, helpOpen] = useKeyState(() => false)
   // The panel beside the tickets table: at which choice. A question answered here leaves it at once,
-  // before the run's next look takes its ticket back.
+  // before the run's next look takes its ticket back; it comes back if bd refuses that answer, by its
+  // uuid, as a failure of an earlier try says nothing of the answer given since.
   const [choice, setChoice, choiceNow] = useKeyState(() => 0)
-  const [answered, setAnswered] = useState<ReadonlySet<string>>(() => new Set())
-  const needs = useMemo(
-    () => view.needs.filter((need) => !answered.has(needKey(need))),
-    [view.needs, answered],
-  )
+  const [answered, setAnswered] = useState<ReadonlyMap<string, string>>(() => new Map())
+  const news = useQuestionNews()
+  useEffect(() => {
+    const refused = news.flatMap((each) =>
+      each._tag === "NotAnswered" && answered.has(each.uuid) ? [each.uuid] : [],
+    )
+    if (refused.length > 0) {
+      setAnswered((all) => new Map([...all].filter(([uuid]) => !refused.includes(uuid))))
+    }
+  }, [news, answered])
+  const needs = useMemo(() => {
+    const left = new Set(answered.values())
+    return view.needs.filter((need) => !left.has(needKey(need)))
+  }, [view.needs, answered])
   const panelFocused = focus.panel === "needs"
   const panelInside = panelFocused && focus.inside
   const cards = view.cards
@@ -870,14 +880,9 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     if (Date.now() - drawnSince.current.at < settle) return
     const option = need.question.options?.[n]
     if (option === undefined) return
-    command(
-      UiCommand.AnswerQuestion({
-        question: need.question.id,
-        answer: option.label,
-        uuid: crypto.randomUUID(),
-      }),
-    )
-    setAnswered((all) => new Set(all).add(needKey(need)))
+    const uuid = crypto.randomUUID()
+    command(UiCommand.AnswerQuestion({ question: need.question.id, answer: option.label, uuid }))
+    setAnswered((all) => new Map(all).set(uuid, needKey(need)))
     setChoice(() => 0)
   }
   // The focus goes to `panel`, at the top level or inside it, the last panel above Current kept.
