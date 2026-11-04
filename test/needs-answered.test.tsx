@@ -152,6 +152,17 @@ describe("a question answered, its ticket with no slot yet", () => {
     ])
   })
 
+  test("under a stop, the next run takes it back, unless the stop lifts", () => {
+    const stopped = viewOf([asked("fab-a", "q-a", 0)], {
+      answered: new Set(["q-a"]),
+      stopping: true,
+    })
+    expect(rowOf(stopped, "fab-a")?.note).toBe("(resumes at the next run) Title of fab-a")
+    expect(stopped.queue[0]?.answered).toBe("the next run")
+    const lifted = viewOf([asked("fab-a", "q-a", 0)], { answered: new Set(["q-a"]) })
+    expect(rowOf(lifted, "fab-a")?.note).toBe("(resumes at the next free slot) Title of fab-a")
+  })
+
   test("in a run winding down, the next run takes it back: its row and Up next say so", () => {
     const view = project({
       ledger: {

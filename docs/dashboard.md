@@ -164,7 +164,7 @@ A row changes as the ticket moves through its phases, and moves with it to its g
 | `⟳ fixing` | its check failed on its branch before it merged, handed back to its worker |
 | `✓ done` | merged (`ffd6ce4 merged into <branch>`), or closed with `no change to merge` |
 | `? for you` | waits on a question ticket for you; the row says the question's title once tutti has read it |
-| `↻ answered` | its question is answered, and it comes back at the next free slot; nothing more is needed of you |
+| `↻ answered` | its question is answered, and it comes back at the next free slot, or in the next run if this one is winding down or stopping; nothing more is needed of you |
 | `◷ waiting` | back in the queue until a blocker merges, or reopened by an environment hold |
 | `↷ deferred` | set aside, deferred; triage's verdict (`◆ …`) replaces its note once it is in |
 | `! review` | left for review: `CHECKS_FAILED`, closed without a commit, … |
@@ -222,7 +222,8 @@ of what needs you. A click on an option answers with it, and one on the title or
 opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
 half a second. An answered question leaves the panel and **Needs you** at once, and the answer wakes
 the run, which takes its ticket back. With no slot free, its row says `↻ answered` until one is, and
-Up next lists it first, `answered · the next free slot`, or `the next run` in a run winding down. A
+Up next lists it first, `answered · the next free slot`, or `the next run` in a run winding down or
+stopping. A
 narrower pane has no panel.
 
 ### What needs you, in any pane

@@ -698,11 +698,13 @@ export const attentionOf = (phase: TicketPhase, activity: Activity = "starting")
 export const answeredRow: Shown = { mark: "answered", word: "answered", tone: "dim", faint: true }
 
 /**
- * When an Asked ticket whose question is answered comes back: a run winding down takes back nothing,
- * so not in this run.
+ * When an Asked ticket whose question is answered comes back: a run winding down or stopping takes
+ * back nothing, so not in this run; a stop that lifts says the next free slot again.
  */
-export const resumesAt = (ledger: Pick<State, "windDown">): string =>
-  ledger.windDown === null ? "the next free slot" : "the next run"
+export const resumesAt = (
+  ledger: Pick<State, "windDown">,
+  status: Pick<Status, "stopping">,
+): string => (ledger.windDown === null && !status.stopping ? "the next free slot" : "the next run")
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -1076,7 +1078,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const asked: Array<Need> = []
   const blocked: Array<Need> = []
   const answered: Array<QueueRow> = []
-  const resumes = resumesAt(ledger)
+  const resumes = resumesAt(ledger, status)
   const cards: Array<Card> = []
   const resources: Array<Resources> = []
   for (const entry of ledger.tickets.values()) {
