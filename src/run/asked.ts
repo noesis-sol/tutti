@@ -12,7 +12,8 @@
 // a slot, counting toward no limit (the scheduler's carry), and its ticket goes on as a dispatched
 // one does: settled, read, and moved as its worker leaves it. With no slot for it (every slot
 // taken, a solo ticket running, the machine at --machine-workers, a hold), it stays Asked, and a
-// later poll brings it back. Within a look, answerQuestions and takeAnswers share what they read
+// later poll brings it back; until then it no longer needs you, as the look tells RunView (the
+// look's noSlot, Status's answered), so its row says `↻ answered`. Within a look, answerQuestions and takeAnswers share what they read
 // (AskedLook): bd's open list, read once at the look's start where a ticket is Asked, and each
 // Asked ticket's bd show. A ticket whose question that list has still open, labelled human, isn't
 // shown at all, as it can't come back yet; one answered by hand drops out of the list and is shown
@@ -61,6 +62,8 @@ export interface AnswerOptions extends WorkOptions {
 export interface AskedLook {
   readonly open: Set<string> | undefined
   readonly shown: Map<TicketId, Issue>
+  /** The questions takeAnswers found answered whose tickets had no slot to come back in. */
+  readonly noSlot: Set<string>
 }
 
 /** A look's reads (AskedLook) from bd's open list, `open`, as the look read it at its start. */
@@ -74,6 +77,7 @@ export const askedLook = (open: ReadonlyArray<Issue> | undefined): AskedLook => 
             .map((issue) => issue.id),
         ),
   shown: new Map(),
+  noSlot: new Set(),
 })
 
 /**
@@ -223,7 +227,12 @@ export const takeAnswers = (
           return { phase: (yield* ledger.current).tickets.get(id)?.phase, stop: followed.stop }
         }).pipe(Effect.provideContext(context))
       })
-      yield* options.carry(id, start.pipe(Effect.provideContext(context)), issue.success)
+      const slot = yield* options.carry(
+        id,
+        start.pipe(Effect.provideContext(context)),
+        issue.success,
+      )
+      if (!slot) look?.noSlot.add(question)
       if (resumed) back.push(id)
     }
     return back

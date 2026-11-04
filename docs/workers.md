@@ -316,7 +316,8 @@ Beads:
   answer ([on the dashboard](dashboard.md#answering-questions), with
   [`tutti answer`](#answering-questions-with-tutti-answer), or with
   `bd human respond <question> --response "…"`), tutti resumes the session and tells it the answer
-  is in.
+  is in. With every slot taken it waits for the next one free, `↻ answered` on the dashboard, no
+  longer counted as needing you.
 - **Deferred** by the worker: set aside, and [triaged](organs.md#triage). Left in another status
   (open, blocked, …) with nothing to wait for, tutti defers it for review the same way. A worker that
   did nothing (no commits beyond the base, a clean worktree) leaves nothing to review, so once triage

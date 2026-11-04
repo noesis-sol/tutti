@@ -164,6 +164,11 @@ export interface Status {
    * (run.ts): for the panel beside the tickets table (§ 7.2). One not read yet is missing.
    */
   readonly questions: ReadonlyMap<string, OpenQuestion>
+  /**
+   * The questions Asked tickets wait on that the look last found answered, with no slot for their
+   * tickets to come back in yet (asked.ts's takeAnswers): those tickets no longer need you.
+   */
+  readonly answered: ReadonlySet<string>
   /** The triage organ's verdicts on tickets set aside, by ticket: `environment · high · …`. */
   readonly verdicts: ReadonlyMap<string, string>
   /** How the checks of tickets waiting to merge go ahead of their turn, by ticket (mergetrain.ts). */
@@ -200,6 +205,7 @@ export const emptyStatus: Status = {
   unclosed: null,
   holdTexts: { waits: {}, skips: {} },
   questions: new Map(),
+  answered: new Set(),
   verdicts: new Map(),
   checksAhead: new Map(),
   probe: null,
@@ -258,7 +264,10 @@ export interface Totals {
   readonly review: number
   /** Those set aside with the triage organ's verdict in. */
   readonly triaged: number
-  /** Each ticket once: Asked, Blocked, and those whose worker waits on you. */
+  /**
+   * Each ticket once: Asked with its question not answered, Blocked, and those whose worker waits
+   * on you.
+   */
   readonly needsYou: number
   /** Of those, the Asked ones: each waits on your answer to a question ticket (Shift+A, § 7.3). */
   readonly asked: number
@@ -500,6 +509,8 @@ export const shownRequest = (request: AttentionRequest): ShownRequest => ({
 /**
  * A ticket waiting in the queue, for the Up next panel (§ 7.2): Queued, HeldBack or Waiting, in the
  * order the run took them in, with why it waits; `held` null for one only a free slot holds back.
+ * An Asked ticket whose question is answered waits for a slot too, `answered`, and goes first: the
+ * run takes them back before new tickets start.
  */
 export interface QueueRow {
   readonly ticket: TicketId
@@ -508,11 +519,13 @@ export interface QueueRow {
   readonly title: string
   /** Why it waits, as the log says it: `after t-1: both touch src/a.ts`; null for none. */
   readonly held: string | null
+  readonly answered?: true
 }
 
 /**
- * What needs you, for the panel beside the tickets table (§ 7.2): an Asked ticket's question, its
- * issue once the look has read it (null until then), or a Blocked ticket and why.
+ * What needs you, for the panel beside the tickets table (§ 7.2): the question of an Asked ticket
+ * not answered yet, its issue once the look has read it (null until then), or a Blocked ticket and
+ * why.
  */
 export type Need = Data.TaggedEnum<{
   Question: {
@@ -548,7 +561,7 @@ export interface RunView {
   readonly rows: ReadonlyArray<Row>
   /** The tickets waiting in the queue, ready ones first, then those held back or waiting. */
   readonly queue: ReadonlyArray<QueueRow>
-  /** What needs you: the Asked tickets' questions, then the Blocked tickets, in the run's order. */
+  /** What needs you: the open questions of Asked tickets, then the Blocked, in the run's order. */
   readonly needs: ReadonlyArray<Need>
   /** In their workers' number order. */
   readonly cards: ReadonlyArray<Card>
@@ -680,6 +693,12 @@ export const attentionOf = (phase: TicketPhase, activity: Activity = "starting")
     ? "setAside"
     : "rest"
 }
+
+/** The status of an Asked ticket's row once its question is answered, as it waits for a slot. */
+export const answeredRow: Shown = { mark: "answered", word: "answered", tone: "dim", faint: true }
+
+/** What the row of an Asked ticket whose question is answered says before its ticket's title. */
+export const answeredNote = "(resumes at the next free slot)"
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -912,10 +931,14 @@ const noteOf = (
   entry: Entry,
   title: string,
   branch: string,
-  questions: ReadonlyMap<string, OpenQuestion>,
+  status: Pick<Status, "questions" | "answered">,
 ): string => {
-  // An Asked ticket says the question it waits on, once the look has read it (§ 7.2).
-  if (entry.phase._tag === "Asked") return questions.get(entry.phase.question)?.title ?? title
+  // An Asked ticket says the question it waits on, once the look has read it (§ 7.2); answered, that
+  // it waits only for a slot.
+  if (entry.phase._tag === "Asked") {
+    if (status.answered.has(entry.phase.question)) return `${answeredNote} ${title}`
+    return status.questions.get(entry.phase.question)?.title ?? title
+  }
   // A ticket an overnight run set aside says why before its title.
   if (entry.phase._tag === "Deferred" && asideOvernight(entry.phase.why)) {
     return `(${entry.phase.why}) ${title}`
@@ -1047,6 +1070,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const held: Array<QueueRow> = []
   const asked: Array<Need> = []
   const blocked: Array<Need> = []
+  const answered: Array<QueueRow> = []
   const cards: Array<Card> = []
   const resources: Array<Resources> = []
   for (const entry of ledger.tickets.values()) {
@@ -1060,8 +1084,10 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       phaseFacts[phase._tag].notice === "setAside"
         ? (status.verdicts.get(entry.ticket) ?? null)
         : null
-    if (phase._tag === "Asked") totals.asked++
-    for (const total of countsUnder(phase, activity)) {
+    // Its question answered, it asks nothing of you: it only waits for a slot (asked.ts).
+    const slotOnly = phase._tag === "Asked" && status.answered.has(phase.question)
+    if (phase._tag === "Asked" && !slotOnly) totals.asked++
+    for (const total of slotOnly ? [] : countsUnder(phase, activity)) {
       if (total === "needsYou") needsYou.add(entry.ticket)
       else if (total === "setAside") {
         totals[phase._tag === "Review" ? "review" : "deferred"]++
@@ -1069,7 +1095,9 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       } else if (total === "inQueue") totals.queued++
       else totals[total]++
     }
-    if (phase._tag === "Asked") {
+    if (slotOnly) {
+      answered.push({ ticket: entry.ticket, label, title, held: null, answered: true })
+    } else if (phase._tag === "Asked") {
       const question = status.questions.get(phase.question) ?? null
       const id = sanitizeLine(phase.question)
       asked.push(Need.Question({ ticket: entry.ticket, label, title, id, question }))
@@ -1099,8 +1127,8 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           ticket: entry.ticket,
           label,
           title,
-          ...rowStatus(phase, activity),
-          note: noteOf(entry, title, branch, status.questions),
+          ...(slotOnly ? answeredRow : rowStatus(phase, activity)),
+          note: noteOf(entry, title, branch, status),
           verdict: verdict === null ? null : sanitizeLine(verdict),
           attention: attentionOf(phase, activity),
           since: entry.since,
@@ -1220,7 +1248,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       rows.sort((a, b) => a.at - b.at).map(({ row }) => row),
       (row) => row.ticket,
     ),
-    queue: keepAll(previous.queue, [...ready, ...held], (each) => each.ticket),
+    queue: keepAll(previous.queue, [...answered, ...ready, ...held], (each) => each.ticket),
     needs: keepAll(previous.needs, [...asked, ...blocked], (each) => each.ticket),
     cards: keepAll(previous.cards, cards, (card) => card.ticket),
     resources: keepAll(previous.resources, resources, (each) => each.ticket),

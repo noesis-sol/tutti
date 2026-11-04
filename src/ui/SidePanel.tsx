@@ -3,7 +3,8 @@
 // under the totals strip's In queue cell, the gap between them under the strip's bar before In queue
 // (tutti-ebra, tutti-nsw2), its label on the `Tickets` label's line and its rounded frame beside the
 // table's. While nothing needs you it shows Up next: the tickets
-// waiting in the queue, those only a free slot holds back first (`ready`), then each held back or
+// waiting in the queue, those only a free slot holds back first (an Asked ticket whose question is
+// answered, then `ready`), then each held back or
 // waiting with why, as the log says it (`› after t-1: both touch scripts/check.sh`, tutti-zv69), the
 // tickets it waits for in the live role, wrapped under its text; `+N more` for those that don't fit. While something needs you (tutti-07nj) it shows
 // that instead, one at a time: an Asked ticket's question, its title, which ticket waits on it, as
@@ -44,6 +45,9 @@ export const tableWidth = (width: number, panel: number): number =>
 
 /** The word of a ticket only a free slot holds back. */
 const readyWord = "ready"
+
+/** The words of an Asked ticket whose question is answered, which only a free slot holds back. */
+const answeredWords = "answered · next free slot"
 
 /**
  * The look of the tickets a held ticket waits for: the live role, bold where the scheme leaves it
@@ -91,7 +95,10 @@ export const upNextLines = (
       [seg(fit(each.label, idWidth), each.held === null ? null : styles.heldBack)],
       idWidth,
     )
-    if (each.held === null) return [[...id, seg("  "), seg(readyWord, styles.quiet)]]
+    if (each.held === null) {
+      const word = each.answered === true ? answeredWords : readyWord
+      return [[...id, seg("  "), seg(word, styles.quiet)]]
+    }
     const reason = afterParts(each.held).map((part) =>
       seg(part.text, part.id ? waitedFor : styles.quiet),
     )

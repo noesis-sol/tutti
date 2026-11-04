@@ -124,7 +124,8 @@ One strip for the run, each count beside its label on one line, a zero faint:
 - **Set aside**: tickets deferred or left for review, `↷ n`, and of those how many triage has given a
   verdict on, `↷ 3 Set aside · ◆ 2 triaged`.
 - **Needs you**: each ticket once whose worker waits on you (a permission request or a question),
-  that waits on a question ticket for you, or whose work is done but can't merge until you act.
+  that waits on a question ticket you haven't answered, or whose work is done but can't merge until
+  you act.
 - **In queue**: ready tickets waiting for a slot, out of the tickets not closed
   (`9 of 16 In queue`); then `· 2 held back` for ready tickets that wait for something besides a
   slot (an overlap, their subtickets, a blocker not merged, a solo ticket), `· 1 setup failed` for
@@ -163,6 +164,7 @@ A row changes as the ticket moves through its phases, and moves with it to its g
 | `⟳ fixing` | its check failed on its branch before it merged, handed back to its worker |
 | `✓ done` | merged (`ffd6ce4 merged into <branch>`), or closed with `no change to merge` |
 | `? for you` | waits on a question ticket for you; the row says the question's title once tutti has read it |
+| `↻ answered` | its question is answered, and it comes back at the next free slot; nothing more is needed of you |
 | `◷ waiting` | back in the queue until a blocker merges, or reopened by an environment hold |
 | `↷ deferred` | set aside, deferred; triage's verdict (`◆ …`) replaces its note once it is in |
 | `! review` | left for review: `CHECKS_FAILED`, closed without a commit, … |
@@ -218,8 +220,9 @@ and `↓` move between the options and `Other…`, `Enter` or `1`–`9` answer w
 your own; on a Blocked ticket `Enter` opens its worker view. `]` and `[` go to the next or previous
 of what needs you. A click on an option answers with it, and one on the title or a cut description
 opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
-half a second. An answered question leaves the panel at once, and the answer wakes the run, which
-takes its ticket back. A narrower pane has no panel.
+half a second. An answered question leaves the panel and **Needs you** at once, and the answer wakes
+the run, which takes its ticket back. With no slot free, its row says `↻ answered` until one is, and
+Up next lists it first, `answered · next free slot`. A narrower pane has no panel.
 
 ### What needs you, in any pane
 

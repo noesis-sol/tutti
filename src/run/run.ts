@@ -1134,6 +1134,8 @@ const runFrom = (
         // A question answered closed since the list was read: the fill reads it afresh.
         if ((yield* answeredQuestions).length !== before) open = undefined
         yield* takeAnswers(carryOptions, look)
+        // Those answered with no slot for them need you no longer: a later look brings them back.
+        yield* showOn(status, "answered")(look.noSlot)
       } else {
         yield* Ref.set(autoAnswering, false)
         // Winding down, it answers none: the questions --auto-answer took at once, which notified

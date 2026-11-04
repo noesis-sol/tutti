@@ -27,6 +27,8 @@ export const marks = {
   done: "✓",
   /** Its worker filed a question for you. */
   asked: "?",
+  /** Its question is answered, and it waits for a free slot to come back. */
+  answered: "↻",
   /** Deferred, or set aside; the Set aside total. */
   setAside: "↷",
   /** Left for your review. */

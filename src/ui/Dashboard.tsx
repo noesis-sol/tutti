@@ -210,9 +210,14 @@ export const dashboardLayout = (
   const hint = allHint.slice(0, take(allHint.length))
   // Where there is no panel, the totals' Needs you is a click target, and the highlight reaches it.
   const needsReach = { target: needsTarget, highlighted: spot === "needs" }
+  // A question answered on the panel has left it: it leaves Needs you with it, not at the next look.
+  const counted = {
+    ...view.totals,
+    needsYou: view.totals.needsYou - (view.needs.length - side.needs.length),
+  }
   // Beside the panel, the strip's bar before In queue is over the gap left of the panel.
   const totalsOf = (besidePanel: boolean) =>
-    totalsLines(view.totals, theme, width, small, besidePanel ? undefined : needsReach, besidePanel)
+    totalsLines(counted, theme, width, small, besidePanel ? undefined : needsReach, besidePanel)
   const allTotals = totalsOf(false)
   if (small) {
     const totals = allTotals.slice(0, take(allTotals.length))
