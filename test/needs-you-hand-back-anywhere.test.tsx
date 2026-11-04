@@ -36,6 +36,23 @@ const entryOf = (ticket: string, row: number, phase: Entry["phase"]): Entry => (
   tallies: emptyTallies,
 })
 
+const questionOf = (id: string, waiting: string) => ({
+  id: id as TicketId,
+  title: `Question ${id}`,
+  description: "",
+  options: [
+    { label: "Yes", description: "" },
+    { label: "No", description: "" },
+  ],
+  maintainerOnly: false,
+  waiting: [waiting as TicketId],
+})
+
+const questions = new Map([
+  ["q-1", questionOf("q-1", "a-1")],
+  ["q-2", questionOf("q-2", "a-2")],
+])
+
 const viewOf = (tickets: ReadonlyArray<Entry>): RunView =>
   project({
     ledger: {
@@ -46,7 +63,7 @@ const viewOf = (tickets: ReadonlyArray<Entry>): RunView =>
     },
     workers: new Map(),
     requests: [],
-    status: { ...emptyStatus, version: "0.1.0", branch: "batch", began, concurrency: 4 },
+    status: { ...emptyStatus, version: "0.1.0", branch: "batch", began, concurrency: 4, questions },
     actions: new Map(),
   })
 
@@ -143,6 +160,24 @@ describe("`h` where the panel says to press it", () => {
       await settled()
       await press(rendered, "h")
       expect(taken(commands)).toEqual(handsBack("b-2"))
+    })
+  })
+
+  test("a digit in the same read as the move answers nothing either", async () => {
+    const asked = [
+      entryOf("a-1", 0, TicketPhase.Asked({ question: "q-1" })),
+      entryOf("a-2", 1, TicketPhase.Asked({ question: "q-2" })),
+    ]
+    await scene(asked, wide, async ({ commands, rendered }) => {
+      await press(rendered, "enter")
+      await settled()
+      await press(rendered, "down", "1")
+      expect(taken(commands)).toEqual([])
+      await settled()
+      await press(rendered, "1")
+      const sent = taken(commands)
+      expect(sent.length).toBe(1)
+      expect(sent[0]).toMatchObject({ _tag: "AnswerQuestion", question: "q-2", answer: "Yes" })
     })
   })
 
