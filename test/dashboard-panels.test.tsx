@@ -543,15 +543,40 @@ describe("inside Needs you", () => {
   test("Enter goes in; Esc comes out", async () => {
     await scene(viewOf(0), wide, async ({ rendered }) => {
       await press(rendered, "right")
-      const top = await rendered.capture()
-      expect(has(top, "Enter to choose")).toBe(true)
+      expect(has(await rendered.capture(), "Enter goes in")).toBe(true)
       await press(rendered, "enter")
       const within = await rendered.capture()
       expect(has(within, "Enter opens its worker view") || has(within, "Enter reads it all")).toBe(
         true,
       )
       await press(rendered, "escape")
-      expect(has(await rendered.capture(), "Enter to choose")).toBe(true)
+      expect(has(await rendered.capture(), "Enter goes in")).toBe(true)
+    })
+  })
+})
+
+describe("the panel's foot says what its keys do from where the focus is", () => {
+  test("a question's", async () => {
+    await scene(askingView(), wide, async ({ rendered }) => {
+      const elsewhere = await rendered.capture()
+      expect(has(elsewhere, "1–2 answer")).toBe(true)
+      expect(has(elsewhere, "Enter goes in")).toBe(false)
+      await press(rendered, "right")
+      expect(has(await rendered.capture(), "1–2 answer · Enter goes in")).toBe(true)
+      await press(rendered, "enter")
+      expect(has(await rendered.capture(), "↑↓ 1–2 · Enter answer")).toBe(true)
+    })
+  })
+
+  test("a Blocked ticket's", async () => {
+    await scene(viewOf(0), wide, async ({ rendered }) => {
+      const elsewhere = await rendered.capture()
+      expect(has(elsewhere, "move here to choose")).toBe(true)
+      expect(has(elsewhere, "Enter goes in")).toBe(false)
+      await press(rendered, "right")
+      const focused = await rendered.capture()
+      expect(has(focused, "Enter goes in")).toBe(true)
+      expect(has(focused, "move here to choose")).toBe(false)
     })
   })
 })
@@ -716,6 +741,50 @@ describe("1–9", () => {
         { _tag: "AnswerQuestion", question: "q-1", answer: "Use --other" },
       ])
     })
+  })
+
+  test("answer the panel's question with the focus on Current, on a card with no request", async () => {
+    const first = { _tag: "AnswerQuestion", question: "q-1", answer: "Use --flag" }
+    await scene(askingView([], 1), wide, async ({ commands, rendered }) => {
+      await Bun.sleep(settle + 50)
+      await press(rendered, "down", "1")
+      expect(taken(commands)).toMatchObject([first])
+    })
+    await scene(askingView([], 1), wide, async ({ commands, rendered }) => {
+      await Bun.sleep(settle + 50)
+      await press(rendered, "down", "enter", "1")
+      expect(taken(commands)).toMatchObject([first])
+    })
+  })
+
+  test("answer the panel's question at the top level, a card's question on screen as well", async () => {
+    await scene(
+      askingView([cardQuestion("c1", "w-1")], 1),
+      wide,
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        await Bun.sleep(settle + 50)
+        await press(rendered, "1")
+        expect(taken(commands)).toMatchObject([
+          { _tag: "AnswerQuestion", question: "q-1", answer: "Use --flag" },
+        ])
+      },
+    )
+  })
+
+  test("leave the panel's question alone with the focus on an attention card, its keys", async () => {
+    await scene(
+      askingView([permission("r1", "w-1")], 1),
+      wide,
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        await Bun.sleep(settle + 50)
+        await press(rendered, "down", "1", "5")
+        expect(taken(commands)).toEqual([])
+        await press(rendered, "enter", "1", "5")
+        expect(taken(commands)).toEqual([])
+      },
+    )
   })
 
   test("go to the card's question with the focus on Current, not the panel's", async () => {

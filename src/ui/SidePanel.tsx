@@ -335,11 +335,17 @@ export const needsLines = (
           panelTargets.other,
         ),
       ]
-      const keys = !at.inside
-        ? "Enter to answer"
-        : options.length === 0
+      // What is true from where the focus is: `1`–`9` from elsewhere, Enter once it is on the panel.
+      const digits = options.length === 0 ? "" : `1–${options.length} answer`
+      const keys = at.inside
+        ? options.length === 0
           ? "Enter answer"
           : `↑↓ 1–${options.length} · Enter answer`
+        : at.focused
+          ? [digits, "Enter goes in"].filter((each) => each !== "").join(" · ")
+          : digits === ""
+            ? "click to answer"
+            : digits
       const foot = footOf(keys, needs.length).map((each) => ({ ...each, look: styles.dim }))
       const fixed = title.length + 1 + choices.length + 1
       const space = room - fixed
@@ -365,13 +371,14 @@ export const needsLines = (
     const titled = !short || spare - title.length >= (paragraphs[0]?.length ?? 0) ? title : []
     const clears = paragraphs.flat()
     const handsBack = at.focused ? handBackKey(need) : ""
+    const reach = at.focused ? `Enter goes in${handsBack}` : "move here to choose"
     const keys = !short
       ? at.inside
         ? `Enter opens its worker view${handsBack}`
-        : `Enter to choose${handsBack}`
+        : reach
       : at.inside
         ? `… click or Enter reads it all${handsBack}`
-        : `… click reads it all · Enter to choose${handsBack}`
+        : `… click reads it all · ${reach}`
     body.push(
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],
       ...titled,
