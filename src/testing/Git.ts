@@ -26,6 +26,7 @@ import {
   GitWriter,
   gitCall,
   gitOps,
+  operationMarks,
   RebaseConflict,
   type Rebased,
   rebaseFolders,
@@ -88,6 +89,8 @@ export class Repository extends Context.Service<
     continueRebase(dir: string, resolved?: Files): Effect.Effect<ReadonlyArray<string>>
     /** Makes the branch's next rebase that has a commit to replay stop on conflicts in these files. */
     conflict(branch: string, files: ReadonlyArray<string>): Effect.Effect<void>
+    /** Leaves git's mark of a merge or cherry-pick stopped in dir; undefined takes it away. */
+    leaveMark(dir: string, mark: "MERGE_HEAD" | "CHERRY_PICK_HEAD" | undefined): Effect.Effect<void>
     /**
      * Leaves a lock file in the main checkout's git folder now, `name` relative to it (`index.lock`,
      * `refs/heads/main.lock`), as a git stopped mid-write does.
@@ -143,6 +146,8 @@ interface Checkout {
   /** Conflicted paths and their status codes: UU, AA, DU or UD. */
   conflicts: Map<string, string>
   rebase?: Rebasing
+  /** A merge or cherry-pick stopped here, as git's MERGE_HEAD or CHERRY_PICK_HEAD says. */
+  mark?: string
   /** Its folder is gone. */
   gone: boolean
 }
@@ -611,6 +616,14 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           Effect.map(inRepo(refuse, worktree), (checkout) => checkout.rebase !== undefined),
         )
 
+      const operationInProgress = (worktree: string) =>
+        operation(gitCall(gitOps.gitPaths, operationMarks), worktree, (refuse) =>
+          Effect.map(
+            inRepo(refuse, worktree),
+            (checkout) => checkout.rebase !== undefined || checkout.mark !== undefined,
+          ),
+        )
+
       const fastForward = (repo: string, branch: string) =>
         operation(gitCall(gitOps.fastForward, branch), repo, (refuse) =>
           Effect.gen(function* () {
@@ -873,6 +886,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
         rebase,
         abortRebase,
         rebaseInProgress,
+        operationInProgress,
         abandonRebase: (worktree) =>
           rebaseInProgress(worktree).pipe(
             Effect.flatMap((inProgress) => (inProgress ? abortRebase(worktree) : Effect.void)),
@@ -901,6 +915,32 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               }
               const base = mergeBaseOf(x, y)
               return base === undefined ? yield* refuse(1, "") : base
+            }),
+          ),
+        conflicts: (repo, base, branch) =>
+          operation(gitCall(gitOps.conflicts, base, branch), repo, (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, repo)
+              const [ours, theirs] = [resolve(checkout, base), resolve(checkout, branch)]
+              if (ours === undefined || theirs === undefined) {
+                return yield* refuse(
+                  128,
+                  `fatal: ${ours === undefined ? base : branch} - not something we can merge`,
+                )
+              }
+              const since = mergeBaseOf(ours, theirs)
+              if (since === undefined)
+                return yield* refuse(128, "fatal: refusing to merge unrelated histories")
+              // Files both sides changed, differently; this merges files, not lines.
+              const kept = treeOf(ours)
+              const changed = treeOf(theirs)
+              const start = treeOf(since)
+              return changedPaths(start, changed)
+                .filter(
+                  (path) =>
+                    kept.get(path) !== start.get(path) && kept.get(path) !== changed.get(path),
+                )
+                .sort()
             }),
           ),
         holds: (repo, base, branch) =>
@@ -1235,6 +1275,11 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             checkout.head = branches.has(rev) ? { branch: rev } : { detached: hash }
             switchTo(checkout, treeOf(hash))
             return Effect.void
+          }),
+        leaveMark: (dir, mark) =>
+          Effect.map(checkoutAt(dir), (checkout) => {
+            if (mark === undefined) delete checkout.mark
+            else checkout.mark = mark
           }),
         removeFolder: (path) =>
           Effect.flatMap(checkoutAt(path), (checkout) =>

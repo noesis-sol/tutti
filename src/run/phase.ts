@@ -181,6 +181,8 @@ export type Move = Data.TaggedEnum<{
   Recheck: { readonly place: number }
   /** You handed its steered worker the conflict that waited for it: rebased again, handed back. */
   HandedOver: { readonly place: number }
+  /** Blocked on its conflict, its branch was fixed by hand and rebases cleanly now. */
+  TakenBack: { readonly place: number }
   /** Set aside or blocked, its branch was merged into the base by hand: `commit` there names it. */
   MergedByHand: { readonly commit: string }
   /** Carried over from an earlier run with its session, which is resumed. */
@@ -544,6 +546,23 @@ export const transitions: ReadonlyArray<Transition> = [
     to: "ToMerge",
     recorded: { kinds: ["phase"] },
     only: ({ why }) => why === "MERGE_CONFLICT",
+    next: (_, { place }) => TicketPhase.ToMerge({ place }),
+  }),
+  // A conflict whose branch you fixed by hand, left for tutti to merge (takenBack.ts); from outside
+  // the machine, one an earlier run left so. A conflict again blocks it with no hand-back.
+  row({
+    from: "Blocked",
+    when: "TakenBack",
+    to: "ToMerge",
+    recorded: { kinds: [], log: "TAKEN_BACK" },
+    only: ({ why }) => why === "MERGE_CONFLICT",
+    next: (_, { place }) => TicketPhase.ToMerge({ place }),
+  }),
+  row({
+    from: null,
+    when: "TakenBack",
+    to: "ToMerge",
+    recorded: { kinds: [], log: "TAKEN_BACK" },
     next: (_, { place }) => TicketPhase.ToMerge({ place }),
   }),
   // A ticket set aside or blocked whose branch was merged by hand while the run went on, found as

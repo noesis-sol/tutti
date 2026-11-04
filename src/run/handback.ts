@@ -97,6 +97,7 @@ import { info, say } from "./say.ts"
 import { type Resuming, resume } from "./sessions.ts"
 import { namesTicket, stopHandBackTasks, untilSettled } from "./settle.ts"
 import { type Fix, type SetUp, type SetUps, setUp, setupToResolve } from "./setup.ts"
+import { keepConflictHead } from "./takenBack.ts"
 import { resolvePrompt } from "./told.ts"
 
 /**
@@ -187,6 +188,10 @@ export interface HandBacks extends Counts {
   waive(id: TicketId): Effect.Effect<void>
   /** Takes the ticket's waiver, as its rebase starts: whether it had one. */
   waived(id: TicketId): Effect.Effect<boolean>
+  /** Keeps conflicts from the ticket's worker from now on: you fixed its branch (takenBack.ts). */
+  takeUp(id: TicketId): Effect.Effect<void>
+  /** Whether you have taken the ticket up from its worker in this run. */
+  takenUp(id: TicketId): Effect.Effect<boolean>
 }
 
 /** A run's hand-backs: none yet. */
@@ -194,6 +199,7 @@ export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
   const counts = yield* makeCounts
   const lasts = yield* Ref.make<ReadonlyMap<string, LastHandBack>>(new Map())
   const waivers = yield* Ref.make<ReadonlySet<string>>(new Set())
+  const taken = yield* Ref.make<ReadonlySet<string>>(new Set())
   // Those waiting apart, so that their changes can be followed.
   const waiting = yield* SubscriptionRef.make<ReadonlyArray<RebaseStop>>([])
   return {
@@ -223,6 +229,8 @@ export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
         if (!all.has(id)) return [false, all]
         return [true, new Set([...all].filter((each) => each !== id))]
       }),
+    takeUp: (id) => Ref.update(taken, (all) => new Set([...all, id])),
+    takenUp: (id) => Effect.map(Ref.get(taken), (all) => all.has(id)),
   } satisfies HandBacks
 })
 
@@ -261,6 +269,12 @@ export interface NotHandedBack {
   readonly why: string
   /** Its worker is steered: the hand-back waits in its view. */
   readonly waits: boolean
+}
+
+/** Why a ticket you fixed by hand isn't handed back (HandBacks' takeUp). */
+export const takenUpByYou: NotHandedBack = {
+  why: "you fixed its branch by hand, so its worker isn't handed it",
+  waits: false,
 }
 
 /**
@@ -364,11 +378,18 @@ const conflictLine = (stop: RebaseStop, base: string, why: string): Line => {
  * Blocks the ticket on its conflicts (MERGE_CONFLICT), saying why: by Block from Merging or
  * Resolving, by Aside from Fixing{afterResolution}.
  */
-const block = (stop: RebaseStop, base: string, why: string, by: "Block" | "Aside" = "Block") =>
+const block = (
+  stop: RebaseStop,
+  options: MergeTarget,
+  why: string,
+  by: "Block" | "Aside" = "Block",
+) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const { files } = stop
+    const { base } = options
     const text = conflictLine(stop, base, why)
+    yield* keepConflictHead(stop.ticket, options)
     const move =
       by === "Block"
         ? Move.Block({ why: Tag.mergeConflict })
@@ -399,7 +420,7 @@ export const notHandedBack = (
   options: MergeTarget,
   not: NotHandedBack,
   handBacks: HandBacks,
-): Effect.Effect<void, never, Git | Ledger> =>
+): Effect.Effect<void, never, Git | Ledger | Store> =>
   Effect.gen(function* () {
     const git = yield* Git
     const { worktree } = stop.ticket
@@ -414,7 +435,7 @@ export const notHandedBack = (
       // Blocked on it, the ticket keeps its worker's number and card meanwhile (§ 4.3).
       yield* (yield* Ledger).handBackWaits(stop.ticket.id)
     }
-    yield* block(stop, options.base, `not handed back to its worker: ${not.why}${left}`)
+    yield* block(stop, options, `not handed back to its worker: ${not.why}${left}`)
   })
 
 /**
@@ -1259,7 +1280,7 @@ export const rejectResolution = (
   options: MergeTarget,
   why: string,
   by: "Block" | "Aside" = "Block",
-): Effect.Effect<void, never, Beads | Git | Ledger> =>
+): Effect.Effect<void, never, Beads | Git | Ledger | Store> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const { id, branch } = stop.ticket
@@ -1270,7 +1291,7 @@ export const rejectResolution = (
         appendNotes: `tutti: ${branch} conflicted with ${base} in ${stop.files.join(", ")}; its worker was asked to resolve the rebase, but ${why}, so ${id} was set aside for review; ${undone}.`,
       }),
     )
-    yield* block(stop, base, `handed back to its worker, but ${why}; ${undone}`, by)
+    yield* block(stop, options, `handed back to its worker, but ${why}; ${undone}`, by)
   })
 
 /**

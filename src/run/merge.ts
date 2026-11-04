@@ -115,8 +115,10 @@ import {
   type AtReset,
   type HandBacks,
   type HandedRebase,
+  type NotHandedBack,
   notHandedBack,
   type RebaseStop,
+  takenUpByYou,
   toHandBack,
 } from "./handback.ts"
 import { type Entry, Ledger } from "./ledger.ts"
@@ -130,6 +132,7 @@ import { excludedTypes, unmergedLabel } from "./scope.ts"
 import { revertsIn } from "./scorecard.ts"
 import { shownChanges } from "./settle.ts"
 import { fileList, type SetUps, setUp } from "./setup.ts"
+import { forgetConflictHead, keepConflictHead } from "./takenBack.ts"
 import { Trash } from "./trash.ts"
 import { unlabel } from "./unmerged.ts"
 
@@ -812,7 +815,11 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
           const tries = [...carried.tries, ...overtaken]
           if (tries.length > 0) yield* memory.fixes.carry(id, { tries })
         }
-        const handed = yield* toHandBack(stop, options, memory.handBacks, turn.waived)
+        const handed: Result.Result<HandedRebase, NotHandedBack> = (yield* memory.handBacks.takenUp(
+          id,
+        ))
+          ? Result.fail(takenUpByYou)
+          : yield* toHandBack(stop, options, memory.handBacks, turn.waived)
         if (Result.isSuccess(handed)) return Prepared.HandBack({ stop: handed.success })
         yield* notHandedBack(stop, options, handed.failure, memory.handBacks)
         return Prepared.Over({})
@@ -1123,8 +1130,13 @@ export const checksFailed = (
  * Blocks the ticket, MERGE_CONFLICT, as `what` (its base, or its branch) kept changing while its
  * checks ran, each check overtaken by a commit.
  */
-export const keptChanging = (ticket: FinishedTicket, what: string) =>
+export const keptChanging = (
+  ticket: FinishedTicket,
+  options: Pick<MergeTarget, "repo">,
+  what: string,
+) =>
   Effect.gen(function* () {
+    yield* keepConflictHead(ticket, options)
     const text = closedButLine(
       ticket,
       Tag.mergeConflict,
@@ -1171,12 +1183,13 @@ export const mergeTurn = (
       again: (budget, what) =>
         Effect.suspend(() => {
           if (spent[budget] === budgets[budget]) {
-            return keptChanging(ticket, `${what} kept changing`)
+            return keptChanging(ticket, options, `${what} kept changing`)
           }
           spent[budget]++
           return Effect.succeed(undefined)
         }),
     }
+    yield* forgetConflictHead(ticket.id)
     const run = (at: Step) =>
       at._tag === "FastForward" ? step(turn, at) : interruptible(step(turn, at))
     let next: Step | Prepared = Step.Enter()

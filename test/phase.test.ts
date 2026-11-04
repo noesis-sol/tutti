@@ -254,6 +254,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Move, TicketPha
     ToMerge({ place: 1 }),
   ],
   [
+    "Blocked{MERGE_CONFLICT} → ToMerge, fixed by hand",
+    Blocked({ why: "MERGE_CONFLICT" }),
+    Move.TakenBack({ place: 1 }),
+    ToMerge({ place: 1 }),
+  ],
+  [
     "Review → Done, merged by hand",
     Review({ why: "CHECKS_FAILED" }),
     Move.MergedByHand({ commit: "abc" }),
@@ -335,6 +341,7 @@ const moveOf: { readonly [C in MoveTag]: Extract<Move, { readonly _tag: C }> } =
   Block: Move.Block({ why: "GIT_FAILED" }),
   Recheck: Move.Recheck({ place: 1 }),
   HandedOver: Move.HandedOver({ place: 1 }),
+  TakenBack: Move.TakenBack({ place: 1 }),
   MergedByHand: Move.MergedByHand({ commit: "abc" }),
   Resumed: Move.Resumed(),
   StillAsked: Move.StillAsked({ question: "tut-q1" }),
@@ -372,6 +379,9 @@ describe("transition", () => {
     ).toBeInstanceOf(InvalidTransition)
     expect(
       rejected(transition(Blocked({ why: "DIRTY_TREE" }), Move.HandedOver({ place: 1 }))),
+    ).toBeInstanceOf(InvalidTransition)
+    expect(
+      rejected(transition(Blocked({ why: "DIRTY_TREE" }), Move.TakenBack({ place: 1 }))),
     ).toBeInstanceOf(InvalidTransition)
     expect(
       ok(transition(Fixing({ attempt: 1, afterResolution: true }), Move.Aside({ why: "x" }))),
@@ -460,6 +470,7 @@ const moveArb: fc.Arbitrary<Move> = fc.oneof(
   ordinal.map((place) => Move.Verified({ place })),
   ordinal.map((place) => Move.Recheck({ place })),
   ordinal.map((place) => Move.HandedOver({ place })),
+  ordinal.map((place) => Move.TakenBack({ place })),
   ordinal.map((place) => Move.Unmerged({ place })),
   text.map((question) => Move.FiledQuestion({ question })),
   text.map((question) => Move.StillAsked({ question })),

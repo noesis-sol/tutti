@@ -111,7 +111,8 @@ the time.
 names the transition: `Ready`, `Held`, `Released`, `Unready`, `Dispatched`, `Verified`, `NoChange`,
 `FiledQuestion`, `WaitsForMerge`, `SetupFailed`, `Defer`, `Aside`, `StopRun`, `RunEnded`, `Answered`, `Requeued`,
 `Reopened`, `Undeferred`, `ItsTurn`, `FastForwarded`, `MergeInterrupted`, `ConflictsHandedBack`,
-`CheckHandedBack`, `Block`, `Recheck`, `HandedOver`, and for tickets carried over from the last run,
+`CheckHandedBack`, `Block`, `Recheck`, `HandedOver`, `TakenBack` (a conflict fixed by hand, from `Blocked`
+or, left by an earlier run, with no `from`), and for tickets carried over from the last run,
 `Resumed`, `StillAsked` and `Unmerged`. A ticket's `phase` record comes before the records of other
 kinds the same change writes (`dispatch`, `closed`, …).
 

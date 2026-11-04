@@ -14,7 +14,8 @@
 //
 // A ticket set aside as its check failed is kept in the queue's rechecks, and after each merge the
 // ones whose base has moved on since are put back in line, ToMerge by RECHECK (recheck.ts): first,
-// those merged by hand since the base last moved are taken as merged (handMerged.ts).
+// those merged by hand since the base last moved are taken as merged (handMerged.ts). Then those
+// blocked on a conflict and fixed by hand since are put back too, ToMerge by TakenBack (takenBack.ts).
 //
 // A ticket whose rebase stopped on conflicts its worker can take is handed back to it, Merging →
 // Resolving (handback.ts), and its merge is over for the queue, which goes on with the tickets behind
@@ -46,7 +47,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import type { TicketId } from "../services/Beads.ts"
-import { Git } from "../services/Git.ts"
+import { Git, type Sha } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
 import { fixCheck, fixResolution, type HandedCheck, handOverFix, makeFixes } from "./checkback.ts"
 import { holdingSlot } from "./earlyCheck.ts"
@@ -76,6 +77,7 @@ import { Detail, type InvalidTransition, Move, type TicketPhase } from "./phase.
 import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
 import { fit } from "./sessions.ts"
 import { makeSetUps, takeSettings } from "./setup.ts"
+import { type Conflicting, takeBackDue } from "./takenBack.ts"
 
 export interface QueueState {
   /** The tickets waiting for their turn, next first. */
@@ -123,7 +125,8 @@ export interface MergeQueue {
   readonly checksAhead: Stream.Stream<ReadonlyMap<string, CheckAhead>>
   /**
    * Puts back in line, ToMerge by RECHECK, the tickets whose base has moved on since their check
-   * failed, as the queue does after each merge; the tickets it put back.
+   * failed, and by TakenBack those whose conflict was fixed by hand (takenBack.ts), as the queue
+   * does after each merge; the tickets it put back.
    */
   readonly recheck: Effect.Effect<ReadonlyArray<string>>
   /**
@@ -290,21 +293,20 @@ export const make = (
     // first, one look at a time, the first look asking of every one.
     const looking = yield* Semaphore.make(1)
     const seen = yield* Ref.make<string | undefined>(undefined)
+    const conflicting = yield* Ref.make<ReadonlyMap<string, Conflicting>>(new Map())
     const mergedByHand = looking.withPermits(1)(
       handMerged(seen, { rechecks, handBacks }, options).pipe(Effect.provideContext(context)),
     )
     // `at`: where the base is, as a merge just put it, for neither to ask git again.
-    const recheckFrom = (at?: string) =>
+    const recheckFrom = (at?: Sha) =>
       looking.withPermits(1)(
-        Effect.andThen(
-          handMerged(seen, { rechecks, handBacks }, options, at),
-          recheckDue(
-            rechecks,
-            { offer, state, changes: SubscriptionRef.changes(ref) },
-            options,
-            at,
-          ),
-        ).pipe(Effect.provideContext(context)),
+        Effect.gen(function* () {
+          const inLine = { offer, state, changes: SubscriptionRef.changes(ref) }
+          yield* handMerged(seen, { rechecks, handBacks }, options, at)
+          const again = yield* recheckDue(rechecks, inLine, options, at)
+          const back = yield* takeBackDue(conflicting, handBacks, inLine, options, at)
+          return [...again, ...back]
+        }).pipe(Effect.provideContext(context)),
       )
     const recheck = recheckFrom()
 

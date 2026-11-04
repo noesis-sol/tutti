@@ -135,7 +135,12 @@ const endsPart = (phase: TicketPhase): boolean => {
 }
 
 /** The moves that bring a ticket carried over from an earlier run into this one. */
-const carriedIn: ReadonlySet<Move["_tag"]> = new Set(["Resumed", "StillAsked", "Unmerged"])
+const carriedIn: ReadonlySet<Move["_tag"]> = new Set([
+  "Resumed",
+  "StillAsked",
+  "Unmerged",
+  "TakenBack",
+])
 
 /**
  * What the record that ends `entry`'s part in the run says of what it spent, `spent` its workers'

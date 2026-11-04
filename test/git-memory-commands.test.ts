@@ -101,9 +101,20 @@ const calls: ReadonlyArray<{
     call: (git, dir) => git.mergeBase(dir, "main", "HEAD"),
   },
   {
+    op: "rev-parse --git-path",
+    command:
+      "git rev-parse --path-format=absolute --git-path rebase-merge --git-path rebase-apply --git-path MERGE_HEAD --git-path CHERRY_PICK_HEAD",
+    call: (git, dir) => git.operationInProgress(dir),
+  },
+  {
     op: "merge-tree",
     command: "git merge-tree --write-tree --end-of-options main b",
     call: (git, dir) => git.holds(dir, "main", "b"),
+  },
+  {
+    op: "merge-tree",
+    command: "git merge-tree --write-tree --name-only --no-messages -z --end-of-options main b",
+    call: (git, dir) => git.conflicts(dir, "main", "b"),
   },
   {
     op: "merge --ff-only",

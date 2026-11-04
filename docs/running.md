@@ -1118,6 +1118,18 @@ checked again while the run holds or winds down, or while a solo ticket runs or 
 or stopped as it ends, the run names each ticket it won't check again (`<id> is not checked again in
 this run, as the run winds down; it stays set aside`), and one set aside while it winds down says so.
 
+**A conflict you fixed by hand.** A ticket blocked with `MERGE_CONFLICT` can be yours to fix: rebase its
+branch onto the base in its worktree, resolve the conflicts, and leave it. Each time the run looks for
+work it takes such a ticket back, in a slot, once its branch has moved on since it was blocked, its
+worktree is clean and on its branch with no rebase, merge or cherry-pick in progress, and it rebases
+cleanly onto the base now:
+`TAKEN_BACK: tutti/<id> moved on to <commit> since its conflict and rebases cleanly onto main now: back
+in the merge queue`. It then merges as any ticket does. Conflicting again it is blocked again, not
+handed back to its worker, until its branch moves again. A branch that moved but still conflicts is
+said once (`… but still conflicts with main in <files>; it stays blocked`). A ticket an earlier run left
+`unmerged` on its conflict is taken back the same way by a later run. None is while the run holds or
+winds down, or while a solo ticket runs or is next.
+
 **A ticket merged by hand during the run.** You may merge a ticket set aside or blocked yourself
 while the run goes on. Each time the base moves on, and once more as the run ends, the run asks git
 of each ticket closed but not merged, as it does of those left `unmerged` as it starts. One on the

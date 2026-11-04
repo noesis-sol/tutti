@@ -232,7 +232,7 @@ const whyNot = (recheck: Recheck, issue: Issue, options: MergeTarget) =>
   })
 
 /** Waits until ticket `id` has left the merge queue (merged, set aside or blocked), or the merges stop. */
-const mergeOver = (queue: Pick<MergeQueue, "changes">, id: TicketId) =>
+export const mergeOver = (queue: Pick<MergeQueue, "changes">, id: TicketId) =>
   queue.changes.pipe(
     Stream.filter(
       (state) =>
@@ -244,7 +244,7 @@ const mergeOver = (queue: Pick<MergeQueue, "changes">, id: TicketId) =>
   )
 
 /** Whether no ticket is checked again now: the run winds down or holds, or the merges have stopped. */
-const notNow = (queue: Pick<MergeQueue, "state">, options: MergeOptions) =>
+export const notNow = (queue: Pick<MergeQueue, "state">, options: MergeOptions) =>
   Effect.gen(function* () {
     if ((yield* (yield* Ledger).current).windDown !== null) return true
     if ((yield* queue.state).stop !== null) return true

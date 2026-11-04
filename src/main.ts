@@ -128,6 +128,7 @@ import { fetchOnce, fetchSpecLive, type LiveFetch } from "./run/specSource.ts"
 import { setUpFromFlags, specStart } from "./run/specStart.ts"
 import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
+import { fixedLeft } from "./run/takenBack.ts"
 import { layer as trashLayer } from "./run/trash.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
@@ -686,7 +687,11 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         Effect.result(stillUnmerged({ repo: config.repo, base })),
       )
       const beads = yield* Beads
-      const carried = yield* carriedTickets
+      // A conflict an earlier run left, fixed by hand since, is something to run too (takenBack.ts).
+      const carried = new Set([
+        ...(yield* carriedTickets),
+        ...(yield* fixedLeft({ repo: config.repo, base })),
+      ])
       const filter = { excludeTypes: config.settings.queue.exclude_types }
       const nothingOptions = (left: ReadonlySet<TicketId>): NothingOptions => {
         // A blocker closed by hand while its branch has commits the base lacks holds, as in the run.

@@ -504,6 +504,20 @@ export const gitOps = {
       ...revisions([base, branch]),
     ],
   },
+  // The files alone, -z so that no name is quoted: the merged tree's hash, then each file with a
+  // conflict, NUL-separated.
+  conflicts: {
+    op: "merge-tree",
+    kind: "read",
+    args: (base: string, branch: string): ReadonlyArray<string> => [
+      "merge-tree",
+      "--write-tree",
+      "--name-only",
+      "--no-messages",
+      "-z",
+      ...revisions([base, branch]),
+    ],
+  },
   fastForward: {
     op: "merge --ff-only",
     kind: "write",
@@ -723,6 +737,13 @@ export const gitCall = <K extends GitKind, A extends ReadonlyArray<unknown>>(
 /** The folders a rebase keeps its state in while one is under way, `gitPaths` asks for both. */
 export const rebaseFolders: ReadonlyArray<string> = ["rebase-merge", "rebase-apply"]
 
+/** What git keeps while a rebase, merge or cherry-pick is under way, `gitPaths` asks for them all. */
+export const operationMarks: ReadonlyArray<string> = [
+  ...rebaseFolders,
+  "MERGE_HEAD",
+  "CHERRY_PICK_HEAD",
+]
+
 /**
  * git reset --hard to `to`, as resetBranch does it: rev-parse first, then reset to the hash `to`
  * names, which no option or path can be taken for, as the one writer throughout. The live and test
@@ -850,6 +871,8 @@ export class Git extends Context.Service<
     abortRebase(worktree: string): Effect.Effect<void, GitError>
     /** Whether a rebase has stopped in worktree and not been finished or aborted. */
     rebaseInProgress(worktree: string): Effect.Effect<boolean, GitError>
+    /** Whether a rebase, merge or cherry-pick has stopped in worktree and not been finished. */
+    operationInProgress(worktree: string): Effect.Effect<boolean, GitError>
     /**
      * Puts back the branch a rebase that didn't finish was rewriting, if one is under way in
      * worktree: git rebase --abort when rebaseInProgress says so. A failure is let go.
@@ -868,6 +891,15 @@ export class Git extends Context.Service<
      * --write-tree (git 2.38 and later); conflicts are false.
      */
     holds(repo: string, base: string, branch: string): Effect.Effect<boolean, GitError>
+    /**
+     * The files merging branch into base would conflict in; none when it merges cleanly, touching
+     * nothing to find out. git merge-tree --write-tree (git 2.38 and later).
+     */
+    conflicts(
+      repo: string,
+      base: string,
+      branch: string,
+    ): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git merge --ff-only: moves the branch checked out in repo up to `branch`, if that is a fast-forward. */
     fastForward(repo: string, branch: string): Effect.Effect<void, GitError>
     /** git log base..head: the commits on head (HEAD by default) that aren't on base, newest first. */
@@ -1079,17 +1111,18 @@ export class Git extends Context.Service<
           Effect.asVoid(write(gitCall(gitOps.reset, hash), worktree)),
         )
 
-        // Both folders' paths from one rev-parse, a line each.
-        const rebaseInProgress = (worktree: string) =>
+        // The paths from one rev-parse, a line each.
+        const anyThere = (worktree: string, names: ReadonlyArray<string>) =>
           Effect.gen(function* () {
-            const paths = yield* read(gitCall(gitOps.gitPaths, rebaseFolders), worktree)
+            const paths = yield* read(gitCall(gitOps.gitPaths, names), worktree)
             for (const path of paths.split("\n").filter((line) => line !== "")) {
-              // A folder that can't be shown to be gone counts: the rebase can't be shown to be over.
+              // A path that can't be shown to be gone counts: what it marks can't be shown to be over.
               const exists = yield* fs.exists(path).pipe(Effect.orElseSucceed(() => true))
               if (exists) return true
             }
             return false
           })
+        const rebaseInProgress = (worktree: string) => anyThere(worktree, rebaseFolders)
 
         // Puts the branch back after a rebase that didn't finish, if one is under way. git may have
         // been killed before it began one, which leaves nothing to abort.
@@ -1194,6 +1227,7 @@ export class Git extends Context.Service<
           rebase,
           abortRebase,
           rebaseInProgress,
+          operationInProgress: (worktree) => anyThere(worktree, operationMarks),
           abandonRebase,
           resetBranch,
           mergeBase: (repo, a, b) =>
@@ -1207,6 +1241,19 @@ export class Git extends Context.Service<
               if (output.exitCode !== 0) return yield* failed(call, shown, output)
               const tree = yield* revParse(repo, `${base}^{tree}`)
               return (output.stdout.split("\n")[0] ?? "").trim() === tree.trim()
+            }),
+          conflicts: (repo, base, branch) =>
+            Effect.gen(function* () {
+              const call = gitCall(gitOps.conflicts, base, branch)
+              const { shown, output } = yield* gitRead(call, repo)
+              if (output.exitCode === 0) return []
+              // Exit 1 is conflicts, the files after the merged tree's hash; or, with nothing on
+              // stdout, a branch git can't find, which isn't a clean merge.
+              const files = splitNul(output.stdout).slice(1)
+              if (output.exitCode !== 1 || files.length === 0) {
+                return yield* failed(call, shown, output)
+              }
+              return files
             }),
           fastForward: (repo, branch) =>
             Effect.asVoid(write(gitCall(gitOps.fastForward, branch), repo)),
