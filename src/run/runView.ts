@@ -123,6 +123,8 @@ export interface Status {
   readonly contexts: ReadonlyMap<string, ContextUsage>
   /** Something stopped the run, and the running tickets are finishing. */
   readonly stopping: boolean
+  /** A merge stopped the merges, none of which comes again in this run (§ 5 item 10). */
+  readonly mergesStopped: boolean
   /** The run is quitting (§ 4.8): `Quitting… waiting for t-1's worker`; null when it isn't. */
   readonly quitting: string | null
   /**
@@ -194,6 +196,7 @@ export const emptyStatus: Status = {
   spending: noSums,
   contexts: new Map(),
   stopping: false,
+  mergesStopped: false,
   quitting: null,
   endOfRun: null,
   fullCheck: null,
@@ -720,22 +723,13 @@ export type RunGoes = "on" | "windingDown" | "stopping"
 
 export const runGoes = (
   ledger: Pick<State, "windDown">,
-  status: Pick<Status, "stopping">,
-): RunGoes => (status.stopping ? "stopping" : ledger.windDown === null ? "on" : "windingDown")
-
-/**
- * Whether no merge comes in this run: a ticket is Blocked on a merge that stopped the merges, none of
- * which lifts (§ 5 item 10), or the run is quitting. Any other stop holds the run with its merges
- * going on.
- */
-export const mergesOver = (
-  ledger: Pick<State, "tickets">,
-  status: Pick<Status, "quitting">,
-): boolean =>
-  status.quitting !== null ||
-  [...ledger.tickets.values()].some(
-    ({ phase }) => phase._tag === "Blocked" && phase.why !== Tag.mergeConflict,
-  )
+  status: Pick<Status, "stopping" | "quitting">,
+): RunGoes =>
+  status.stopping || status.quitting !== null
+    ? "stopping"
+    : ledger.windDown === null
+      ? "on"
+      : "windingDown"
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -1112,7 +1106,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const answered: Array<QueueRow> = []
   const resumes = resumesAt(ledger, status)
   const run = runGoes(ledger, status)
-  const merges = mergesOver(ledger, status)
+  const mergesOver = status.mergesStopped || status.quitting !== null
   const cards: Array<Card> = []
   const resources: Array<Resources> = []
   for (const entry of ledger.tickets.values()) {
@@ -1157,7 +1151,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           handBack,
           about,
           run,
-          mergesOver: merges,
+          mergesOver,
         }),
       )
     }

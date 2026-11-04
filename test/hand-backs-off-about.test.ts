@@ -6,7 +6,7 @@ import { Effect, Exit } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
-import { make as makeQueue } from "../src/run/mergequeue.ts"
+import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
@@ -64,6 +64,7 @@ const keptAfter = async (
   config: ReturnType<typeof settings>,
   landed: string,
   around: (queue: Queue) => Queue = (queue) => queue,
+  before: (queue: MergeQueue) => Effect.Effect<void> = () => Effect.void,
 ) => {
   const ran = await scenario(
     { backlog: backlog().ticket("a").seeds, config, scripts: () => ({ a: [idle] }) },
@@ -72,6 +73,7 @@ const keptAfter = async (
       const ticket = yield* finished
       const repository = yield* Repository
       yield* repository.commit(repository.dir, "Land b (b)", { [landed]: "main's\n" })
+      yield* before(queue)
       yield* queue.offer(ticket)
       yield* queue.settled
       return (yield* (yield* Ledger).current).tickets.get(a)
@@ -92,6 +94,25 @@ describe("a ticket blocked on its rebase's conflict", () => {
   test("with resolving turned off: keeps that hand-backs are off", async () => {
     const entry = await keptAfter(settings(false, "scripts/check-fast.sh"), "a.txt")
     expect(entry?.about?.handBacksOff).toBe(true)
+  })
+})
+
+describe("a ticket you took up that conflicts again", () => {
+  const takenUp = (queue: MergeQueue) => queue.handBacks.takeUp(a)
+  const same = (queue: Queue) => queue
+
+  test("with resolving turned off: keeps that hand-backs are off", async () => {
+    const config = settings(false, "scripts/check-fast.sh")
+    const entry = await keptAfter(config, "a.txt", same, takenUp)
+    expect(entry?.about?.reason).toContain("you fixed its branch by hand")
+    expect(entry?.about?.handBacksOff).toBe(true)
+  })
+
+  test("with hand-backs on: keeps nothing of it, as `h` gives it back to its worker", async () => {
+    const config = settings(true, "scripts/check-fast.sh")
+    const entry = await keptAfter(config, "a.txt", same, takenUp)
+    expect(entry?.about?.reason).toContain("you fixed its branch by hand")
+    expect(entry?.about?.handBacksOff).toBeUndefined()
   })
 })
 

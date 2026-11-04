@@ -610,6 +610,7 @@ const runFrom = (
       Effect.gen(function* () {
         const stop = state.stop
         if (stop === null || (yield* Ref.getAndSet(mergeStopSeen, true))) return
+        yield* showOn(status, "mergesStopped")(true)
         yield* stopped(
           stopOfLine(stop, {
             ticket: stop.ticket,

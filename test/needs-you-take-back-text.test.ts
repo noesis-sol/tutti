@@ -21,8 +21,7 @@ const needOf = (
     readonly stopping?: boolean
     readonly windingDown?: boolean
     readonly quitting?: string
-    /** Another ticket Blocked on this. */
-    readonly besides?: string
+    readonly mergesStopped?: boolean
   } = {},
 ) => {
   const entry: LedgerEntry = {
@@ -41,23 +40,8 @@ const needOf = (
   }
   const view = project({
     ledger: {
-      tickets: new Map([
-        [entry.ticket, entry],
-        ...(run.besides === undefined
-          ? []
-          : ([
-              [
-                "b" as TicketId,
-                {
-                  ...entry,
-                  ticket: "b" as TicketId,
-                  row: 1,
-                  phase: TicketPhase.Blocked({ why: run.besides }),
-                },
-              ],
-            ] as const)),
-      ]),
-      rows: 2,
+      tickets: new Map([[entry.ticket, entry]]),
+      rows: 1,
       windDown: run.windingDown === true ? windDown : null,
       bugs: [],
     },
@@ -71,6 +55,7 @@ const needOf = (
       concurrency: 4,
       stopping: run.stopping === true,
       quitting: run.quitting ?? null,
+      mergesStopped: run.mergesStopped === true,
     },
     actions: new Map(),
   })
@@ -123,34 +108,29 @@ describe("a conflict left on the run's hands", () => {
     expect(textOf(needOf({}, { stopping: false }))).toContain(takesBack)
   })
 
-  test("quitting: neither the key, as no merge comes, nor the take-back", () => {
-    const need = needOf({}, { stopping: true, quitting: "Quitting…" })
+  test("quitting, with no stop raised yet: neither the key, as no merge comes, nor the take-back", () => {
+    const need = needOf({}, { quitting: "Quitting… waiting for t-1's worker" })
+    expect(need.run).toBe("stopping")
+    expect(need.mergesOver).toBe(true)
+    expect(textOf(need)).not.toMatch(/press h/i)
+    expect(textOf(need)).not.toContain(takesBack)
+    expect(textOf(need)).toContain("The run is stopping, so it takes nothing back.")
+    expect(footOf(need)).not.toContain("h hands it back")
+  })
+
+  test("the merges stopped: no key, as no merge comes", () => {
+    const need = needOf({}, { stopping: true, mergesStopped: true })
     expect(need.mergesOver).toBe(true)
     expect(textOf(need)).not.toMatch(/press h/i)
     expect(textOf(need)).not.toContain(takesBack)
     expect(footOf(need)).not.toContain("h hands it back")
   })
 
-  for (const why of ["DIRTY_TREE", "MERGE_FAILED", "GIT_FAILED"]) {
-    test(`beside a ticket whose merge stopped on ${why}: no key, as no merge comes`, () => {
-      const need = needOf({}, { stopping: true, besides: why })
-      expect(need.mergesOver).toBe(true)
-      expect(textOf(need)).not.toMatch(/press h/i)
-      expect(textOf(need)).not.toContain(takesBack)
-      expect(footOf(need)).not.toContain("h hands it back")
-    })
-  }
-
-  test("beside another ticket's conflict: the key still", () => {
-    const need = needOf({}, { besides: "MERGE_CONFLICT" })
-    expect(need.mergesOver).toBe(false)
-    expect(textOf(need)).toContain("Press h to hand it back")
-  })
-
   test("a stop outranks winding down, as both take nothing back and the merges may be over", () => {
-    expect(runGoes({ windDown }, { stopping: true })).toBe("stopping")
-    expect(runGoes({ windDown }, { stopping: false })).toBe("windingDown")
-    expect(runGoes({ windDown: null }, { stopping: false })).toBe("on")
+    const quitting = null
+    expect(runGoes({ windDown }, { stopping: true, quitting })).toBe("stopping")
+    expect(runGoes({ windDown }, { stopping: false, quitting })).toBe("windingDown")
+    expect(runGoes({ windDown: null }, { stopping: false, quitting })).toBe("on")
   })
 })
 
@@ -168,7 +148,7 @@ describe("with hand-backs off", () => {
   })
 
   test("with no merge to come: no key either", () => {
-    const need = needOf(off, { stopping: true, besides: "DIRTY_TREE" })
+    const need = needOf(off, { stopping: true, mergesStopped: true })
     expect(textOf(need)).not.toMatch(/press h/i)
     expect(footOf(need)).not.toContain("h tries its merge again")
   })
@@ -188,7 +168,7 @@ describe("a steered worker's hand-back waiting", () => {
   })
 
   test("keeps the key with no merge to come, as its hand-over is what the run's end waits for", () => {
-    const need = needOf(waiting, { stopping: true, besides: "DIRTY_TREE" })
+    const need = needOf(waiting, { stopping: true, mergesStopped: true })
     expect(textOf(need)).toContain("Press h, or 'Hand it the conflict now'")
     expect(footOf(need)).toContain("h hands it back")
   })

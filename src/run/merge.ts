@@ -828,7 +828,10 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
         const handed: Result.Result<HandedRebase, NotHandedBack> = (yield* memory.handBacks.takenUp(
           id,
         ))
-          ? Result.fail(takenUpByYou)
+          ? Result.fail({
+              ...takenUpByYou,
+              off: whyHandBacksOff(yield* AppConfig) !== undefined,
+            })
           : yield* toHandBack(stop, options, memory.handBacks, turn.waived)
         if (Result.isSuccess(handed)) return Prepared.HandBack({ stop: handed.success })
         yield* notHandedBack(stop, options, handed.failure, memory.handBacks)
