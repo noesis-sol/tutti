@@ -351,6 +351,12 @@ Answering lets them carry on. q ends the run, suspending them: the next run resu
 Answer them and the run goes on, merging what they finish; `q` ends it. Workers that stopped the run
 (`PAUSED`, `TICKET_LIMIT`) don't keep it open.
 
+A ticket whose merge conflict is set aside keeps it open too, named
+`tut-3c4 (its merge conflict is set aside)`: `h` in Needs you or its view hands it back once more,
+or rebase its branch in its worktree and tutti takes it back and merges it; `q` leaves it blocked,
+for the next run. Not when you run plain or with `--overnight`, nor once the run holds, winds down
+or its merges have stopped, when neither would merge it: the run ends, and the next run takes it up.
+
 ### A small pane
 
 The dashboard needs 60 columns and 16 lines. Below that it shows only the totals on one line and the

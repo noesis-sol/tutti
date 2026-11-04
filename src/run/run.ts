@@ -1206,6 +1206,7 @@ const runFrom = (
       answering: Ref.get(autoAnswering),
       unread: Effect.map(Ref.get(outage), (now) => now !== null),
       ...(disk === undefined ? {} : { diskHeld: disk.held }),
+      setAside: Effect.map(queue.handBacks.setAside, (all) => all.map((each) => each.id)),
       ...(options.filing === undefined
         ? {}
         : { filing: Effect.map(SubscriptionRef.get(options.filing), (now) => now !== null) }),

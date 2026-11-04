@@ -40,6 +40,7 @@ import {
   advance,
   backlog,
   type Env,
+  endAtTheBox,
   expectExitCode,
   expectLog,
   expectPhases,
@@ -162,6 +163,8 @@ interface Plan {
   readonly during: (screen: () => ScreenInputs | undefined) => Effect.Effect<void, unknown, Env>
   /** Whether the run has a dashboard, for `during` to steer workers from. */
   readonly dashboard?: boolean
+  /** Whether a conflict set aside at its end keeps it open, until the box's `q` after `during`. */
+  readonly endsAtTheBox?: boolean
 }
 
 /** A whole run of `plan.tickets` on main, all at once, each worktree made in git first. */
@@ -209,6 +212,7 @@ const runs = (plan: Plan): Promise<Ran<Outcome> & Places> => {
         }),
       )
       yield* plan.during(() => shown)
+      if (plan.endsAtTheBox === true) yield* endAtTheBox(() => shown, fiber)
       return yield* Fiber.join(fiber)
     }),
   ).then((ran) => ({ ...ran, ...places }))
@@ -359,7 +363,9 @@ describe("a worker at the usage limit already", () => {
           yield* Queue.offer(inputs.commands, UiCommand.Interrupt({ ticket: "b" as TicketId }))
           yield* untilLogged(/^ {2}STEERED: /)
           yield* advance("2 hours")
+          yield* untilLogged(/^ {2}MERGE_CONFLICT: b closed/)
         }),
+      endsAtTheBox: true,
     })
     expectClean(ran)
     expectPhases(ran, { a: "Done", b: "Blocked" })

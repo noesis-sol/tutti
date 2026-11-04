@@ -1,10 +1,11 @@
 // The end-of-run box (D19, § 5 item 14, § 7.2): with everything else done and workers waiting on
 // you, it replaces the Current cards. It names each such worker and what it asks, framed
 // `needsYou`, and says what answering and `q` do; for a conflict hand-back waiting on a steered
-// worker (§ 4.3), what handing it over does too. Its words are wrapped to the pane's width, and
-// it keeps to the lines it is given: it names fewer workers, the rest as `+N more`, then leaves out
-// the hand-back's line, then the frame and its first words, and always keeps what `q` does.
-import { conflictWaits, type Waiting } from "../run/runView.ts"
+// worker (§ 4.3), what handing it over does too, and for a conflict set aside, what handing it back
+// or rebasing it does. Its words are wrapped to the pane's width, and it keeps to the lines it is
+// given: it names fewer workers, the rest as `+N more`, then leaves out the hand-backs' lines, then
+// the frame and its first words, and always keeps what `q` does.
+import { conflictSetAside, conflictWaits, type Waiting } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
 import { type Border, boxed, cut, padded, type Segments, seg, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
@@ -35,9 +36,13 @@ export const endOfRunAbout =
 export const endOfRunConflict =
   "Hand it the conflict now (in its view) or Release sends it back to merge; q leaves it blocked."
 
+/** What handing back or rebasing a conflict set aside, and `q`, do, when the box names one (§ 4.3). */
+export const endOfRunAside =
+  "h in Needs you or its view hands it back once more; or rebase it in its worktree and it merges. q leaves it blocked, for the next run."
+
 /**
  * The box's lines, `width` wide, its frame included, at most `height` of them: as many workers
- * named as fit, then the hand-back's line left out, then the box's first words and frame, the line
+ * named as fit, then the hand-backs' lines left out, then the box's first words and frame, the line
  * of what `q` does kept to the last, cut to one line where nothing else fits. Heavy where the focus
  * is on it, in Current's place.
  */
@@ -51,9 +56,14 @@ export const endOfRunLines = (
   const inner = Math.max(width - 4, 1)
   const look = theme.look("needsYou")
   const about = wrap([seg(endOfRunAbout, theme.styles.dim)], inner, { long: "line" })
-  const conflict = waiting.some((worker) => worker.asks.includes(conflictWaits))
-    ? wrap([seg(endOfRunConflict, theme.styles.dim)], inner, { long: "line" })
-    : []
+  const says = (what: string, line: string) =>
+    waiting.some((worker) => worker.asks.includes(what))
+      ? wrap([seg(line, theme.styles.dim)], inner, { long: "line" })
+      : []
+  const conflict = [
+    ...says(conflictWaits, endOfRunConflict),
+    ...says(conflictSetAside, endOfRunAside),
+  ]
   const boxOf = (named: number, hand: boolean) =>
     boxed(
       [

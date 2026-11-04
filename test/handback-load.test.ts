@@ -14,6 +14,7 @@ import { type Kernel, type Levels, Load, type LoadSource, pressing } from "../sr
 import { line } from "../src/run/log.ts"
 import { type ProcessCheck, Processes } from "../src/run/machine.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -37,6 +38,7 @@ import {
   advance,
   backlog,
   type Env,
+  endAtTheBox,
   expectExitCode,
   expectLog,
   expectPhases,
@@ -246,15 +248,20 @@ const runsOn = (
         })
       }
       const start = { version: "0.1.0-test", base: "main", start: [line`START tutti 0.1.0-test`] }
+      let shown: ScreenInputs | undefined
+      const dashboard: Dashboard = (inputs) =>
+        Effect.sync(() => {
+          shown = inputs
+        })
       const fiber = yield* Effect.forkChild(
         (source === undefined
           ? run(start)
-          : run({ ...start, dashboard: () => Effect.void }).pipe(
-              Effect.provideService(Load, source),
-            )
+          : run({ ...start, dashboard }).pipe(Effect.provideService(Load, source))
         ).pipe(Effect.provideService(Processes, everyoneAlive)),
       )
       yield* during
+      // A conflict set aside keeps a run with a dashboard open (§ 4.3).
+      if (source !== undefined) yield* endAtTheBox(() => shown, fiber)
       return yield* Fiber.join(fiber)
     }),
   ).then((ran) => ({ ...ran, ...places }))

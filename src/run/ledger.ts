@@ -272,6 +272,13 @@ export const handBackWaits = (entry: Pick<Entry, "phase" | "handBack">): boolean
   entry.handBack === true && entry.phase._tag === "Blocked" && entry.phase.why === Tag.mergeConflict
 
 /**
+ * Whether `entry` is Blocked on a conflict with no hand-back waiting: its worker's part is over, and
+ * it waits for you to hand it back once more or rebase it yourself (§ 4.3).
+ */
+export const conflictLeft = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
+  entry.handBack !== true && entry.phase._tag === "Blocked" && entry.phase.why === Tag.mergeConflict
+
+/**
  * Whether `entry` keeps its worker's number: in a phase that holds one, or Blocked with its
  * hand-back waiting, its session open for it (§ 4.3, § 4.8).
  */

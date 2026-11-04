@@ -6,7 +6,7 @@
 import { Data } from "effect"
 import type { TicketId } from "../services/Beads.ts"
 import { waitedFor } from "./holdsGate.ts"
-import { type Entry, handBackWaits } from "./ledger.ts"
+import { conflictLeft, type Entry, handBackWaits } from "./ledger.ts"
 import { isSettled, type QueueState } from "./mergequeue.ts"
 
 /** What a look of the run left: read after its effects, in look.ts's nothingLeft. */
@@ -64,6 +64,11 @@ export interface Look {
    * morning, so a hand-back waiting for its steered worker doesn't keep the run open.
    */
   readonly overnight?: boolean
+  /**
+   * The tickets left Blocked on their conflicts that you can hand back or rebase now (§ 4.3): none
+   * while the run holds or winds down, or the merges have stopped, when neither would merge them.
+   */
+  readonly setAside?: ReadonlyArray<TicketId>
 }
 
 /** A look, and what look.ts's untilDone reads after it. */
@@ -93,7 +98,8 @@ export const End = Data.taggedEnum<End>()
 /**
  * Whether nothing else runs, waits to merge or could start, and which workers wait on you besides:
  * those with an open request, oldest first, those past their ticket limit left out; then, with a
- * dashboard, those a conflict hand-back waits for (§ 4.3), unless the run is an overnight one.
+ * dashboard, those a conflict hand-back waits for and those whose conflicts are set aside (§ 4.3),
+ * unless the run is an overnight one.
  */
 export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<TicketId> } => {
   const asking = new Set(look.asking)
@@ -130,12 +136,18 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<T
     (look.reviewsPending ?? 0) === 0 &&
     (look.auditsPending ?? 0) === 0
   // With a dashboard, a conflict hand-back waiting for its steered worker keeps the run open as a
-  // request does, until you hand it over from the worker's view or release it (§ 4.3). An overnight
-  // run leaves it Blocked, as a plain one does, and ends: nobody is there to hand it over.
+  // request does, until you hand it over from the worker's view or release it (§ 4.3); so does a
+  // conflict set aside, until you hand it back or rebase it. An overnight run leaves them Blocked,
+  // as a plain one does, and ends: nobody is there to hand them over.
+  const left = new Set(look.setAside ?? [])
   const conflicts =
     look.dashboard && look.overnight !== true
       ? entries
-          .filter((entry) => handBackWaits(entry) && !waiting.includes(entry.ticket))
+          .filter(
+            (entry) =>
+              (handBackWaits(entry) || (left.has(entry.ticket) && conflictLeft(entry))) &&
+              !waiting.includes(entry.ticket),
+          )
           .map((entry) => entry.ticket)
       : []
   return { done, waiting: [...waiting, ...conflicts] }

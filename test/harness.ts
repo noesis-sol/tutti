@@ -10,7 +10,17 @@
 // scenario's frames move only as `advance` moves the clock.
 import { expect } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
-import { Cause, Duration, Effect, Exit, Layer, type Scope } from "effect"
+import {
+  Cause,
+  Duration,
+  Effect,
+  Exit,
+  type Fiber,
+  Layer,
+  Queue,
+  type Scope,
+  SubscriptionRef,
+} from "effect"
 import { TestClock } from "effect/testing"
 import type { Account, AccountProbeFailed, Billing, Initialization } from "../src/agent/Account.ts"
 import type { AgentHost } from "../src/agent/AgentHost.ts"
@@ -21,12 +31,14 @@ import type { UsageLimits } from "../src/agent/UsageLimits.ts"
 import type { UsageProbe } from "../src/agent/UsageProbe.ts"
 import type { AppConfig, AppConfigValue } from "../src/cli/AppConfig.ts"
 import { OrganCost } from "../src/organs/OrganCost.ts"
+import { UiCommand } from "../src/run/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { layer as fibersLayer, type Left, RunFibers } from "../src/run/fibers.ts"
 import type { Log } from "../src/run/log.ts"
 import { notifying } from "../src/run/notices.ts"
 import type { PhaseTag, TicketPhase } from "../src/run/phase.ts"
+import type { ScreenInputs } from "../src/run/screen.ts"
 import type { Spending } from "../src/run/spending.ts"
 import { type Trash, layer as trashLayer } from "../src/run/trash.ts"
 import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
@@ -391,6 +403,25 @@ export { tty } from "../src/testing/Tty.ts"
 
 /** Moves TestClock on by `duration`, running whatever was waiting for that time. */
 export const advance = (duration: Duration.Input): Effect.Effect<void> => TestClock.adjust(duration)
+
+/**
+ * Moves TestClock on until `fiber`, a run with a dashboard, is over, pressing the end-of-run box's
+ * `q` while it shows: a ticket left Blocked on its conflict keeps such a run open (§ 4.3).
+ */
+export const endAtTheBox = (
+  inputs: () => ScreenInputs | undefined,
+  fiber: Fiber.Fiber<unknown, unknown>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 2000 && fiber.pollUnsafe() === undefined; i++) {
+      yield* advance("1 second")
+      yield* Effect.promise(() => Bun.sleep(2))
+      const shown = inputs()
+      if (shown !== undefined && (yield* SubscriptionRef.get(shown.view)).endOfRun !== null) {
+        yield* Queue.offer(shown.commands, UiCommand.EndRun())
+      }
+    }
+  })
 
 /**
  * Why a scenario's Effect failed: the cause, and the fields of each error and defect in it, which

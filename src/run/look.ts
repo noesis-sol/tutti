@@ -12,7 +12,7 @@ import type { TicketId } from "../services/Beads.ts"
 import type { Auditor } from "./auditor.ts"
 import type { Critic } from "./critic.ts"
 import type { EnvironmentHold } from "./environment.ts"
-import { changeStops, firstStop, type Gate, swapStop, takesNew } from "./holds.ts"
+import { changeStops, firstStop, type Gate, swapStop, takesBack, takesNew } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
 import type { Ledger } from "./ledger.ts"
 import { isSettled, type MergeQueue } from "./mergequeue.ts"
@@ -57,6 +57,8 @@ export interface LoopParts {
   readonly unread?: Effect.Effect<boolean>
   /** Whether the disk hold is on (runEnd.ts's Look, diskGate.ts). */
   readonly diskHeld?: Effect.Effect<boolean>
+  /** The tickets left Blocked on their conflicts, for you to hand back (HandBacks' setAside). */
+  readonly setAside?: Effect.Effect<ReadonlyArray<TicketId>>
   /** Shows the end-of-run box, naming the workers waiting on you; null for none. */
   readonly showEndOfRun: (tickets: ReadonlyArray<TicketId> | null) => Effect.Effect<void>
   /** Whether the run has a dashboard, which shows the end-of-run box. */
@@ -85,13 +87,14 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
       const mergedBefore = isSettled(yield* queue.state)
       yield* Effect.logDebug(`look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`)
       if (reads(why)) yield* parts.fill
+      const gate = yield* parts.gate
       const look: Look = {
         mergedBefore,
         tickets: (yield* parts.ledger.current).tickets,
         overLimit: (yield* holds.now).overLimit,
         asking: (yield* parts.attention.current).map((request) => request.ticket),
         running: yield* scheduler.running,
-        canTake: takesNew(yield* parts.gate),
+        canTake: takesNew(gate),
         resuming: yield* parts.resuming,
         answering: yield* parts.answering,
         filing: parts.filing === undefined ? false : yield* parts.filing,
@@ -103,6 +106,10 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         auditsPending: parts.auditor === undefined ? 0 : yield* parts.auditor.pending,
         dashboard: parts.dashboard,
         overnight: parts.overnight === true,
+        setAside:
+          parts.setAside === undefined || !takesBack(gate) || (yield* queue.state).stop !== null
+            ? []
+            : yield* parts.setAside,
       }
       return look
     })
@@ -119,8 +126,8 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
     // Waits until nothing is left. With the usage-limit hold on, the run waits for its reset
     // instead, unless a stop ends it anyway; it ends USAGE_LIMIT when it can't wait for it: whether
     // it does. With everything else done and workers waiting on you (D19), a dashboard shows the
-    // end-of-run box and waits, until they are answered, their conflicts handed over (§ 4.3), or the
-    // box's `q` ends the run; plain, the run waits only until a stop holds it. Gives whether the
+    // end-of-run box and waits, until they are answered, their conflicts handed over or rebased
+    // (§ 4.3), or the box's `q` ends the run; plain, the run waits only until a stop holds it. Gives whether the
     // usage limit ends it, whether the box's `q` did, and the count of the screen's commands acted
     // on before its last look.
     const untilDone = Effect.gen(function* () {

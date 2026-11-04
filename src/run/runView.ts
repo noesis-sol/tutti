@@ -32,7 +32,14 @@ import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { afterMerging, afterSolo } from "./after.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import type { FullCheckRun } from "./fullcheck.ts"
-import { type BlockedAbout, type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
+import {
+  type BlockedAbout,
+  conflictLeft,
+  type Entry,
+  handBackWaits,
+  type State,
+  showsCard,
+} from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
 import { resetLabel } from "./localTime.ts"
 import { Tag } from "./log.ts"
@@ -783,6 +790,9 @@ export const asks = (request: AttentionRequest): string => {
 /** What the end-of-run box names for a worker a conflict hand-back waits for (§ 4.3). */
 export const conflictWaits = "a merge conflict waits for you"
 
+/** What the end-of-run box names for a ticket whose conflict is set aside (§ 4.3). */
+export const conflictSetAside = "its merge conflict is set aside"
+
 /**
  * What a card's status says of a worker in `state` with `requests` open (§ 4.2), at `now`:
  * `usage limit · resets 14:05`, or `resets Fri Oct 23 14:05` when the reset isn't that day; read
@@ -1325,13 +1335,14 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     status.fullCheck === null
       ? null
       : { ...status.fullCheck, command: sanitizeLine(status.fullCheck.command) }
-  // The box names each worker the run waits on that still has a request open, or a conflict
-  // hand-back waiting for it (§ 4.3).
+  // The box names each worker the run waits on that still has a request open, a conflict hand-back
+  // waiting for it, or its conflict set aside (§ 4.3).
   const waiting = (status.endOfRun ?? []).flatMap((ticket): ReadonlyArray<Waiting> => {
     const entry = ledger.tickets.get(ticket)
     const all = [
       ...(requestsOf.get(ticket) ?? []).map(asks),
       ...(entry !== undefined && handBackWaits(entry) ? [conflictWaits] : []),
+      ...(entry !== undefined && conflictLeft(entry) ? [conflictSetAside] : []),
     ]
     return all.length === 0 ? [] : [{ ticket: sanitizeLine(ticket), asks: all }]
   })
