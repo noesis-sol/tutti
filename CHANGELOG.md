@@ -3,6 +3,7 @@
 ## Unreleased
 
 - An answered question's row and Up next line say `the next run`, not `the next free slot`, while the run quits, as a quit takes nothing back (§ 5.1; `src/run/runView.ts`' `resumesAt`; tutti-0ucl).
+- The tickets table's selected row is one band across the table, its padding and the lines between its columns too, rather than a patch on each cell's text, and with the focus on the table only its frame goes bright, the lines between its columns staying dim, rather than drawing a bright grid (§ 7.2; `src/ui/line.tsx`' `framed`, `src/ui/TicketsTable.tsx`). `test/dashboard-panels.test.tsx` covers it.
 
 ## [0.6.8] - 2026-11-04
 

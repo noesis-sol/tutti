@@ -188,6 +188,7 @@ export const ticketsLines = (
   const drawnRows = new Set(shown)
   const hidden = rows.filter((row) => !drawnRows.has(row))
   const cells: Array<ReadonlyArray<Segments>> = []
+  let band: number | undefined
   for (const row of shown) {
     const style = lookOf(row.tone, theme)
     const about =
@@ -203,18 +204,16 @@ export const ticketsLines = (
       ],
       [about],
     ]
-    // The highlighted row is drawn in the focus's look, which shows without colour (§ 7.11).
-    const focused =
-      reach?.highlighted === row.ticket
-        ? drawn.map((cell) => cell.map((each) => ({ ...each, look: theme.form.focusedButton })))
-        : drawn
+    // The highlighted row is one band in the focus's look across the frame (framed's band), which
+    // shows without colour (§ 7.11).
+    if (reach?.highlighted === row.ticket) band = cells.length
     // A click anywhere on a row with a target presses it, but on its ID cell, which copies the ID;
     // the cells with a target are padded to their widths.
     const target = reach?.target(row)
     const targets = [target, reach?.idTarget(row), target]
     const widths = [stateWidth, idWidth, aboutWidth]
     cells.push(
-      focused.map((cell, i) => {
+      drawn.map((cell, i) => {
         const each = targets[i]
         return each === undefined ? cell : targeting(padded(cell, widths[i] ?? 0), each)
       }),
@@ -222,12 +221,18 @@ export const ticketsLines = (
   }
   if (hidden.length > 0 && cells.length < limit) cells.push(foldedCells(hidden, theme, aboutWidth))
   while (cells.length < limit) cells.push([[], [], []])
+  // With the focus on the table its frame goes bright; the lines between its columns stay dim, so
+  // that the frame, not a grid, says where the focus is.
   return [
     [seg("  "), seg("Tickets", styles.tickets)],
     ...framed(
       cells,
       [stateWidth, idWidth, aboutWidth],
       reach?.focused === true ? theme.look("emphasis", "bold") : theme.look("frame"),
+      {
+        columns: theme.look("frame"),
+        ...(band === undefined ? {} : { band: { row: band, look: theme.form.focusedButton } }),
+      },
     ),
   ]
 }

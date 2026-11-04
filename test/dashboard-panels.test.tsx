@@ -260,6 +260,19 @@ const where = (frame: Frame, text: string) => {
 
 const has = (frame: Frame, text: string) => frame.chars.includes(text)
 
+/**
+ * The table's row holding `text`, in `frame`, char by char with its colours, from its frame's left
+ * side to its right: the first `│` of its line and the fourth, as the table has three columns.
+ */
+const tableRow = (frame: Frame, text: string) => {
+  const line = frame.spans.lines[where(frame, text).y]
+  const chars = (line?.spans ?? []).flatMap((span) =>
+    Array.from(span.text).map((char) => ({ char, fg: span.fg.toInts(), bg: span.bg.toInts() })),
+  )
+  const bars = chars.flatMap((each, i) => (each.char === "│" ? [i] : []))
+  return chars.slice(bars[0], (bars[3] ?? chars.length) + 1)
+}
+
 /** Whether a card's heavy frame is drawn round `ticket`. */
 const heavyOn = (frame: Frame, ticket: string) =>
   linesOf(frame).some((line) => line.includes(`┃`) && line.includes(ticket))
@@ -491,6 +504,30 @@ describe("inside Tickets", () => {
       const out = await rendered.capture()
       expect(lit(out, "d-")).toBe(false)
       expect(lit(out, "b-1")).toBe(false)
+    })
+  })
+
+  test("the row selected is one band across the frame; the lines between the columns stay dim", async () => {
+    await scene(viewOf(0), narrow, async ({ rendered }) => {
+      await press(rendered, "enter")
+      const frame = await rendered.capture()
+      const fill = theme.form.focusedButton.bg?.toInts()
+      const selected = tableRow(frame, "b-1")
+      // Inside its frame's sides every cell has the focus's fill: its text, its padding, the spaces
+      // round its cells and the lines between them.
+      expect(selected.slice(1, -1).every((each) => Bun.deepEquals(each.bg, fill))).toBe(true)
+      expect(Bun.deepEquals(selected[0]?.bg, fill)).toBe(false)
+      expect(Bun.deepEquals(selected.at(-1)?.bg, fill)).toBe(false)
+      // Another row's lines between the columns keep the dim frame's colour, while its sides, as
+      // the frame's top, go bright.
+      const other = tableRow(frame, "d-1")
+      const bars = other.filter((each) => each.char === "│")
+      expect(bars.slice(1, -1).map((each) => each.fg)).toEqual([
+        theme.rgba("frame").toInts(),
+        theme.rgba("frame").toInts(),
+      ])
+      expect(bars[0]?.fg).toEqual(tableFrameColour(frame))
+      expect(tableFrameColour(frame)).not.toEqual(theme.rgba("frame").toInts())
     })
   })
 

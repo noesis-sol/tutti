@@ -442,8 +442,9 @@ the keys are still on this worker's card, and open the other's (an arrow, then `
 
 The dashboard's keys work at two levels. At the top level the arrows move the focus between its
 panels, **Tickets** top left, **Needs you** top right, **Current** below, `Tab` and `Shift+Tab` to the
-next and previous, and the focused panel's frame is drawn bright. `Enter`, or a click, goes into a
-panel, where the keys select in it, and `Esc` comes out, an open box closing first. So opening a
+next and previous, and the focused panel's frame is drawn bright (the table's lines between its
+columns stay dim). `Enter`, or a click, goes into a panel, where the keys select in it (a row of the
+table is one band across it), and `Esc` comes out, an open box closing first. So opening a
 worker from the top is `↓ Enter Enter`, or a click on its card; a request's `d` and `a` work from any
 panel at the top level.
 
