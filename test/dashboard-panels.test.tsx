@@ -801,7 +801,7 @@ describe("1–9", () => {
         const frame = await rendered.capture()
         expect(has(frame, "move here to answer")).toBe(true)
         expect(has(frame, "1–2 answer")).toBe(false)
-        await press(rendered, "1", "2", "enter")
+        await press(rendered, "1", "2")
         expect(taken(commands)).toEqual([])
         await press(rendered, "enter")
         expect(taken(commands)).toEqual([
