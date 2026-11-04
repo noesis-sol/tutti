@@ -12,6 +12,7 @@
 // (Dashboard.tsx); a click target names an option by its index, or one of panelTargets.
 // A narrower pane has no panel, and the table its whole width, as before.
 import { afterParts } from "../run/after.ts"
+import { someFiles } from "../run/merge.ts"
 import type { Need, QueueRow, Totals } from "../run/runView.ts"
 import { type Border, boxed, cut, fit, padded, type Segments, seg, wrap } from "./line.tsx"
 import { marks } from "./marks.ts"
@@ -155,8 +156,8 @@ const afterStop =
   "The merges have stopped and no new ticket starts. The run's end labels it unmerged; the next run checks and merges it."
 
 /**
- * What a Blocked ticket's need says, a paragraph each, what to do before why, as a short panel cuts
- * the end: the files, the worktree, why it is so, what to run and what comes next. A hand-back is
+ * What a Blocked ticket's need says, a paragraph each, what to do first, as a short panel cuts the
+ * end: what to run, the worktree, the first files, why it is so and what comes next. A hand-back is
  * offered only where an action does it: 'Hand it the conflict now' for a steered worker's (§ 4.3).
  */
 export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArray<string> => {
@@ -168,37 +169,39 @@ export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArra
       const files = about?.files ?? []
       const conflict =
         files.length > 0
-          ? `Its rebase onto ${base} conflicts in ${files.join(", ")}.`
+          ? `Its rebase onto ${base} conflicts in ${someFiles(files)}.`
           : about === null
             ? `Its rebase onto ${base} conflicts.`
             : `Its branch can't merge onto ${base}.`
       return handBack
         ? [
+            "You steered its worker, so its conflict's hand-back waits for you: 'Hand it the conflict now' in its worker view hands it over.",
+            `Or take it up yourself: ${rebase}.`,
             conflict,
-            "You steered its worker, so the hand-back waits for you: 'Hand it the conflict now' in its worker view hands it over.",
-            `Or resolve it yourself: ${rebase}.`,
-            "The run stays open until you hand it over or release its worker.",
+            "An overnight run doesn't wait for it; any other waits at its end until you hand it over, release its worker or press q.",
+            afterConflict,
           ]
         : [
+            `To take it up yourself: ${rebase}.`,
             conflict,
-            `Resolve it yourself: ${rebase}.`,
             ...(about === null ? [] : [`Set aside: ${about.reason}.`]),
             afterConflict,
           ]
     }
     case "DIRTY_TREE":
       return [
-        stopped(`${base}'s checkout has changes the run didn't make`),
         `Leave the main checkout clean, on ${base}.`,
+        stopped(`${base}'s checkout has changes the run didn't make`),
         afterStop,
       ]
     case "MERGE_FAILED":
       return [
-        stopped(`its branch doesn't fast-forward onto ${base}`),
         `Rebase it: ${rebase}.`,
+        stopped(`its branch doesn't fast-forward onto ${base}`),
         afterStop,
       ]
     case "GIT_FAILED":
+      // What to do is what git said.
       return [stopped("git failed: the log says how"), "Put right what git says.", afterStop]
     default:
       return ["The log says what happened."]
@@ -303,11 +306,14 @@ export const needsLines = (
     }
   } else if (need?._tag === "Blocked") {
     const title = wrapped([seg(need.title, styles.key)], 2)
-    const clears = clearsOf(need).flatMap((text) => wrapped([dim(text)]))
+    const paragraphs = clearsOf(need).map((text) => wrapped([dim(text)]))
     const cut = blockedCut(need, width, lines)
-    // Too short for it all: what to do comes first, and on a very short panel in place of the title.
-    const titled = cut && room < 4 ? [] : title
-    const space = room - 2 - titled.length
+    const read = cut && room >= 3 ? [[dim("… click to read it all", panelTargets.read)]] : []
+    // Too short for it all: what to do is its first paragraph, which goes before the title.
+    const spare = room - 2 - read.length
+    const titled = !cut || spare - title.length >= (paragraphs[0]?.length ?? 0) ? title : []
+    const clears = paragraphs.flat()
+    const shown = cut ? clears.slice(0, Math.max(spare - titled.length, 0)) : clears
     const keys = !at.focused
       ? "Tab to choose"
       : cut
@@ -316,12 +322,8 @@ export const needsLines = (
     body.push(
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],
       ...titled,
-      ...(cut
-        ? [
-            ...clears.slice(0, Math.max(space - 1, 0)),
-            [dim("… click to read it all", panelTargets.read)],
-          ]
-        : clears),
+      ...shown,
+      ...read,
       footOf(keys, needs.length).map((each) => ({ ...each, look: styles.dim })),
     )
   }

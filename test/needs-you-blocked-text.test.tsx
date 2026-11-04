@@ -65,8 +65,8 @@ const textOf = (fields: Partial<LedgerEntry> = {}) => clearsOf(needOf(fields)).j
 describe("what Needs you says of a conflict", () => {
   test("left by the run: its files, worktree, why, what to run and what comes next", () => {
     expect(clearsOf(needOf())).toEqual([
+      "To take it up yourself: git rebase trunk in /wt/fab-mgi.7.9.",
       "Its rebase onto trunk conflicts in loop.ts, cli.test.ts.",
-      "Resolve it yourself: git rebase trunk in /wt/fab-mgi.7.9.",
       "Set aside: 2 hand-backs used; main moved on as fab-mgi.7.7 merged.",
       "The run's end labels it unmerged; the next run checks and merges it once it rebases cleanly.",
     ])
@@ -77,7 +77,16 @@ describe("what Needs you says of a conflict", () => {
     const waits = textOf({ handBack: true })
     expect(waits).toContain("'Hand it the conflict now' in its worker view hands it over")
     expect(waits).toContain("git rebase trunk in /wt/fab-mgi.7.9")
-    expect(waits).not.toContain("labels it unmerged")
+    expect(waits).toContain("An overnight run doesn't wait for it")
+    expect(waits).toContain("press q")
+    expect(waits).toContain("The run's end labels it unmerged")
+  })
+
+  test("names the first files and how many more", () => {
+    const files = Array.from({ length: 80 }, (_, i) => `src/file-${i}.ts`)
+    const text = textOf({ about: { ...about, files } })
+    expect(text).toContain("src/file-4.ts and 75 more.")
+    expect(text).not.toContain("src/file-5.ts")
   })
 
   test("not in files, as a base that kept changing: says why, and names none", () => {
@@ -156,6 +165,23 @@ describe("the panel's lines", () => {
     expect(lines).not.toContain("click to read it all")
   })
 
+  test("at any height: its foot, and from 7 lines what to run, however long the rest", () => {
+    const long = "/Users/someone/.tutti/worktrees/fabrica/fab-mgi.7.9"
+    const title = "Make the loop's merge step keep what it read of the ticket across a restart"
+    const files = Array.from({ length: 14 }, (_, i) => `packages/engine/src/file-${i}.ts`)
+    for (const need of [
+      needOf({ title, about: { ...about, worktree: long } }),
+      needOf({ about: { ...about, worktree: long, files } }),
+      needOf({ title, about: { ...about, worktree: long, files } }),
+    ]) {
+      for (let height = 5; height <= 30; height++) {
+        const said = texts(needsLines([need], at, theme, 51, height)).join("\n")
+        expect(said).toMatch(/Enter (reads it all|opens its worker view)/)
+        if (height >= 7) expect(said).toContain("git rebase trunk")
+      }
+    }
+  })
+
   test("very short: the line to read it all in place of the title, and the foot", () => {
     const lines = texts(needsLines([needOf()], at, theme, 60, 6)).join("\n")
     expect(lines).not.toContain("Merge the loop")
@@ -176,6 +202,33 @@ describe("the panel's lines", () => {
 })
 
 describe("the panel's cut text", () => {
+  test("its box fits a pane, with its keys, however many files conflict", async () => {
+    const files = Array.from({ length: 80 }, (_, i) => `src/packages/module-${i}/index.ts`)
+    const commands = Effect.runSync(makeCommands)
+    await withRender(
+      <Root
+        value={{
+          view: external(viewOf(entry({ about: { ...about, files } }))),
+          screen: external<Screen>(Screen.Dashboard()),
+          commands,
+          appearance: external<Appearance>("dark"),
+          themeOf,
+          now: () => began + 60_000,
+        }}
+      />,
+      { width: 140, height: 30 },
+      async (rendered) => {
+        const lines = (await rendered.capture()).chars.split("\n")
+        const y = lines.findIndex((line) => line.includes("click to read it all"))
+        const x = lines[y]?.indexOf("click to read it all") ?? -1
+        await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+        const box = (await rendered.capture()).chars.replace(/\s+/g, " ")
+        expect(box).toContain("next run checks")
+        expect(box).toContain("Esc close")
+      },
+    )
+  })
+
   test("a click opens a box saying all of it, which Esc closes; Enter there, its worker view", async () => {
     const placeOf = (frame: Frame, text: string) => {
       const lines = frame.chars.split("\n")
