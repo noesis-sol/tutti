@@ -98,11 +98,23 @@ export interface Entry {
    * its worker's number and its card.
    */
   readonly handBack?: boolean
+  /** What stopped its merge, for Needs you to say (§ 7.2): kept only while it is Blocked. */
+  readonly about?: BlockedAbout | undefined
   /** When you last sent its worker a message; its idle grace for PAUSED counts from then. */
   readonly lastMessage: number | null
   readonly tallies: Tallies
   /** Its time and hand-backs, for the records that end its part in the run (§ 10). */
   readonly account?: Account
+}
+
+/** What stopped a ticket's merge, as the merge knew it: what Needs you says of it (§ 7.2). */
+export interface BlockedAbout {
+  /** Its worktree's folder, absolute. */
+  readonly worktree: string
+  /** The files its rebase stopped on; none where it wasn't a conflict in files. */
+  readonly files: ReadonlyArray<string>
+  /** Why it was left so: `2 hand-backs used; main moved on as t-1 merged`. */
+  readonly reason: string
 }
 
 /** A ticket's time and hand-backs in the run. Times are epoch milliseconds. */
@@ -347,6 +359,7 @@ const moved = (state: State, entry: Entry, phase: TicketPhase, move: Move, now: 
     worker,
     rechecking,
     handBack,
+    about: phase._tag === "Blocked" ? entry.about : undefined,
   })
   return {
     ...state,
@@ -420,8 +433,8 @@ export class Ledger extends Context.Service<
      * Moves `ticket` by `move`, as the state machine says, and writes its `phase` record, then
      * `said` and `beside` (the orchestra-era records its row names), with each of `said`'s texts
      * and then `lines` logged in the same write.
-     * `title` sets its title, as a ticket entering the run needs, and `issue` the issue it was read
-     * as; a ticket leaving it (null) leaves the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
+     * `title` sets its title, as a ticket entering the run needs, `issue` the issue it was read as,
+     * and `about` what stopped its merge, as it is Blocked; a ticket leaving it (null) leaves the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
      * was.
      */
     transition(
@@ -430,6 +443,7 @@ export class Ledger extends Context.Service<
       options?: {
         readonly title?: string
         readonly issue?: Issue
+        readonly about?: BlockedAbout
         readonly said?: ReadonlyArray<Said>
         readonly beside?: ReadonlyArray<Event>
         readonly lines?: ReadonlyArray<log.Line>
@@ -554,6 +568,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
             ...base,
             ...(options.title === undefined ? {} : { title: options.title }),
             ...(options.issue === undefined ? {} : { issue: options.issue }),
+            ...(options.about === undefined ? {} : { about: options.about }),
           }
           return changed(next, moved(state, titled, next.success, move, now))
         }),

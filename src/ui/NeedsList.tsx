@@ -103,6 +103,49 @@ export const itemLine = (
 /** The list's click targets for its items: an item's index past this; below it, its keys'. */
 const itemTarget = 1000
 
+/** What a box says of a Blocked ticket: why it is blocked, its title, and what clears it. */
+const blockedParagraphs = (need: Extract<Need, { _tag: "Blocked" }>, { styles }: Theme) => [
+  seg(`■ ${need.label} blocked: ${need.why}`, styles.stop),
+  seg(need.title, styles.key),
+  ...clearsOf(need).map((text) => seg(text, styles.dim)),
+]
+
+/**
+ * A Blocked ticket's box over the dashboard (Box.Blocked), from the panel whose lines cut what clears
+ * it: Enter opens its worker view, Esc closes it, as does its leaving Blocked.
+ */
+export const BlockedBox = ({ ticket }: { readonly ticket: TicketId }) => {
+  const theme = useTheme()
+  const command = useCommand()
+  const { box } = useInput()
+  const needs = useRunViewPart((view) => view.needs)
+  const need = needs.find((each) => each._tag === "Blocked" && each.ticket === ticket)
+  const gone = need?._tag !== "Blocked"
+  useEffect(() => {
+    if (gone) box.set(null)
+  }, [gone, box])
+  const commands: ReadonlyArray<Command> = [
+    {
+      keys: ["return", "enter"],
+      run: () => {
+        box.set(null)
+        command(UiCommand.OpenWorker({ ticket }))
+      },
+      hint: { keys: "Enter", does: "open its worker view" },
+    },
+    { keys: ["escape"], run: () => box.set(null), hint: { keys: "Esc", does: "close" } },
+  ]
+  useCommands("box", commands, "Blocked")
+  if (need?._tag !== "Blocked") return null
+  return (
+    <Modal
+      frame={theme.look("needsYou")}
+      paragraphs={blockedParagraphs(need, theme)}
+      choices={commands}
+    />
+  )
+}
+
 /** The list, the Blocked ticket's box over it once one is opened. */
 export const NeedsList = ({ at, answered }: NeedsAt) => {
   const theme = useTheme()
@@ -198,15 +241,10 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   useCommands("box", commands, "Needs")
 
   if (blocked !== null) {
-    const { styles } = theme
     return (
       <Modal
         frame={theme.look("needsYou")}
-        paragraphs={[
-          seg(`■ ${blocked.label} blocked: ${blocked.why}`, styles.stop),
-          seg(blocked.title, styles.key),
-          seg(clearsOf(blocked.why), styles.dim),
-        ]}
+        paragraphs={blockedParagraphs(blocked, theme)}
         choices={commands}
       />
     )

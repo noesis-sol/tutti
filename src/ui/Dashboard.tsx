@@ -71,6 +71,7 @@ import { loadSegments } from "./LoadLine.tsx"
 import { cut, Line, Lines, Section, type Segments, seg } from "./line.tsx"
 import {
   beside,
+  blockedCut,
   needsLines,
   type PanelAt,
   panelTargets,
@@ -744,7 +745,11 @@ export const Dashboard = () => {
   }
   const panelEnter = () => {
     const { need } = shownNow()
-    if (need?._tag === "Blocked") return open(need.ticket)
+    if (need?._tag === "Blocked") {
+      if (blockedCut(need, laid.panel, laid.table)) box.set(Box.Blocked({ ticket: need.ticket }))
+      else open(need.ticket)
+      return
+    }
     if (need?._tag !== "Question" || need.question === null) return
     if (choiceNow() < (need.question.options?.length ?? 0)) answerWith(choiceNow())
     else readQuestion()
@@ -765,6 +770,10 @@ export const Dashboard = () => {
   const pressPanel = (target: number) => {
     if (!panelShown()) return
     setOnPanel(() => true)
+    if (target === panelTargets.read) {
+      const { need } = shownNow()
+      if (need?._tag === "Blocked") return box.set(Box.Blocked({ ticket: need.ticket }))
+    }
     if (target === panelTargets.other || target === panelTargets.read) return readQuestion()
     setChoice(() => target)
     answerWith(target)

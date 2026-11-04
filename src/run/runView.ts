@@ -32,7 +32,7 @@ import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { afterMerging, afterSolo } from "./after.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import type { FullCheckRun } from "./fullcheck.ts"
-import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
+import { type BlockedAbout, type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
 import { resetLabel } from "./localTime.ts"
 import type { CheckAhead } from "./mergetrain.ts"
@@ -529,6 +529,12 @@ export type Need = Data.TaggedEnum<{
     readonly title: string
     /** `MERGE_CONFLICT`, `DIRTY_TREE`, … */
     readonly why: string
+    /** The branch the run merges into. */
+    readonly base: string
+    /** Its conflict hand-back waits for its steered worker, in its worker view (§ 4.3). */
+    readonly handBack: boolean
+    /** What stopped its merge, sanitised; null where the ledger has nothing of it. */
+    readonly about: BlockedAbout | null
   }
 }>
 
@@ -967,6 +973,13 @@ const textsOf = (entry: Entry) => {
   return texts
 }
 
+/** What stopped a ticket's merge, its worktree, files and reason sanitised (§ 7.2). */
+const sanitisedAbout = (about: BlockedAbout): BlockedAbout => ({
+  worktree: sanitizeLine(about.worktree),
+  files: about.files.map(sanitizeLine),
+  reason: sanitizeLine(about.reason),
+})
+
 /**
  * Why a ticket waiting in the queue in `phase` waits, for the Up next panel: a hold's reason as the
  * log last said it (`status.holdTexts`), else in words of its own; null for a Queued ticket, which
@@ -1062,7 +1075,11 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       asked.push(Need.Question({ ticket: entry.ticket, label, title, id, question }))
     } else if (phase._tag === "Blocked") {
       const why = sanitizeLine(phase.why)
-      blocked.push(Need.Blocked({ ticket: entry.ticket, label, title, why }))
+      const about = entry.about === undefined ? null : sanitisedAbout(entry.about)
+      const handBack = handBackWaits(entry)
+      blocked.push(
+        Need.Blocked({ ticket: entry.ticket, label, title, why, base: branch, handBack, about }),
+      )
     }
     if (phaseFacts[phase._tag].inQueue) {
       const why = heldText(entry.ticket, phase, status)

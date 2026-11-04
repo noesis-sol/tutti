@@ -61,7 +61,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { Git, type GitError, gitWhy, givenHash, type Sha } from "../services/Git.ts"
+import { Git, type GitError, gitWhy, givenHash, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
@@ -95,7 +95,7 @@ import type { Stuck } from "./overnightAside.ts"
 import { Move } from "./phase.ts"
 import { info, say } from "./say.ts"
 import { type Resuming, resume } from "./sessions.ts"
-import { namesTicket, stopHandBackTasks, untilSettled } from "./settle.ts"
+import { namesTicket, shownChanges, stopHandBackTasks, untilSettled } from "./settle.ts"
 import { type Fix, type SetUp, type SetUps, setUp, setupToResolve } from "./setup.ts"
 import { keepConflictHead } from "./takenBack.ts"
 import { resolvePrompt } from "./told.ts"
@@ -269,6 +269,8 @@ export interface NotHandedBack {
   readonly why: string
   /** Its worker is steered: the hand-back waits in its view. */
   readonly waits: boolean
+  /** What Needs you says in place of `why`: `2 hand-backs used` (§ 7.2). */
+  readonly brief?: string
 }
 
 /** Why a ticket you fixed by hand isn't handed back (HandBacks' takeUp). */
@@ -316,15 +318,21 @@ export const toHandBack = (
       return not("there is no check command in .tutti/settings.json to check a resolution with")
     }
     const handedBack = yield* handBacks.count(id)
+    const used = (why: string) =>
+      Result.fail({
+        why,
+        waits: false,
+        brief: `${handedBack} ${handedBack === 1 ? "hand-back" : "hand-backs"} used`,
+      })
     if (handedBack >= mostHandBacks) {
-      return not(
+      return used(
         `it was handed back to its worker ${handedBack} times already, the most a run gives a ticket`,
       )
     }
     const last = yield* handBacks.last(id)
     const overtaken = yield* overtakenSince(stop, options.repo, last?.onto)
     if (!overtaken && handedBack - (last?.overtaken ?? 0) >= maxHandBacks) {
-      return not(`it was handed back to its worker ${handedBack} times already`)
+      return used(`it was handed back to its worker ${handedBack} times already`)
     }
     const { head, own } = stop
     if (head === undefined || own === undefined || own < 1 || stop.files.length === 0) {
@@ -375,14 +383,42 @@ const conflictLine = (stop: RebaseStop, base: string, why: string): Line => {
 }
 
 /**
- * Blocks the ticket on its conflicts (MERGE_CONFLICT), saying why: by Block from Merging or
- * Resolving, by Aside from Fixing{afterResolution}.
+ * `main moved on as t-1, t-2 merged`: what last changed `stop`'s files on the base since the branch
+ * left it, by the ticket of the run its commit names, else by its short hash; undefined when git
+ * can't say, or none of them did.
+ */
+const movedOnBy = (
+  stop: RebaseStop,
+  { repo, base }: MergeTarget,
+): Effect.Effect<string | undefined, never, Git | Ledger> =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const since = yield* Effect.result(git.log(repo, stop.fork, stop.onto))
+    if (Result.isFailure(since)) return undefined
+    const onBase = new Set(since.success.map((commit) => commit.hash))
+    const { tickets } = yield* (yield* Ledger).current
+    const by = new Set<string>()
+    for (const file of stop.files.slice(0, shownChanges)) {
+      const last = yield* Effect.result(git.lastCommit(repo, file))
+      if (Result.isFailure(last) || Option.isNone(last.success)) continue
+      const commit = last.success.value
+      if (!onBase.has(commit.hash)) continue
+      const named = [...tickets.keys()].find((id) => namesTicket(commit.message, id))
+      by.add(named ?? shortHash(commit.hash))
+    }
+    return by.size === 0 ? undefined : line`${base} moved on as ${[...by].join(", ")} merged`
+  })
+
+/**
+ * Blocks the ticket on its conflicts (MERGE_CONFLICT), saying why (`brief`, in place of `why`, for
+ * Needs you): by Block from Merging or Resolving, by Aside from Fixing{afterResolution}.
  */
 const block = (
   stop: RebaseStop,
   options: MergeTarget,
   why: string,
   by: "Block" | "Aside" = "Block",
+  brief: string = why,
 ) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
@@ -390,11 +426,18 @@ const block = (
     const { base } = options
     const text = conflictLine(stop, base, why)
     yield* keepConflictHead(stop.ticket, options)
+    const moved = yield* movedOnBy(stop, options)
+    const about = {
+      worktree: stop.ticket.worktree,
+      files,
+      reason: moved === undefined ? brief : `${brief}; ${moved}`,
+    }
     const move =
       by === "Block"
         ? Move.Block({ why: Tag.mergeConflict })
         : Move.Aside({ why: Tag.mergeConflict })
     yield* ledger.transition(stop.ticket.id, move, {
+      about,
       said: [
         {
           kind: "warn",
@@ -435,7 +478,8 @@ export const notHandedBack = (
       // Blocked on it, the ticket keeps its worker's number and card meanwhile (§ 4.3).
       yield* (yield* Ledger).handBackWaits(stop.ticket.id)
     }
-    yield* block(stop, options, `not handed back to its worker: ${not.why}${left}`)
+    const why = `not handed back to its worker: ${not.why}${left}`
+    yield* block(stop, options, why, "Block", not.brief === undefined ? why : `${not.brief}${left}`)
   })
 
 /**

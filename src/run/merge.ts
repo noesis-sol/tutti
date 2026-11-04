@@ -331,11 +331,15 @@ const closedBut =
       text: closedButLine(ticket, tag)(strings, ...args),
     })
 
-/** The ticket can't merge until you act: Merging → Blocked, with `record` and its line beside it. */
-const block = (ticket: FinishedTicket, why: string, record: Said) =>
+/**
+ * The ticket can't merge until you act, for `reason`: Merging → Blocked, with `record` and its line
+ * beside it.
+ */
+const block = (ticket: FinishedTicket, why: string, reason: string, record: Said) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    yield* ledger.transition(ticket.id, Move.Block({ why }), { said: [record] })
+    const about = { worktree: ticket.worktree, files: [], reason }
+    yield* ledger.transition(ticket.id, Move.Block({ why }), { about, said: [record] })
   })
 
 /** A merge that stops the merges: DIRTY_TREE and GIT_FAILED hold the run, MERGE_FAILED stops it. */
@@ -347,7 +351,7 @@ export const stopOver = (ticket: FinishedTicket, why: StopWhy, blocked: string, 
       why === "MERGE_FAILED"
         ? { kind: "stop", detail: why, ticket: ticket.id, blocked, text }
         : { kind: "hold", ticket: ticket.id, blocked, text }
-    yield* block(ticket, why, record)
+    yield* block(ticket, why, reason, record)
     return { why, code: stopCodes[why], ticket: ticket.id, line: text } satisfies MergeStop
   })
 
@@ -1141,7 +1145,7 @@ export const keptChanging = (
       ticket,
       Tag.mergeConflict,
     )`${what} while its checks ran (commits made by hand?); worktree ${ticket.worktree} left for review`
-    yield* block(ticket, Tag.mergeConflict, {
+    yield* block(ticket, Tag.mergeConflict, line`${what} while its checks ran`, {
       kind: "warn",
       ticket: ticket.id,
       aside: true,

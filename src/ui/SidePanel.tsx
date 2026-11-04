@@ -134,7 +134,7 @@ export const beside = (
 export const panelTargets = {
   /** Other…: the questions box, to type your own. */
   other: 100,
-  /** The question's title or its cut description: the questions box, to read it all. */
+  /** The question's title or its cut description, or a Blocked ticket's cut text: to read it all. */
   read: 101,
 } as const
 
@@ -146,17 +146,80 @@ export interface PanelAt {
   readonly choice: number
 }
 
-/** What clears a Blocked ticket, by why it is blocked. */
-const clears: Readonly<Record<string, string>> = {
-  MERGE_CONFLICT: "Its rebase onto main conflicts: resolve it in its worktree, or hand it back.",
-  DIRTY_TREE:
-    "main's checkout has changes the run didn't make: commit or stash them, and the run merges it.",
-  MERGE_FAILED: "Its branch doesn't fast-forward main: rebase it, or hand it back.",
-  GIT_FAILED: "git failed as it merged: the log says how.",
+/** What comes of a ticket left on its conflict: nothing in the run takes it up again. */
+const afterConflict =
+  "The run's end labels it unmerged; the next run checks and merges it once it rebases cleanly."
+
+/** What comes of a ticket whose merge stopped the merges: the run holds, then ends (§ 5 item 10). */
+const afterStop =
+  "The merges have stopped and no new ticket starts. The run's end labels it unmerged; the next run checks and merges it."
+
+/**
+ * What a Blocked ticket's need says, a paragraph each, what to do before why, as a short panel cuts
+ * the end: the files, the worktree, why it is so, what to run and what comes next. A hand-back is
+ * offered only where an action does it: 'Hand it the conflict now' for a steered worker's (§ 4.3).
+ */
+export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArray<string> => {
+  const { base, about, handBack } = need
+  const rebase = `git rebase ${base} in ${about?.worktree ?? "its worktree"}`
+  const stopped = (fallback: string) => `Its merge stopped: ${about?.reason ?? fallback}`
+  switch (need.why) {
+    case "MERGE_CONFLICT": {
+      const files = about?.files ?? []
+      const conflict =
+        files.length > 0
+          ? `Its rebase onto ${base} conflicts in ${files.join(", ")}.`
+          : about === null
+            ? `Its rebase onto ${base} conflicts.`
+            : `Its branch can't merge onto ${base}.`
+      return handBack
+        ? [
+            conflict,
+            "You steered its worker, so the hand-back waits for you: 'Hand it the conflict now' in its worker view hands it over.",
+            `Or resolve it yourself: ${rebase}.`,
+            "The run stays open until you hand it over or release its worker.",
+          ]
+        : [
+            conflict,
+            `Resolve it yourself: ${rebase}.`,
+            ...(about === null ? [] : [`Set aside: ${about.reason}.`]),
+            afterConflict,
+          ]
+    }
+    case "DIRTY_TREE":
+      return [
+        stopped(`${base}'s checkout has changes the run didn't make`),
+        `Leave the main checkout clean, on ${base}.`,
+        afterStop,
+      ]
+    case "MERGE_FAILED":
+      return [
+        stopped(`its branch doesn't fast-forward onto ${base}`),
+        `Rebase it: ${rebase}.`,
+        afterStop,
+      ]
+    case "GIT_FAILED":
+      return [stopped("git failed: the log says how"), "Put right what git says.", afterStop]
+    default:
+      return ["The log says what happened."]
+  }
 }
 
-/** What clears a ticket Blocked for `why` (`MERGE_CONFLICT`, …). */
-export const clearsOf = (why: string): string => clears[why] ?? "The log says what happened."
+/**
+ * Whether a panel `width` wide and `lines` tall cuts what clears `need`: its Enter then opens the
+ * box saying all of it (Box.Blocked), rather than the worker view.
+ */
+export const blockedCut = (
+  need: Extract<Need, { _tag: "Blocked" }>,
+  width: number,
+  lines: number,
+): boolean => {
+  const inner = Math.max(width - 4, 1)
+  const height = (text: string, limit?: number) =>
+    wrap([seg(text, null)], inner, limit === undefined ? {} : { limit }).length
+  const said = clearsOf(need).reduce((total, text) => total + height(text), 0)
+  return said > Math.max(lines - 3, 1) - 2 - height(need.title, 2)
+}
 
 /** The keys the panel's foot names, with the needs it can go to. */
 const footOf = (keys: string, count: number): Segments => [
@@ -239,16 +302,27 @@ export const needsLines = (
       body.push(...title, about, ...shown, ...choices, foot)
     }
   } else if (need?._tag === "Blocked") {
+    const title = wrapped([seg(need.title, styles.key)], 2)
+    const clears = clearsOf(need).flatMap((text) => wrapped([dim(text)]))
+    const cut = blockedCut(need, width, lines)
+    // Too short for it all: what to do comes first, and on a very short panel in place of the title.
+    const titled = cut && room < 4 ? [] : title
+    const space = room - 2 - titled.length
+    const keys = !at.focused
+      ? "Tab to choose"
+      : cut
+        ? "Enter reads it all"
+        : "Enter opens its worker view"
     body.push(
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],
-      ...wrapped([seg(need.title, styles.key)], 2),
-      ...wrapped([dim(clearsOf(need.why))]),
-      footOf(at.focused ? "Enter opens its worker view" : "Tab to choose", needs.length).map(
-        (each) => ({
-          ...each,
-          look: styles.dim,
-        }),
-      ),
+      ...titled,
+      ...(cut
+        ? [
+            ...clears.slice(0, Math.max(space - 1, 0)),
+            [dim("… click to read it all", panelTargets.read)],
+          ]
+        : clears),
+      footOf(keys, needs.length).map((each) => ({ ...each, look: styles.dim })),
     )
   }
   const kept = body.slice(0, room)
