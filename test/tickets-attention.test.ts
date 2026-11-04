@@ -203,6 +203,15 @@ describe("folding", () => {
     expect(lines[4]).toMatch(/^│ +│ \+4 +│ more: 1 blocked, 1 asked, 2 set aside, \+2 earlier +│$/)
   })
 
+  test("rows that want you and just fill the table keep every line, the rest unsaid", () => {
+    const view = viewOf([["b-1", blocked, 1], ["q-1", asked, 2], ["s-1", deferred, 3], ...done(4)])
+    expect(ids(shownRows(view.rows, { lines: 6 }))).toEqual(["b-1", "q-1", "s-1"])
+    const lines = drawn(view.rows, 6)
+    expect(lines).toHaveLength(6)
+    expect(lines[4]).toContain("s-1")
+    expect(lines.join("\n")).not.toContain("earlier")
+  })
+
   test("rows out of room are drawn as waiting on you, or as set aside where only those are", () => {
     const view = viewOf([
       ["b-1", blocked, 1],
@@ -243,13 +252,13 @@ describe("folding", () => {
           const shown = shownRows(view.rows, { lines })
           const wanting = view.rows.filter((row) => row.attention !== "rest")
           const room = lines - 3
-          if (wanting.length < room) {
+          if (wanting.length <= room) {
             for (const row of wanting) expect(shown).toContain(row)
           }
           // The rows shown lead the order, and what isn't shown is said.
           expect(shown).toEqual(byAttention(view.rows).slice(0, shown.length))
           const text = drawn(view.rows, lines).join("\n")
-          if (shown.length < view.rows.length) {
+          if (shown.length < Math.min(view.rows.length, room)) {
             const hidden = view.rows.length - shown.length
             const folded = view.rows.filter((row) => !shown.includes(row))
             const earlier = folded.filter((row) => row.attention === "rest").length

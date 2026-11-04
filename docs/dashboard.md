@@ -172,7 +172,7 @@ A row changes as the ticket moves through its phases, and moves with it to its g
 The table takes what Current leaves of the pane, room for 3 to 10 tickets, and keeps its height:
 once the run has more, the oldest of the rest give way to a `+N earlier tickets, see the log` row
 at the bottom. A row that wants you never does while the table has room for it; with more of those
-than room, that row says how many more of each there are: `+4 more: 1 blocked, 1 asked, 2 set aside,
+than room, the last row says how many more of each there are: `+4 more: 1 blocked, 1 asked, 2 set aside,
 +2 earlier`. Current is kept room for a whole card for each of up to 6 workers, as many as the run may have, so a taller
 pane gives the cards room before the table. A pane too short for the table and a line a worker
 leaves it out. The summary after the run lists every ticket, in the order they came to an end.

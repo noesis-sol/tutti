@@ -90,13 +90,16 @@ export const byAttention = (rows: ReadonlyArray<Row>): ReadonlyArray<Row> =>
 
 /**
  * The rows a table `size` tall draws: the first by attention, where the last give way to a row
- * saying how many, so that the oldest of the rest go first and what wants you goes last.
+ * saying how many, so that the oldest of the rest go first and what wants you goes last. Rows that
+ * want you and just fill the table keep every line, the rest going unsaid: the totals count them.
  */
 export const shownRows = (rows: ReadonlyArray<Row>, size: TableSize): ReadonlyArray<Row> => {
   if (!("lines" in size)) return rows
   const limit = Math.max(size.lines - sectionChrome, 1)
   const ordered = byAttention(rows)
-  return ordered.length > limit ? ordered.slice(0, limit - 1) : ordered
+  if (ordered.length <= limit) return ordered
+  const wanting = ordered.filter((row) => row.attention !== "rest").length
+  return ordered.slice(0, wanting === limit ? limit : limit - 1)
 }
 
 /** What the row in place of the rows with no room says of a group of them. */
@@ -215,7 +218,7 @@ export const ticketsLines = (
       }),
     )
   }
-  if (hidden.length > 0) cells.push(foldedCells(hidden, theme, aboutWidth))
+  if (hidden.length > 0 && cells.length < limit) cells.push(foldedCells(hidden, theme, aboutWidth))
   while (cells.length < limit) cells.push([[], [], []])
   return [
     [seg("  "), seg("Tickets", styles.tickets)],
