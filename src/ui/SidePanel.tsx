@@ -189,7 +189,7 @@ const briefly = (reason: string): string => {
 
 /** What the panel's foot says of `h`, by what it does for `need`. */
 const handBackKey = (need: Blocked): string => {
-  if (!isConflict(need) || (!need.handBack && need.mergesOver)) return ""
+  if (!isConflict(need) || need.mergesOver) return ""
   return !need.handBack && need.about?.handBacksOff === true
     ? " · h tries its merge again"
     : " · h hands it back"
@@ -199,7 +199,8 @@ const handBackKey = (need: Blocked): string => {
  * What a Blocked ticket's need says, a paragraph each, what to do first, as a short panel cuts the
  * end: what to run, the worktree, the first files, why it is so and what comes next. A hand-back is
  * offered only where an action does it: `h` or 'Hand it the conflict now' for a steered worker's, `h`
- * for one left on its conflict (§ 4.3), which the run also takes back, fixed by hand (§ 5 item 8).
+ * for one left on its conflict (§ 4.3), which the run also takes back, fixed by hand (§ 5 item 8);
+ * neither once no merge comes.
  */
 export const clearsOf = (need: Blocked): ReadonlyArray<string> => {
   const { base, about, handBack } = need
@@ -216,6 +217,14 @@ export const clearsOf = (need: Blocked): ReadonlyArray<string> => {
           : about === null
             ? `Its rebase onto ${base} conflicts.`
             : `Its branch can't merge onto ${base}.`
+      if (handBack && need.mergesOver) {
+        return [
+          `Run ${rebase} to take it up yourself.`,
+          conflict,
+          "No merge comes in this run, so its worker's hand-back can't be handed over now.",
+          afterConflict,
+        ]
+      }
       return handBack
         ? [
             "Press h, or 'Hand it the conflict now' in its worker view, to hand it over: you steered its worker, so its conflict's hand-back waits for you.",

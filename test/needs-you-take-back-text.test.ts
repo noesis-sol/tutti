@@ -167,11 +167,30 @@ describe("a steered worker's hand-back waiting", () => {
     expect(footOf(needOf(waiting))).toContain("h hands it back")
   })
 
-  test("keeps the key with no merge to come, as its hand-over is what the run's end waits for", () => {
-    const need = needOf(waiting, { stopping: true, mergesStopped: true })
+  test("under a stop whose merges go on: the key still", () => {
+    const need = needOf(waiting, { stopping: true })
     expect(textOf(need)).toContain("Press h, or 'Hand it the conflict now'")
     expect(footOf(need)).toContain("h hands it back")
   })
+
+  const noMerge = {
+    "the merges stopped": { stopping: true, mergesStopped: true },
+    quitting: { quitting: "Quitting… waiting for t-1's worker" },
+  }
+  for (const [name, run] of Object.entries(noMerge)) {
+    test(`${name}: promises neither a merge nor a hand-over, and names no key`, () => {
+      const need = needOf(waiting, run)
+      const text = textOf(need)
+      expect(text).not.toMatch(/press h/i)
+      expect(text).not.toContain("'Hand it the conflict now'")
+      expect(text).not.toContain("it merges once")
+      expect(text).not.toContain(takesBack)
+      expect(text).toContain("git rebase trunk in /wt/a")
+      expect(text).toContain("No merge comes in this run")
+      expect(text).toContain("the next run checks and merges it")
+      expect(footOf(need)).not.toContain("h hands it back")
+    })
+  }
 })
 
 describe("the merges' other stops", () => {
