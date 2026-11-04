@@ -233,9 +233,9 @@ With the focus on the panel its frame is heavy, and `1`–`9` answer with an opt
 `Shift+A`'s box does, but a digit a highlighted card's question takes, with the focus on it in
 Current; the panel's foot says which are left. `Enter` goes in: there `↑` and `↓` move between the
 options and `Other…`, `Enter` answers with an option, and `Enter` on `Other…` opens that box at the
-question to read it all or type your own; on a Blocked ticket `Enter` opens its worker view, and on one blocked on its merge conflict
-`h` hands it back to its worker. A click on an option answers with it, and one on the title or a cut description
-opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
+question to read it all or type your own; on a Blocked ticket `Enter` opens its worker view. On one blocked on its merge conflict
+`h` hands it back to its worker, with the focus on the panel, in the table or anywhere else, as the panel says. A click on an option answers with it, and one on the title or a cut description
+opens the box. As on attention cards, the keys answer nothing until the question or ticket has been drawn for
 half a second. An answered question leaves the panel and **Needs you** at once, and the answer wakes
 the run, which takes its ticket back. With no slot free, its row says `↻ answered` until one is, and
 Up next lists it first, `answered · the next free slot`, or `the next run` in a run winding down or
@@ -480,7 +480,7 @@ panel at the top level.
 | `q` | end the run, while the end-of-run box shows | |
 | `i` | | focus the composer |
 | `t` | | open or close the whole ticket |
-| `h` | on Needs you, for a ticket blocked on its merge conflict: hand it back | the same, for the ticket in view |
+| `h` | with Needs you's panel showing a ticket blocked on its merge conflict: hand it back | the same, for the ticket in view |
 | `Ctrl+X` | | interrupt the worker's turn (asks first) |
 | `Ctrl+R` | | release a steered worker |
 | the wheel, `PgUp`, `PgDn` | | scroll the transcript, or the whole ticket while it is open |

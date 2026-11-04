@@ -207,7 +207,7 @@ describe("the panel's lines", () => {
     expect(said).toContain("loop.ts, cli.test.ts")
     expect(said).toContain("git rebase trunk")
     expect(said).not.toContain("next run checks")
-    expect(said).toContain("… click reads it all · move here to choose")
+    expect(said).toContain("… click reads it all · h hands it back")
   })
 })
 

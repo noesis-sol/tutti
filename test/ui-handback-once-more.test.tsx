@@ -10,6 +10,7 @@ import { emptyStatus, isConflict, Need, project, type RunView } from "../src/run
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
+import { settle } from "../src/ui/attentionKeys.ts"
 import { dashboardCommands } from "../src/ui/Dashboard.tsx"
 import { commandFor, hintOf } from "../src/ui/keyCommands.ts"
 import { needsLines } from "../src/ui/SidePanel.tsx"
@@ -239,21 +240,21 @@ describe("Needs you beside the tickets table", () => {
       await rendered.input((setup) => setup.mockInput.pressTab())
       const frame = await until(rendered, (now) => now.chars.includes("h hands it back"))
       expect(frame.chars).toContain("h hands it back")
+      await Bun.sleep(settle + 50)
       await rendered.input((setup) => setup.mockInput.typeText("h"))
       expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: t1 })])
     })
   })
 
-  test("`h` is there only on a conflict, with the highlight on it", () => {
+  test("`h` is there only on a conflict", () => {
     const view = viewOf("MERGE_CONFLICT")
-    const at = (on: boolean, conflict: boolean) => ({
+    const at = (conflict: boolean) => ({
       buttons: true,
       highlighted: () => undefined,
-      panel: { on: () => on, conflict: () => conflict },
+      panel: { conflict: () => conflict },
     })
-    expect(commandFor(dashboardCommands(view, at(true, true)), "h")).toBeDefined()
-    expect(commandFor(dashboardCommands(view, at(false, true)), "h")).toBeUndefined()
-    expect(commandFor(dashboardCommands(view, at(true, false)), "h")).toBeUndefined()
+    expect(commandFor(dashboardCommands(view, at(true)), "h")).toBeDefined()
+    expect(commandFor(dashboardCommands(view, at(false)), "h")).toBeUndefined()
   })
 
   test("the panel names `h` for a conflict alone", () => {

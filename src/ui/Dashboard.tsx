@@ -35,7 +35,8 @@
 // (DashboardMemory), so switching workers is `Esc`, the arrows and `Enter`; opening one from the top
 // is `↓ Enter Enter`, with no shortcut, as `Enter` on Current means one thing whatever it shows.
 // `1`–`9` answer Needs you's question at once, but a digit the question of the card highlighted in
-// Current takes, with the focus there. `s` opens the stop question.
+// Current takes, with the focus there. `h` hands back the ticket Blocked on its merge conflict that
+// the panel shows, wherever the focus is, as the panel says to press it. `s` opens the stop question.
 // `Shift+A` opens the questions box (QuestionsBox.tsx), the open questions in the run's scope put
 // one by one; the hint names it while a ticket waits on one. With the key help open, `?` and `Esc`
 // close it and the other keys do nothing. A click on a row's ID, on every row, copies it
@@ -442,12 +443,10 @@ export interface DashboardAt {
   /** Whether the focus has gone into a panel, as the hint is drawn: the top level when left out. */
   readonly inside?: boolean
   /**
-   * The panel beside the tickets table: whether the focus is on it, whether a digit
-   * answers its question as the key is pressed, and whether the need it shows is a ticket Blocked
-   * on its merge conflict.
+   * The panel beside the tickets table: whether a digit answers its question as the key is pressed,
+   * and whether it shows a ticket Blocked on its merge conflict.
    */
   readonly panel?: {
-    readonly on: () => boolean
     readonly answers?: (n: number) => boolean
     readonly conflict?: () => boolean
   }
@@ -478,7 +477,7 @@ export interface DashboardActions {
   readonly questions: () => void
   /** `1`–`9` on the panel: answers its question with that option. */
   readonly panelPick: (n: number) => void
-  /** `h` on the panel: hands back the ticket Blocked on its merge conflict it shows (§ 4.3). */
+  /** `h`: hands back the ticket Blocked on its merge conflict it shows (§ 4.3). */
   readonly panelHandBack: () => void
 }
 
@@ -618,7 +617,7 @@ export const dashboardCommands = (
     })),
     {
       keys: ["h"],
-      when: () => at.panel?.on() === true && at.panel.conflict?.() === true,
+      when: () => at.panel?.conflict?.() === true,
       run: act.panelHandBack,
       hint: { keys: "h", does: "hand it back" },
       help: ["h", "hand back a ticket blocked on its merge conflict"],
@@ -851,7 +850,6 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     }
     kept.current = { focus, chosen: chosenShown, row, wanted: wanted.current, upper }
   })
-  const onPanel = () => focusNow().panel === "needs"
   const insideOf = (panel: Panel) => {
     const now = focusNow()
     return now.panel === panel && now.inside
@@ -873,11 +871,15 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     const ticket = selectedTicket(laid.selectable, rowNow(), needs, view.needs)
     return { need: needs.find((each) => each.ticket === ticket) }
   }
+  // Whether a need's answer keys reach `ticket`: the panel has drawn it for a moment, so a key meant
+  // for the row before can't act on one the selection has just moved to.
+  const needSettled = (ticket: string) =>
+    drawnSince.current.ticket === ticket && Date.now() - drawnSince.current.at >= settle
   // Answers the panel's question with its option `n`, from 0: it leaves the panel, its row let go.
   const answerWith = (n: number) => {
     const { need } = shownNow()
     if (need?._tag !== "Question" || need.question === null) return
-    if (Date.now() - drawnSince.current.at < settle) return
+    if (!needSettled(need.ticket)) return
     const option = need.question.options?.[n]
     if (option === undefined) return
     const uuid = crypto.randomUUID()
@@ -1041,12 +1043,11 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
         inside: focus.inside,
         highlighted: highlightedCard,
         panel: {
-          on: onPanel,
           answers: (n: number) =>
             panelShown() &&
             (focusNow().panel !== "current" || n > digitsOf(inCard())) &&
             shownNow().need?._tag === "Question",
-          conflict: () => isConflict(shownNow().need),
+          conflict: () => panelShown() && isConflict(shownNow().need),
         },
       },
       {
@@ -1076,7 +1077,9 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
         panelPick: unlessHelp((n: number) => answerWith(n - 1)),
         panelHandBack: unlessHelp(() => {
           const { need } = shownNow()
-          if (isConflict(need)) command(UiCommand.HandBackNow({ ticket: need.ticket }))
+          if (isConflict(need) && needSettled(need.ticket)) {
+            command(UiCommand.HandBackNow({ ticket: need.ticket }))
+          }
         }),
       },
     ),

@@ -257,8 +257,8 @@ const briefly = (reason: string): string => {
 const handBackKey = (need: Blocked): string => {
   if (!isConflict(need) || need.mergesOver) return ""
   return !need.handBack && need.about?.handBacksOff === true
-    ? " · h tries its merge again"
-    : " · h hands it back"
+    ? "h tries its merge again"
+    : "h hands it back"
 }
 
 /**
@@ -500,14 +500,16 @@ export const needsLines = (
     const spare = room - 2
     const titled = !short || spare - title.length >= (paragraphs[0]?.length ?? 0) ? title : []
     const clears = paragraphs.flat()
-    const handsBack = at.focused ? handBackKey(need) : ""
-    const reach = at.focused ? `Enter goes in${handsBack}` : "move here to choose"
+    // What is true from where the focus is: `h` from anywhere, Enter once it is on the panel.
+    const handsBack = handBackKey(need)
+    const andH = (enter: string) => [enter, handsBack].filter((each) => each !== "").join(" · ")
+    const reach = at.focused ? andH("Enter goes in") : handsBack || "move here to choose"
     const keys = !short
       ? at.inside
-        ? `Enter opens its worker view${handsBack}`
+        ? andH("Enter opens its worker view")
         : reach
       : at.inside
-        ? `… click or Enter reads it all${handsBack}`
+        ? andH("… click or Enter reads it all")
         : `… click reads it all · ${reach}`
     body.push(
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],

@@ -1285,7 +1285,7 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 | `t`, a click on `▾ whole ticket` or `▴ less` | | open or close the whole ticket (§7.5); while the composer has the focus, `t` types |
 | `Ctrl+X` | | interrupt the worker's turn (asks first); the worker becomes steered |
 | `Ctrl+R` | | release a steered worker (§4.3) |
-| `h`, a click on **Hand it the conflict now** or **Hand it back once more** | on Needs you's panel, or in the box saying what clears it, for a ticket `Blocked{MERGE_CONFLICT}`: hand it back (§4.3) | the same, while the composer doesn't have the focus; there it types |
+| `h`, a click on **Hand it the conflict now** or **Hand it back once more** | wherever the focus is while Needs you's panel shows a ticket `Blocked{MERGE_CONFLICT}`, as the panel says to press it and selecting in the table drives it (tutti-aeah), once it has been drawn for half a second, as the digits; or in the box saying what clears it: hand it back (§4.3) | the same, while the composer doesn't have the focus; there it types |
 | `Ctrl+T`, a click on **File as ticket** | | once the worker has finished, file what you wrote in the composer as a new ticket (§7.5) |
 | `s` | stop after current, or keep taking tickets (asks y/n) | |
 | `Shift+A`, a click on **Answer** | the questions box: the open question tickets of the run's scope, put one by one in the answer form (§4.11; the hint names it while a ticket is Asked) | an Asked ticket's: the questions box at the question it waits on |
