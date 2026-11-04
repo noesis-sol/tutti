@@ -15,12 +15,15 @@
 //
 // The files `queue.shared_files` name hold nothing here either, as they hold no two tickets apart: one
 // nearly every ticket edits would stop the line, and its conflicts are cheap. Nor does anything with
-// the queue's footprint off (§ 8.4), or a branch git can't say the files of.
+// the queue's footprint off (§ 8.4), or a branch git can't say the files of. A branch checked ahead of
+// its turn (mergetrain.ts) is read at the commit its worker left, without the branch ahead's commits.
 import { Duration, Effect, Fiber, FiberSet, Ref, Result, type Scope } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
+import { Store } from "../services/Store.ts"
+import { aheadKey, rebasedAheadOf } from "./ahead.ts"
 import { RunFibers } from "./fibers.ts"
 import { nfc, settingsGlobMatch } from "./glob.ts"
 import { detail, Log } from "./log.ts"
@@ -82,10 +85,11 @@ export const make = (
   { repo, base }: MergeTarget,
   tickets: Effect.Effect<ReadonlyMap<TicketId, FinishedTicket>>,
   changed: Effect.Effect<void>,
-): Effect.Effect<ConflictWaits, never, AppConfig | Git | Log | RunFibers | Scope.Scope> =>
+): Effect.Effect<ConflictWaits, never, AppConfig | Git | Log | RunFibers | Scope.Scope | Store> =>
   Effect.gen(function* () {
     const git = yield* Git
     const log = yield* Log
+    const store = yield* Store
     const fibers = yield* RunFibers
     const { settings } = yield* AppConfig
     const limit = settings.merge.conflict_wait
@@ -100,7 +104,13 @@ export const make = (
         const { conflicted } = yield* Ref.get(ref)
         const ticket = (yield* tickets).get(id)
         if (conflicted.size === 0 || conflicted.has(id) || ticket === undefined) return []
-        const read = yield* Effect.result(git.changedFiles(repo, base, ticket.branch))
+        // A branch checked ahead has the commits of the branch ahead until its turn: what the ticket
+        // changes is what its worker left.
+        const metadata = yield* store.metadata(id)
+        const mark = rebasedAheadOf(
+          Object.hasOwn(metadata, aheadKey) ? metadata[aheadKey] : undefined,
+        )
+        const read = yield* Effect.result(git.changedFiles(repo, base, mark?.orig ?? ticket.branch))
         if (Result.isFailure(read)) return []
         return [...conflicted].flatMap(([by, files]): ReadonlyArray<Overlap> => {
           const inLine = line.merging === by || line.waiting.includes(by)

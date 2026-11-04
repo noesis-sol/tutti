@@ -9,6 +9,7 @@ import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
+import { CheckOutput, resultOf } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -403,6 +404,78 @@ describe("a ticket changing a file another's conflict is in", () => {
     expect(after.x).toEqual(done)
     expect(movedTo(ran, "Done")).toEqual(["x", "a", "b"])
     expect(attempts(ran, "a")).toBe(1)
+  })
+})
+
+describe("a ticket checked ahead of its turn on top of the conflict's holder", () => {
+  test("changes only what its worker left, so it doesn't wait for a's fix", async () => {
+    const xDone = Deferred.makeUnsafe<void>()
+    const aChecking = Deferred.makeUnsafe<void>()
+    const cAhead = Deferred.makeUnsafe<void>()
+    const cDone = Deferred.makeUnsafe<void>()
+    // a's check on its resolution, once main has moved on, lasts until c is checked on top of its
+    // branch, and fails: c's branch still has a's commits as a goes to its worker.
+    let aChecks = 0
+    const check = (each: CheckRun) =>
+      Effect.gen(function* () {
+        if (each.cwd === worktreeOf("c")) yield* Deferred.succeed(cAhead, undefined)
+        if (each.cwd !== worktreeOf("a") || ++aChecks > 1) return passed("fast")
+        yield* Deferred.succeed(aChecking, undefined)
+        yield* Deferred.await(cAhead)
+        const output = new CheckOutput()
+        output.write(new TextEncoder().encode("a's check\n"))
+        return yield* resultOf("fast", "scripts/check-fast.sh", 1, output, each.outputFile)
+      })
+    const ran = await scenario(
+      {
+        backlog: backlog().ticket("a").ticket("x").ticket("c").seeds,
+        ...withCheck(),
+        checks: { fast: Array.from({ length: 8 }, () => check) },
+        scripts: (world): Scripts => ({
+          a: [
+            finishedSession([
+              ...resolves(world, "a", "a.txt", Deferred.await(xDone)),
+              ...turn([
+                run(Deferred.await(cDone)),
+                run(
+                  Effect.suspend(() =>
+                    Effect.asVoid(
+                      world.repository.commit(worktreeOf("a"), "Fix a (a)", { "fix.txt": "fix\n" }),
+                    ),
+                  ),
+                ),
+              ]),
+            ]),
+          ],
+          x: [finishedSession()],
+          c: [finishedSession()],
+        }),
+      },
+      withQueue((queue) =>
+        Effect.gen(function* () {
+          const a = yield* finished("a", { "a.txt": "a\n" })
+          yield* moveMain
+          const x = yield* finished("x", { "x.txt": "x\n" })
+          const c = yield* finished("c", { "c.txt": "c\n" })
+          yield* queue.offer(a)
+          yield* until("a", "Resolving")
+          yield* queue.offer(x)
+          yield* until("x", "Done")
+          yield* Deferred.succeed(xDone, undefined)
+          yield* Deferred.await(aChecking)
+          yield* queue.offer(c)
+          yield* until("c", "Done")
+          yield* Deferred.succeed(cDone, undefined)
+          yield* queue.settled
+        }),
+      ),
+    )
+    const after = phases(ran)
+    expect(after.a).toEqual(done)
+    expect(after.c).toEqual(done)
+    expect(movedTo(ran, "Done")).toEqual(["x", "c", "a"])
+    expect(said(ran, /checking tutti\/c ahead of its turn/).length).toBe(1)
+    expect(said(ran, /c waits/)).toEqual([])
   })
 })
 
