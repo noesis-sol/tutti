@@ -3,7 +3,8 @@
 // - deferred (Working → Deferred by tutti), as orchestra's putAside: the ticket's notes say what
 //   happened and how to bring it back, bd defers it, and its phase moves to Deferred with a
 //   `deferred` record and its log line. A ticket bd can't defer is still kept out of this run:
-//   DEFER_FAILED says so, in the log and in a `warn` record with `aside`.
+//   DEFER_FAILED says so, in the log, in a `warn` record with `aside` and on its row, which has no
+//   `bd undefer` to offer (the ledger's `deferFailed`).
 // - left for review (Working or Merging → Review{why}), as orchestra's leaveFor: the log's line goes
 //   in the ticket's notes too, and its phase moves to Review with a `warn` record with `aside`. A
 //   note bd can't add doesn't keep it from review. Its record in state.json gets the phase at once,
@@ -120,6 +121,7 @@ export const putAside = (
     )`${aside.failed}: ${beadsWhy(deferred.failure)}; kept out of this run, ${aside.instead}`
     yield* ledger.transition(ticket.id, move, {
       said: [{ kind: "warn", ticket: ticket.id, aside: true, detail: aside.detail, text }],
+      deferFailed: text.trimStart(),
       ...(aside.checkLog === undefined ? {} : { checkLog: aside.checkLog }),
     })
     return false

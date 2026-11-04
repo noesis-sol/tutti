@@ -325,10 +325,15 @@ export interface Row extends Shown {
  * What the panel beside the tickets table says of a selected row besides its Need (§ 7.2), its
  * texts sanitised: an Asked ticket's question answered, and when it comes back; a ticket left undone,
  * why and, where a check or its setup failed, where its output is; one merged or closed with nothing to merge.
+ * A Deferred one's `deferFailed` is what the line saying bd couldn't defer it says, null where bd did.
  */
 export type RowDetail = Data.TaggedEnum<{
   Answered: { readonly resumes: string }
-  Deferred: { readonly why: string; readonly checkLog: string | null }
+  Deferred: {
+    readonly why: string
+    readonly checkLog: string | null
+    readonly deferFailed: string | null
+  }
   Review: { readonly why: string; readonly checkLog: string | null }
   Stopped: { readonly why: string }
   Merged: { readonly commit: string; readonly base: string }
@@ -1010,7 +1015,11 @@ const detailOf = (entry: Entry, branch: string, resumes: string | null): RowDeta
   if (resumes !== null) return RowDetail.Answered({ resumes })
   switch (phase._tag) {
     case "Deferred":
-      return RowDetail.Deferred({ why: sanitizeLine(phase.why), checkLog })
+      return RowDetail.Deferred({
+        why: sanitizeLine(phase.why),
+        checkLog,
+        deferFailed: entry.deferFailed === undefined ? null : sanitizeLine(entry.deferFailed),
+      })
     case "Review":
       return RowDetail.Review({ why: sanitizeLine(phase.why), checkLog })
     case "Stopped":

@@ -343,7 +343,8 @@ export const blockedCut = (need: Blocked, width: number, lines: number): boolean
 /**
  * What the panel, or its box in a pane with no panel, says of a selected row with no need (§ 7.2), a
  * paragraph each: its state, its title, triage's verdict, and what comes of it or what to do. A
- * Review ticket is closed, not deferred, so `bd undefer` is only a Deferred one's.
+ * Review ticket is closed, not deferred, so `bd undefer` is only a Deferred one's, and of those
+ * only one bd could defer: one it couldn't says what its line says instead.
  */
 export const rowParagraphs = (row: Row, theme: Theme): ReadonlyArray<Segment> => {
   const { styles } = theme
@@ -366,7 +367,7 @@ export const rowParagraphs = (row: Row, theme: Theme): ReadonlyArray<Segment> =>
         title,
         ...verdict,
         ...log(detail.checkLog),
-        said(`Run bd undefer ${row.label} to bring it back.`),
+        said(detail.deferFailed ?? `Run bd undefer ${row.label} to bring it back.`),
       ]
     case "Review":
       return [

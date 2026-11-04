@@ -821,15 +821,16 @@ export const make = (
       Effect.gen(function* () {
         const text = badTicketIdLine(issue.id, why)
         yield* ledger.transition(issue.id, Move.Dispatched())
-        yield* ledger.transition(issue.id, Move.Defer({ why: "BAD_TICKET_ID" }), {
-          said: [{ kind: "deferred", ticket: issue.id, title: issue.title, detail: why, text }],
-        })
         const deferred = yield* beads
           .defer(issue.id, { reason: badTicketIdNote(issue.id, why) })
           .pipe(Effect.result)
-        if (Result.isFailure(deferred)) {
-          yield* logs.write(detail`${why}: ${issue.id}, and bd could not defer it`)
-        }
+        const failed = Result.isFailure(deferred)
+          ? detail`${why}: ${issue.id}, and bd could not defer it`
+          : undefined
+        yield* ledger.transition(issue.id, Move.Defer({ why: "BAD_TICKET_ID" }), {
+          said: [{ kind: "deferred", ticket: issue.id, title: issue.title, detail: why, text }],
+          ...(failed === undefined ? {} : { lines: [failed], deferFailed: failed.trimStart() }),
+        })
       })
 
     const dispatch = (issue: Issue, ids: ReadonlyArray<TicketId>, footprint?: Footprint) =>
