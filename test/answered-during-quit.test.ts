@@ -56,7 +56,7 @@ describe("an answered ticket as the run quits", () => {
   test("Up next says so too", () => {
     const view = viewOf({ quitting })
     expect(view.queue[0]?.answered).toBe("the next run")
-    expect(text(upNextLines(view.queue, view.totals, theme, 50, 6)[2] ?? [])).toContain(
+    expect(text(upNextLines(view.queue, view.totals, theme, 50, 7)[3] ?? [])).toContain(
       "answered · the next run",
     )
   })
