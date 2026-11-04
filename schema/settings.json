@@ -500,6 +500,12 @@
           "description": "a time such as \"30m\", \"2h\" or \"1h30m\"",
           "default": "20m"
         },
+        "conflict_wait": {
+          "type": "string",
+          "pattern": "^(?:0|(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+)$",
+          "description": "a time such as \"30m\", \"2h\" or \"1h30m\", or \"0\"",
+          "default": "15m"
+        },
         "check_hand_backs": {
           "type": "integer",
           "minimum": 0,

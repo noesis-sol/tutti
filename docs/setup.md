@@ -536,6 +536,7 @@ for a project that sets them all; the table below gives each one's default:
   "merge": {
     "resolve_conflicts": true,
     "resolve_timeout": "20m",
+    "conflict_wait": "15m",
     "check_hand_backs": 2,
     "train": 1,
     "early_check": true
@@ -582,6 +583,7 @@ for a project that sets them all; the table below gives each one's default:
 | `vendored` | `[]` | paths that are no part of the project's own files, as globs (a name without a slash matches in any folder): a subtree of another project's, which the predictor doesn't list and no footprint names; `linguist-vendored` in `.gitattributes` counts as well, and `init` writes neither; [Footprints](running.md#footprints) |
 | `merge.resolve_conflicts` | `true` | hand a rebase's conflicts back to the ticket's worker; `--resolve-conflicts` for a run |
 | `merge.resolve_timeout` | `"20m"` | how long the worker has for a hand-back |
+| `merge.conflict_wait` | `"15m"` | how long a ticket waiting to merge waits for one still resolving a conflict in a file its branch changes; `"0"` for none; [The merge queue](running.md#the-merge-queue) |
 | `merge.check_hand_backs` | `2` | how often a check failing on the rebased branch is handed back; `0` for never |
 | `merge.train` | `1` | how many tickets waiting to merge are checked ahead of their turn; `0` for none; [The merge queue](running.md#the-merge-queue) |
 | `merge.early_check` | `true` | check a ticket's branch early, rebased onto the base while its worker's verifier runs, so that its turn merges it with no second check; `false` for none; [The merge queue](running.md#the-merge-queue) |

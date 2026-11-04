@@ -1093,7 +1093,19 @@ RESOLVING: tutti/tut-12 conflicts with main in src/a.ts; handed back to its work
 FIXING: 'scripts/check-fast.sh' fails on tutti/tut-12 rebased onto main; handed back to its worker to fix (1 of 2, up to 20m)
 ```
 
-The merge queue doesn't wait meanwhile. When the worker is done, tutti checks what it left (the
+The merge queue doesn't wait meanwhile, but for what would have the ticket conflict again. A ticket in
+line whose branch changes a file the conflict was in waits for it, while the tickets behind it go on:
+
+```
+tut-15 waits to merge: tut-12's rebase conflicted in src/a.ts, which tut-15 changes too, so tut-12 goes first
+```
+
+It waits as long as tut-12 is back in line, or merging, and up to 15 minutes while tut-12 is with its
+worker (`"merge": { "conflict_wait": "15m" }`, `"0"` for none), so that a hung resolve doesn't hold it
+for long; a ticket that has conflicted itself waits for none. The files `queue.shared_files` name hold
+nothing here, and `"queue": { "footprint": false }` turns it off.
+
+When the worker is done, tutti checks what it left (the
 rebase finished, the worktree clean and on its branch, only the ticket's commits on top of the base,
 the check passing) and queues the ticket again. The check runs once, where the ticket merges: when
 another ticket merged while the worker worked, what it left goes back in line unchecked

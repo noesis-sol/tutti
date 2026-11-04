@@ -134,6 +134,7 @@ describe("settings", () => {
       merge: {
         resolve_conflicts: true,
         resolve_timeout: minutes(20),
+        conflict_wait: minutes(15),
         check_hand_backs: 2,
         train: 1,
         early_check: true,
@@ -181,6 +182,7 @@ describe("settings", () => {
     merge: {
       resolve_conflicts: true,
       resolve_timeout: minutes(20),
+      conflict_wait: minutes(15),
       check_hand_backs: 2,
       train: 1,
       early_check: true,

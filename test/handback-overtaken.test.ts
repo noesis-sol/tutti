@@ -2,7 +2,7 @@
 // not its worker's failure, as fab-mgi.7.9's in Fabrica's run of 2026-11-04. It counts toward no
 // attempt, only toward the most a ticket is handed back in a run.
 import { describe, expect, test } from "bun:test"
-import { Deferred, Effect, Exit, Fiber, Result, type Scope, Stream } from "effect"
+import { Deferred, Duration, Effect, Exit, Fiber, Result, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { makeHandBacks, maxHandBacks, mostHandBacks, toHandBack } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
@@ -190,7 +190,13 @@ describe("a conflict with what merged since the last hand-back", () => {
     const ran = await scenario(
       {
         backlog: backlog().ticket("a").ticket("b").seeds,
-        ...withCheck,
+        // As fab-mgi.8.2 did, b merges for not waiting for a's resolve (conflictWait.ts).
+        config: {
+          settings: {
+            ...withCheck.config.settings,
+            merge: { ...defaults.merge, conflict_wait: Duration.zero },
+          },
+        },
         checks: { fast: [check, check, check] },
         scripts: (world): Scripts => ({
           a: [finishedSession([...resolves(world, 1), ...resolves(world, 2)])],

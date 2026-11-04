@@ -314,6 +314,11 @@ export const Settings = Schema.Struct({
     resolve_conflicts: Schema.Boolean.pipe(withDefault(true)),
     /** How long its worker may take to resolve the conflicts. */
     resolve_timeout: PositiveDuration.pipe(withDefault("20m")),
+    /**
+     * How long a ticket waiting to merge waits for one still resolving a conflict in a file its
+     * branch changes (src/run/conflictWait.ts); "0" has it wait for none with its worker.
+     */
+    conflict_wait: NonNegativeDuration.pipe(withDefault("15m")),
     /** How many times a check failing before a merge is handed back; 0 sets it aside at once. */
     check_hand_backs: Count.pipe(withDefault(2)),
     /**

@@ -1,4 +1,4 @@
-// The merge queue (§ 3.4, § 5 item 7, § 5.1's ToMerge and Merging): a Queue<FinishedTicket> with one
+// The merge queue (§ 3.4, § 5 item 7, § 5.1's ToMerge and Merging): a line of tickets with one
 // consumer, so tickets merge one at a time, in the order they finished. A ticket joins it ToMerge
 // with its place in line (1 is next), kept current as the line moves up; its turn moves it to
 // Merging, and merge.ts takes it from there.
@@ -8,6 +8,10 @@
 // quit during them aborts the rebase or kills the check, and puts the ticket back at the head of
 // the line, ToMerge, for the run's end to stop it there; one during the protected step waits for
 // the merge to finish, so the repository is never left half merged.
+//
+// A ticket whose branch changes a file another ticket's conflict was in is passed over in the line
+// while that one resolves, up to a time limit, or is in line (conflictWait.ts); the tickets behind it
+// go on.
 //
 // A merge that stops the merges (DIRTY_TREE, GIT_FAILED, MERGE_FAILED) is kept in the queue's state
 // for the run loop, and no ticket merges after it: those behind it stay ToMerge.
@@ -38,7 +42,6 @@
 import {
   Effect,
   FiberSet,
-  Queue,
   Ref,
   Result,
   type Scope,
@@ -50,6 +53,7 @@ import type { TicketId } from "../services/Beads.ts"
 import { Git, type Sha } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
 import { fixCheck, fixResolution, type HandedCheck, handOverFix, makeFixes } from "./checkback.ts"
+import { make as makeConflictWaits } from "./conflictWait.ts"
 import { holdingSlot } from "./earlyCheck.ts"
 import { RunFibers } from "./fibers.ts"
 import {
@@ -170,7 +174,8 @@ export const make = (
     const git = yield* Git
     const fibers = yield* RunFibers
     const context = yield* Effect.context<MergeEnv>()
-    const line = yield* Queue.unbounded<FinishedTicket>()
+    // The tickets in line, whose order is the state's waiting list.
+    const line = yield* Ref.make<ReadonlyMap<TicketId, FinishedTicket>>(new Map())
     const ref = yield* SubscriptionRef.make(emptyQueue)
     const rechecks = yield* makeRechecks
     // Set as quitting begins: no more turns or hand-backs.
@@ -196,12 +201,17 @@ export const make = (
     // so every write updates the state as it is then, not as it was read.
     const lock = yield* Semaphore.make(1)
     const state = SubscriptionRef.get(ref)
+    const waits = yield* makeConflictWaits(
+      given,
+      Ref.get(line),
+      SubscriptionRef.update(ref, (now) => now),
+    )
     const guarded = <A, E, R>(where: string, effect: Effect.Effect<A, E, R>) =>
       onPanic === undefined
         ? effect
         : Effect.catchDefect(effect, (defect) => onPanic(where, defect))
     const train = yield* makeTrain(
-      { ...options, waiting: Effect.map(state, (now) => now.waiting) },
+      { ...options, waiting: Effect.flatMap(state, waits.free) },
       { rechecks, setUps, passes, handBacks, fixes },
       guarded,
     )
@@ -232,11 +242,11 @@ export const make = (
                 .pipe(Effect.provideContext(context))
               if (Result.isFailure(moved)) return moved
               if (ahead) yield* train.mayCheckAhead(ticket)
+              yield* Ref.update(line, (now) => new Map(now).set(ticket.id, ticket))
               yield* SubscriptionRef.update(ref, (now) => ({
                 ...now,
                 waiting: [...now.waiting, ticket.id],
               }))
-              yield* Queue.offer(line, ticket)
               return moved
             }),
           ),
@@ -346,6 +356,7 @@ export const make = (
         // Its merge is over: the messages held for its worker go to it now, or are dropped, before
         // the queue can settle.
         yield* heldMessages.over(id)
+        if (!handed) yield* waits.over(id)
         yield* SubscriptionRef.update(ref, (state) => ({
           ...state,
           merging: null,
@@ -363,8 +374,9 @@ export const make = (
             Effect.interruptible(
               Effect.gen(function* () {
                 // Back in line in the same merge: checked in its turn, not ahead of it.
-                if (yield* work) yield* offer(ticket, undefined, false)
-                else yield* keepAside(ticket)
+                const back = (yield* work) ? yield* offer(ticket, undefined, false) : undefined
+                if (back === undefined || Result.isFailure(back)) yield* waits.over(id)
+                if (back === undefined) yield* keepAside(ticket)
                 yield* fit(id, rechecks, handBacks)
               }),
             ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
@@ -377,6 +389,7 @@ export const make = (
     // or is blocked (checkback.ts).
     const handBack = (stop: HandedRebase) =>
       Effect.gen(function* () {
+        yield* waits.conflicted(stop.ticket.id, stop.files)
         const handed = yield* handOver(stop, options, handBacks, memory.setUps)
         const work = Effect.gen(function* () {
           const resolved = yield* resolve(stop, options, memory)
@@ -441,6 +454,7 @@ export const make = (
           }
           if (prepared._tag === "Over") yield* keepAside(ticket)
           yield* heldMessages.over(ticket.id)
+          yield* waits.over(ticket.id)
           yield* merged(stop)
           yield* fit(ticket.id, rechecks, handBacks)
         }),
@@ -450,10 +464,30 @@ export const make = (
         Effect.ensuring(options.early?.over(ticket.id) ?? Effect.void),
       )
 
+    // The ticket whose turn comes next, once there is one: looked for now and on each change. None
+    // once the merges have stopped or the queue holds, which leaves the line as it is.
+    const nextTurn = SubscriptionRef.changes(ref).pipe(
+      Stream.mapEffect(() =>
+        Effect.gen(function* () {
+          const now = yield* state
+          return now.stop !== null || (yield* Ref.get(held)) ? undefined : yield* waits.next(now)
+        }),
+      ),
+      Stream.filter((ticket) => ticket !== undefined),
+      Stream.runHead,
+    )
+
     const consume = Effect.forever(
       Effect.gen(function* () {
-        const ticket = yield* Queue.take(line)
-        yield* merge(ticket)
+        const next = yield* nextTurn
+        if (next._tag === "None") return
+        yield* Ref.update(line, (now) => {
+          const left = new Map(now)
+          left.delete(next.value.id)
+          return left
+        })
+        yield* waits.taken(next.value.id)
+        yield* merge(next.value)
       }),
     ).pipe(Effect.provideContext(context))
 
