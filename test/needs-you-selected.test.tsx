@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Queue } from "effect"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { putAside } from "../src/run/aside.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, Ledger } from "../src/run/ledger.ts"
 import { clock } from "../src/run/localTime.ts"
@@ -231,7 +232,7 @@ describe("a row you choose", () => {
     })
   })
 
-  test("stays as a more urgent ticket pushes it past the rows the table has room for", async () => {
+  describe("pushed past the rows the table has room for", () => {
     const asks = Array.from({ length: 10 }, (_, i) =>
       entryOf(`a-${i}`, i, TicketPhase.Asked({ question: `q-${i}` })),
     )
@@ -242,16 +243,41 @@ describe("a row you choose", () => {
       waiting: [`a-${i}` as TicketId],
     })
     const questions = new Map(asks.map((_, i) => [`q-${i}`, question(i)]))
-    await scene(projected(asks, { questions }), wide, async ({ view, rendered }) => {
-      await press(rendered, "enter", "up")
-      expect(panelOf(await rendered.capture())).toContain("Question q-9")
-      const urgent = entryOf("b-0", 10, dirty)
-      await merge(rendered, view, projected([...asks, urgent], { questions }))
-      const panel = panelOf(await rendered.capture())
-      expect(panel).toContain("Question q-9")
-      expect(panel).toContain("Needs you · 11")
-      await press(rendered, "escape")
-      expect(panelOf(await rendered.capture())).toContain("b-0 blocked: DIRTY_TREE")
+    const urgent = entryOf("b-0", 10, dirty)
+    // The last of 10 Asked rows chosen, then a Blocked ticket on top: it has no room left.
+    const pushed = async (
+      body: (at: { readonly commands: Commands; readonly rendered: Rendered }) => Promise<void>,
+    ) =>
+      scene(projected(asks, { questions }), wide, async ({ view, commands, rendered }) => {
+        await press(rendered, "enter", "up")
+        expect(panelOf(await rendered.capture())).toContain("Question q-9")
+        await merge(rendered, view, projected([...asks, urgent], { questions }))
+        await body({ commands, rendered })
+      })
+
+    test("stays, bumping the count only, until Esc", async () => {
+      await pushed(async ({ rendered }) => {
+        const panel = panelOf(await rendered.capture())
+        expect(panel).toContain("Question q-9")
+        expect(panel).toContain("Needs you · 11")
+        await press(rendered, "escape")
+        expect(panelOf(await rendered.capture())).toContain("b-0 blocked: DIRTY_TREE")
+      })
+    })
+
+    test("a digit answers the question on screen, not what wants you first", async () => {
+      await pushed(async ({ commands, rendered }) => {
+        await Bun.sleep(settle + 50)
+        await press(rendered, "1")
+        expect(taken(commands)).toMatchObject([{ question: "q-9", answer: "Use --flag" }])
+      })
+    })
+
+    test("going back into Tickets keeps it", async () => {
+      await pushed(async ({ rendered }) => {
+        await press(rendered, "tab", "tab", "tab", "enter")
+        expect(panelOf(await rendered.capture())).toContain("Question q-9")
+      })
     })
   })
 
@@ -565,6 +591,46 @@ describe("the check log's path on the ledger", () => {
     expect(ran.exit.value.after?.phase._tag).toBe("ToMerge")
     expect(ran.exit.value.after?.checkLog).toBeUndefined()
   })
+
+  // Its Deferred row names the log, whether bd deferred it or, as for a ticket it can't find, not.
+  test.each([
+    ["a", true],
+    ["ghost", false],
+  ] as const)(
+    "is kept as %s is set aside, deferred: %s, and goes as it comes back",
+    async (id, deferred) => {
+      const ticket = id as TicketId
+      const idle = [init(), sessionState("running"), result(), sessionState("idle")]
+      const ran = await scenario(
+        { backlog: backlog().ticket("a").seeds, scripts: () => ({ a: [idle] }) },
+        Effect.gen(function* () {
+          const ledger = yield* Ledger
+          yield* ledger.transition(ticket, Move.Ready(), { title: "A ticket" })
+          yield* ledger.transition(ticket, Move.Dispatched())
+          const said = yield* putAside(
+            { id: ticket, title: "A ticket" },
+            setupFailedOnBranch({
+              id: ticket,
+              worktree: "/w/a",
+              command: "bun install",
+              how: "fails",
+              output: "/repo/setup-1.log",
+              commits: 2,
+            }),
+          )
+          const aside = (yield* ledger.current).tickets.get(ticket)
+          yield* ledger.transition(ticket, Move.Undeferred())
+          return { said, aside, after: (yield* ledger.current).tickets.get(ticket) }
+        }).pipe(Effect.provide(Ledger.layer)),
+      )
+      if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
+      expect(ran.exit.value.said).toBe(deferred)
+      expect(ran.exit.value.aside?.phase._tag).toBe("Deferred")
+      expect(ran.exit.value.aside?.checkLog).toBe("/repo/setup-1.log")
+      expect(ran.exit.value.after?.phase._tag).toBe("Queued")
+      expect(ran.exit.value.after?.checkLog).toBeUndefined()
+    },
+  )
 
   test("a setup that failed on a ticket's branch names its log for the row", () => {
     const output = "/repo/.tutti/run/workers/s-1/checks/setup-1.log"

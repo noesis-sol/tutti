@@ -120,6 +120,7 @@ export const putAside = (
     )`${aside.failed}: ${beadsWhy(deferred.failure)}; kept out of this run, ${aside.instead}`
     yield* ledger.transition(ticket.id, move, {
       said: [{ kind: "warn", ticket: ticket.id, aside: true, detail: aside.detail, text }],
+      ...(aside.checkLog === undefined ? {} : { checkLog: aside.checkLog }),
     })
     return false
   })
