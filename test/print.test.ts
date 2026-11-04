@@ -6,7 +6,7 @@ import { decodeReferences, renderMarkdown, ruleWidth } from "../src/print/markdo
 import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
 import { closing, Ending, printSummary, type Summary, summary } from "../src/print/summary.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
-import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
+import { attentionOf, emptyView, type Row, rowStatus } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
@@ -35,6 +35,8 @@ const row = (ticket: TicketId, phase: TicketPhase, note: string): Row => ({
   ...rowStatus(phase),
   note,
   verdict: null,
+  attention: attentionOf(phase),
+  since: 0,
 })
 
 const ended = (rows: ReadonlyArray<Row>, totals: Partial<Summary["totals"]> = {}): Summary => ({

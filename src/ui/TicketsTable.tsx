@@ -1,20 +1,22 @@
 // The dashboard's tickets table (§ 5.1 "How the phases are shown", § 7.2, § 7.11): under its
 // `Tickets` label, a rounded frame with a row per ticket the run picked up but those Current shows,
-// whatever their phase, so that no ticket is shown twice: the tickets that came to an end, in that
-// order, a ticket's row coming in under the others as it leaves Current. Where Current isn't drawn
-// (the end-of-run box), the running tickets keep their rows. A row's glyph, word and ID take its
+// whatever their phase, so that no ticket is shown twice, in the order of what they want of you
+// (byAttention): Blocked, Asked, set aside, then the rest. Where Current isn't drawn (the end-of-run
+// box), the running tickets keep their rows. A row's glyph, word and ID take its
 // state's tone, as RunView worked it out (marks.ts); the rest of a finished ticket's row is faint, and a ticket set aside shows the
 // triage organ's verdict, `◆ …`, once it is in.
 //
 // The table is as tall as the pane makes it, not as its tickets do: what the lines Current is kept
 // leave it (Dashboard.tsx), room for 3 to 10 tickets, blank rows filling it until the run has that
-// many, after which the oldest give way to a `+N earlier tickets` row. Only a resize changes it.
-// The run's summary prints the same table, every row of it and no blank one (print/summary.ts).
+// many, after which the oldest of the rest give way to a `+N earlier tickets` row at the bottom,
+// which says how many more want you where those don't fit either. Only a resize changes it.
+// The run's summary prints the same table, every row of it and no blank one, in the order their
+// tickets came to an end, a record of the run with nothing to fold (print/summary.ts).
 // On the dashboard an Asked row says its question (RunView's note) and is a click target, and the
 // highlight reaches it (TableReach, tutti-fdv1): it opens the questions box at its question. A
 // row's ID cell is a click target of its own, on every row, which copies the ID (tutti-vkuj); for
 // a moment after, it says `✓ copied` in its place.
-import type { Card, Row } from "../run/runView.ts"
+import type { Attention, Card, Row } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { fit, framed, padded, type Segments, seg, targeting } from "./line.tsx"
 import { lookOf, marks } from "./marks.ts"
@@ -45,9 +47,9 @@ const minIdWidth = 7
 const minAboutWidth = 8
 
 /**
- * How tall the table is: `lines` in all with its label, blank rows filling it and the oldest rows
- * giving way to `+N earlier tickets` (the dashboard's); or, `fill: false`, as tall as its rows,
- * every one of them shown (the summary's).
+ * How tall the table is: `lines` in all with its label, by attention, blank rows filling it and the
+ * last rows giving way to `+N earlier tickets` (the dashboard's); or, `fill: false`, as tall as its
+ * rows, every one of them shown in the order it is given them (the summary's).
  */
 export type TableSize = { readonly lines: number } | { readonly fill: false }
 
@@ -60,10 +62,83 @@ export const rowsBesideCurrent = (
   return rows.filter((row) => !current.has(row.ticket))
 }
 
-/** The rows a table `size` tall draws: the newest, where the oldest give way to `+N earlier`. */
+/**
+ * The groups' places, and their times' direction (§ 5.1): what waits on you oldest first, the one
+ * waiting longest having cost the most; what no longer does newest first, what just happened on top.
+ */
+const attentionOrder: {
+  readonly [A in Attention]: { readonly place: number; readonly time: 1 | -1 }
+} = {
+  blocked: { place: 0, time: 1 },
+  asked: { place: 1, time: 1 },
+  setAside: { place: 2, time: -1 },
+  rest: { place: 3, time: -1 },
+}
+
+/** `rows`, the order their tickets came to an end, as the dashboard's table lists them. */
+export const byAttention = (rows: ReadonlyArray<Row>): ReadonlyArray<Row> =>
+  rows
+    .map((row, at) => ({ row, at }))
+    .sort((a, b) => {
+      const { place, time } = attentionOrder[a.row.attention]
+      return (
+        place - attentionOrder[b.row.attention].place ||
+        time * (a.row.since - b.row.since || a.at - b.at)
+      )
+    })
+    .map(({ row }) => row)
+
+/**
+ * The rows a table `size` tall draws: the first by attention, where the last give way to a row
+ * saying how many, so that the oldest of the rest go first and what wants you goes last.
+ */
 export const shownRows = (rows: ReadonlyArray<Row>, size: TableSize): ReadonlyArray<Row> => {
-  const limit = "lines" in size ? Math.max(size.lines - sectionChrome, 1) : rows.length
-  return rows.length > limit ? rows.slice(rows.length - (limit - 1)) : rows
+  if (!("lines" in size)) return rows
+  const limit = Math.max(size.lines - sectionChrome, 1)
+  const ordered = byAttention(rows)
+  return ordered.length > limit ? ordered.slice(0, limit - 1) : ordered
+}
+
+/** What the row in place of the rows with no room says of a group of them. */
+const foldedWords: ReadonlyArray<readonly [Attention, string]> = [
+  ["blocked", "blocked"],
+  ["asked", "asked"],
+  ["setAside", "set aside"],
+]
+
+/**
+ * The row in place of `hidden`, the rows with no room: `+N earlier tickets`, or, where rows that
+ * want you are among them, how many of those by group, so that none goes unsaid. What waits on you
+ * is drawn as it is on its own row, and what has only ended faint.
+ */
+const foldedCells = (
+  hidden: ReadonlyArray<Row>,
+  theme: Theme,
+  aboutWidth: number,
+): ReadonlyArray<Segments> => {
+  const { styles } = theme
+  const countOf = (attention: Attention) =>
+    hidden.filter((row) => row.attention === attention).length
+  const earlier = countOf("rest")
+  const wanting = hidden.length - earlier
+  if (wanting === 0) {
+    return [
+      [],
+      [seg(`+${earlier}`, styles.dim)],
+      [seg(fit("earlier tickets, see the log", aboutWidth), styles.dim)],
+    ]
+  }
+  const style = countOf("blocked") + countOf("asked") > 0 ? styles.stop : styles.deferred
+  const groups = foldedWords.flatMap(([attention, word]) => {
+    const count = countOf(attention)
+    return count === 0 ? [] : [`${count} ${word}`]
+  })
+  const rest = earlier === 0 ? [] : [`+${earlier} earlier`]
+  return [
+    [],
+    [seg(`+${wanting}`, style)],
+    [seg(fit(`more: ${[...groups, ...rest].join(", ")}`, aboutWidth), style)],
+  ]
 }
 
 /**
@@ -105,15 +180,9 @@ export const ticketsLines = (
   const aboutWidth = Math.max(width - 4 - (stateWidth + 2) - (idWidth + 2) - 2, 1)
   const limit = "lines" in size ? Math.max(size.lines - sectionChrome, 1) : rows.length
   const shown = shownRows(rows, size)
-  const hidden = rows.length - shown.length
+  const drawnRows = new Set(shown)
+  const hidden = rows.filter((row) => !drawnRows.has(row))
   const cells: Array<ReadonlyArray<Segments>> = []
-  if (hidden > 0) {
-    cells.push([
-      [],
-      [seg(`+${hidden}`, styles.dim)],
-      [seg(fit("earlier tickets, see the log", aboutWidth), styles.dim)],
-    ])
-  }
   for (const row of shown) {
     const style = lookOf(row.tone, theme)
     const about =
@@ -146,6 +215,7 @@ export const ticketsLines = (
       }),
     )
   }
+  if (hidden.length > 0) cells.push(foldedCells(hidden, theme, aboutWidth))
   while (cells.length < limit) cells.push([[], [], []])
   return [
     [seg("  "), seg("Tickets", styles.tickets)],

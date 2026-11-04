@@ -326,8 +326,8 @@ const moved = (state: State, entry: Entry, phase: TicketPhase, move: Move, now: 
   // A hand-back waits only while the ticket is Blocked on it.
   const handBack = entry.handBack === true && phase._tag === "Blocked"
   // A row whose ticket leaves Current moves to the end, so that the rows are in the order their
-  // tickets came to an end, and one leaving Current comes in under the others in the tickets table
-  // beside it (§ 7.2).
+  // tickets came to an end, the order the run's summary lists them in and the dashboard's table
+  // settles a tie by (§ 5.1).
   const leaves = entry.row !== null && showsCard(entry) && !showsCard({ phase, handBack })
   const row = leaves
     ? state.rows

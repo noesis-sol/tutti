@@ -18,10 +18,10 @@ terminal shows what it showed before, followed by the run's summary.
 ╰───────────────┴───────────────┴───────────────┴────────────────────────╯
   Tickets
 ╭────────────┬─────────────┬─────────────────────────────────────────────╮
-│ ✓ done     │ tut-dwv     │ ffd6ce4 merged into batch/2026-10-20        │
-│ ◆ merging  │ tut-kco     │ Open the property model: Interpolatable p…  │
-│ ▶ testing  │ tut-zq4     │ Add an undo stack for property edits        │
 │ ■ allow?   │ tut-9a1     │ Remove the build cache                      │
+│ ▶ testing  │ tut-zq4     │ Add an undo stack for property edits        │
+│ ◆ merging  │ tut-kco     │ Open the property model: Interpolatable p…  │
+│ ✓ done     │ tut-dwv     │ ffd6ce4 merged into batch/2026-10-20        │
 ╰────────────┴─────────────┴─────────────────────────────────────────────╯
   Current
 ╭──────────────────────────────────╮╭──────────────────────────────────╮
@@ -141,10 +141,16 @@ load line above. A pane too narrow for the strip gets the totals on one line:
 
 ### The tickets table
 
-One row per ticket the run has taken up but those Current shows, so that no ticket is shown twice:
-the tickets that came to an end, in that order, a ticket's row coming in under the others as its
-card leaves Current. With the end-of-run box in Current's place, the running tickets keep their
-rows. A row changes as the ticket moves through its phases:
+One row per ticket the run has taken up but those Current shows, so that no ticket is shown twice.
+With the end-of-run box in Current's place, the running tickets keep their rows. What wants you
+comes first, whenever it came:
+
+1. `■ blocked`, oldest first: the one waiting longest has cost the most.
+2. What waits on your answer, `? for you`, `■ allow?` and `■ answer?`, oldest first.
+3. What is set aside, `↷ deferred`, `! review` and `■ stopped`, newest first.
+4. The rest, `✓ done` and the like, newest first.
+
+A row changes as the ticket moves through its phases, and moves with it to its group:
 
 | Row | The ticket |
 |---|---|
@@ -164,10 +170,12 @@ rows. A row changes as the ticket moves through its phases:
 | `■ stopped` | it stopped the run, or its worker was still at it when the run ended |
 
 The table takes what Current leaves of the pane, room for 3 to 10 tickets, and keeps its height:
-once the run has more, the oldest give way to a `+N earlier tickets, see the log` row. Current is
-kept room for a whole card for each of up to 6 workers, as many as the run may have, so a taller
+once the run has more, the oldest of the rest give way to a `+N earlier tickets, see the log` row
+at the bottom. A row that wants you never does while the table has room for it; with more of those
+than room, that row says how many more of each there are: `+4 more: 1 blocked, 1 asked, 2 set aside,
++2 earlier`. Current is kept room for a whole card for each of up to 6 workers, as many as the run may have, so a taller
 pane gives the cards room before the table. A pane too short for the table and a line a worker
-leaves it out. The summary after the run lists every ticket.
+leaves it out. The summary after the run lists every ticket, in the order they came to an end.
 
 A click on a ticket's ID copies it: the cell says `✓ copied` (`✓` where the column is narrow) for
 a second and a half, then the ID is back. On a `? for you` row, a click anywhere else on the row

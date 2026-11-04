@@ -151,7 +151,7 @@ export interface DashboardLayout {
   readonly table: number
   /** The panel beside the table's width (SidePanel.tsx); 0 where it has none. */
   readonly panel: number
-  /** The rows the tickets table draws, oldest first; none where it is left out. */
+  /** The rows the tickets table draws, by attention (shownRows); none where it is left out. */
   readonly rows: ReadonlyArray<Row>
   /**
    * The tickets table's `table` lines: the tickets beside Current's (rowsBesideCurrent), or all of

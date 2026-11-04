@@ -1,7 +1,7 @@
 // The tickets table beside Current, the compact Current list's columns and the square for a ticket
 // to merge (§ 5.1 "How the phases are shown", § 7.2, § 7.11; orchestra-60xg, orchestra-lx4d.4,
 // orchestra-1dvh, orchestra-7dpo): beside Current the table leaves out every ticket Current shows,
-// whatever its phase, so that a ticket is shown once a frame, and its row comes in under the others
+// whatever its phase, so that a ticket is shown once a frame, and its row comes in by attention
 // as it leaves Current; the end-of-run box in Current's place leaves every row in. The compact list
 // lines up its numbers, IDs, statuses and times as columns, so that the titles start at one column.
 // A ticket to merge is `◼`, and `◷` stays for one waiting on another.
@@ -171,19 +171,18 @@ describe("the tickets table beside Current", () => {
         })
       }
     }
-    // At the end, the tickets in the order they came to an end: b deferred, a merged, c blocked, d
-    // set aside.
+    // At the end, the tickets by attention: c blocked, then d and b set aside, then a merged.
     const last = views.at(-1)
     if (last === undefined) throw new Error("no view")
     expect(tableOf(await draw(last))).toEqual([
-      expect.stringContaining("↷ deferred  │ tut-b2"),
-      expect.stringContaining("✓ done      │ tut-a1"),
       expect.stringContaining("■ blocked   │ tut-c3"),
       expect.stringContaining("! review    │ tut-d4"),
+      expect.stringContaining("↷ deferred  │ tut-b2"),
+      expect.stringContaining("✓ done      │ tut-a1"),
     ])
   })
 
-  test("a row comes in under the others as its ticket leaves Current, whatever its phase", async () => {
+  test("a row goes to the end of the run's rows as its ticket leaves Current, whatever its phase", async () => {
     const view = await run(
       Effect.gen(function* () {
         yield* go("tut-a1" as TicketId, ...dispatched)

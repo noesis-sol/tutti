@@ -278,9 +278,16 @@ export interface Totals {
 }
 
 /**
- * A row of the tickets table, from the moment the run picks its ticket up. It keeps its place but
- * as its ticket leaves Current, when it moves to the end. Its status, as `▶ testing`, is its mark,
- * its word and its tone, and whether the rest of the row is faint.
+ * What a row wants of you, which places it in the dashboard's tickets table (§ 5.1): `blocked`; or
+ * `asked`, a question or a request of its worker's; `setAside`, left undone with nothing asked of
+ * you; or `rest`.
+ */
+export type Attention = "blocked" | "asked" | "setAside" | "rest"
+
+/**
+ * A row of the tickets table, from the moment the run picks its ticket up. It keeps its place in
+ * `rows` but as its ticket leaves Current, when it moves to the end. Its status, as `▶ testing`, is
+ * its mark, its word and its tone, and whether the rest of the row is faint.
  */
 export interface Row extends Shown {
   /** Its ticket's ID, the key the run's commands take; draw `label` instead. */
@@ -292,6 +299,9 @@ export interface Row extends Shown {
   readonly note: string
   /** The triage organ's verdict, which replaces the note of a ticket set aside once it is in. */
   readonly verdict: string | null
+  readonly attention: Attention
+  /** When its ticket's phase began: the time the dashboard's table orders a group by. */
+  readonly since: number
 }
 
 /**
@@ -652,6 +662,18 @@ export const countdown = (at: number, now: number): string =>
  */
 export const rowStatus = (phase: TicketPhase, activity: Activity = "starting"): Shown =>
   factsOf(phase).row(phase, activity)
+
+/**
+ * What a row wants of you, by its phase and its worker's activity. A ticket stopped as the run ended
+ * is left undone as one set aside is, though the totals count it nowhere.
+ */
+export const attentionOf = (phase: TicketPhase, activity: Activity = "starting"): Attention => {
+  if (phase._tag === "Blocked") return "blocked"
+  if (countsUnder(phase, activity).includes("needsYou")) return "asked"
+  return phase._tag === "Stopped" || phaseFacts[phase._tag].notice === "setAside"
+    ? "setAside"
+    : "rest"
+}
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -1063,6 +1085,8 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           ...rowStatus(phase, activity),
           note: noteOf(entry, title, branch, status.questions),
           verdict: verdict === null ? null : sanitizeLine(verdict),
+          attention: attentionOf(phase, activity),
+          since: entry.since,
         },
       })
     }

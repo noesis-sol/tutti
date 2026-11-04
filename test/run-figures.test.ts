@@ -268,6 +268,8 @@ const row = (ticket: TicketId): Row => ({
   ...rowStatus(TicketPhase.Done({ outcome: Finished.NoChange() })),
   note: "merged into main",
   verdict: null,
+  attention: "rest",
+  since: 0,
 })
 
 const mnemos = figuresOf([

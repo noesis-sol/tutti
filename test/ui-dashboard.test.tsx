@@ -166,9 +166,9 @@ describe("frames", () => {
       ╰───────────────┴───────────────┴─────────────┴────────────────────────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-      │             │ +3      │ earlier tickets, see the log                         │
       │ ■ allow?    │ tut-9a1 │ Remove the build cache                               │
       │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted        │
+      │             │ +3      │ earlier tickets, see the log                         │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
@@ -198,11 +198,11 @@ describe("frames", () => {
       ╰───────────────────────┴─────────────────────────────┴───────────────────────┴────────────────────────────────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────────────────────────────────────────────╮
-      │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                                                         │
-      │ ◆ merging   │ tut-kco │ Open the property model: Interpolatable protocol and custom key-path properties              │
-      │ ▶ testing   │ tut-zq4 │ Add an undo stack for property edits                                                         │
       │ ■ allow?    │ tut-9a1 │ Remove the build cache                                                                       │
       │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted                                                │
+      │ ▶ testing   │ tut-zq4 │ Add an undo stack for property edits                                                         │
+      │ ◆ merging   │ tut-kco │ Open the property model: Interpolatable protocol and custom key-path properties              │
+      │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                                                         │
       │             │         │                                                                                              │
       │             │         │                                                                                              │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -477,12 +477,13 @@ describe("the tickets table", () => {
     const view = external(
       tickets([TicketPhase.Working(), TicketPhase.Working(), TicketPhase.Working()]),
     )
+    // Rows of a group, newest first, and at the same moment here.
     await withRender(<Root value={value(view)} />, { width: 80, height: 24 }, async (rendered) => {
       const rows = async () =>
         linesOf(await rendered.capture())
           .filter((line) => line.includes("tut-"))
           .map((line) => line.split("│")[2]?.trim())
-      expect(await rows()).toEqual(["tut-1", "tut-2", "tut-3"])
+      expect(await rows()).toEqual(["tut-3", "tut-2", "tut-1"])
       await rendered.input(() =>
         view.set(
           tickets([
@@ -493,14 +494,14 @@ describe("the tickets table", () => {
         ),
       )
       const frame = linesOf(await rendered.capture())
-      expect(await rows()).toEqual(["tut-1", "tut-2", "tut-3"])
+      expect(await rows()).toEqual(["tut-3", "tut-2", "tut-1"])
       expect(
         frame.filter((line) => line.includes("tut-")).map((l) => l.slice(0, 13).trimEnd()),
-      ).toEqual(["│ ◆ merging", "│ ✓ done", "│ ◷ waiting"])
+      ).toEqual(["│ ◷ waiting", "│ ✓ done", "│ ◆ merging"])
     })
   })
 
-  test("its height is what Current is kept leaves, and the oldest give way to +N earlier tickets", async () => {
+  test("its height is what Current is kept leaves, and the oldest give way to +N earlier tickets at the bottom", async () => {
     // At 80 columns, the title, the strip and the foot take 9 lines, and Current is kept 16 for 3
     // workers' cards; at 16 lines the table's fewest don't fit beside a line for each worker.
     const tables = [16, 24, 30, 35, 45, 60].map(
@@ -517,15 +518,15 @@ describe("the tickets table", () => {
     const top = lines.findIndex((line) => line.startsWith("╭─────────────┬"))
     // 10 lines in all: the label, the frame, and 7 rows.
     expect(lines[top - 1]).toBe("  Tickets")
-    expect(lines[top + 1]).toMatch(/^│ +│ \+3 +│ earlier tickets, see the log +│$/)
-    expect(lines.slice(top + 2, top + 8).map((line) => line.split("│")[2]?.trim())).toEqual([
-      "tut-4",
-      "tut-5",
-      "tut-6",
-      "tut-7",
-      "tut-8",
+    expect(lines.slice(top + 1, top + 7).map((line) => line.split("│")[2]?.trim())).toEqual([
       "tut-9",
+      "tut-8",
+      "tut-7",
+      "tut-6",
+      "tut-5",
+      "tut-4",
     ])
+    expect(lines[top + 7]).toMatch(/^│ +│ \+3 +│ earlier tickets, see the log +│$/)
     expect(lines[top + 8]).toStartWith("╰")
     const few = await draw(viewOf([entry("tut-1" as TicketId, "One", TicketPhase.Working(), 0)]), {
       width: 80,

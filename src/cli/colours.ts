@@ -159,6 +159,8 @@ const rows: ReadonlyArray<Row> = [
     title: "",
     note: "merged in 4m12s",
     verdict: null,
+    attention: "rest",
+    since: 0,
   },
   {
     ticket: "tut-12" as TicketId,
@@ -167,6 +169,8 @@ const rows: ReadonlyArray<Row> = [
     title: "",
     note: "Retry a merge that lost the race",
     verdict: null,
+    attention: "rest",
+    since: 0,
   },
   {
     ticket: "tut-13" as TicketId,
@@ -175,6 +179,8 @@ const rows: ReadonlyArray<Row> = [
     title: "",
     note: "Tidy the log",
     verdict: null,
+    attention: "rest",
+    since: 0,
   },
   {
     ticket: "tut-14" as TicketId,
@@ -183,6 +189,8 @@ const rows: ReadonlyArray<Row> = [
     title: "",
     note: "Clear the build cache between checks",
     verdict: null,
+    attention: "asked",
+    since: 0,
   },
 ]
 

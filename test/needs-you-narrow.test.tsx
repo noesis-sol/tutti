@@ -404,8 +404,8 @@ describe("the Needs you list, without the panel", () => {
         expect(at("> ? q-1 Which flag name?")).toBeGreaterThan(-1)
         expect(at("■ t-2 blocked: MERGE_CONFLICT")).toBeGreaterThan(at("? q-1 Which flag name?"))
         expect(at("? q-3 Which licence?")).toBeGreaterThan(at("■ t-2 blocked: MERGE_CONFLICT"))
-        // q-1 is listed once, as t-1's.
-        expect(list.chars.split("Which flag name?").length).toBe(3)
+        // q-1 is listed once, as t-1's; the box is over its row, at the table's top.
+        expect(list.chars.split("Which flag name?").length).toBe(2)
         expect(list.chars).not.toContain(listReadingText)
       },
     )
