@@ -812,7 +812,7 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
           const tries = [...carried.tries, ...overtaken]
           if (tries.length > 0) yield* memory.fixes.carry(id, { tries })
         }
-        const handed = yield* toHandBack(stop, yield* memory.handBacks.count(id), turn.waived)
+        const handed = yield* toHandBack(stop, options, memory.handBacks, turn.waived)
         if (Result.isSuccess(handed)) return Prepared.HandBack({ stop: handed.success })
         yield* notHandedBack(stop, options, handed.failure, memory.handBacks)
         return Prepared.Over({})

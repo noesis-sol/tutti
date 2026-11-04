@@ -34,6 +34,11 @@
 // ticket's notes saying why. One whose check fails goes on to checkback.ts, which hands the failure
 // back too, Fixing{afterResolution}, or blocks it.
 //
+// A conflict in a file that what merged since the ticket's last hand-back changed is the merge queue's
+// race, not its worker's failure: what merged came after the base its worker resolved on. It counts
+// toward no attempt (maxHandBacks), and only toward the most a ticket is handed back in a run
+// (mostHandBacks), so that a ticket the merges keep overtaking doesn't loop all night.
+//
 // A conflict that can't be handed back is Blocked at once, its rebase aborted, and the MERGE_CONFLICT
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
@@ -94,8 +99,14 @@ import { namesTicket, stopHandBackTasks, untilSettled } from "./settle.ts"
 import { type Fix, type SetUp, type SetUps, setUp, setupToResolve } from "./setup.ts"
 import { resolvePrompt } from "./told.ts"
 
-/** How many times a ticket's rebase conflicts are handed back to its worker in a run. */
+/**
+ * How many times a ticket's rebase conflicts are handed back to its worker in a run, those with what
+ * merged since its last hand-back left out.
+ */
 export const maxHandBacks = 2
+
+/** How many times they are handed back in a run with those: what bounds a ticket's loop. */
+export const mostHandBacks = 5
 
 /** A rebase stopped on conflicts in a finished ticket's worktree, as the merge found it. */
 export interface RebaseStop {
@@ -116,6 +127,8 @@ export interface RebaseStop {
 export interface HandedRebase extends RebaseStop {
   readonly head: Sha
   readonly own: number
+  /** Its conflicts are with what merged since its last hand-back, so it counts toward no attempt. */
+  readonly overtaken?: boolean
 }
 
 /** How many times each ticket has had a kind of hand-back in a run. */
@@ -140,10 +153,22 @@ export const makeCounts: Effect.Effect<Counts> = Effect.map(
     }) satisfies Counts,
 )
 
+/** What a run keeps of a ticket's conflict hand-backs but their count. */
+export interface LastHandBack {
+  /** The base's commit its worker was last handed a rebase onto. */
+  readonly onto: Sha
+  /** How many of its hand-backs so far were overtaken, counting toward no attempt. */
+  readonly overtaken: number
+}
+
 /**
  * A run's conflict hand-backs: how many each ticket has had (Counts), and those waiting on you.
  */
 export interface HandBacks extends Counts {
+  /** What is kept of the ticket's last hand-back; undefined when it has had none. */
+  last(id: TicketId): Effect.Effect<LastHandBack | undefined>
+  /** Keeps `stop` as its ticket's last hand-back. */
+  handed(stop: HandedRebase): Effect.Effect<void>
   /**
    * The hand-backs due to workers you have steered, which wait until you hand them over: each
    * ticket's latest, in the order they came.
@@ -167,11 +192,18 @@ export interface HandBacks extends Counts {
 /** A run's hand-backs: none yet. */
 export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
   const counts = yield* makeCounts
+  const lasts = yield* Ref.make<ReadonlyMap<string, LastHandBack>>(new Map())
   const waivers = yield* Ref.make<ReadonlySet<string>>(new Set())
   // Those waiting apart, so that their changes can be followed.
   const waiting = yield* SubscriptionRef.make<ReadonlyArray<RebaseStop>>([])
   return {
     ...counts,
+    last: (id) => Effect.map(Ref.get(lasts), (all) => all.get(id)),
+    handed: (stop) =>
+      Ref.update(lasts, (all) => {
+        const overtaken = (all.get(stop.ticket.id)?.overtaken ?? 0) + (stop.overtaken ? 1 : 0)
+        return new Map([...all, [stop.ticket.id, { onto: stop.onto, overtaken }]])
+      }),
     waiting: SubscriptionRef.get(waiting),
     changes: SubscriptionRef.changes(waiting),
     wait: (stop) =>
@@ -232,17 +264,33 @@ export interface NotHandedBack {
 }
 
 /**
- * `stop`, to be handed back to the ticket's worker, the `handedBack`th time so far; or why it can't
- * be. `waived`: you handed it over, so a steered worker takes it (§ 4.3).
+ * Whether what merged since `since`, the base's commit the ticket's worker was last handed a rebase
+ * onto, changed a file `stop` stopped on; false when it has had no hand-back, or git can't say.
+ */
+const overtakenSince = (
+  stop: RebaseStop,
+  repo: string,
+  since: Sha | undefined,
+): Effect.Effect<boolean, never, Git> =>
+  Effect.gen(function* () {
+    if (since === undefined) return false
+    const merged = yield* Effect.result((yield* Git).filesBetween(repo, since, stop.onto))
+    return Result.isSuccess(merged) && stop.files.some((file) => merged.success.includes(file))
+  })
+
+/**
+ * `stop`, to be handed back to the ticket's worker; or why it can't be. `waived`: you handed it
+ * over, so a steered worker takes it (§ 4.3).
  */
 export const toHandBack = (
   stop: RebaseStop,
-  handedBack: number,
+  options: MergeTarget,
+  handBacks: HandBacks,
   waived = false,
 ): Effect.Effect<
   Result.Result<HandedRebase, NotHandedBack>,
   never,
-  AppConfig | AgentHost | Ledger | Store
+  AppConfig | AgentHost | Git | Ledger | Store
 > =>
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -253,7 +301,15 @@ export const toHandBack = (
     if (config.settings.checks.fast.command === null) {
       return not("there is no check command in .tutti/settings.json to check a resolution with")
     }
-    if (handedBack >= maxHandBacks) {
+    const handedBack = yield* handBacks.count(id)
+    if (handedBack >= mostHandBacks) {
+      return not(
+        `it was handed back to its worker ${handedBack} times already, the most a run gives a ticket`,
+      )
+    }
+    const last = yield* handBacks.last(id)
+    const overtaken = yield* overtakenSince(stop, options.repo, last?.onto)
+    if (!overtaken && handedBack - (last?.overtaken ?? 0) >= maxHandBacks) {
       return not(`it was handed back to its worker ${handedBack} times already`)
     }
     const { head, own } = stop
@@ -264,7 +320,7 @@ export const toHandBack = (
       return not("you have steered its worker, so the hand-back waits in its view", true)
     }
     const busy = yield* workerAway(id)
-    return busy === undefined ? Result.succeed({ ...stop, head, own }) : not(busy)
+    return busy === undefined ? Result.succeed({ ...stop, head, own, overtaken }) : not(busy)
   })
 
 /** What a Gone worker whose session was resumed once in this run already is, for a line. */
@@ -367,7 +423,7 @@ export const notHandedBack = (
  * the ledger refused (PHASE_BUG): the rebase is then aborted.
  */
 export const handOver = (
-  stop: RebaseStop,
+  stop: HandedRebase,
   options: MergeTarget,
   handBacks: HandBacks,
   setUps: SetUps,
@@ -385,12 +441,14 @@ export const handOver = (
       return false
     }
     yield* handBacks.next(id)
+    yield* handBacks.handed(stop)
     const text = resolving({
       id,
       base: options.base,
       files: stop.files,
       limit: formatDuration(config.settings.merge.resolve_timeout),
       told: (yield* setupToResolve(stop, options, setUps)).told,
+      ...(stop.overtaken ? { overtaken: true } : {}),
     })
     yield* info(text, id)
     return true

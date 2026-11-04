@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A conflict with what merged during a ticket's own resolve no longer uses up its hand-backs (§ 4.7, § 5.1; `src/run/handback.ts`' `toHandBack`, `overtakenSince`, `mostHandBacks`, `src/run/log.ts`' `resolving`; tutti-k4oc): Fabrica's fab-mgi.7.9 was set aside `MERGE_CONFLICT` after 2 h of work though its worker resolved every conflict it was given, as another ticket merged while it resolved the second. Now a conflict in a file that what merged since the ticket's last hand-back changed counts toward no attempt, its `RESOLVING` line saying so (`; not counted as an attempt: what merged since its last hand-back made this conflict`), and five hand-backs in a run, counted or not, are the most a ticket has. `test/handback-overtaken.test.ts` covers it.
+
 ## [0.6.7] - 2026-11-03
 
 - A run on battery winds down at 10% rather than taking on new tickets until the Mac sleeps under it (§ 5 item 16; `src/run/battery.ts`' `windDownAt`, `watchBattery`'s `windDown`, `src/run/run.ts`; tutti-epza.21): discharging to 10%, it starts no new tickets, those under way finish and merge, and the run ends `DRAINED`; the BATTERY line says `the run winds down`, the DRAIN line `asked by the battery at 9%`, and the notification `Battery 9% left · the run winds down; plug in to finish what runs`. Plugging in doesn't take the wind-down back.

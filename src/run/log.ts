@@ -221,10 +221,12 @@ export const resolving = (r: {
   readonly limit: string
   /** What the worker is told of the setup, as `; told to run '<setup>' …` (setup.ts); "" for nothing. */
   readonly told?: Line
+  /** Its conflicts are with what merged since its last hand-back, so it counts toward no attempt. */
+  readonly overtaken?: boolean
 }): Line =>
   ticketLine(
     Tag.resolving,
-  )`${branch(r.id)} conflicts with ${r.base} in ${r.files}; handed back to its worker to resolve (up to ${r.limit})${r.told ?? ""}`
+  )`${branch(r.id)} conflicts with ${r.base} in ${r.files}; handed back to its worker to resolve (up to ${r.limit})${r.told ?? ""}${r.overtaken ? "; not counted as an attempt: what merged since its last hand-back made this conflict" : ""}`
 
 /**
  * FIXING: the check failed on a ticket's branch, rebased or on top of the base already, handed back

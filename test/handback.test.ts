@@ -328,14 +328,15 @@ describe("a resolution accepted", () => {
     const again = (world: World, files: Files, then: Files) =>
       turn([
         resolving(world, "a", files),
-        // Another ticket lands meanwhile, changing the same file once more.
+        // Another ticket lands meanwhile, changing another file: a conflict with it would count.
         run(Effect.asVoid(world.repository.commit(world.repository.dir, "Land more", then))),
+        run(world.repository.conflict("tutti/a", ["a.txt"])),
       ])
     const ran = await conflicted({}, (world) => ({
       a: [
         finishedSession([
-          ...again(world, { "a.txt": "both\n" }, { "a.txt": "main again\n" }),
-          ...again(world, { "a.txt": "all\n" }, { "a.txt": "main once more\n" }),
+          ...again(world, { "a.txt": "both\n" }, { "z.txt": "main again\n" }),
+          ...again(world, { "a.txt": "all\n" }, { "z.txt": "main once more\n" }),
         ]),
       ],
     }))
