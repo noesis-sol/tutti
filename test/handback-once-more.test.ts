@@ -1,11 +1,11 @@
 // A ticket left Blocked on its conflict, while the run goes on (§ 4.3): you hand it back once more,
-// past its hand-backs if they are used up, its session resumed for it, or you rebase its branch by
-// hand, which the run notices and merges. A worktree you are still working in is left as it is.
+// past its hand-backs if they are used up, its session resumed for it, or, its branch rebased by you,
+// it just merges. A worktree you are still working in is left as it is.
 import { describe, expect, test } from "bun:test"
-import { Effect, Exit, type Scope, Stream } from "effect"
+import { Effect, Exit, Fiber, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
+import { stillWorkedIn } from "../src/run/branch.ts"
 import { makeHandBacks, maxHandBacks } from "../src/run/handback.ts"
-import { rebasedByHand } from "../src/run/handRebased.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
@@ -27,6 +27,7 @@ import {
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import {
+  advance,
   backlog,
   type Env,
   expectLog,
@@ -126,7 +127,7 @@ const blocked = (
       expect(yield* phaseOf).toEqual(
         expect.objectContaining({ _tag: "Blocked", why: "MERGE_CONFLICT" }),
       )
-      expect((yield* queue.handBacks.setAside).map((each) => each.ticket.id)).toEqual([a])
+      expect((yield* queue.handBacks.setAside).map((each) => each.id)).toEqual([a])
       yield* then(queue, ticket)
       yield* queue.settled
       return yield* phaseOf
@@ -165,22 +166,28 @@ describe("handed back once more", () => {
     const again = (world: World, files: Files, then: Files) =>
       turn([
         resolving(world, files),
+        // Another ticket lands meanwhile, changing another file: a conflict with it would count.
         run(Effect.asVoid(world.repository.commit(world.repository.dir, "Land more", then))),
+        run(world.repository.conflict("tutti/a", ["a.txt"])),
       ])
     const ran = await blocked(
       settings(true),
       (world) => ({
         a: [
           finishedSession([
-            ...again(world, { "a.txt": "both\n" }, { "a.txt": "main again\n" }),
-            ...again(world, { "a.txt": "all\n" }, { "a.txt": "main once more\n" }),
+            ...again(world, { "a.txt": "both\n" }, { "z.txt": "main again\n" }),
+            ...again(world, { "a.txt": "all\n" }, { "z.txt": "main once more\n" }),
           ]),
           turn([resolving(world, { "a.txt": "at last\n" })]),
         ],
       }),
       (queue) =>
         // Its session closed as it was blocked, which the queue settling doesn't wait for.
-        Effect.andThen(sessionClosed, handBackNow(a, queue, options)),
+        Effect.gen(function* () {
+          yield* sessionClosed
+          yield* (yield* Repository).conflict("tutti/a", ["a.txt"])
+          yield* handBackNow(a, queue, options)
+        }),
     )
     expect(phaseIn(ran)).toEqual(expect.objectContaining({ _tag: "Done" }))
     expect(attempts(ran)).toEqual([1, 2, 3])
@@ -206,15 +213,17 @@ describe("handed back once more", () => {
     const again = (world: World, files: Files, then: Files) =>
       turn([
         resolving(world, files),
+        // Another ticket lands meanwhile, changing another file: a conflict with it would count.
         run(Effect.asVoid(world.repository.commit(world.repository.dir, "Land more", then))),
+        run(world.repository.conflict("tutti/a", ["a.txt"])),
       ])
     const ran = await blocked(
       settings(true),
       (world) => ({
         a: [
           finishedSession([
-            ...again(world, { "a.txt": "both\n" }, { "a.txt": "main again\n" }),
-            ...again(world, { "a.txt": "all\n" }, { "a.txt": "main once more\n" }),
+            ...again(world, { "a.txt": "both\n" }, { "z.txt": "main again\n" }),
+            ...again(world, { "a.txt": "all\n" }, { "z.txt": "main once more\n" }),
           ]),
           turn([resolving(world, { "a.txt": "at last\n" })]),
         ],
@@ -223,11 +232,29 @@ describe("handed back once more", () => {
         Effect.gen(function* () {
           yield* sessionClosed
           yield* (yield* Ledger).steer(a, "message")
+          yield* (yield* Repository).conflict("tutti/a", ["a.txt"])
           yield* handBackNow(a, queue, options)
         }),
     )
     expect(phaseIn(ran)).toEqual(expect.objectContaining({ _tag: "Done" }))
     expect(attempts(ran)).toEqual([1, 2, 3])
+  })
+
+  test("one you took up from its worker is given back to it", async () => {
+    const ran = await blocked(
+      settings(true),
+      (world) => ({
+        a: [finishedSession(turn([])), turn([resolving(world, { "a.txt": "both\n" })])],
+      }),
+      (queue) =>
+        Effect.gen(function* () {
+          yield* sessionClosed
+          yield* queue.handBacks.takeUp(a)
+          yield* handBackNow(a, queue, options)
+        }),
+    )
+    expect(phaseIn(ran)).toEqual(expect.objectContaining({ _tag: "Done" }))
+    expect(attempts(ran)).toEqual([1, 2])
   })
 
   test("a branch you rebased meanwhile just merges, with nothing sent to its worker", async () => {
@@ -248,7 +275,7 @@ describe("handed back once more", () => {
         Effect.gen(function* () {
           yield* rebaseByHand(false)
           expect(yield* handBackNow(a, queue, options)).toBe(false)
-          expect((yield* queue.handBacks.setAside).map((each) => each.ticket.id)).toEqual([a])
+          expect((yield* queue.handBacks.setAside).map((each) => each.id)).toEqual([a])
         }),
     )
     expect(phaseIn(ran)).toEqual(expect.objectContaining({ _tag: "Blocked" }))
@@ -269,63 +296,48 @@ describe("handed back once more", () => {
   })
 })
 
-describe("a branch rebased by hand while the run goes on", () => {
-  test("is noticed as the run looks, and merges", async () => {
-    const ran = await blocked(
-      settings(false),
-      () => ({ a: [finishedSession()] }),
-      (queue) => Effect.andThen(rebaseByHand(true), queue.recheck),
-    )
-    expect(phaseIn(ran)).toEqual(expect.objectContaining({ _tag: "Done" }))
-    expectLog(ran, [/tutti\/a was rebased by hand: a is back in the merge queue/])
-  })
-
-  test("isn't taken up as the run quits", async () => {
+describe("a branch rebased by hand and fast-forwarded onto main too", () => {
+  test("is taken as merged by hand; `h` on it then does nothing", async () => {
     const ran = await blocked(
       settings(false),
       () => ({ a: [finishedSession()] }),
       (queue) =>
         Effect.gen(function* () {
+          const git = yield* Git
+          const repository = yield* Repository
           yield* rebaseByHand(true)
-          yield* queue.hold
+          yield* git.fastForward(repository.dir, "tutti/a")
           yield* queue.recheck
+          expect((yield* phaseOf)._tag).toBe("Done")
+          // `h` landing just as the look took it as merged, the ticket still set aside then.
+          expect(yield* handBackNow(a, queue, options)).toBe(false)
         }),
     )
-    expect(phaseIn(ran)._tag).toBe("Blocked")
+    expect(phaseIn(ran)._tag).toBe("Done")
+    expect(ran.log.filter((each) => each.includes("PHASE_BUG"))).toEqual([])
   })
+})
 
-  test("isn't taken up once the merges have stopped", async () => {
-    const ran = await blocked(
-      settings(false),
-      () => ({ a: [finishedSession()], b: [finishedSession()] }),
-      (queue) =>
-        Effect.gen(function* () {
-          const repository = yield* Repository
-          const other = yield* finished("b" as TicketId, { "b.txt": "b\n" })
-          yield* repository.write(repository.dir, { "a.txt": "changes the run didn't make\n" })
-          yield* queue.offer(other)
-          yield* queue.settled
-          expect((yield* queue.state).stop).not.toBeNull()
-          yield* rebaseByHand(true)
-          yield* queue.recheck
-        }),
-    )
-    expect(phaseIn(ran)._tag).toBe("Blocked")
-  })
-
-  test("isn't taken up mid-rebase, nor for a commit with no rebase", async () => {
+describe("where git couldn't say", () => {
+  test("a worktree git can't read is taken as being worked in", async () => {
     const ran = await blocked(
       settings(false),
       () => ({ a: [finishedSession()] }),
-      (queue) =>
+      (_, ticket) =>
         Effect.gen(function* () {
           const repository = yield* Repository
-          yield* repository.commit(worktreeOf("a"), "One more (a)", { "b.txt": "b\n" })
-          yield* queue.recheck
-          expect((yield* phaseOf)._tag).toBe("Blocked")
-          yield* rebaseByHand(false)
-          yield* queue.recheck
-          expect((yield* phaseOf)._tag).toBe("Blocked")
+          yield* repository.fail("symbolic-ref", { exitCode: 128, stderr: "fatal: no" })
+          expect(yield* stillWorkedIn(ticket)).toContain("git could not read its worktree")
+          // The status is asked of git 3 times, 3 s apart.
+          yield* repository.fail("status", { exitCode: 128, stderr: "fatal: no", times: 3 })
+          const worked = yield* Effect.forkChild(stillWorkedIn(ticket))
+          yield* Effect.yieldNow
+          for (let i = 0; i < 5; i++) {
+            yield* advance("3 seconds")
+            yield* Effect.promise(() => Bun.sleep(2))
+          }
+          expect(yield* Fiber.join(worked)).toContain("git could not read its worktree")
+          expect(yield* stillWorkedIn(ticket)).toBeUndefined()
         }),
     )
     expect(phaseIn(ran)._tag).toBe("Blocked")
@@ -333,7 +345,7 @@ describe("a branch rebased by hand while the run goes on", () => {
 })
 
 describe("a worktree with uncommitted changes to tracked files", () => {
-  test("is left alone by the look and by `h`, and merges once it is clean", async () => {
+  test("is left alone by `h`, and merges with it once it is clean", async () => {
     const ran = await blocked(
       settings(false),
       () => ({ a: [finishedSession()] }),
@@ -342,35 +354,16 @@ describe("a worktree with uncommitted changes to tracked files", () => {
           const repository = yield* Repository
           yield* rebaseByHand(true)
           yield* repository.write(worktreeOf("a"), { "a.txt": "not done yet\n" })
-          yield* queue.recheck
-          expect((yield* phaseOf)._tag).toBe("Blocked")
           expect(yield* handBackNow(a, queue, options)).toBe(false)
           expect((yield* phaseOf)._tag).toBe("Blocked")
           yield* repository.write(worktreeOf("a"), { "a.txt": "by hand\n" })
-          yield* queue.recheck
+          yield* handBackNow(a, queue, options)
         }),
     )
     expect(phaseIn(ran)).toEqual(expect.objectContaining({ _tag: "Done" }))
     expectLog(ran, [
       /a stays blocked though you handed it back: its worktree .* uncommitted changes/,
     ])
-  })
-})
-
-describe("the look and `h` at once", () => {
-  test("a ticket `h` took up as the look read git isn't put back twice", async () => {
-    const ran = await blocked(
-      settings(false),
-      () => ({ a: [finishedSession()] }),
-      (queue) =>
-        Effect.gen(function* () {
-          yield* rebaseByHand(true)
-          const taken = { ...queue.handBacks, takeAside: () => Effect.succeed(undefined) }
-          const back = yield* rebasedByHand({ offer: queue.offer, handBacks: taken }, options)
-          expect(back).toEqual([])
-        }),
-    )
-    expect(phaseIn(ran)._tag).toBe("Blocked")
   })
 })
 

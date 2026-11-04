@@ -103,6 +103,14 @@ const scene = (
 }
 
 const wide = { width: 160, height: 40 }
+const blockedFields = {
+  ticket: t1,
+  label: "t-1",
+  title: "T",
+  base: "main",
+  about: null,
+  handBack: false,
+}
 const button = "[ Hand it back once more ]"
 
 describe("the worker view of a ticket left Blocked on its merge conflict", () => {
@@ -128,6 +136,22 @@ describe("the worker view of a ticket left Blocked on its merge conflict", () =>
         const y = lines.findIndex((line) => line.includes(button))
         const x = (lines[y] ?? "").indexOf(button)
         await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+        expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: t1 })])
+      },
+    )
+  })
+
+  test("Tab reaches the button, its words kept as it is selected, and Enter presses it", async () => {
+    await scene(
+      view,
+      "MERGE_CONFLICT",
+      { width: 100, height: 34 },
+      async ({ commands, rendered }) => {
+        await until(rendered, (now) => now.chars.includes(button))
+        await rendered.input((setup) => setup.mockInput.pressTab())
+        expect((await rendered.capture()).chars).toContain(button)
+        expect((await rendered.capture()).chars).not.toContain("[ Hand it the conflict now ]")
+        await rendered.input((setup) => setup.mockInput.pressEnter())
         expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: t1 })])
       },
     )
@@ -181,6 +205,8 @@ describe("the worker view of a ticket left Blocked on its merge conflict", () =>
         expect(frame.chars).toContain("[ Hand it the conflict now ]")
         expect(frame.chars).toContain("A merge conflict waits for this worker")
         expect(frame.chars).not.toContain(button)
+        await rendered.input((setup) => setup.mockInput.typeText("h"))
+        expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: t1 })])
       },
     )
   })
@@ -232,7 +258,7 @@ describe("Needs you beside the tickets table", () => {
     const theme = themeOf("dark")
     const drawn = (why: string) =>
       needsLines(
-        [Need.Blocked({ ticket: t1, label: "t-1", title: "Title", why })],
+        [Need.Blocked({ ...blockedFields, title: "Title", why })],
         { index: 0, focused: true, choice: 0 },
         theme,
         60,
@@ -245,7 +271,7 @@ describe("Needs you beside the tickets table", () => {
   })
 
   test("a conflict is a Blocked need on MERGE_CONFLICT", () => {
-    const need = (why: string) => Need.Blocked({ ticket: t1, label: "t-1", title: "T", why })
+    const need = (why: string) => Need.Blocked({ ...blockedFields, why })
     expect(isConflict(need("MERGE_CONFLICT"))).toBe(true)
     expect(isConflict(need("DIRTY_TREE"))).toBe(false)
     expect(isConflict(undefined)).toBe(false)
@@ -272,6 +298,9 @@ describe("the box Needs you's list opens, on a pane with no panel", () => {
       taken(commands)
       await rendered.input((setup) => setup.mockInput.typeText("h"))
       expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: t1 })])
+      // The box closes, back at the list, the ticket leaving Blocked.
+      const list = await until(rendered, (now) => !now.chars.includes("open its worker view"))
+      expect(list.chars).not.toContain("open its worker view")
     })
   })
 

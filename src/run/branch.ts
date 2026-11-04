@@ -142,6 +142,32 @@ export const worktreeStatus = (worktree: string): Effect.Effect<WorktreeStatus, 
     return statusOf(status.success)
   })
 
+/**
+ * What says you are still working in the ticket's worktree, which a merge would set aside for it:
+ * off its branch (mid-rebase, as a rebase's detached HEAD is), an operation in progress on it, or
+ * uncommitted changes. Undefined when it is on its branch and left clean. git failing, it is taken
+ * as being worked in.
+ */
+export const stillWorkedIn = (
+  ticket: FinishedTicket,
+): Effect.Effect<string | undefined, never, Git> =>
+  Effect.gen(function* () {
+    const unread = line`git could not read its worktree ${ticket.worktree}`
+    const on = yield* onBranch(ticket, 1)
+    if (on._tag === "OffBranch") return line`its worktree ${ticket.worktree} has ${on.on}`
+    if (on._tag === "Unknown") return unread
+    const operation = yield* Effect.result((yield* Git).operationInProgress(ticket.worktree))
+    if (Result.isFailure(operation)) return unread
+    if (operation.success)
+      return line`its worktree ${ticket.worktree} has a merge or pick in progress`
+    return WorktreeStatus.$match(yield* worktreeStatus(ticket.worktree), {
+      Clean: () => undefined,
+      Dirty: ({ files }) =>
+        line`its worktree ${ticket.worktree} has uncommitted changes to ${files}`,
+      Unknown: () => unread,
+    })
+  })
+
 /** Independent git reads, as Effect.all's: side by side, as git reads take no locks. */
 export const gitReads = { concurrency: "unbounded" } as const
 

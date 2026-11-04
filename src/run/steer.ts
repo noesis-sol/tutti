@@ -22,14 +22,15 @@
 //   ticket left Blocked on its conflict with no hand-back waiting, its hand-backs used up or its
 //   worker not able to take one then, goes back in the merge queue the same way, with one more
 //   hand-back allowed, its session resumed for it as for any (handback.ts); its branch, rebased by
-//   you meanwhile, just merges. A worktree you are still working in stays as it is (handRebased.ts).
+//   you meanwhile, just merges. One you took up from its worker (takenBack.ts) is given back to it. A
+//   worktree you are still working in stays as it is (branch.ts's stillWorkedIn).
 import { Effect, Result } from "effect"
 import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
+import { stillWorkedIn } from "./branch.ts"
 import { EventStream } from "./eventstream.ts"
 import type { RebaseStop } from "./handback.ts"
-import { stillWorkedIn } from "./handRebased.ts"
 import { Ledger } from "./ledger.ts"
 import * as log from "./log.ts"
 import { detail, type Line, Log, Tag } from "./log.ts"
@@ -185,7 +186,7 @@ const handBackOnceMore = (
       yield* Effect.logDebug(`dropped HandBackNow: ${ticket} is not blocked on its conflict`)
       return false
     }
-    const worked = yield* stillWorkedIn(aside.ticket)
+    const worked = yield* stillWorkedIn(aside)
     if (worked !== undefined) {
       yield* info(
         detail`${ticket} stays blocked though you handed it back: ${worked}; finish there, and hand it back again`,
@@ -196,13 +197,13 @@ const handBackOnceMore = (
     }
     // Said before the queue can take it up, so its merge's lines come after.
     yield* info(
-      detail`you handed ${ticket} back; ${aside.ticket.branch} is back in the merge queue, to be rebased onto ${options.base} if need be, its worker allowed one more hand-back should it conflict`,
+      detail`you handed ${ticket} back; ${aside.branch} is back in the merge queue, to be rebased onto ${options.base} if need be, its worker allowed one more hand-back should it conflict`,
       ticket,
     )
     yield* queue.handBacks.allowOneMore(ticket)
     yield* queue.handBacks.giveBack(ticket)
     yield* queue.handBacks.waive(ticket)
-    const moved = yield* queue.offer(aside.ticket, (place) => Move.HandedOver({ place }), false)
+    const moved = yield* queue.offer(aside, (place) => Move.HandedOver({ place }), false)
     if (Result.isSuccess(moved)) return true
     // The ledger refused (PHASE_BUG, logged): it stays set aside.
     yield* queue.handBacks.waived(ticket)

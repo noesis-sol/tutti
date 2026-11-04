@@ -199,8 +199,9 @@ export const clearsOf = (need: Extract<Need, { _tag: "Blocked" }>): ReadonlyArra
             afterConflict,
           ]
         : [
-            `Press h to hand it back to its worker, or run ${rebase} to take it up yourself.`,
+            `Run ${rebase} to take it up yourself.`,
             conflict,
+            "Press h to hand it back to its worker, with one more hand-back.",
             ...(reason === null ? [] : [`Set aside: ${reason}.`]),
             afterConflict,
           ]

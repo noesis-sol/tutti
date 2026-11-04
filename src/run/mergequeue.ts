@@ -288,25 +288,14 @@ export const make = (
         }),
       )
 
-    // A ticket left Blocked on its conflict, no hand-back waiting, is kept with where its branch is
-    // now: you may hand it back once more, or rebase its branch by hand (§ 4.3).
+    // A ticket left Blocked on its conflict, no hand-back waiting, is kept: you may hand it back once
+    // more (§ 4.3).
     const keepAside = (ticket: FinishedTicket) =>
       Effect.gen(function* () {
         const entry = (yield* ledger.current).tickets.get(ticket.id)
         if (entry?.phase._tag !== "Blocked" || entry.phase.why !== Tag.mergeConflict) return
         if (handBackWaits(entry)) return
-        const { repo, base } = options
-        const where = yield* Effect.result(
-          Effect.all({
-            head: git.revParse(repo, ticket.branch),
-            fork: git.mergeBase(repo, base, ticket.branch),
-          }),
-        )
-        yield* handBacks.keepAside(
-          Result.isSuccess(where)
-            ? { ticket, ...where.success }
-            : { ticket, head: undefined, fork: undefined },
-        )
+        yield* handBacks.keepAside(ticket)
       })
 
     const handBacksSet = yield* fibers.make("hand-backs")

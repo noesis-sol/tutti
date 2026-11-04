@@ -42,8 +42,7 @@
 // A conflict that can't be handed back is Blocked at once, its rebase aborted, and the MERGE_CONFLICT
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3). Any other ticket left Blocked on its conflict
-// is kept in `setAside`, for you to hand back once more, past maxHandBacks if need be (steer.ts), and
-// for its branch rebased by hand to be noticed (handRebased.ts).
+// is kept in `setAside`, for you to hand back once more, past the limits if need be (steer.ts).
 import {
   Clock,
   Data,
@@ -134,17 +133,6 @@ export interface HandedRebase extends RebaseStop {
   readonly overtaken?: boolean
 }
 
-/**
- * A ticket left Blocked on its conflict with no hand-back waiting, and where its branch stood then.
- */
-export interface SetAside {
-  readonly ticket: FinishedTicket
-  /** Its branch's commit; undefined when git couldn't say. */
-  readonly head: string | undefined
-  /** Where its branch left the base; undefined when git couldn't say. */
-  readonly fork: string | undefined
-}
-
 /** How many times each ticket has had a kind of hand-back in a run. */
 export interface Counts {
   /** How many times the ticket has been handed back to its worker so in this run. */
@@ -208,11 +196,11 @@ export interface HandBacks extends Counts {
   /** Lets conflicts go to the ticket's worker again: you handed it back to it (§ 4.3). */
   giveBack(id: TicketId): Effect.Effect<void>
   /** The tickets left Blocked on their conflicts with no hand-back waiting, as they came. */
-  readonly setAside: Effect.Effect<ReadonlyArray<SetAside>>
+  readonly setAside: Effect.Effect<ReadonlyArray<FinishedTicket>>
   /** Keeps a ticket left Blocked on its conflict, in place of any earlier one of its. */
-  keepAside(aside: SetAside): Effect.Effect<void>
+  keepAside(ticket: FinishedTicket): Effect.Effect<void>
   /** Takes the ticket out of those set aside; undefined when it isn't one of them. */
-  takeAside(id: TicketId): Effect.Effect<SetAside | undefined>
+  takeAside(id: TicketId): Effect.Effect<FinishedTicket | undefined>
   /** How many hand-backs the ticket may have in this run: maxHandBacks, or more as you allowed. */
   limit(id: TicketId): Effect.Effect<number>
   /** Allows the ticket one more hand-back than it has had, as you asked for it (§ 4.3). */
@@ -225,7 +213,7 @@ export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
   const lasts = yield* Ref.make<ReadonlyMap<string, LastHandBack>>(new Map())
   const waivers = yield* Ref.make<ReadonlySet<string>>(new Set())
   const taken = yield* Ref.make<ReadonlySet<string>>(new Set())
-  const aside = yield* Ref.make<ReadonlyArray<SetAside>>([])
+  const aside = yield* Ref.make<ReadonlyArray<FinishedTicket>>([])
   const limits = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
   // Those waiting apart, so that their changes can be followed.
   const waiting = yield* SubscriptionRef.make<ReadonlyArray<RebaseStop>>([])
@@ -261,13 +249,10 @@ export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
     giveBack: (id) => Ref.update(taken, (all) => new Set([...all].filter((each) => each !== id))),
     setAside: Ref.get(aside),
     keepAside: (kept) =>
-      Ref.update(aside, (all) => [
-        ...all.filter((each) => each.ticket.id !== kept.ticket.id),
-        kept,
-      ]),
+      Ref.update(aside, (all) => [...all.filter((each) => each.id !== kept.id), kept]),
     takeAside: (id) =>
       Ref.modify(aside, (all) => {
-        const found = all.find((each) => each.ticket.id === id)
+        const found = all.find((each) => each.id === id)
         if (found === undefined) return [undefined, all]
         return [found, all.filter((each) => each !== found)]
       }),

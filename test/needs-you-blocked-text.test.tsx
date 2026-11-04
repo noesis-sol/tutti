@@ -69,13 +69,15 @@ describe("what Needs you says of a conflict", () => {
     expect(clearsOf(needOf())).toEqual([
       "Run git rebase trunk in /wt/fab-mgi.7.9 to take it up yourself.",
       "Its rebase onto trunk conflicts in loop.ts, cli.test.ts.",
+      "Press h to hand it back to its worker, with one more hand-back.",
       "Set aside: 2 hand-backs used; main moved on as fab-mgi.7.7 merged.",
       "The run's end labels it unmerged; the next run checks and merges it once it rebases cleanly.",
     ])
   })
 
-  test("offers a hand-back only where its worker's hand-back waits, which an action does", () => {
-    expect(textOf()).not.toMatch(/hand it|hands it/i)
+  test("offers a hand-back by the action that does it: `h`, or its worker's that waits", () => {
+    expect(textOf()).toContain("Press h to hand it back")
+    expect(textOf()).not.toContain("'Hand it the conflict now'")
     const waits = textOf({ handBack: true })
     expect(waits).toContain("'Hand it the conflict now' in its worker view hands it over")
     expect(waits).toContain("git rebase trunk in /wt/fab-mgi.7.9")
@@ -99,11 +101,10 @@ describe("what Needs you says of a conflict", () => {
     expect(text).toContain("Set aside: main kept changing while its checks ran.")
   })
 
-  test("with nothing kept of it: says so plainly, with no hand-back and the run's base", () => {
+  test("with nothing kept of it: says so plainly, with the run's base", () => {
     const text = textOf({ about: undefined })
     expect(text).toContain("Its rebase onto trunk conflicts.")
     expect(text).toContain("git rebase trunk in its worktree")
-    expect(text).not.toMatch(/hand/i)
   })
 })
 

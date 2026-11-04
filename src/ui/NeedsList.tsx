@@ -113,7 +113,8 @@ const blockedParagraphs = (need: Extract<Need, { _tag: "Blocked" }>, { styles }:
 
 /**
  * A Blocked ticket's box over the dashboard (Box.Blocked), from the panel whose lines cut what clears
- * it: Enter opens its worker view, Esc closes it, as does its leaving Blocked.
+ * it: Enter opens its worker view, `h` hands back one blocked on its merge conflict (§ 4.3), Esc
+ * closes it, as does its leaving Blocked.
  */
 export const BlockedBox = ({ ticket }: { readonly ticket: TicketId }) => {
   const theme = useTheme()
@@ -134,6 +135,18 @@ export const BlockedBox = ({ ticket }: { readonly ticket: TicketId }) => {
       },
       hint: { keys: "Enter", does: "open its worker view" },
     },
+    ...(isConflict(need)
+      ? [
+          {
+            keys: ["h"],
+            run: () => {
+              box.set(null)
+              command(UiCommand.HandBackNow({ ticket }))
+            },
+            hint: { keys: "h", does: "hand it back" },
+          },
+        ]
+      : []),
     { keys: ["escape"], run: () => box.set(null), hint: { keys: "Esc", does: "close" } },
   ]
   useCommands("box", commands, "Blocked")
