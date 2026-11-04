@@ -242,12 +242,14 @@ describe("a click on a ticket's ID", () => {
 })
 
 describe("on a ? for you row", () => {
-  test("a click outside its ID still opens the questions box, copying nothing", async () => {
+  test("a click outside its ID selects it, copying nothing, and Enter opens the questions box", async () => {
     const { clipboard, copied } = fakeClipboard()
     await scene(clipboard, async ({ commands, rendered }) => {
       const table = await until(rendered, has("Which flag name?"))
       const { x, y } = placeOf(table, "Which flag name?")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      expect(taken(commands)).toEqual([])
+      await rendered.input((setup) => setup.mockInput.pressEnter())
       const deadline = Date.now() + 5000
       let read = false
       while (!read && Date.now() < deadline) {

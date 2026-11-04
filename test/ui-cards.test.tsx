@@ -439,7 +439,7 @@ describe("the Current section", () => {
       │   Title of tut-9a1                                       ││   Title of tut-b7c                                       │
       │                                                          ││                                                          │
       ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
-        Tab select · Enter open · s stop after current · ? keys
+        arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
   })
@@ -459,7 +459,7 @@ describe("the Current section", () => {
       │   Title of tut-zq4                                                           │
       │   ▸ Bash(scripts/check-fast.sh)                                              │
       ╰──────────────────────────────────────────────────────────────────────────────╯
-        Tab select · Enter open · s stop after current · ? keys
+        arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
   })
@@ -481,7 +481,7 @@ describe("the Current section", () => {
       │ ◼ tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                           │
       ┃ • tut-b7c  ■ allow?        1m07s  Title of tut-b7c                           │
       ╰──────────────────────────────────────────────────────────────────────────────╯
-        Tab select · Enter open · s stop after current · ? keys
+        arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
     // The card of the oldest request is highlighted, with none chosen (§ 4.5). Any worker in the
@@ -603,15 +603,15 @@ describe("opening a worker", () => {
           UiCommand.OpenWorker({ ticket: "tut-9a1" as TicketId }),
           UiCommand.OpenWorker({ ticket: "tut-b7c" as TicketId }),
         ])
+        // The clicks went into Current: the keys are on the card last opened.
         await rendered.input((setup) => {
-          setup.mockInput.pressTab()
-          setup.mockInput.pressTab()
+          setup.mockInput.pressArrow("up")
           setup.mockInput.pressEnter()
         })
         const highlighted = linesOf(await rendered.capture())
         expect(highlighted.some((line) => line.includes(`┃ ${turned} tut-zq4`))).toBe(true)
         await rendered.input((setup) => {
-          setup.mockInput.pressTab({ shift: true })
+          setup.mockInput.pressArrow("left")
           setup.mockInput.pressEnter()
           setup.mockInput.pressKey("4")
           setup.mockInput.pressKey("7")
@@ -693,7 +693,7 @@ describe("the wind-down line", () => {
     const lines = linesOf(await draw(view, { width: 80, height: 24 }))
     expect(lines.slice(-2)).toEqual([
       "  ■  Winding down · 1 running, no new tickets",
-      "  Tab select · Enter open · s keep taking tickets · ? keys",
+      "  arrows panels · Enter go in · s keep taking tickets · ? keys",
     ])
   })
 })
@@ -702,10 +702,10 @@ describe("the hint and the key help", () => {
   test("the hint's keys emphasis bold, their words and the dots faint", () => {
     const line = hintSegments(dashboardHint(viewOf(four), true), theme, 120)
     expect(line.map((s) => s.text).join("")).toBe(
-      "  Tab select · Enter open · s stop after current · ? keys",
+      "  arrows panels · Enter go in · s stop after current · ? keys",
     )
-    sameLook(lookOf([line], "Tab"), theme.styles.key)
-    sameLook(lookOf([line], " select"), theme.styles.dim)
+    sameLook(lookOf([line], "arrows"), theme.styles.key)
+    sameLook(lookOf([line], " panels"), theme.styles.dim)
     sameLook(lookOf([line], " · "), theme.styles.dim)
   })
 
@@ -749,9 +749,9 @@ describe("the hint and the key help", () => {
       ╭──────────────────────────────────────────────────────────────────────────────╮
       │ Keys                                                                         │
       │                                                                              │
-      │ Tab, Shift+Tab, arrows  move the highlight: cards, Needs you, ? for you rows │
-      │ Enter, a click          open what is highlighted; press the focused button   │
-      │ Esc                     close an open box                                    │
+      │ Tab, Shift+Tab, arrows  move between the panels; inside one, select in it    │
+      │ Enter, a click          go into the panel; inside it, open what is selected  │
+      │ Esc                     come out of the panel; an open box closes first      │
       │ d, Shift+D              deny the request; deny with a reason                 │
       │ a                       allow the request, unless it opens on Deny           │
       │ r                       allow for this run                                   │

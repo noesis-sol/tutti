@@ -35,7 +35,7 @@ terminal shows what it showed before, followed by the run's summary.
 │   rm -rf build                                                       │
 │   [ Deny ]  [ Allow ]                                                │
 ╰──────────────────────────────────────────────────────────────────────╯
-  Tab select · Enter open · d deny · s stop after current · ? keys
+  arrows panels · Enter go in · d deny · s stop after current · ? keys
 ```
 
 ### The title line
@@ -214,10 +214,10 @@ IDs are bold, so they still stand out from the reason.
 While something needs you it shows that instead, one at a time, `Needs you · 1 of 2` above it: a
 question an Asked ticket waits on, with its title, the ticket waiting on it, as much of its
 description as fits and its options, the recommended one first; or a Blocked ticket, why, and what
-clears it. `Tab` past the last card moves the highlight onto the panel, its frame heavy: there `↑`
-and `↓` move between the options and `Other…`, `Enter` or `1`–`9` answer with an option, as
-`Shift+A`'s box does, and `Enter` on `Other…` opens that box at the question to read it all or type
-your own; on a Blocked ticket `Enter` opens its worker view, and on one blocked on its merge conflict
+clears it. With the focus on the panel its frame is heavy, and `1`–`9` answer with an option from
+anywhere but Current, as `Shift+A`'s box does. `Enter` goes in: there `↑` and `↓` move between the
+options and `Other…`, `Enter` answers with an option, and `Enter` on `Other…` opens that box at the
+question to read it all or type your own; on a Blocked ticket `Enter` opens its worker view, and on one blocked on its merge conflict
 `h` hands it back to its worker. `]` and `[` go to the next or previous of what needs you. A click on an option answers with it, and one on the title or a cut description
 opens the box. As on attention cards, the keys answer nothing until the question has been drawn for
 half a second. An answered question leaves the panel and **Needs you** at once, and the answer wakes
@@ -239,11 +239,10 @@ says that.
 
 ### What needs you, in any pane
 
-An Asked row says the question its ticket waits on, rather than the ticket's title, in any pane. Past
-the last card, `Tab` goes on to the panel, or, where there is none, to the totals' **Needs you**, then
-to each `? for you` row in the table, the one it is on drawn highlighted. `Enter` on a `? for you`
-row, or a click on it, opens `Shift+A`'s box at its question. A click opens a row, or **Needs you**
-below, and leaves the highlight where it was; `Tab`, then `Enter`, moves it there, then opens it.
+An Asked row says the question its ticket waits on, rather than the ticket's title, in any pane.
+Where there is no panel, the totals' **Needs you** takes its place among [the panels](#keys), over
+the table, drawn highlighted while the focus is on it. A click on a row selects it, going into
+Tickets, and `Enter` on a `? for you` row opens `Shift+A`'s box at its question.
 
 Where there is no panel, `Enter` on **Needs you**, or a click on it, opens a list of what needs you,
 a line each, as the panel shows them one at a time: `? <question> <title>` for each question an Asked
@@ -263,7 +262,7 @@ worker's status, how long it has gone, the title, and the latest action (`▸ Ba
 or the last line the worker wrote).
 
 - **The order is stable.** A worker keeps its place for its whole session; a new one takes the
-  first place free. Cards show no number: a click, or `Tab` then `Enter`, opens one, and the
+  first place free. Cards show no number: a click, or `Enter` inside Current, opens one, and the
   highlight stays on its ticket as other cards come and go. orchestra's `1`–`9` are left out on
   purpose.
 - **The mark** is a spinner while the worker works, `◼` while its ticket waits to merge, `◆` while it
@@ -320,7 +319,7 @@ on you: `■ ■ ■ ■  Winding down · 3 running, no new tickets`. Warnings t
 as a colour scheme that can't be used or the usage limit's hold
 (`usage limit (five-hour) · resets 14:05 · 3 workers wait for it`).
 
-The hint names the keys there are: `Tab select · Enter open · d deny · a allow · s stop after current · ? keys`.
+The hint names the keys there are, and follows the level the keys are at: `arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys` at the top, `arrows select · Enter open · Esc back · …` inside a panel.
 
 ### The end-of-run box
 
@@ -435,17 +434,25 @@ When the run ends, the dashboard closes and the main screen gets:
   it (`? for you`): the line over the composer has **Answer**, and `Shift+A` does the same, opening
   the dashboard's questions box at that question.
 
-`Esc` leaves the composer, then closes the whole ticket, then leaves the view; to switch to another worker, go back to the dashboard and
-open its card (`Tab`, then `Enter`).
+`Esc` leaves the composer, then closes the whole ticket, then leaves the view; to switch to another worker, go back to the dashboard, where
+the keys are still on this worker's card, and open the other's (an arrow, then `Enter`).
 
 ## Keys
 
+The dashboard's keys work at two levels. At the top level the arrows move the focus between its
+panels, **Tickets** top left, **Needs you** top right, **Current** below, `Tab` and `Shift+Tab` to the
+next and previous, and the focused panel's frame is drawn bright. `Enter`, or a click, goes into a
+panel, where the keys select in it, and `Esc` comes out, an open box closing first. So opening a
+worker from the top is `↓ Enter Enter`, or a click on its card; a request's `d` and `a` work from any
+panel at the top level.
+
 | Key | Dashboard | Worker view |
 |---|---|---|
-| `Tab`, `Shift+Tab`, `←`, `→` | move the highlight between cards; inside an attention card, between its buttons; past the last card, to the panel or Needs you, then the `? for you` rows | move between a request's buttons, else between items |
-| `↑`, `↓` | move the highlight between cards | move between items |
+| `Tab`, `Shift+Tab`, `←`, `→` | at the top, move between the panels; inside Current, between a card's buttons, then on to the next card | move between a request's buttons, else between items |
+| `↑`, `↓` | at the top, move between the panels; inside, select a row, an option or a card | move between items |
 | `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
-| `Enter`, a click | press the focused button, or open the card (in the one-line layout, open its request); on a `? for you` row, its question; on Needs you, the list of what needs you | expand or collapse the item; press the focused button |
+| `1`–`9` | answer **Needs you**'s question at once, from anywhere but Current | |
+| `Enter`, a click | at the top, go into the panel, a click to what it clicked; inside, press the focused button, or open the card (in the one-line layout, open its request) or the row: a `? for you` row's question, what clears a blocked one; on the totals' Needs you, the list of what needs you | expand or collapse the item; press the focused button |
 | `d` | deny the request (decline an MCP server's) | the same |
 | `Shift+D` | deny, with a reason you type for the worker | the same |
 | `a` | allow, when the request has a one-key allow | the same |
@@ -460,7 +467,7 @@ open its card (`Tab`, then `Enter`).
 | `Ctrl+R` | | release a steered worker |
 | the wheel, `PgUp`, `PgDn` | | scroll the transcript, or the whole ticket while it is open |
 | `g`, `G` | | jump to the top or the end |
-| `Esc` | close a box or the key help | leave the composer, then close the whole ticket, then the view |
+| `Esc` | close a box or the key help, else come out of the panel | leave the composer, then close the whole ticket, then the view |
 | `?` | key help | key help |
 | `Ctrl+C` | the quit box | the quit box |
 | `Ctrl+Z` | a toast: tutti can't be suspended | the same |

@@ -293,6 +293,8 @@ export const compactLines = (
     readonly highlighted: string | null
     /** The most lines the box takes, its frame included; as many as it needs when left out. */
     readonly lines?: number
+    /** Heavy where the focus is on Current; rounded when left out. */
+    readonly border?: Border
   },
 ): ReadonlyArray<Segments> => {
   const frame = cards.some(waitsForYou)
@@ -314,6 +316,7 @@ export const compactLines = (
     ],
     options.width,
     frame,
+    options.border ?? "rounded",
   )
   return lines.map((line, i) => {
     const card = shown[i - 1]
@@ -349,12 +352,13 @@ export const idleBox = (
   spin: string,
   width: number,
   lines: number = idleLines,
+  border: Border = "rounded",
 ): ReadonlyArray<Segments> => {
   const content: Array<Segments> = [
     [seg(spin, theme.look("live")), seg(" "), seg(text, theme.styles.dim)],
   ]
   while (content.length < Math.min(lines, idleLines) - 2) content.push([])
-  return boxed(content, width, theme.look("frame"))
+  return boxed(content, width, theme.look("frame"), border)
 }
 
 /** How the Current section is laid out in `room` lines, `width` wide. */
@@ -434,6 +438,7 @@ const IdleBox = ({
   theme,
   width,
   lines,
+  border,
 }: {
   readonly stopping: boolean
   readonly fullCheck: FullCheckRun | null
@@ -441,9 +446,10 @@ const IdleBox = ({
   readonly width: number
   /** The box's lines, its frame included: as many as a full card's where the room has them. */
   readonly lines: number
+  readonly border: Border
 }) => {
   const text = idleText(stopping, fullCheck, useNow())
-  return <Lines lines={idleBox(text, theme, useSpinner(true), width, lines)} />
+  return <Lines lines={idleBox(text, theme, useSpinner(true), width, lines, border)} />
 }
 
 /**
@@ -456,6 +462,7 @@ const CompactBox = ({
   width,
   lines,
   highlighted,
+  border,
   open,
 }: {
   readonly cards: ReadonlyArray<Card>
@@ -463,11 +470,12 @@ const CompactBox = ({
   readonly width: number
   readonly lines: number
   readonly highlighted: string | null
+  readonly border: Border
   readonly open: (ticket: TicketId) => void
 }) => {
   const now = useNow()
   const spin = useSpinner(cards.some((card) => card.motion === "spinner"))
-  const drawn = compactLines(cards, theme, { now, spin, width, highlighted, lines })
+  const drawn = compactLines(cards, theme, { now, spin, width, highlighted, lines, border })
   const shown = compactShown(cards, highlighted, lines)
   return drawn.map((line, i) => {
     const card = shown[i - 1]
@@ -573,6 +581,7 @@ export const Cards = ({
   stopping,
   fullCheck,
   highlighted,
+  focused = false,
   open,
   focusOf,
   press,
@@ -588,6 +597,8 @@ export const Cards = ({
   readonly fullCheck: FullCheckRun | null
   /** The highlighted card's ticket. */
   readonly highlighted: string | null
+  /** The focus is on Current at the top level: every frame in it is drawn heavy, as no card is yet. */
+  readonly focused?: boolean
   /** Opens the view of the ticket's worker. */
   readonly open: (ticket: TicketId) => void
   /** The focused button of an attention card. */
@@ -596,6 +607,7 @@ export const Cards = ({
   readonly press: (request: ShownRequest | undefined, index: number) => void
 }) => {
   const label = <Lines lines={[[seg("  "), seg("Current", theme.styles.picked)]]} />
+  const border: Border = focused ? "heavy" : "rounded"
   switch (layout._tag) {
     case "Idle":
       return (
@@ -607,6 +619,7 @@ export const Cards = ({
             theme={theme}
             width={width}
             lines={room - labelLines}
+            border={border}
           />
         </box>
       )
@@ -620,6 +633,7 @@ export const Cards = ({
             width={width}
             lines={room - labelLines}
             highlighted={highlighted}
+            border={border}
             open={open}
           />
         </box>
@@ -651,7 +665,7 @@ export const Cards = ({
                         theme={theme}
                         width={w}
                         inside={tall - 2}
-                        highlighted={card.ticket === highlighted}
+                        highlighted={focused || card.ticket === highlighted}
                         focus={focusOf(card.requests[0])}
                         press={press}
                       />

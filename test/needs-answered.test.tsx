@@ -195,7 +195,7 @@ describe("the strip and the panel", () => {
 
   test("a question answered on the panel leaves both, before the next look", () => {
     const answeredHere = view.needs.filter((need) => need.ticket !== ("fab-a" as TicketId))
-    const at = { index: 0, focused: false, choice: 0 }
+    const at = { index: 0, focused: false, inside: false, choice: 0 }
     expect(needsCount(dashboardLayout(view, theme, 155, 36))).toBe("5")
     const laid = dashboardLayout(view, theme, 155, 36, null, { needs: answeredHere, at })
     expect(needsCount(laid)).toBe(String(answeredHere.length))

@@ -279,7 +279,7 @@ describe("the card", () => {
         ┃   Path is outside allowed working directories                                ┃
         ┃   [ Deny ]  [ Allow ]  [ Allow for this run ]  +2 more                       ┃
         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-          Tab select · Enter open · d deny · a allow · s stop after current · ? keys
+          arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys
         "
       `)
     })
@@ -375,7 +375,7 @@ describe("the card", () => {
           │   https://docs.example/login                                                 │
           │   [ Decline ]  [ Open URL ]                                                  │
           ╰──────────────────────────────────────────────────────────────────────────────╯
-            Tab select · Enter open · d deny · s stop after current · ? keys
+            arrows panels · Enter go in · d deny · s stop after current · ? keys
           "
         `)
       },
@@ -408,7 +408,7 @@ describe("the card", () => {
         const frame = await rendered.capture()
         expect(linesOf(frame).some((line) => line.includes("• t-3  ■ allow?"))).toBe(true)
         expect(linesOf(frame).some((line) => line.includes("[ Deny ]"))).toBe(false)
-        await press(rendered, "enter")
+        await press(rendered, "down", "enter", "enter")
         expect(linesOf(await rendered.capture()).some((line) => line.includes("[ Deny ]"))).toBe(
           true,
         )
@@ -451,6 +451,8 @@ describe("answering by key", () => {
   test("Enter presses the focused button, Deny at first; Tab and → move to Allow", async () => {
     await scene([permission("r1", "t-1" as TicketId)], async ({ commands, clock, rendered }) => {
       clock.pass(settle)
+      await press(rendered, "down", "enter")
+      expect(taken(commands)).toEqual([])
       await press(rendered, "enter")
       expect(taken(commands)).toEqual([answerOf("r1", { _tag: "Deny" })])
       await press(rendered, "right", "enter")
@@ -466,7 +468,7 @@ describe("answering by key", () => {
       clock.pass(settle)
       await press(rendered, "r")
       expect(taken(commands)).toEqual([])
-      await press(rendered, "down", "d", "a")
+      await press(rendered, "down", "enter", "down", "d", "a")
       expect(taken(commands)).toEqual([])
     })
   })
@@ -495,7 +497,7 @@ describe("answering by key", () => {
       [asked("q1", "t-1" as TicketId)],
       async ({ commands, clock, rendered }) => {
         clock.pass(settle)
-        await press(rendered, "enter")
+        await press(rendered, "down", "enter", "enter")
         expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-1" as TicketId })])
         await press(rendered, "2", "enter")
         expect(taken(commands)).toEqual([
@@ -514,7 +516,7 @@ describe("answering by key", () => {
       [elicitation("e1", "t-1" as TicketId, { mode: "url" })],
       async ({ commands, clock, rendered }) => {
         clock.pass(settle)
-        await press(rendered, "d", "tab", "enter")
+        await press(rendered, "d", "down", "enter", "tab", "enter")
         expect(taken(commands)).toEqual([
           answerOf("e1", { _tag: "Decline" }),
           answerOf("e1", { _tag: "Accept" }),
@@ -554,7 +556,7 @@ describe("defaultToNo", () => {
       clock.pass(settle)
       await press(rendered, "a")
       expect(taken(commands)).toEqual([])
-      await press(rendered, "right", "enter")
+      await press(rendered, "down", "enter", "right", "enter")
       expect(taken(commands)).toEqual([answerOf("r1", { _tag: "Allow" })])
       const allow = where(await rendered.capture(), "[ Allow ]")
       await rendered.input((setup) => setup.mockMouse.click(allow.x + 2, allow.y))
@@ -570,7 +572,7 @@ describe("defaultToNo", () => {
       clock.pass(settle)
       await press(rendered, "r", "a")
       expect(taken(commands)).toEqual([])
-      await press(rendered, "right", "right", "enter")
+      await press(rendered, "down", "enter", "right", "right", "enter")
       expect(taken(commands)).toEqual([answerOf("r1", { _tag: "AllowForRun" })])
     })
   })
@@ -661,7 +663,7 @@ describe("several requests", () => {
       // Card 1's Deny (the target), its Allow, then card 2 on its Deny; Shift+Tab back to card 1,
       // which a card is entered on its Deny, and → to its Allow. Each card, as it becomes the
       // target, is guarded again (tutti-14o5).
-      await press(rendered, "tab", "tab")
+      await press(rendered, "down", "enter", "tab", "tab")
       clock.pass(settle)
       await press(rendered, "enter")
       await press(rendered, "shift+tab", "right")

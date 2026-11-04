@@ -1,5 +1,5 @@
 // Workers are opened by their card, never by a number (§ 7.2, § 7.3): the cards show no worker
-// number, `1`–`9` open nothing, the hint says `Tab select · Enter open`, and the highlight names a
+// number, `1`–`9` open nothing, the hint says `arrows panels · Enter go in`, and the highlight names a
 // ticket, so it stays on its card as other cards come and go and a new worker takes a finished
 // one's place in the order.
 
@@ -102,7 +102,7 @@ const dashboard = (
 const turned = spinnerAt(now)
 
 describe("opening a worker without its number", () => {
-  test("the cards show no number, in either layout, and the hint says Tab select · Enter open", async () => {
+  test("the cards show no number, in either layout, and the hint says arrows panels · Enter go in", async () => {
     const tickets = [
       ["a" as TicketId, 1],
       ["b" as TicketId, 2],
@@ -112,7 +112,7 @@ describe("opening a worker without its number", () => {
       const lines = linesOf(await rendered.capture())
       expect(lines.filter((line) => /^│ \S [abc] {2}/.test(line))).toHaveLength(3)
       expect(lines.some((line) => /[│┃] \d \S {2}[abc]/.test(line))).toBe(false)
-      expect(lines.at(-2)).toBe("  Tab select · Enter open · s stop after current · ? keys")
+      expect(lines.at(-2)).toBe("  arrows panels · Enter go in · s stop after current · ? keys")
     })
     // Too short for a card each: one line each, the IDs straight after the mark.
     await dashboard(
@@ -132,7 +132,7 @@ describe("opening a worker without its number", () => {
     )
   })
 
-  test("1–9 open nothing; Tab then Enter, or a click, opens a card", async () => {
+  test("1–9 open nothing; ↓ Enter, an arrow and Enter, or a click, opens a card", async () => {
     await dashboard(
       viewOf([
         ["a" as TicketId, 1],
@@ -144,8 +144,9 @@ describe("opening a worker without its number", () => {
         })
         expect(taken(commands)).toEqual([])
         await rendered.input((setup) => {
-          setup.mockInput.pressTab()
-          setup.mockInput.pressTab()
+          setup.mockInput.pressArrow("down")
+          setup.mockInput.pressEnter()
+          setup.mockInput.pressArrow("right")
           setup.mockInput.pressEnter()
         })
         expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "b" as TicketId })])
@@ -165,7 +166,8 @@ describe("opening a worker without its number", () => {
       ]),
       async ({ view, rendered, commands }) => {
         await rendered.input((setup) => {
-          setup.mockInput.pressTab()
+          setup.mockInput.pressArrow("down")
+          setup.mockInput.pressEnter()
           setup.mockInput.pressTab()
         })
         // a finishes, and d takes its worker's number: first in the order, where a was.

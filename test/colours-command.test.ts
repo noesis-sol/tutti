@@ -122,7 +122,7 @@ describe("the preview", () => {
     expect(text).toContain("tut-14  permission — waiting for you")
     expect(text).toContain("[ Deny ]  [ Allow ]")
     expect(lines.some((line) => /│ ◼ to merge\s+│ tut-13\s+│ Tidy the log/.test(line))).toBe(true)
-    expect(text).toContain("Tab select · Enter open")
+    expect(text).toContain("arrows panels · Enter go in")
   })
 
   test("draws the mock's frames and words in the scheme's roles", async () => {

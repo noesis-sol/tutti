@@ -85,7 +85,7 @@ describe("the key help's height", () => {
         "│ Keys  1–12 of 22                                         │",
         "│ i, a click on the composer  write to the worker; Enter … │",
         "│ Esc, ← Dashboard            leave the composer; close t… │",
-        "│ Esc, Tab, Enter             switch workers, by way of t… │",
+        "│ Esc, arrows, Enter          switch workers, by way of t… │",
         "│ t, ▾ whole ticket           the whole ticket; t, ▴ less… │",
         "│ h, the notice's button      hand over the merge conflic… │",
         "│ d, Shift+D                  deny the request; deny with… │",

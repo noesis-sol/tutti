@@ -196,7 +196,8 @@ describe("the dashboard", () => {
     await scene(
       viewOf(ids, [permission("r1", evil)]),
       async (rendered) => {
-        await typed(rendered, "enter")
+        await rendered.input((setup) => setup.mockInput.pressArrow("down"))
+        await typed(rendered, "enter", "enter")
         const frame = linesOf(await rendered.capture())
         expect(frame.some((line) => line.includes("[ Deny ]"))).toBe(true)
         expect(frame.some((line) => line.includes(`${shown}  `))).toBe(true)
@@ -217,7 +218,8 @@ describe("the dashboard", () => {
 
   test("opening a card names its ticket as filed", async () => {
     await scene(viewOf([evil], []), async (rendered, commands) => {
-      await typed(rendered, "tab", "enter")
+      await rendered.input((setup) => setup.mockInput.pressArrow("down"))
+      await typed(rendered, "enter", "enter")
       expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: evil })])
     })
   })

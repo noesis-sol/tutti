@@ -82,6 +82,7 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
   rendered.input(async (setup) => {
     for (const key of keys) {
       if (key === "down") setup.mockInput.pressArrow("down")
+      else if (key === "enter") setup.mockInput.pressEnter()
       else await setup.mockInput.typeText(key)
     }
   })
@@ -150,6 +151,7 @@ describe("the dashboard", () => {
   test("moving the highlight to another card starts its guard again", async () => {
     await scene(Screen.Dashboard(), [r1, r2], async ({ commands, pass, rendered }) => {
       pass(10 * settle)
+      await press(rendered, "down", "enter")
       await press(rendered, "down")
       await press(rendered, "a")
       expect(taken(commands)).toEqual([])
@@ -187,6 +189,7 @@ describe("a move and a key that arrive together", () => {
   test("on the dashboard, ↓ and a in one read answer nothing", async () => {
     await scene(Screen.Dashboard(), [r1, r2], async ({ commands, pass, rendered }) => {
       pass(10 * settle)
+      await press(rendered, "down", "enter")
       await press(rendered, "down", "a")
       expect(taken(commands)).toEqual([])
       pass(settle)

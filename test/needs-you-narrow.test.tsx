@@ -212,13 +212,15 @@ describe("an Asked row", () => {
     expect(row(viewOf([asked], false))?.note).toBe("Add the flag")
   })
 
-  test("is drawn in the focus's look while the highlight is on it, as Needs you is", () => {
+  test("is drawn in the focus's look while selected, as Needs you is while the focus is on it", () => {
     const view = viewOf([asked, blocked])
-    const side = { needs: view.needs, at: { index: 0, focused: false, choice: 0 } }
-    const onRow = dashboardLayout(view, theme, 100, 30, null, side, { row: "t-1" as TicketId })
+    const side = { needs: view.needs, at: { index: 0, focused: false, inside: false, choice: 0 } }
+    const inTable = { panel: "tickets", inside: true } as const
+    const onRow = dashboardLayout(view, theme, 100, 30, null, side, inTable, "t-1" as TicketId)
     expect(focused(onRow.tickets, "Which flag name?")).toBe(true)
     expect(focused(onRow.totals, "Needs you")).toBe(false)
-    const onNeeds = dashboardLayout(view, theme, 100, 30, null, side, "needs")
+    const onCell = { panel: "cell", inside: false } as const
+    const onNeeds = dashboardLayout(view, theme, 100, 30, null, side, onCell, "t-1" as TicketId)
     expect(focused(onNeeds.totals, "Needs you")).toBe(true)
     expect(focused(onNeeds.tickets, "Which flag name?")).toBe(false)
   })
@@ -230,8 +232,8 @@ describe("an Asked row", () => {
       async ({ news, commands, rendered }) => {
         const table = await until(rendered, has("Which flag name?"))
         expect(table.chars).toContain("? for you")
-        // Tab reaches Needs you first, then the Asked row.
-        await press(rendered, "tab", "tab", "enter")
+        // Going in selects the first row, the Blocked ticket's; ↓ the Asked row.
+        await press(rendered, "enter", "down", "enter")
         const uuid = await readUuid(rendered, commands)
         await rendered.input(() =>
           news.set([QuestionNews.Read({ uuid, questions: [licence, flag] })]),
@@ -242,7 +244,7 @@ describe("an Asked row", () => {
     )
   })
 
-  test("a click on it opens the questions box at its question", async () => {
+  test("a click on it selects it, and Enter opens the questions box at its question", async () => {
     await scene(
       viewOf([asked, blocked]),
       Screen.Dashboard(),
@@ -250,6 +252,8 @@ describe("an Asked row", () => {
         const table = await until(rendered, has("Which flag name?"))
         const { x, y } = placeOf(table, "Which flag name?")
         await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+        expect(lit(await rendered.capture(), "Which flag name?")).toBe(true)
+        await press(rendered, "enter")
         const uuid = await readUuid(rendered, commands)
         expect(uuid).not.toBe("")
         await rendered.input(() =>
@@ -262,68 +266,34 @@ describe("an Asked row", () => {
   })
 })
 
-// A click opens what it opens and leaves the highlight where it was; Tab, then Enter, moves the
-// highlight there, then opens it (tutti-2bd4).
+// A click goes straight in, to what it clicked.
 describe("a click on Needs you, or on an Asked row", () => {
-  /** Opens the list of what needs you with a click on Needs you, then closes it. */
-  const clickNeeds = async (rendered: Rendered, commands: Commands) => {
-    const frame = await rendered.capture()
-    const { x, y } = placeOf(frame, "Needs you")
-    await rendered.input((setup) => setup.mockMouse.click(x + 1, y))
-    await until(rendered, has(listReadingText))
-    expect(await readUuid(rendered, commands)).not.toBe("")
-    await press(rendered, "escape")
-    return until(rendered, (now) => !now.chars.includes(listReadingText))
-  }
-  /** Opens the questions box with a click on t-1's row, then closes it. */
-  const clickRow = async (
-    rendered: Rendered,
-    commands: Commands,
-    news: Settable<ReadonlyArray<QuestionNews>>,
-  ) => {
-    const frame = await rendered.capture()
-    const { x, y } = placeOf(frame, "Which flag name?")
-    await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
-    const uuid = await readUuid(rendered, commands)
-    await rendered.input(() => news.set([QuestionNews.Read({ uuid, questions: [licence, flag] })]))
-    await until(rendered, has("Open question 2 of 2 · q-1"))
-    await press(rendered, "escape")
-    return until(rendered, (now) => !now.chars.includes("Open question"))
-  }
-
-  test("a click on Needs you opens the list, and leaves it unhighlighted once it closes", async () => {
+  test("a click on Needs you opens the list, and the focus is on it once the list closes", async () => {
     await scene(viewOf([asked, blocked]), Screen.Dashboard(), async ({ commands, rendered }) => {
-      await until(rendered, has("Which flag name?"))
-      const after = await clickNeeds(rendered, commands)
-      expect(lit(after, "Needs you")).toBe(false)
+      const frame = await until(rendered, has("Which flag name?"))
+      const { x, y } = placeOf(frame, "Needs you")
+      await rendered.input((setup) => setup.mockMouse.click(x + 1, y))
+      await until(rendered, has(listReadingText))
+      expect(await readUuid(rendered, commands)).not.toBe("")
+      await press(rendered, "escape")
+      const after = await until(rendered, (now) => !now.chars.includes(listReadingText))
+      expect(lit(after, "Needs you")).toBe(true)
       expect(lit(after, "Which flag name?")).toBe(false)
     })
   })
 
-  test("a click on Needs you leaves the highlight on the Asked row it was on", async () => {
-    await scene(viewOf([asked, blocked]), Screen.Dashboard(), async ({ commands, rendered }) => {
+  test("a click on an Asked row selects it, the focus off Needs you", async () => {
+    await scene(viewOf([asked, blocked]), Screen.Dashboard(), async ({ rendered }) => {
       await until(rendered, has("Which flag name?"))
-      await press(rendered, "tab", "tab")
-      expect(lit(await rendered.capture(), "Which flag name?")).toBe(true)
-      const after = await clickNeeds(rendered, commands)
-      expect(lit(after, "Needs you")).toBe(false)
+      await press(rendered, "tab")
+      const onNeeds = await rendered.capture()
+      expect(lit(onNeeds, "Needs you")).toBe(true)
+      const { x, y } = placeOf(onNeeds, "Which flag name?")
+      await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      const after = await rendered.capture()
       expect(lit(after, "Which flag name?")).toBe(true)
+      expect(lit(after, "Needs you")).toBe(false)
     })
-  })
-
-  test("a click on an Asked row leaves the highlight on Needs you, where it was", async () => {
-    await scene(
-      viewOf([asked, blocked]),
-      Screen.Dashboard(),
-      async ({ news, commands, rendered }) => {
-        await until(rendered, has("Which flag name?"))
-        await press(rendered, "tab")
-        expect(lit(await rendered.capture(), "Needs you")).toBe(true)
-        const after = await clickRow(rendered, commands, news)
-        expect(lit(after, "Which flag name?")).toBe(false)
-        expect(lit(after, "Needs you")).toBe(true)
-      },
-    )
   })
 
   test("Tab, then Enter, on Needs you highlights it, and it stays so once the list closes", async () => {

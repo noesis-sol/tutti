@@ -449,7 +449,7 @@ export interface WindDownView {
   readonly running: number
 }
 
-/** A key the hint names, and what it does: `Tab select`. */
+/** A key the hint names, and what it does: `Enter open`. */
 export interface Key {
   readonly keys: string
   readonly does: string

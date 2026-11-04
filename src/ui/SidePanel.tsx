@@ -143,10 +143,11 @@ export const panelTargets = {
   read: 101,
 } as const
 
-/** Which need the panel shows, and whether the highlight is on it, at which choice. */
+/** Which need the panel shows, whether the focus is on it or gone into it, at which choice. */
 export interface PanelAt {
   readonly index: number
   readonly focused: boolean
+  readonly inside: boolean
   /** The focused choice: an option's index, or the options' count for Other. */
   readonly choice: number
 }
@@ -281,7 +282,7 @@ const footOf = (keys: string, count: number): Segments => [
 
 /**
  * The Needs you panel's lines, `width` wide, `lines` tall with its label: `Needs you · 1 of 2`,
- * then the need `at.index` shows in a frame in the needsYou colour, heavy while it is highlighted.
+ * then the need `at.index` shows in a frame in the needsYou colour, heavy while the focus is on it.
  */
 export const needsLines = (
   needs: ReadonlyArray<Need>,
@@ -313,7 +314,7 @@ export const needsLines = (
     } else {
       const options = question.options ?? []
       const choice = (i: number, text: Segments, target: number): Segments => {
-        const focused = at.focused && at.choice === i
+        const focused = at.inside && at.choice === i
         return [seg(focused ? "> " : "  ", styles.key, target), ...text]
       }
       const choices = [
@@ -322,7 +323,7 @@ export const needsLines = (
             i,
             [
               seg(`${i + 1} `, styles.key, i),
-              seg(option.label, at.focused && at.choice === i ? styles.key : null, i),
+              seg(option.label, at.inside && at.choice === i ? styles.key : null, i),
               ...(i === 0 ? [dim("  recommended", i)] : []),
             ],
             i,
@@ -334,8 +335,8 @@ export const needsLines = (
           panelTargets.other,
         ),
       ]
-      const keys = !at.focused
-        ? "Tab to answer"
+      const keys = !at.inside
+        ? "Enter to answer"
         : options.length === 0
           ? "Enter answer"
           : `↑↓ 1–${options.length} · Enter answer`
@@ -363,14 +364,14 @@ export const needsLines = (
     const spare = room - 2
     const titled = !short || spare - title.length >= (paragraphs[0]?.length ?? 0) ? title : []
     const clears = paragraphs.flat()
-    const handsBack = handBackKey(need)
+    const handsBack = at.focused ? handBackKey(need) : ""
     const keys = !short
-      ? at.focused
+      ? at.inside
         ? `Enter opens its worker view${handsBack}`
-        : "Tab to choose"
-      : at.focused
+        : `Enter to choose${handsBack}`
+      : at.inside
         ? `… click or Enter reads it all${handsBack}`
-        : "… click reads it all · Tab to choose"
+        : `… click reads it all · Enter to choose${handsBack}`
     body.push(
       [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],
       ...titled,

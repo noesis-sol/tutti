@@ -12,10 +12,11 @@
 // which says how many more want you where those don't fit either. Only a resize changes it.
 // The run's summary prints the same table, every row of it and no blank one, in the order their
 // tickets came to an end, a record of the run with nothing to fold (print/summary.ts).
-// On the dashboard an Asked row says its question (RunView's note) and is a click target, and the
-// highlight reaches it (TableReach, tutti-fdv1): it opens the questions box at its question. A
-// row's ID cell is a click target of its own, on every row, which copies the ID (tutti-vkuj); for
-// a moment after, it says `✓ copied` in its place.
+// On the dashboard an Asked row says its question (RunView's note). Every row is a click target,
+// and the keys reach it inside the panel (TableReach, § 7.3): a click or ↑↓ selects it, drawn in
+// the focus's look, and Enter opens it. A row's ID cell is a click target of its own, which copies
+// the ID (tutti-vkuj); for a moment after, it says `✓ copied` in its place. With the focus on the
+// panel, its frame is drawn bright.
 import type { Attention, Card, Row } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { fit, framed, padded, type Segments, seg, targeting } from "./line.tsx"
@@ -145,12 +146,13 @@ const foldedCells = (
 }
 
 /**
- * What the dashboard's keys and clicks reach in the table (§ 7.2): the row the highlight is on,
- * drawn in the focus's look, and each row's click target, where it has one (an Asked row's); each
- * row's ID cell's, which copies its ID, and the row whose ID was just copied.
+ * What the dashboard's keys and clicks reach in the table (§ 7.2): the row selected, drawn in the
+ * focus's look, whether the focus is on the table, which draws its frame bright, and each row's
+ * click target; each row's ID cell's, which copies its ID, and the row whose ID was just copied.
  */
 export interface TableReach {
   readonly highlighted: TicketId | null
+  readonly focused?: boolean
   readonly target: (row: Row) => number | undefined
   readonly idTarget: (row: Row) => number
   readonly copied: string | null
@@ -222,6 +224,10 @@ export const ticketsLines = (
   while (cells.length < limit) cells.push([[], [], []])
   return [
     [seg("  "), seg("Tickets", styles.tickets)],
-    ...framed(cells, [stateWidth, idWidth, aboutWidth], theme.look("frame")),
+    ...framed(
+      cells,
+      [stateWidth, idWidth, aboutWidth],
+      reach?.focused === true ? theme.look("emphasis", "bold") : theme.look("frame"),
+    ),
   ]
 }

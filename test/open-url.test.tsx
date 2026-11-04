@@ -312,6 +312,8 @@ const pressOpenUrl = async (
   await withRender(<Root value={value} />, { width: 80, height: 40 }, async (rendered) => {
     at += settle
     await rendered.input(async (setup) => {
+      setup.mockInput.pressArrow("down")
+      setup.mockInput.pressEnter()
       setup.mockInput.pressTab()
       setup.mockInput.pressEnter()
     })

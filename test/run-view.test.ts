@@ -493,7 +493,7 @@ describe("wind-down and hint", () => {
         .join(" · ")
     expect(result.before.windDown).toBeNull()
     expect(hint(result.before)).toBe(
-      "Tab select · Enter open · d deny · s stop after current · ? keys",
+      "arrows panels · Enter go in · d deny · s stop after current · ? keys",
     )
     expect(result.during.windDown).toEqual({
       marks: [
@@ -504,7 +504,7 @@ describe("wind-down and hint", () => {
       running: 1,
     })
     expect(result.during.totals.queueHeld).toBe(true)
-    expect(hint(result.during)).toBe("Tab select · Enter open · s keep taking tickets · ? keys")
+    expect(hint(result.during)).toBe("arrows panels · Enter go in · s keep taking tickets · ? keys")
     expect(result.after.windDown).toBeNull()
     expect(result.after.totals.queueHeld).toBe(false)
   })

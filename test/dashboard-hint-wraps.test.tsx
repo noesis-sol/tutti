@@ -124,19 +124,26 @@ const footOf = (lines: ReadonlyArray<string>, height: number, count: number): st
     .map((line) => line.trim())
     .join(" ")
 
-const everyKey = ["Tab select", "Enter open", "d deny", "a allow", "s stop after current", "? keys"]
+const everyKey = [
+  "arrows panels",
+  "Enter go in",
+  "d deny",
+  "a allow",
+  "s stop after current",
+  "? keys",
+]
 
 describe("the dashboard's hint", () => {
-  test("is 76 columns whole with a request open, so it takes one line from 76 columns", () => {
-    for (const width of [76, 120]) {
+  test("is 80 columns whole with a request open, so it takes one line from 80 columns", () => {
+    for (const width of [80, 120]) {
       const laid = dashboardLayout(viewOf(1), theme, width, 40)
       expect(laid.cards._tag).toBe("Cards")
       expect(laid.hint).toHaveLength(1)
     }
   })
 
-  test("at 60 to 75 columns, with a request's buttons drawn, wraps every key onto two lines", async () => {
-    for (const width of [60, 65, 70, 75]) {
+  test("at 60 to 79 columns, with a request's buttons drawn, wraps every key onto two lines", async () => {
+    for (const width of [60, 65, 70, 79]) {
       const size = { width, height: 40 }
       const laid = dashboardLayout(viewOf(1), theme, width, size.height)
       expect(laid.cards._tag).toBe("Cards")
@@ -177,7 +184,7 @@ describe("the dashboard's hint", () => {
     expect(laid.small).toBe(true)
     expect(laid.hint.length).toBeGreaterThan(1)
     const foot = footOf(await draw(viewOf(1), size), size.height, laid.hint.length)
-    for (const key of ["Tab select", "Enter open", "s stop after current", "? keys"]) {
+    for (const key of ["arrows panels", "Enter go in", "s stop after current", "? keys"]) {
       expect(foot).toContain(key)
     }
     expect(foot).not.toContain("a allow")
@@ -189,7 +196,7 @@ describe("the dashboard's hint", () => {
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
       const lines = await until(rendered, "can't be suspended")
       expect(footOf(lines, size.height, 2)).toBe(
-        "Tab select · Enter open · d deny · a allow · s stop after current ? keys",
+        "arrows panels · Enter go in · d deny · a allow s stop after current · ? keys",
       )
       expect(lines[size.height - 3]).toContain(suspendToast.slice(0, 30))
     })

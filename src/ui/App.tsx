@@ -13,11 +13,11 @@
 // draws it in place of the screen too.
 import { createRoot } from "@opentui/react"
 import { Effect, Exit, Scope, Stream, SubscriptionRef } from "effect"
-import type { ReactNode } from "react"
+import { type ReactNode, useRef } from "react"
 import type { InterviewInputs, InterviewScreen } from "../run/interview.ts"
 import type { Dashboard as RunDashboard, ScreenInputs } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
-import { Dashboard } from "./Dashboard.tsx"
+import { Dashboard, startOfDashboard } from "./Dashboard.tsx"
 import { FilingDeskProvider } from "./filingDesk.tsx"
 import { ShownInitForm } from "./InitForm.tsx"
 import { Input } from "./Input.tsx"
@@ -52,6 +52,8 @@ export const App = () => {
   const form = useShownForm()
   const theme = useTheme()
   const clock = useClock()
+  // Where the dashboard's keys were, for coming back to it from a worker's view.
+  const dashboardAt = useRef(startOfDashboard)
   if (form !== null) return <ShownInitForm shown={form} theme={theme} clock={clock} />
   if (talk !== null) {
     return (
@@ -64,7 +66,7 @@ export const App = () => {
   }
   switch (screen._tag) {
     case "Dashboard":
-      return <Dashboard />
+      return <Dashboard memory={dashboardAt} />
     case "Worker":
       // Keyed by the ticket, so that switching workers opens the other's transcript afresh.
       return <WorkerView key={screen.ticket} ticket={screen.ticket} />

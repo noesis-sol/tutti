@@ -180,7 +180,7 @@ describe("frames", () => {
 
 
 
-        s stop after current · ? keys
+        arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
   })
@@ -218,7 +218,7 @@ describe("frames", () => {
 
 
 
-        s stop after current · ? keys
+        arrows panels · Enter go in · s stop after current · ? keys
       "
     `)
   })
@@ -241,8 +241,8 @@ describe("frames", () => {
 
 
 
-
-        s stop after current · ? keys
+        arrows panels · Enter go in · s stop after current
+        ? keys
       "
     `)
   })
@@ -255,8 +255,10 @@ describe("frames", () => {
       const { text } = await draw(illustrated, size)
       const lines = text.trim().split("\n")
       expect(lines[0]).toBe("✓ 1 · ↷ 1 ◆ 1 · ? 1 · ▶ 2/3 · queue 1 of 16 · 1 held back")
-      expect(lines.at(-1)).toBe("  s stop after current · ? keys")
-      expect(lines.filter((line) => line !== "")).toHaveLength(2)
+      const hint = lines.slice(1).filter((line) => line !== "")
+      expect(hint[0]).toContain("arrows panels · Enter go in · s stop after current")
+      expect(hint.at(-1)).toContain("? keys")
+      expect(hint.length).toBeLessThanOrEqual(2)
     }
   })
 

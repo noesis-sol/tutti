@@ -1,0 +1,754 @@
+// The dashboard's two levels (§ 7.3, tutti-149z.2): at the top the arrows and Tab move the focus
+// between its panels, the focused panel's frame bright; Enter or a click goes into one, where the
+// keys select in it; Esc comes out, closing an open box first. A panel gone from the pane moves the
+// focus off it.
+
+import { describe, expect, test } from "bun:test"
+import { Effect, Queue } from "effect"
+import type { AttentionRequest } from "../src/agent/Attention.ts"
+import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
+import { type Entry, emptyTallies } from "../src/run/ledger.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
+import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
+import { Screen } from "../src/run/screen.ts"
+import type { TicketId } from "../src/services/Beads.ts"
+import { Root } from "../src/ui/App.tsx"
+import { settle } from "../src/ui/attentionKeys.ts"
+import { dashboardHint, dashboardLayout } from "../src/ui/Dashboard.tsx"
+import {
+  type Direction,
+  focusAmong,
+  gridMove,
+  type Panel,
+  panelAfter,
+  panelTowards,
+} from "../src/ui/panelFocus.ts"
+import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { emptyTranscript, type TranscriptFeed } from "../src/ui/transcriptItems.ts"
+import { external, type Settable } from "../src/ui/useRunView.ts"
+import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+
+const themeOf = (appearance: Appearance) =>
+  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+const theme = themeOf("dark")
+
+const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
+
+const blocked = TicketPhase.Blocked({ why: "DIRTY_TREE" })
+const merged = (commit: string) => TicketPhase.Done({ outcome: Finished.Merged({ commit }) })
+
+const entryOf = (
+  ticket: string,
+  row: number,
+  phase: Entry["phase"],
+  worker: number | null,
+): Entry => ({
+  ticket: ticket as TicketId,
+  title: `Title of ${ticket}`,
+  phase,
+  since: began,
+  worker,
+  row,
+  rechecking: false,
+  steered: false,
+  lastMessage: null,
+  tallies: emptyTallies,
+})
+
+const doneRows = [
+  entryOf("d-1", 0, merged("0c1a9e7"), null),
+  entryOf("d-2", 1, merged("ffd6ce4"), null),
+]
+
+/** RunView over `tickets`, with `requests` open. */
+const projected = (
+  tickets: ReadonlyArray<Entry>,
+  requests: ReadonlyArray<AttentionRequest> = [],
+  status: Partial<Status> = {},
+): RunView =>
+  project({
+    ledger: {
+      tickets: new Map(tickets.map((each) => [each.ticket, each])),
+      rows: tickets.length,
+      windDown: null,
+      bugs: [],
+    },
+    workers: new Map(
+      tickets.flatMap((each) =>
+        each.worker === null ? [] : [[each.ticket, WS.Idle({ at: began })] as const],
+      ),
+    ),
+    requests,
+    status: {
+      ...emptyStatus,
+      version: "0.1.0",
+      branch: "batch",
+      began,
+      concurrency: 4,
+      ...status,
+    },
+    actions: new Map(),
+  })
+
+/** Three done rows, a Blocked one, and `workers` cards. */
+const viewOf = (workers: number, requests: ReadonlyArray<AttentionRequest> = []): RunView =>
+  projected(
+    [
+      ...doneRows,
+      entryOf("b-1", 2, blocked, null),
+      ...Array.from({ length: workers }, (_, i) =>
+        entryOf(`w-${i + 1}`, 3 + i, TicketPhase.Working(), i + 1),
+      ),
+    ],
+    requests,
+  )
+
+const permission = (id: string, ticket: string): AttentionRequest => ({
+  id,
+  ticket: ticket as TicketId,
+  kind: { _tag: "Permission", tool: "Bash", input: {}, suggestions: [], summary: "ls" },
+  displayName: "Bash",
+  defaultToNo: false,
+  suppressAlwaysAllowRule: false,
+  createdAt: began,
+})
+
+/** A question of the worker's: a card's, whose options `1`–`4` pick. */
+const cardQuestion = (id: string, ticket: string): AttentionRequest => ({
+  id,
+  ticket: ticket as TicketId,
+  kind: {
+    _tag: "Question",
+    input: {},
+    questions: [
+      {
+        question: "Which?",
+        options: [{ label: "Keep the old" }, { label: "Write a new" }],
+        multiSelect: false,
+      },
+    ],
+  },
+  defaultToNo: false,
+  suppressAlwaysAllowRule: false,
+  createdAt: began,
+})
+
+/** q-1 is put to the maintainer, and a-1 waits on it, in Needs you. */
+const askingView = (requests: ReadonlyArray<AttentionRequest> = [], workers = 0): RunView =>
+  projected(
+    [
+      ...doneRows,
+      entryOf("a-1", 2, TicketPhase.Asked({ question: "q-1" }), null),
+      ...Array.from({ length: workers }, (_, i) =>
+        entryOf(`w-${i + 1}`, 3 + i, TicketPhase.Working(), i + 1),
+      ),
+    ],
+    requests,
+    {
+      questions: new Map([
+        [
+          "q-1",
+          {
+            id: "q-1" as TicketId,
+            title: "Which flag name?",
+            description: "",
+            options: [
+              { label: "Use --flag", description: "" },
+              { label: "Use --other", description: "" },
+            ],
+            maintainerOnly: false,
+            waiting: ["a-1" as TicketId],
+          },
+        ],
+      ]),
+    },
+  )
+
+/** No transcript: the worker view is only opened and left. */
+const feed: TranscriptFeed = {
+  open: () => ({
+    state: external(emptyTranscript),
+    older: () => {},
+    scrolledBack: () => {},
+    follow: () => {},
+    close: () => {},
+  }),
+}
+
+const taken = (commands: Commands) => Effect.runSync(Queue.clear(commands))
+
+type Pressed = Direction | "tab" | "shift+tab" | "enter" | "escape"
+
+const press = (rendered: Rendered, ...keys: ReadonlyArray<Pressed | string>) =>
+  rendered.input(async (setup) => {
+    for (const key of keys) {
+      if (key === "tab") setup.mockInput.pressTab()
+      else if (key === "shift+tab") setup.mockInput.pressTab({ shift: true })
+      else if (key === "enter") setup.mockInput.pressEnter()
+      else if (key === "escape") await pressEscape(setup)
+      else if (key === "left" || key === "right" || key === "up" || key === "down") {
+        setup.mockInput.pressArrow(key)
+      } else await setup.mockInput.typeText(key)
+    }
+  })
+
+const scene = async (
+  start: RunView,
+  size: { readonly width: number; readonly height: number },
+  body: (at: {
+    readonly view: Settable<RunView>
+    readonly commands: Commands
+    readonly pass: (millis: number) => void
+    readonly rendered: Rendered
+  }) => Promise<void>,
+) => {
+  const view = external(start)
+  const commands = Effect.runSync(makeCommands)
+  let at = began
+  const value = {
+    view,
+    screen: external<Screen>(Screen.Dashboard()),
+    commands,
+    appearance: external<Appearance>("dark"),
+    themeOf,
+    now: () => at,
+  }
+  await withRender(<Root value={value} />, size, (rendered) =>
+    body({ view, commands, pass: (millis) => (at += millis), rendered }),
+  )
+}
+
+const wide = { width: 155, height: 40 }
+const narrow = { width: 100, height: 40 }
+
+const linesOf = (frame: Frame) => frame.chars.split("\n")
+
+/** The hint: its lines, from the first naming the arrows, on one. */
+const hintOf = (frame: Frame) => {
+  const lines = linesOf(frame)
+  return lines
+    .slice(lines.findIndex((line) => line.trimStart().startsWith("arrows")))
+    .map((line) => line.trim())
+    .join(" ")
+    .trim()
+}
+
+/** Whether a span of `text` on `frame` has the focus's fill. */
+const lit = (frame: Frame, text: string): boolean =>
+  frame.spans.lines.some((line) =>
+    line.spans.some(
+      (span) =>
+        span.text.includes(text) &&
+        Bun.deepEquals(span.bg.toInts(), theme.form.focusedButton.bg?.toInts()),
+    ),
+  )
+
+/** The colour of the Tickets table's top border, in `frame`: the line under its label. */
+const tableFrameColour = (frame: Frame) => {
+  const label = linesOf(frame).findIndex((line) => line.trimStart().startsWith("Tickets"))
+  return frame.spans.lines[label + 1]?.spans[0]?.fg.toInts()
+}
+
+const where = (frame: Frame, text: string) => {
+  const lines = linesOf(frame)
+  const y = lines.findIndex((line) => line.includes(text))
+  if (y === -1) throw new Error(`no line holds ${text}`)
+  return { x: (lines[y] ?? "").indexOf(text), y }
+}
+
+const has = (frame: Frame, text: string) => frame.chars.includes(text)
+
+/** Whether a card's heavy frame is drawn round `ticket`. */
+const heavyOn = (frame: Frame, ticket: string) =>
+  linesOf(frame).some((line) => line.includes(`┃`) && line.includes(ticket))
+
+describe("the focus's moves", () => {
+  const upper: ReadonlyArray<Panel> = ["tickets", "needs", "current"]
+  const tall: ReadonlyArray<Panel> = ["tickets", "cell", "current"]
+
+  test("the arrows go as the panels are laid out, and stay where there is none that way", () => {
+    expect(panelTowards(upper, "tickets", "right")).toBe("needs")
+    expect(panelTowards(upper, "needs", "left")).toBe("tickets")
+    expect(panelTowards(upper, "tickets", "down")).toBe("current")
+    expect(panelTowards(upper, "needs", "down")).toBe("current")
+    expect(panelTowards(upper, "current", "up")).toBe("tickets")
+    expect(panelTowards(upper, "current", "up", "needs")).toBe("needs")
+    expect(panelTowards(upper, "tickets", "left")).toBe("tickets")
+    expect(panelTowards(upper, "tickets", "up")).toBe("tickets")
+    expect(panelTowards(upper, "needs", "right")).toBe("needs")
+    expect(panelTowards(upper, "current", "down")).toBe("current")
+    expect(panelTowards(upper, "current", "left")).toBe("current")
+  })
+
+  test("a panel not there is passed over", () => {
+    expect(panelTowards(["tickets", "current"], "tickets", "right")).toBe("tickets")
+    expect(panelTowards(["needs", "current"], "current", "up")).toBe("needs")
+    expect(panelTowards(["current"], "current", "up")).toBe("current")
+    expect(panelTowards(upper, "current", "up", "cell")).toBe("tickets")
+  })
+
+  test("with no panel beside the table, its Needs you cell is over it", () => {
+    expect(panelTowards(tall, "tickets", "up")).toBe("cell")
+    expect(panelTowards(tall, "tickets", "right")).toBe("cell")
+    expect(panelTowards(tall, "cell", "down")).toBe("tickets")
+    expect(panelTowards(tall, "cell", "left")).toBe("tickets")
+    expect(panelTowards(["cell", "current"], "cell", "down")).toBe("current")
+  })
+
+  test("Tab and Shift+Tab go round the panels there are", () => {
+    expect(panelAfter(upper, "tickets", 1)).toBe("needs")
+    expect(panelAfter(upper, "needs", 1)).toBe("current")
+    expect(panelAfter(upper, "current", 1)).toBe("tickets")
+    expect(panelAfter(upper, "tickets", -1)).toBe("current")
+    expect(panelAfter(tall, "tickets", 1)).toBe("cell")
+    expect(panelAfter(["current"], "current", 1)).toBe("current")
+  })
+
+  test("a panel gone moves the focus off it, to the top level; an emptied one out of it", () => {
+    const inside = (panel: Panel) => ({ panel, inside: true })
+    expect(focusAmong(inside("needs"), tall, tall)).toEqual({ panel: "tickets", inside: false })
+    expect(focusAmong(inside("tickets"), ["cell", "current"], [])).toEqual({
+      panel: "cell",
+      inside: false,
+    })
+    expect(focusAmong(inside("cell"), upper, upper)).toEqual({ panel: "tickets", inside: false })
+    expect(focusAmong(inside("current"), upper, ["tickets"])).toEqual({
+      panel: "current",
+      inside: false,
+    })
+    const there = inside("tickets")
+    expect(focusAmong(there, upper, upper)).toBe(there)
+  })
+
+  test("the cards' grid: across in reading order, down and up its column, round", () => {
+    expect(gridMove(4, 2, 0, "right")).toBe(1)
+    expect(gridMove(4, 2, 1, "right")).toBe(2)
+    expect(gridMove(4, 2, 3, "right")).toBe(0)
+    expect(gridMove(4, 2, 0, "left")).toBe(3)
+    expect(gridMove(4, 2, 0, "down")).toBe(2)
+    expect(gridMove(4, 2, 3, "up")).toBe(1)
+    expect(gridMove(4, 2, 2, "down")).toBe(0)
+    expect(gridMove(4, 2, 1, "up")).toBe(3)
+    // A shorter last row: under its gap is its last card, and over its gap too.
+    expect(gridMove(3, 2, 1, "down")).toBe(2)
+    expect(gridMove(3, 2, 1, "up")).toBe(2)
+    expect(gridMove(3, 2, 2, "down")).toBe(0)
+    // One to a row, and from none.
+    expect(gridMove(3, 1, 0, "right")).toBe(1)
+    expect(gridMove(3, 1, 2, "down")).toBe(0)
+    expect(gridMove(3, 2, -1, "right")).toBe(0)
+    expect(gridMove(3, 2, -1, "up")).toBe(2)
+    expect(gridMove(0, 2, -1, "down")).toBe(-1)
+  })
+})
+
+describe("the hint follows the level", () => {
+  const view = viewOf(1)
+  const words = (inside: boolean) =>
+    dashboardHint(view, true, null, inside)
+      .slice(0, inside ? 3 : 2)
+      .map((key) => `${key.keys} ${key.does}`)
+  test("names the keys of each", () => {
+    expect(words(false)).toEqual(["arrows panels", "Enter go in"])
+    expect(words(true)).toEqual(["arrows select", "Enter open", "Esc back"])
+  })
+
+  test("going in moves nothing over the hint, however it wraps", () => {
+    const start = viewOf(2, [permission("r1", "w-1")])
+    for (const width of [60, 70, 85, 100, 120, 155]) {
+      const top = dashboardLayout(start, theme, width, 40)
+      const inside = { panel: "tickets", inside: true } as const
+      const side = {
+        needs: start.needs,
+        at: { index: 0, focused: false, inside: false, choice: 0 },
+      }
+      const within = dashboardLayout(start, theme, width, 40, null, side, inside, "b-1" as TicketId)
+      expect([within.table, within.current]).toEqual([top.table, top.current])
+      expect(within.spare + within.hint.length).toBe(top.spare + top.hint.length)
+    }
+  })
+
+  test("is drawn at each level", async () => {
+    await scene(viewOf(1), narrow, async ({ rendered }) => {
+      expect(hintOf(await rendered.capture())).toContain("arrows panels · Enter go in · s stop")
+      await press(rendered, "enter")
+      expect(hintOf(await rendered.capture())).toContain("arrows select · Enter open · Esc back")
+      await press(rendered, "escape")
+      expect(hintOf(await rendered.capture())).toContain("arrows panels · Enter go in")
+    })
+  })
+})
+
+describe("at the top level", () => {
+  test("the focus starts on Tickets, its frame bright; moved off, it dims", async () => {
+    await scene(viewOf(1), wide, async ({ rendered }) => {
+      const on = await rendered.capture()
+      expect(tableFrameColour(on)).toEqual(theme.rgba("emphasis").toInts())
+      expect(has(on, "┏")).toBe(false)
+      await press(rendered, "right")
+      const off = await rendered.capture()
+      expect(tableFrameColour(off)).toEqual(theme.rgba("frame").toInts())
+      // Needs you's own frame goes heavy, without going in: no choice is marked.
+      expect(has(off, "┏")).toBe(true)
+      expect(has(off, "> ")).toBe(false)
+    })
+  })
+
+  test("← → move between the upper two, ↓ to Current, ↑ back to where it came from", async () => {
+    await scene(viewOf(1), wide, async ({ rendered }) => {
+      const panelHeavy = async () => has(await rendered.capture(), "┏")
+      await press(rendered, "right", "down")
+      // Current: its card's frame is heavy, as every frame in it is.
+      expect(heavyOn(await rendered.capture(), "w-1")).toBe(true)
+      await press(rendered, "up")
+      expect(heavyOn(await rendered.capture(), "w-1")).toBe(false)
+      expect(await panelHeavy()).toBe(true)
+      await press(rendered, "left")
+      expect(await panelHeavy()).toBe(false)
+      await press(rendered, "down", "up")
+      expect(tableFrameColour(await rendered.capture())).toEqual(theme.rgba("emphasis").toInts())
+    })
+  })
+
+  test("Tab and Shift+Tab go to the next and previous panel", async () => {
+    await scene(viewOf(1), wide, async ({ rendered }) => {
+      await press(rendered, "tab")
+      expect(has(await rendered.capture(), "┏")).toBe(true)
+      await press(rendered, "tab")
+      expect(heavyOn(await rendered.capture(), "w-1")).toBe(true)
+      await press(rendered, "tab")
+      expect(tableFrameColour(await rendered.capture())).toEqual(theme.rgba("emphasis").toInts())
+      await press(rendered, "shift+tab")
+      expect(heavyOn(await rendered.capture(), "w-1")).toBe(true)
+    })
+  })
+
+  test("Enter on Current goes in and opens nothing; Enter again opens the card", async () => {
+    await scene(viewOf(2), narrow, async ({ commands, rendered }) => {
+      await press(rendered, "down", "enter")
+      expect(taken(commands)).toEqual([])
+      expect(heavyOn(await rendered.capture(), "w-1")).toBe(true)
+      expect(heavyOn(await rendered.capture(), "w-2")).toBe(false)
+      await press(rendered, "enter")
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "w-1" as TicketId })])
+    })
+  })
+
+  test("Esc does nothing, with nothing to come out of", async () => {
+    await scene(viewOf(1), narrow, async ({ commands, rendered }) => {
+      await press(rendered, "escape")
+      expect(taken(commands)).toEqual([])
+      expect(hintOf(await rendered.capture())).toContain("arrows panels")
+    })
+  })
+
+  test("a request is answered from any panel, its card highlighted", async () => {
+    await scene(
+      viewOf(1, [permission("r1", "w-1")]),
+      narrow,
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        expect(hintOf(await rendered.capture())).toContain("d deny · a allow")
+        await press(rendered, "a")
+        expect(taken(commands)).toEqual([
+          UiCommand.Answer({ requestId: "r1", answer: { _tag: "Allow" } }),
+        ])
+      },
+    )
+  })
+
+  test("Enter on Current goes in at the oldest request's card, its first button ready", async () => {
+    await scene(
+      viewOf(2, [permission("r1", "w-2")]),
+      { width: 80, height: 40 },
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        await press(rendered, "down", "enter")
+        expect(taken(commands)).toEqual([])
+        await press(rendered, "enter")
+        expect(taken(commands)).toEqual([
+          UiCommand.Answer({ requestId: "r1", answer: { _tag: "Deny" } }),
+        ])
+      },
+    )
+  })
+})
+
+describe("inside Tickets", () => {
+  test("↑↓ move through the rows, round; Esc comes out and the row is no longer lit", async () => {
+    await scene(viewOf(0), narrow, async ({ rendered }) => {
+      await press(rendered, "enter")
+      expect(lit(await rendered.capture(), "b-1")).toBe(true)
+      await press(rendered, "down")
+      const second = await rendered.capture()
+      expect(lit(second, "b-1")).toBe(false)
+      expect(lit(second, "d-")).toBe(true)
+      await press(rendered, "up", "up")
+      expect(lit(await rendered.capture(), "d-1")).toBe(true)
+      await press(rendered, "escape")
+      const out = await rendered.capture()
+      expect(lit(out, "d-")).toBe(false)
+      expect(lit(out, "b-1")).toBe(false)
+    })
+  })
+
+  test("← → do nothing, and Tab comes out to the next panel", async () => {
+    await scene(viewOf(1), narrow, async ({ rendered }) => {
+      await press(rendered, "enter", "left", "right")
+      expect(lit(await rendered.capture(), "b-1")).toBe(true)
+      await press(rendered, "tab")
+      const frame = await rendered.capture()
+      expect(lit(frame, "b-1")).toBe(false)
+      expect(lit(frame, "Needs you")).toBe(true)
+      expect(hintOf(frame)).toContain("arrows panels")
+    })
+  })
+
+  test("Enter on a Blocked row opens what clears it, and Esc closes the box first", async () => {
+    await scene(viewOf(0), narrow, async ({ rendered }) => {
+      await press(rendered, "enter", "enter")
+      expect(has(await rendered.capture(), "Leave the main checkout clean")).toBe(true)
+      await press(rendered, "escape")
+      const closed = await rendered.capture()
+      expect(has(closed, "Leave the main checkout clean")).toBe(false)
+      expect(lit(closed, "b-1")).toBe(true)
+      await press(rendered, "escape")
+      expect(lit(await rendered.capture(), "b-1")).toBe(false)
+    })
+  })
+
+  test("the selection stays on its ticket as rows re-sort", async () => {
+    await scene(viewOf(0), narrow, async ({ view, rendered }) => {
+      await press(rendered, "enter", "down")
+      const selected = await rendered.capture()
+      const name = ["d-1", "d-2"].find((each) => lit(selected, each)) ?? ""
+      expect(name).not.toBe("")
+      // Another ticket blocks, and goes above it.
+      await rendered.input(() =>
+        view.set(
+          projected([
+            ...doneRows,
+            entryOf("b-1", 2, blocked, null),
+            entryOf("b-2", 3, blocked, null),
+          ]),
+        ),
+      )
+      expect(lit(await rendered.capture(), name)).toBe(true)
+    })
+  })
+})
+
+describe("inside Needs you", () => {
+  test("Enter goes in; Esc comes out", async () => {
+    await scene(viewOf(0), wide, async ({ rendered }) => {
+      await press(rendered, "right")
+      const top = await rendered.capture()
+      expect(has(top, "Enter to choose")).toBe(true)
+      await press(rendered, "enter")
+      const within = await rendered.capture()
+      expect(has(within, "Enter opens its worker view") || has(within, "Enter reads it all")).toBe(
+        true,
+      )
+      await press(rendered, "escape")
+      expect(has(await rendered.capture(), "Enter to choose")).toBe(true)
+    })
+  })
+})
+
+describe("inside Current", () => {
+  test("the arrows move across the cards' grid, two columns", async () => {
+    await scene(viewOf(4), { width: 120, height: 40 }, async ({ commands, rendered }) => {
+      await press(rendered, "down", "enter", "right")
+      expect(heavyOn(await rendered.capture(), "w-2")).toBe(true)
+      await press(rendered, "down")
+      expect(heavyOn(await rendered.capture(), "w-4")).toBe(true)
+      await press(rendered, "left")
+      expect(heavyOn(await rendered.capture(), "w-3")).toBe(true)
+      await press(rendered, "up", "enter")
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "w-1" as TicketId })])
+    })
+  })
+
+  test("Tab and → step an attention card's buttons, then go on", async () => {
+    await scene(
+      viewOf(2, [permission("r1", "w-1")]),
+      narrow,
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        await press(rendered, "down", "enter", "right", "enter")
+        expect(taken(commands)).toEqual([
+          UiCommand.Answer({ requestId: "r1", answer: { _tag: "Allow" } }),
+        ])
+        await press(rendered, "tab")
+        expect(heavyOn(await rendered.capture(), "w-2")).toBe(true)
+      },
+    )
+  })
+
+  test("Esc comes out, then Enter goes back in; ↑ from the top level leaves", async () => {
+    await scene(viewOf(2), narrow, async ({ commands, rendered }) => {
+      await press(rendered, "down", "enter", "down", "escape")
+      expect(hintOf(await rendered.capture())).toContain("arrows panels")
+      await press(rendered, "enter", "enter")
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "w-2" as TicketId })])
+      await press(rendered, "escape", "up")
+      expect(tableFrameColour(await rendered.capture())).toEqual(theme.rgba("emphasis").toInts())
+    })
+  })
+})
+
+describe("a click goes straight in", () => {
+  test("a row selects it, without opening anything", async () => {
+    await scene(viewOf(1), narrow, async ({ commands, rendered }) => {
+      const frame = await rendered.capture()
+      const { x, y } = where(frame, "Title of b-1")
+      await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      const after = await rendered.capture()
+      expect(lit(after, "b-1")).toBe(true)
+      expect(hintOf(after)).toContain("arrows select")
+      expect(taken(commands)).toEqual([])
+    })
+  })
+
+  test("a card opens it, the keys inside Current on that card when the dashboard comes back", async () => {
+    const commands = Effect.runSync(makeCommands)
+    const screen = external<Screen>(Screen.Dashboard())
+    const value = {
+      view: external(viewOf(2)),
+      screen,
+      commands,
+      appearance: external<Appearance>("dark"),
+      themeOf,
+      now: () => began,
+      transcripts: feed,
+    }
+    await withRender(<Root value={value} />, narrow, async (rendered) => {
+      const { x, y } = where(await rendered.capture(), "w-2")
+      await rendered.input((setup) => setup.mockMouse.click(x + 1, y))
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "w-2" as TicketId })])
+      await rendered.input(() => screen.set(Screen.Worker({ ticket: "w-2" as TicketId })))
+      expect(has(await rendered.capture(), "← Dashboard")).toBe(true)
+      await rendered.input(() => screen.set(Screen.Dashboard()))
+      const back = await rendered.capture()
+      expect(hintOf(back)).toContain("arrows select")
+      expect(heavyOn(back, "w-2")).toBe(true)
+      await press(rendered, "enter")
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "w-2" as TicketId })])
+    })
+  })
+
+  test("what is no target goes into the panel it is in", async () => {
+    await scene(viewOf(1), wide, async ({ rendered }) => {
+      const frame = await rendered.capture()
+      const label = where(frame, "Current")
+      await rendered.input((setup) => setup.mockMouse.click(label.x + 1, label.y))
+      const inCurrent = await rendered.capture()
+      expect(hintOf(inCurrent)).toContain("arrows select")
+      expect(heavyOn(inCurrent, "w-1")).toBe(true)
+      const tickets = where(inCurrent, "Tickets")
+      await rendered.input((setup) => setup.mockMouse.click(tickets.x + 1, tickets.y))
+      expect(lit(await rendered.capture(), "b-1")).toBe(true)
+      const panel = where(await rendered.capture(), "Needs you ·")
+      await rendered.input((setup) => setup.mockMouse.click(panel.x + 1, panel.y))
+      expect(has(await rendered.capture(), "┏")).toBe(true)
+      expect(lit(await rendered.capture(), "b-1")).toBe(false)
+    })
+  })
+})
+
+describe("a resize", () => {
+  test("that drops the panel moves the focus off it, to the top of Tickets", async () => {
+    await scene(viewOf(1), wide, async ({ rendered }) => {
+      await press(rendered, "right", "enter")
+      expect(has(await rendered.capture(), "┏")).toBe(true)
+      await rendered.input((setup) => setup.resize(100, 40))
+      const frame = await rendered.capture()
+      expect(tableFrameColour(frame)).toEqual(theme.rgba("emphasis").toInts())
+      expect(hintOf(frame)).toContain("arrows panels")
+    })
+  })
+
+  test("that drops the table moves the focus off it, inside it or not", async () => {
+    await scene(viewOf(1), { width: 80, height: 40 }, async ({ rendered }) => {
+      await press(rendered, "enter")
+      expect(lit(await rendered.capture(), "b-1")).toBe(true)
+      await rendered.input((setup) => setup.resize(80, 16))
+      const frame = await rendered.capture()
+      expect(has(frame, "Tickets")).toBe(false)
+      expect(hintOf(frame)).toContain("arrows panels")
+      expect(lit(frame, "Needs you")).toBe(true)
+    })
+  })
+})
+
+describe("1–9", () => {
+  test("answer the panel's question at once from the top level, without going in", async () => {
+    await scene(askingView(), wide, async ({ commands, rendered }) => {
+      await Bun.sleep(settle + 50)
+      await press(rendered, "1")
+      expect(taken(commands)).toMatchObject([
+        { _tag: "AnswerQuestion", question: "q-1", answer: "Use --flag" },
+      ])
+    })
+  })
+
+  test("inside Needs you ↑↓ move through its options, and Enter picks one", async () => {
+    await scene(askingView(), wide, async ({ commands, rendered }) => {
+      await press(rendered, "right", "enter")
+      expect(has(await rendered.capture(), "> 1 Use --flag")).toBe(true)
+      await press(rendered, "down")
+      expect(has(await rendered.capture(), "> 2 Use --other")).toBe(true)
+      await Bun.sleep(settle + 50)
+      await press(rendered, "enter")
+      expect(taken(commands)).toMatchObject([
+        { _tag: "AnswerQuestion", question: "q-1", answer: "Use --other" },
+      ])
+    })
+  })
+
+  test("a click on an option picks it", async () => {
+    await scene(askingView(), wide, async ({ commands, rendered }) => {
+      await Bun.sleep(settle + 50)
+      const { x, y } = where(await rendered.capture(), "2 Use --other")
+      await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
+      expect(taken(commands)).toMatchObject([
+        { _tag: "AnswerQuestion", question: "q-1", answer: "Use --other" },
+      ])
+    })
+  })
+
+  test("go to the card's question with the focus on Current, not the panel's", async () => {
+    await scene(
+      askingView([cardQuestion("c1", "w-1")], 1),
+      wide,
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        await press(rendered, "down", "enter", "2", "enter")
+        expect(taken(commands)).toEqual([
+          UiCommand.Answer({
+            requestId: "c1",
+            answer: { _tag: "Choose", answers: ["Write a new"] },
+          }),
+        ])
+      },
+    )
+  })
+
+  test("go to the target card's question where the panel shows no question", async () => {
+    await scene(
+      viewOf(1, [cardQuestion("c1", "w-1")]),
+      wide,
+      async ({ commands, pass, rendered }) => {
+        pass(settle)
+        await press(rendered, "2", "down", "enter", "enter")
+        expect(taken(commands)).toEqual([
+          UiCommand.Answer({
+            requestId: "c1",
+            answer: { _tag: "Choose", answers: ["Write a new"] },
+          }),
+        ])
+      },
+    )
+  })
+})

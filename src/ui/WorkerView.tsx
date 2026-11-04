@@ -345,7 +345,7 @@ export const workerViewCommands = (
     {
       keys: [],
       run: nothing,
-      help: ["Esc, Tab, Enter", "switch workers, by way of the dashboard"],
+      help: ["Esc, arrows, Enter", "switch workers, by way of the dashboard"],
     },
     { ...keys.write, hint: named(viewing, "i", "write"), help: writeRow },
     {

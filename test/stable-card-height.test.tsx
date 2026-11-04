@@ -118,7 +118,7 @@ const value = (view: RunView): ShellValue => ({
 const currentOf = (frame: Frame): ReadonlyArray<string> => {
   const lines = frame.chars.split("\n").map((line) => line.trimEnd())
   const from = lines.findIndex((line) => line.trim() === "Current")
-  const to = lines.findIndex((line, i) => i > from && /^\s+(Tab select|s stop)/.test(line))
+  const to = lines.findIndex((line, i) => i > from && /^\s+(arrows panels|s stop)/.test(line))
   return lines.slice(from, to).filter((line) => line !== "")
 }
 

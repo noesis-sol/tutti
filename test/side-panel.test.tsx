@@ -313,7 +313,7 @@ const taken = (commands: Commands): ReadonlyArray<UiCommand> =>
   Effect.runSync(Queue.clear(commands))
 
 describe("answering on the panel", () => {
-  test("Tab reaches the panel; after the guard, 1 answers with the recommended option", async () => {
+  test("Tab reaches the panel; after the guard, 1 answers at once with the recommended option", async () => {
     const commands = Effect.runSync(makeCommands)
     await withRender(
       <Root
@@ -330,7 +330,7 @@ describe("answering on the panel", () => {
       async (rendered) => {
         await rendered.input((setup) => setup.mockInput.pressTab())
         const focused = await rendered.capture()
-        expect(focused.chars).toContain("> 1 Round 2 holds")
+        expect(focused.chars).not.toContain("> 1 Round 2 holds")
         expect(focused.chars).toContain("┏")
         // Too soon after the question was drawn, 1 answers nothing.
         await rendered.input((setup) => setup.mockInput.pressKey("1"))

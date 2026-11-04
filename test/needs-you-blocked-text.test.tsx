@@ -159,7 +159,7 @@ describe("what the view gives Needs you", () => {
 describe("the panel's lines", () => {
   const texts = (lines: ReadonlyArray<ReadonlyArray<{ readonly text: string }>>) =>
     lines.map((line) => line.map((segment) => segment.text).join(""))
-  const at = { index: 0, focused: true, choice: 0 }
+  const at = { index: 0, focused: true, inside: true, choice: 0 }
 
   test("tall enough: all of it, then the foot", () => {
     const lines = texts(needsLines([needOf()], at, theme, 60, 20)).join("\n")
@@ -201,11 +201,13 @@ describe("the panel's lines", () => {
   })
 
   test("too short: what to do first, and the foot says how to read the rest", () => {
-    const said = texts(needsLines([needOf()], { ...at, focused: false }, theme, 60, 9)).join("\n")
+    const said = texts(
+      needsLines([needOf()], { ...at, focused: false, inside: false }, theme, 60, 9),
+    ).join("\n")
     expect(said).toContain("loop.ts, cli.test.ts")
     expect(said).toContain("git rebase trunk")
     expect(said).not.toContain("next run checks")
-    expect(said).toContain("… click reads it all · Tab to choose")
+    expect(said).toContain("… click reads it all · Enter to choose")
   })
 })
 
@@ -253,8 +255,7 @@ describe("the panel's cut text", () => {
       expect(flat(await rendered.capture())).toContain("next run checks")
       await rendered.input(pressEscape)
       expect((await rendered.capture()).chars).not.toContain("next run checks")
-      // Tab to the panel; Enter reads it all; Enter there opens its worker view.
-      await rendered.input((setup) => setup.mockInput.pressTab())
+      // The click went into the panel: Enter reads it all; Enter there, its worker view.
       await rendered.input((setup) => setup.mockInput.pressEnter())
       expect(flat(await rendered.capture())).toContain("next run checks")
       expect(Effect.runSync(Queue.clear(commands))).not.toContainEqual(openWorker)
@@ -310,6 +311,7 @@ describe("Enter on a panel that shows it all", () => {
     const each = entry({ phase: TicketPhase.Blocked({ why: "DIRTY_TREE" }), about: undefined })
     await dashboard(each, { width: 140, height: 44 }, async (rendered, commands) => {
       await rendered.input((setup) => setup.mockInput.pressTab())
+      await rendered.input((setup) => setup.mockInput.pressEnter())
       const frame = await rendered.capture()
       expect(flat(frame)).toContain("next run checks")
       expect(frame.chars).toContain("Enter opens its worker view")

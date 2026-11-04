@@ -31,7 +31,7 @@ const clickedAt = (event: MouseEvent): boolean => {
  * targets around it see neither its press nor its release. A renderer that leaves the mouse to the
  * terminal (--no-mouse) sends it none.
  */
-export const clickable = (run: () => void) => ({
+export const clickable = (run: (event: MouseEvent) => void) => ({
   onMouseDown: (event: MouseEvent) => {
     if (event.button !== 0) return
     event.stopPropagation()
@@ -40,6 +40,6 @@ export const clickable = (run: () => void) => ({
   onMouseUp: (event: MouseEvent) => {
     if (event.button !== 0) return
     event.stopPropagation()
-    if (clickedAt(event)) run()
+    if (clickedAt(event)) run(event)
   },
 })

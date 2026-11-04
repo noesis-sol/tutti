@@ -261,7 +261,7 @@ describe("Needs you beside the tickets table", () => {
     const drawn = (why: string) =>
       needsLines(
         [Need.Blocked({ ...blockedFields, title: "Title", why })],
-        { index: 0, focused: true, choice: 0 },
+        { index: 0, focused: true, inside: true, choice: 0 },
         theme,
         60,
         12,

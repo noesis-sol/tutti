@@ -135,11 +135,11 @@ describe("Current with more cards than slots", () => {
     test(`${name}: the box closes above the foot, which is drawn whole`, async () => {
       const lines = await draw(view, size)
       expect(lines).toHaveLength(size.height)
-      const hint = lines[size.height - 1] ?? ""
-      expect(hint).toContain("Tab select")
-      expect(hint).toContain("? keys")
-      expect(lines[size.height - 2]).toContain("Winding down · 1 running, no new tickets")
-      const current = currentOf(lines, 2)
+      // The hint names every key, on two lines at 60 columns.
+      const first = lines.findIndex((line) => line.includes("arrows panels"))
+      expect(lines.at(-1)).toContain("? keys")
+      expect(lines[first - 1]).toContain("Winding down · 1 running, no new tickets")
+      const current = currentOf(lines, size.height - first + 1)
       // The box's bottom border is the last line Current draws, above the wind-down line.
       const bottom = current.findLastIndex((line) => line.startsWith("╰"))
       expect(bottom).toBeGreaterThan(0)

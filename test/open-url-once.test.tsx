@@ -130,7 +130,11 @@ const onOpenUrl = async (
   }
   await withRender(<Root value={value} />, { width: 100, height: 40 }, async (rendered) => {
     at += settle
-    await rendered.input((setup) => setup.mockInput.pressTab())
+    await rendered.input((setup) => {
+      setup.mockInput.pressArrow("down")
+      setup.mockInput.pressEnter()
+      setup.mockInput.pressTab()
+    })
     const press = () => rendered.input((setup) => setup.mockInput.pressEnter())
     const toWorkerView = async () => {
       await rendered.input(() => screen.set(Screen.Worker({ ticket: "t-1" as TicketId })))

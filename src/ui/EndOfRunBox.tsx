@@ -6,7 +6,7 @@
 // the hand-back's line, then the frame and its first words, and always keeps what `q` does.
 import { conflictWaits, type Waiting } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
-import { boxed, cut, padded, type Segments, seg, wrap } from "./line.tsx"
+import { type Border, boxed, cut, padded, type Segments, seg, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /**
@@ -38,13 +38,15 @@ export const endOfRunConflict =
 /**
  * The box's lines, `width` wide, its frame included, at most `height` of them: as many workers
  * named as fit, then the hand-back's line left out, then the box's first words and frame, the line
- * of what `q` does kept to the last, cut to one line where nothing else fits.
+ * of what `q` does kept to the last, cut to one line where nothing else fits. Heavy where the focus
+ * is on it, in Current's place.
  */
 export const endOfRunLines = (
   waiting: ReadonlyArray<Waiting>,
   theme: Theme,
   width: number,
   height: number = Number.POSITIVE_INFINITY,
+  border: Border = "rounded",
 ): ReadonlyArray<Segments> => {
   const inner = Math.max(width - 4, 1)
   const look = theme.look("needsYou")
@@ -61,11 +63,12 @@ export const endOfRunLines = (
       ],
       width,
       look,
+      border,
     )
   const forms = function* () {
     for (let named = waiting.length; named >= 0; named--) yield boxOf(named, true)
     yield boxOf(0, false)
-    yield boxed(about, width, look)
+    yield boxed(about, width, look, border)
     yield height >= 1 ? [padded(cut([seg(` ${endOfRunAbout}`, look)], width), width)] : []
   }
   return firstFitting(forms(), (lines) => lines.length <= height) ?? []

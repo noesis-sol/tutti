@@ -195,8 +195,8 @@ const rows: ReadonlyArray<Row> = [
 ]
 
 const hintKeys: ReadonlyArray<Key> = [
-  { keys: "Tab", does: "select" },
-  { keys: "Enter", does: "open" },
+  { keys: "arrows", does: "panels" },
+  { keys: "Enter", does: "go in" },
   { keys: "a", does: "allow" },
   { keys: "d", does: "deny" },
   { keys: "q", does: "stop" },
