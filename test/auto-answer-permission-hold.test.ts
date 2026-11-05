@@ -22,7 +22,7 @@ const folder = (name: string) =>
   realpathSync(mkdtempSync(join(tmpdir(), `auto-answer-hold-${name}-`)))
 
 /** Lets the run go, in real time, until `done`. */
-const until = (done: Effect.Effect<boolean, never, Attention>, what: string) =>
+const until = <R>(done: Effect.Effect<boolean, never, R>, what: string) =>
   Effect.gen(function* () {
     for (let i = 0; i < 2000; i++) {
       if (yield* done) return
