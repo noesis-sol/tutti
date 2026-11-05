@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.6.12] - 2026-11-05
+
 - A dashboard run whose last ticket's merge conflict is set aside stays open for it, the end-of-run box naming it and saying what `h`, a rebase by hand and `q` do, rather than end at once with no time for either; a plain or overnight run, or one that holds, winds down or has its merges stopped, ends as before (§ 4.3, § 5 item 14; `src/run/runEnd.ts`, `src/run/look.ts`, `src/ui/EndOfRunBox.tsx`; tutti-tp2f).
 
 ## [0.6.11] - 2026-11-05
