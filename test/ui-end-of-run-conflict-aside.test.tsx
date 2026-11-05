@@ -10,6 +10,7 @@ import { conflictSetAside, emptyStatus, project, type RunView } from "../src/run
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
+import { settle } from "../src/ui/attentionKeys.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
@@ -103,6 +104,8 @@ describe("the box naming a conflict set aside", () => {
       await until(rendered, (now) => now.chars.includes(conflictSetAside))
       await rendered.input((setup) => setup.mockInput.pressTab())
       await until(rendered, (now) => now.chars.includes("h hands it back"))
+      // h waits until the panel's row has been drawn for settle (tutti-aeah).
+      await Bun.sleep(settle + 50)
       taken(commands)
       await rendered.input((setup) => setup.mockInput.typeText("h"))
       expect(taken(commands)).toEqual([UiCommand.HandBackNow({ ticket: t1 })])
