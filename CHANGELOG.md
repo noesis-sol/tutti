@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## [0.6.11] - 2026-11-05
+
+- `Tab` starts the box selection again, rather than move between the dashboard's panels: from the top level it goes into Current on its first card, `Shift+Tab` its last, so `Tab Enter` opens a worker and `Esc` comes back out; it goes on through an attention card's buttons, the next card, past the last Needs you, then the rows that want you, and round, and with no cards drawn it goes to what needs you. The arrows keep the two levels, and the hint says `Tab select · arrows panels · Enter go in` (§ 7.3; `src/ui/panelFocus.ts`' `tabStop`, `src/ui/Dashboard.tsx`; tutti-149z.5).
 - With the focus on the tickets table, the lines between its columns go bright with its frame, rather than staying dim, which left a bright stub where each joins the frame's top and bottom (§ 7.2; `src/ui/TicketsTable.tsx`, `src/ui/line.tsx`' `framed`). `test/dashboard-panels.test.tsx` covers it.
 
 ## [0.6.10] - 2026-11-05
@@ -9,7 +12,6 @@
 - A question whose answer from the Needs you list bd refuses comes back to the list, rather than stay out until the list is closed and opened again with only its toast saying so (§ 7.2; `src/ui/QuestionsBox.tsx`' `RefusedAnswers`, `src/ui/NeedsList.tsx`, `src/ui/keys.ts`' `NeedsAnswer`; tutti-zpzj). `test/needs-list-answer-refused.test.tsx` covers it.
 - A Deferred row bd couldn't defer says what its `DEFER_FAILED` line says, rather than `Run bd undefer <id> to bring it back`, which doesn't apply to a ticket bd never deferred (§ 7.2; `src/run/ledger.ts`' `deferFailed`, `src/run/aside.ts`' `putAside`, `src/run/schedule.ts`, `src/ui/SidePanel.tsx`' `rowParagraphs`; tutti-1755). `test/defer-failed-row.test.tsx` covers it.
 
-- `Tab` starts the box selection again, rather than move between the dashboard's panels: from the top level it goes into Current on its first card, `Shift+Tab` its last, so `Tab Enter` opens a worker and `Esc` comes back out; it goes on through an attention card's buttons, the next card, past the last Needs you, then the rows that want you, and round, and with no cards drawn it goes to what needs you. The arrows keep the two levels, and the hint says `Tab select · arrows panels · Enter go in` (§ 7.3; `src/ui/panelFocus.ts`' `tabStop`, `src/ui/Dashboard.tsx`; tutti-149z.5).
 ## [0.6.9] - 2026-11-04
 
 - `h` hands back the ticket Blocked on its merge conflict that Needs you's panel shows wherever the focus is, in the tickets table too, rather than only with the focus on the panel while the panel said `Press h` everywhere, and the panel's foot says so; like the digits it waits until the row has been drawn for half a second (§ 7.3; `src/ui/Dashboard.tsx`, `src/ui/SidePanel.tsx`; tutti-aeah).
