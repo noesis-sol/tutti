@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.6.10] - 2026-11-05
+
 - A question whose answer from the Needs you list bd refuses comes back to the list, rather than stay out until the list is closed and opened again with only its toast saying so (§ 7.2; `src/ui/QuestionsBox.tsx`' `RefusedAnswers`, `src/ui/NeedsList.tsx`, `src/ui/keys.ts`' `NeedsAnswer`; tutti-zpzj). `test/needs-list-answer-refused.test.tsx` covers it.
 - A Deferred row bd couldn't defer says what its `DEFER_FAILED` line says, rather than `Run bd undefer <id> to bring it back`, which doesn't apply to a ticket bd never deferred (§ 7.2; `src/run/ledger.ts`' `deferFailed`, `src/run/aside.ts`' `putAside`, `src/run/schedule.ts`, `src/ui/SidePanel.tsx`' `rowParagraphs`; tutti-1755). `test/defer-failed-row.test.tsx` covers it.
 
