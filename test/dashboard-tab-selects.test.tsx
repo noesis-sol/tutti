@@ -306,6 +306,21 @@ describe("Tab at the top level", () => {
     })
   })
 
+  test("starts at the first card from a cell the arrows came to after a resize moved it off", async () => {
+    await scene(wanting(2), narrow, async ({ rendered }) => {
+      await press(rendered, "tab", "tab", "tab")
+      expect(lit(await rendered.capture(), "Needs you")).toBe(true)
+      await rendered.input((setup) => setup.resize(wide.width, wide.height))
+      await rendered.input((setup) => setup.resize(narrow.width, narrow.height))
+      await press(rendered, "up")
+      expect(lit(await rendered.capture(), "Needs you")).toBe(true)
+      await press(rendered, "tab")
+      const frame = await rendered.capture()
+      expect(heavyOn(frame, "w-1")).toBe(true)
+      expect(pointed(frame, "b-1")).toBe(false)
+    })
+  })
+
   test("Enter then opens the card, in one press", async () => {
     await scene(quiet(2), narrow, async ({ commands, rendered }) => {
       await press(rendered, "tab", "enter")
@@ -525,6 +540,23 @@ describe("Tab with no cards", () => {
       await press(rendered, "tab")
       expect((await rendered.capture()).chars).toBe(before.chars)
     })
+  })
+
+  test("with the table left out, does nothing, though the hint names it (tutti-qylo)", async () => {
+    const aside = TicketPhase.Deferred({ why: "by the worker" })
+    const size = { width: 80, height: 20 }
+    await scene(
+      projected([entryOf("s-1", 0, aside, null)]),
+      size,
+      async ({ commands, rendered }) => {
+        const before = await rendered.capture()
+        expect(before.chars).not.toContain("s-1")
+        expect(before.chars).toContain("Tab select")
+        await press(rendered, "tab")
+        expect((await rendered.capture()).chars).toBe(before.chars)
+        expect(taken(commands)).toEqual([])
+      },
+    )
   })
 
   describe("below the minimum size, which draws none", () => {

@@ -519,7 +519,9 @@ const pickRow: HelpRow = ["1–4, 1–9 on the panel", "pick a question's option
 
 /**
  * Whether `Tab` has somewhere to go, with `needs` not answered here: a card drawn, or something that
- * wants you. Below the minimum size, only the totals' Needs you is drawn of them.
+ * wants you. Below the minimum size, only the totals' Needs you is drawn of them. The hint asks this
+ * before the table's room is known, so a row that wants you counts where the table is left out, and
+ * the hint names a `Tab` that does nothing, accepted on purpose (§ 7.3, tutti-qylo).
  */
 const tabGoes = (view: RunView, needs: ReadonlyArray<Need>, small: boolean): boolean =>
   needs.length > 0 ||
@@ -843,6 +845,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   useEffect(() => {
     if (settled !== focus) {
       setFocus(() => settled)
+      setTabbedToCell(() => false)
       if (focus.panel === "current") answering.reset()
     }
   })
