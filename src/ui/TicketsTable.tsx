@@ -233,15 +233,14 @@ export const ticketsLines = (
   }
   if (hidden.length > 0 && cells.length < limit) cells.push(foldedCells(hidden, theme, aboutWidth))
   while (cells.length < limit) cells.push([[], [], []])
-  // With the focus on the table its frame goes bright; the lines between its columns stay dim, so
-  // that the frame, not a grid, says where the focus is.
+  // With the focus on the table its lines go bright, those between its columns and their joins with
+  // the frame too, so that no column line starts and ends in a bright stub.
   return [
     [seg("  "), seg("Tickets", styles.tickets)],
     ...framed(
       cells,
       [stateColumn, idWidth, aboutWidth],
       reach?.focused === true ? theme.look("emphasis", "bold") : theme.look("frame"),
-      theme.look("frame"),
     ),
   ]
 }

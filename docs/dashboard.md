@@ -458,7 +458,7 @@ the keys are still on this worker's card, and open the other's (an arrow, then `
 
 The dashboard's keys work at two levels. At the top level the arrows move the focus between its
 panels, **Tickets** top left, **Needs you** top right, **Current** below, and the focused panel's frame
-is drawn bright (the table's lines between its columns stay dim). `Enter`, or a click, goes into a
+is drawn bright (the table's lines between its columns with it). `Enter`, or a click, goes into a
 panel, where the keys select in it (the table's row selected has a `▸` before it), and `Esc` comes
 out, an open box closing first. A request's `d` and `a` work from any panel at the top level.
 

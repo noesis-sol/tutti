@@ -507,7 +507,7 @@ describe("inside Tickets", () => {
     })
   })
 
-  test("the row selected has the pointer and goes bold, with no fill; the lines between the columns stay dim", async () => {
+  test("the row selected has the pointer and goes bold, with no fill; the lines between the columns go bright with the frame", async () => {
     await scene(viewOf(0), narrow, async ({ rendered }) => {
       await press(rendered, "enter")
       const frame = await rendered.capture()
@@ -527,16 +527,26 @@ describe("inside Tickets", () => {
         (each) => each.char.trim() !== "" && each.char !== "│",
       )
       expect(plain.map((each) => each.fg)).toEqual(text.slice(1).map((each) => each.fg))
-      // Another row's lines between the columns keep the dim frame's colour, while its sides, as
-      // the frame's top, go bright.
+      // Another row's lines between the columns go bright with its sides and the frame's top, and so
+      // do their joins with the top and bottom, so that no column line has a bright stub at an end.
+      const bright = tableFrameColour(frame)
+      if (bright === undefined) throw new Error("no table frame")
+      expect(bright).not.toEqual(theme.rgba("frame").toInts())
       const other = tableRow(frame, "d-1")
       const bars = other.filter((each) => each.char === "│")
-      expect(bars.slice(1, -1).map((each) => each.fg)).toEqual([
-        theme.rgba("frame").toInts(),
-        theme.rgba("frame").toInts(),
-      ])
-      expect(bars[0]?.fg).toEqual(tableFrameColour(frame))
-      expect(tableFrameColour(frame)).not.toEqual(theme.rgba("frame").toInts())
+      expect(bars).toHaveLength(4)
+      expect(bars.map((each) => each.fg)).toEqual([bright, bright, bright, bright])
+      const lines = linesOf(frame)
+      const top = lines.findIndex((line) => line.trimStart().startsWith("Tickets")) + 1
+      const bottom = lines.findIndex((line, y) => y > top && line.startsWith("╰"))
+      const joins = [top, bottom].flatMap((y) =>
+        (frame.spans.lines[y]?.spans ?? []).flatMap((span) =>
+          Array.from(span.text).flatMap((char) =>
+            char === "┬" || char === "┴" ? [span.fg.toInts()] : [],
+          ),
+        ),
+      )
+      expect(joins).toEqual([bright, bright, bright, bright])
     })
   })
 

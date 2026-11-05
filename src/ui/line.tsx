@@ -443,30 +443,22 @@ export const Section = ({
 
 /**
  * A rounded frame around `rows`, each of cells in columns `widths` wide (a space each side besides),
- * its borders in `frame` and the lines between its columns in `columns`, the frame's where not
- * given: one line a row, and the top and bottom borders.
+ * its lines in `frame`: one line a row, and the top and bottom borders.
  */
 export const framed = (
   rows: ReadonlyArray<ReadonlyArray<Segments>>,
   widths: ReadonlyArray<number>,
   frame: Look,
-  columns: Look = frame,
 ): ReadonlyArray<Segments> => {
   const edge = (left: string, join: string, right: string): Segments => [
     seg(left + widths.map((w) => "─".repeat(w + 2)).join(join) + right, frame),
   ]
   const bar = seg("│", frame)
-  const between = seg("│", columns)
   return [
     edge("╭", "┬", "╮"),
     ...rows.map((cells) => [
       bar,
-      ...widths.flatMap((w, i) => [
-        seg(" "),
-        ...padded(cut(cells[i] ?? [], w), w),
-        seg(" "),
-        i === widths.length - 1 ? bar : between,
-      ]),
+      ...widths.flatMap((w, i) => [seg(" "), ...padded(cut(cells[i] ?? [], w), w), seg(" "), bar]),
     ]),
     edge("╰", "┴", "╯"),
   ]

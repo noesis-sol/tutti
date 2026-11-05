@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- With the focus on the tickets table, the lines between its columns go bright with its frame, rather than staying dim, which left a bright stub where each joins the frame's top and bottom (§ 7.2; `src/ui/TicketsTable.tsx`, `src/ui/line.tsx`' `framed`). `test/dashboard-panels.test.tsx` covers it.
+
 ## [0.6.10] - 2026-11-05
 
 - A question whose answer from the Needs you list bd refuses comes back to the list, rather than stay out until the list is closed and opened again with only its toast saying so (§ 7.2; `src/ui/QuestionsBox.tsx`' `RefusedAnswers`, `src/ui/NeedsList.tsx`, `src/ui/keys.ts`' `NeedsAnswer`; tutti-zpzj). `test/needs-list-answer-refused.test.tsx` covers it.
