@@ -253,9 +253,10 @@ export interface EnvironmentHold {
   blamed(verdict: Verdict): Effect.Effect<void>
   /**
    * Once nothing runs or waits to merge, with `stops` the run's: when the hold's stop is the only
-   * one, waits probeWait and probes the machine.
+   * one, waits probeWait and probes the machine, with `meanwhile` running as it does: the run's
+   * loop is here, so no look runs.
    */
-  probe(stops: Stops): Effect.Effect<Probed>
+  probe(stops: Stops, meanwhile?: Effect.Effect<never>): Effect.Effect<Probed>
   /** The probe's card while its session runs, null otherwise: now, then each change. */
   readonly probing: Stream.Stream<ProbeView | null>
 }
@@ -544,19 +545,9 @@ export const make = (options: {
         ),
       )
 
-    const probe = (stops: Stops) =>
+    // The hold's wait, then its probe, with the stop `now` holding the run.
+    const waitAndProbe = (now: HoldState) =>
       Effect.gen(function* () {
-        const now = yield* Ref.get(state)
-        const winding = (yield* ledger.current).windDown !== null
-        if (
-          now.stop === null ||
-          stops[0] !== now.stop ||
-          stops.length > 1 ||
-          Duration.isZero(after) ||
-          winding
-        ) {
-          return Probed.Ends()
-        }
         const wait = probeWait(after, now.probes)
         yield* Ref.set(state, { ...now, probes: now.probes + 1 })
         const command = yield* setupNow
@@ -591,6 +582,22 @@ export const make = (options: {
         yield* say({ kind: "probed", text: ok })
         yield* requeue
         return Probed.Resumed()
+      })
+
+    const probe = (stops: Stops, meanwhile: Effect.Effect<never> = Effect.never) =>
+      Effect.gen(function* () {
+        const now = yield* Ref.get(state)
+        const winding = (yield* ledger.current).windDown !== null
+        if (
+          now.stop === null ||
+          stops[0] !== now.stop ||
+          stops.length > 1 ||
+          Duration.isZero(after) ||
+          winding
+        ) {
+          return Probed.Ends()
+        }
+        return yield* Effect.raceFirst(waitAndProbe(now), meanwhile)
       })
 
     return {

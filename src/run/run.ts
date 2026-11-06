@@ -1208,6 +1208,22 @@ const runFrom = (
     })
     // The loop (look.ts): it looks at each wake until nothing is left, then ends the run.
     const fillContext = yield* Effect.context<WorkEnv | FileSystem.FileSystem | Notifier>()
+    // Where no look runs, the environment hold's wait for its probe and the end's steps, the wakes
+    // are this one's: it reads which questions are answered at each, for the dashboard, as a look
+    // that takes nothing back does (asked.ts). A look after the wait looks whatever it took.
+    const answersAtWakes: Effect.Effect<never> =
+      screen === null
+        ? Effect.never
+        : Effect.forever(
+            Effect.gen(function* () {
+              if (reads(yield* wakes.take)) {
+                const { look } = yield* lookAtAsked
+                yield* readAnswers(look)
+                yield* showOn(status, "answered")(look.noSlot)
+              }
+              yield* wakes.next(Effect.never)
+            }),
+          ).pipe(Effect.provideContext(fillContext))
     const { untilEnd } = yield* makeLoop({
       fill: Effect.provideContext(fill, fillContext),
       wakes,
@@ -1223,7 +1239,7 @@ const runFrom = (
       playbook,
       usage,
       commands,
-      environment,
+      environment: { probe: (stops) => environment.probe(stops, answersAtWakes) },
       resuming: Effect.map(Ref.get(unslotted), (all) => all.size > 0),
       answering: Ref.get(autoAnswering),
       unread: Effect.map(Ref.get(outage), (now) => now !== null),
@@ -1251,26 +1267,11 @@ const runFrom = (
     // The loop's end set it already, under the commands' lock; a quit sets it at once, without
     // waiting for a command acting now: quitting holds the merges and interrupts the workers.
     yield* commands.end
-    // No look runs from here, through the full check and the rest of the end, so the wakes are
-    // this fiber's: it reads which questions are answered at each, for the dashboard, as a look
-    // that takes nothing back does (asked.ts). The next run takes those tickets back. It reads at
-    // once for an answer whose wake came too late for the last look; one recorded after that finds
-    // the end set, and wakes it.
+    // No look runs from here, through the full check and the rest of the end. The next run takes
+    // back the tickets it reads as answered. Reading at once covers an answer whose wake came too
+    // late for the last look; one recorded after that finds the end set, and wakes it.
     yield* showOn(status, "looksOver")(true)
-    if (screen !== null) {
-      yield* watch(
-        Effect.forever(
-          Effect.gen(function* () {
-            if (reads(yield* wakes.take)) {
-              const { look } = yield* lookAtAsked
-              yield* readAnswers(look)
-              yield* showOn(status, "answered")(look.noSlot)
-            }
-            yield* wakes.next(Effect.never)
-          }),
-        ),
-      )
-    }
+    yield* watch(answersAtWakes)
     // No ticket is taken any more: the guess under way is aborted.
     if (predictor !== undefined) yield* predictor.interrupt
     // A worker past its ticket limit, or waiting on you, is still at it: every ticket's fiber is

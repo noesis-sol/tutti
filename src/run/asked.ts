@@ -16,10 +16,11 @@
 // taken, a solo ticket running, the machine at --machine-workers, a hold), it stays Asked, and a
 // later poll brings it back; until then it no longer needs you, as the look tells RunView (the
 // look's noSlot, Status's answered), so its row says `↻ answered`. A look that takes nothing back,
-// the run holding or winding down, still reads which are answered (readAnswers). So does the run past
-// its last look, at each wake (run.ts): through the end's steps, the full check among them, an answer
-// has its row say `↻ answered`, though the run, having decided to end, resumes nothing: its scheduler
-// is interrupted and its closing line written, so the next run takes the ticket back. Within a look, answerQuestions and takeAnswers share what they read
+// the run holding or winding down, still reads which are answered (readAnswers). So does the run where
+// no look runs, at each wake (run.ts): the environment hold's wait for its probe, and the end's steps,
+// the full check among them. There an answer has its row say `↻ answered`, though a run past its last
+// look, having decided to end, resumes nothing: its scheduler is interrupted and its closing line
+// written, so the next run takes the ticket back. Within a look, answerQuestions and takeAnswers share what they read
 // (AskedLook): bd's open list, read once at the look's start where a ticket is Asked, and each
 // Asked ticket's bd show. A ticket whose question that list has still open, labelled human, isn't
 // shown at all, as it can't come back yet; one answered by hand drops out of the list and is shown
