@@ -179,6 +179,8 @@ export interface Status {
    * tickets to come back in yet (asked.ts's takeAnswers): those tickets no longer need you.
    */
   readonly answered: ReadonlySet<string>
+  /** Whether the run's looks are over, its end's steps going: it takes nothing back any more. */
+  readonly looksOver: boolean
   /** The triage organ's verdicts on tickets set aside, by ticket: `environment · high · …`. */
   readonly verdicts: ReadonlyMap<string, string>
   /** How the checks of tickets waiting to merge go ahead of their turn, by ticket (mergetrain.ts). */
@@ -217,6 +219,7 @@ export const emptyStatus: Status = {
   holdTexts: { waits: {}, skips: {} },
   questions: new Map(),
   answered: new Set(),
+  looksOver: false,
   verdicts: new Map(),
   checksAhead: new Map(),
   probe: null,
@@ -756,13 +759,15 @@ export const runGoes = (
       : "windingDown"
 
 /**
- * When an Asked ticket whose question is answered comes back: a run winding down, stopping or
- * quitting takes back nothing, so not in this run; a stop that lifts says the next free slot again.
+ * When an Asked ticket whose question is answered comes back: a run winding down, stopping,
+ * quitting or past its last look takes back nothing, so not in this run; a stop that lifts says the
+ * next free slot again.
  */
 export const resumesAt = (
   ledger: Pick<State, "windDown">,
-  status: Pick<Status, "stopping" | "quitting">,
-): string => (runGoes(ledger, status) === "on" ? "the next free slot" : "the next run")
+  status: Pick<Status, "stopping" | "quitting" | "looksOver">,
+): string =>
+  runGoes(ledger, status) === "on" && !status.looksOver ? "the next free slot" : "the next run"
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {

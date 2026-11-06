@@ -5,7 +5,8 @@
 // the run starts, whenever a ticket's fiber ends or a merge finishes, and on each ready poll. Each
 // such look first puts back the Waiting tickets whose blockers merged, checks once more in a slot
 // each ticket set aside for a failed check whose base has moved on (recheck.ts), and resumes the
-// Asked ones whose questions are answered (asked.ts), unless the run holds or winds down.
+// Asked ones whose questions are answered (asked.ts), unless the run holds or winds down; past the
+// last look, it only reads which are answered, and the next run takes them back.
 //
 // Holds and stops (§ 5 item 10): a stop holds the run (no new tickets, the running ones finish and
 // merge), and the run ends once nothing runs or waits to merge, with the stops' line and the first
@@ -201,7 +202,7 @@ import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold } from "./usageLimit.ts"
 import { make as watchUsageWindows } from "./usageWindows.ts"
-import { make as makeWakes, mergeWakes } from "./wakes.ts"
+import { make as makeWakes, mergeWakes, reads } from "./wakes.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -1103,6 +1104,22 @@ const runFrom = (
     // ticket has none open (blockedWatch.ts).
     yield* makeBlockedWatch({ holds, ended: commands.ended, wakeUp, watch, ...overnight })
 
+    // bd's open list, read here once where a ticket is Asked, for the answers and the fill both: a
+    // ticket whose question it has open isn't shown (asked.ts's AskedLook).
+    const lookAtAsked = Effect.gen(function* () {
+      const asked = [...(yield* ledger.current).tickets.values()].some(
+        (entry) => entry.phase._tag === "Asked",
+      )
+      const listed = asked ? yield* Effect.result(beads.list()) : undefined
+      const open = listed !== undefined && Result.isSuccess(listed) ? listed.success : undefined
+      // The panel beside the tickets table shows the questions Asked tickets wait on, from the
+      // list read for them; with none Asked, none.
+      if (!asked) yield* showOn(status, "questions")(new Map())
+      else if (open !== undefined) {
+        yield* showOn(status, "questions")(askedQuestions(yield* ledger.current, open))
+      }
+      return { open, look: askedLook(open, (yield* SubscriptionRef.get(status)).answered) }
+    })
     // The look's effects, which read bd and git: the tickets put back in the queue, the setups,
     // checks and requires taken again, the carried and answered workers taken up, then the free
     // slots filled.
@@ -1125,27 +1142,15 @@ const runFrom = (
       // still reads which questions are answered.
       yield* Ref.set(unslotted, new Set())
       const gateNow = yield* gate
-      // bd's open list, read here once where a ticket is Asked, for the answers and the fill both:
-      // a ticket whose question it has open isn't shown (asked.ts's AskedLook).
-      let open: ReadonlyArray<Issue> | undefined
       if (takesBack(gateNow)) {
         const left = yield* carryWaiting(carryOptions, yield* Ref.get(carrying)).pipe(
           Effect.provideContext(context),
         )
         yield* Ref.set(carrying, waitingOf(left))
       }
-      const asked = [...(yield* ledger.current).tickets.values()].some(
-        (entry) => entry.phase._tag === "Asked",
-      )
-      const listed = asked ? yield* Effect.result(beads.list()) : undefined
-      open = listed !== undefined && Result.isSuccess(listed) ? listed.success : undefined
-      // The panel beside the tickets table shows the questions Asked tickets wait on, from the
-      // list read for them; with none Asked, none.
-      if (!asked) yield* showOn(status, "questions")(new Map())
-      else if (open !== undefined) {
-        yield* showOn(status, "questions")(askedQuestions(yield* ledger.current, open))
-      }
-      const look = askedLook(open, (yield* SubscriptionRef.get(status)).answered)
+      const read = yield* lookAtAsked
+      const { look } = read
+      let { open } = read
       if (takesBack(gateNow)) {
         // --auto-answer's questions first, so that takeAnswers resumes their tickets at once; one
         // still waiting for its time keeps the run from ending on it.
@@ -1246,6 +1251,26 @@ const runFrom = (
     // The loop's end set it already, under the commands' lock; a quit sets it at once, without
     // waiting for a command acting now: quitting holds the merges and interrupts the workers.
     yield* commands.end
+    // No look runs from here, through the full check and the rest of the end, so the wakes are
+    // this fiber's: it reads which questions are answered at each, for the dashboard, as a look
+    // that takes nothing back does (asked.ts). The next run takes those tickets back. It reads at
+    // once for an answer whose wake came too late for the last look; one recorded after that finds
+    // the end set, and wakes it.
+    yield* showOn(status, "looksOver")(true)
+    if (screen !== null) {
+      yield* watch(
+        Effect.forever(
+          Effect.gen(function* () {
+            if (reads(yield* wakes.take)) {
+              const { look } = yield* lookAtAsked
+              yield* readAnswers(look)
+              yield* showOn(status, "answered")(look.noSlot)
+            }
+            yield* wakes.next(Effect.never)
+          }),
+        ),
+      )
+    }
     // No ticket is taken any more: the guess under way is aborted.
     if (predictor !== undefined) yield* predictor.interrupt
     // A worker past its ticket limit, or waiting on you, is still at it: every ticket's fiber is

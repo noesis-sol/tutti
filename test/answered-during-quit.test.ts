@@ -68,10 +68,11 @@ describe("an answered ticket as the run quits", () => {
 
   test("each of the run's ways of ending says the next run", () => {
     const running = { windDown: null }
-    const on = { stopping: false, quitting: null }
+    const on = { stopping: false, quitting: null, looksOver: false }
     expect(resumesAt(running, on)).toBe("the next free slot")
     expect(resumesAt(running, { ...on, quitting })).toBe("the next run")
     expect(resumesAt(running, { ...on, stopping: true })).toBe("the next run")
     expect(resumesAt({ windDown: { since: 0, tickets: [] } }, on)).toBe("the next run")
+    expect(resumesAt(running, { ...on, looksOver: true })).toBe("the next run")
   })
 })

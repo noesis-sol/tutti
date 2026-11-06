@@ -175,7 +175,8 @@ export const make = (options: {
                 ),
               )
             case "AnswerQuestion":
-              // The look the answer wakes takes the ticket that waited on it back at once.
+              // The look the answer wakes takes the ticket that waited on it back at once; past the
+              // run's last look, the wake only has it read as answered (run.ts).
               return yield* Effect.asVoid(
                 watch(
                   answerQuestion(command, screen.questions).pipe(
