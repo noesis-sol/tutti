@@ -2,7 +2,7 @@
 // through closes the box and offers TalkQuestion with the question after it; the talk is drawn in
 // place of the dashboard while the shell has one; once the run says it is over, the box opens again,
 // at the next question once it was answered, at the same one otherwise, and a toast says why a talk
-// that wasn't left gave no answer.
+// that wasn't left gave no answer, and, plainly, that a question bd has closed is already answered.
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Queue } from "effect"
@@ -250,6 +250,35 @@ describe("Talk it through, in the dashboard's questions box", () => {
           }),
         ]),
       )
+      await until(rendered, has(readingText))
+      const read = taken(commands).find((command) => command._tag === "ReadQuestions")
+      const uuid = read?._tag === "ReadQuestions" ? read.uuid : ""
+      await rendered.input(() =>
+        news.set([...news.get(), QuestionNews.Read({ uuid, questions: questions.slice(1) })]),
+      )
+      expect((await until(rendered, has("Which colour?"))).chars).toContain("Which colour?")
+    })
+  })
+})
+
+describe("a talk on a question bd has closed", () => {
+  test("says it is already answered, with no failure, and the box goes on to the next", async () => {
+    await scene(async ({ news, commands, rendered }) => {
+      await rendered.input(() =>
+        news.set([
+          QuestionNews.AlreadyAnswered({ uuid: "u-1", question: "q-1" as TicketId }),
+          QuestionNews.Talked({
+            uuid: "u-1",
+            question: "q-1" as TicketId,
+            answered: true,
+            why: null,
+            next: "q-2" as TicketId,
+          }),
+        ]),
+      )
+      const told = await until(rendered, has("q-1 is already answered"))
+      expect(told.chars).toContain("q-1 is already answered")
+      expect(told.chars).not.toContain("ended without an answer")
       await until(rendered, has(readingText))
       const read = taken(commands).find((command) => command._tag === "ReadQuestions")
       const uuid = read?._tag === "ReadQuestions" ? read.uuid : ""

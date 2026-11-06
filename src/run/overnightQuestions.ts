@@ -124,6 +124,10 @@ export const openQuestionOf = (
 /** Talks a question through (answerTalk.ts): its answer, or why there is none. */
 export type Talk<R = never> = (question: OpenQuestion) => Effect.Effect<TalkEnd, never, R>
 
+/** What a talk says that found the question closed, the form going on to the next. */
+export const talkClosedText = (question: OpenQuestion): string =>
+  `overnight pre-flight: ${question.id} (${question.title}) is already answered`
+
 /** What a talk that ended without an answer says, the question put again. */
 export const talkEndedText = (question: OpenQuestion, why: string): string =>
   `overnight pre-flight: the talk about ${question.id} (${question.title}) ended without an answer: ${why}`
@@ -135,7 +139,7 @@ export const talkEndedText = (question: OpenQuestion, why: string): string =>
  * answers given kept. An answer bd couldn't record leaves its question open, saying why. Talk it
  * through, where `put` offers it, talks the question through with `talk`: its answer is recorded as
  * the form's; one that ends without an answer puts the question again, saying why unless it was
- * left. A question no answer comes to within `limit` (answerLimit) is left open, as said and logged,
+ * left; one that finds the question closed says it is answered and goes on to the next. A question no answer comes to within `limit` (answerLimit) is left open, as said and logged,
  * and those after it with it, not put, nobody being there.
  */
 export const putQuestions = <R = never>(options: {
@@ -174,6 +178,7 @@ export const putQuestions = <R = never>(options: {
       // Talk it through comes back to the form until the talk gives an answer.
       let reply = yield* putWithin
       let talked = false
+      let closed = false
       while (
         Result.isSuccess(reply) &&
         Option.isSome(reply.success) &&
@@ -185,6 +190,10 @@ export const putQuestions = <R = never>(options: {
           talked = true
           break
         }
+        if (ended?._tag === "AlreadyAnswered") {
+          closed = true
+          break
+        }
         if (ended !== null) {
           // Left, it is your doing: the log says so, not a warning.
           const text = talkEndedText(question, ended.why)
@@ -192,6 +201,12 @@ export const putQuestions = <R = never>(options: {
           yield* logs.write(line`${text}`)
         }
         reply = yield* putWithin
+      }
+      if (closed) {
+        const text = talkClosedText(question)
+        yield* say.say(text)
+        yield* logs.write(line`${text}`)
+        continue
       }
       if (Result.isFailure(reply)) {
         yield* logs.write(

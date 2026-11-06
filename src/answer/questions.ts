@@ -156,7 +156,7 @@ export const talkLeftLine = (question: TicketId): string =>
  * `tutti answer --talk <id>` (tutti-i0sz, § 4.11): talks the open question `id` through with
  * `talk`, and records the answer it gives as answerQuestion does: the line to print. Left without
  * an answer, the question stays open, said; a talk that ends otherwise without one, or can't start,
- * fails saying why.
+ * fails saying why, and one that finds the question closed meanwhile as a closed one here does.
  */
 export const talkAnswer = <R>(
   id: string,
@@ -173,9 +173,8 @@ export const talkAnswer = <R>(
             : new QuestionNotAnswered({ question: id, reason: beadsWhy(error) }),
         ),
       )
-    if (!shown.labels.includes(HumanLabel) || shown.status === "closed") {
-      return yield* new QuestionNotAnswered({ question: id, reason: "it isn't an open question" })
-    }
+    const notOpen = new QuestionNotAnswered({ question: id, reason: "it isn't an open question" })
+    if (!shown.labels.includes(HumanLabel) || shown.status === "closed") return yield* notOpen
     const question = openQuestionOf(shown, [])
     const ended = yield* talk(question).pipe(
       Effect.mapError(
@@ -183,6 +182,7 @@ export const talkAnswer = <R>(
           new QuestionNotAnswered({ question: id, reason: `the talk couldn't start: ${why}` }),
       ),
     )
+    if (ended._tag === "AlreadyAnswered") return yield* notOpen
     if (ended._tag === "Ended") {
       if (ended.why === talkLeftWhy) return talkLeftLine(question.id)
       return yield* new TalkNotAnswered({ question: id, why: ended.why })

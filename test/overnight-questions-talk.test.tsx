@@ -1,7 +1,7 @@
 // Talk it through in the overnight pre-flight's answer form (tutti-i0sz, § 4.11): the choice offered
 // only where a talk can be shown, Enter on it replying Talk; putQuestions talking the question
-// through, recording the talk's answer as the form's, and putting the question again when the talk
-// ends without one (warning, unless it was left).
+// through, recording the talk's answer as the form's, putting the question again when the talk ends
+// without one (warning, unless it was left), and going on when it finds the question closed.
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Option } from "effect"
 import { TalkEnd, talkLeftWhy } from "../src/agent/answerTalk.ts"
@@ -128,6 +128,20 @@ describe("Talk it through, in putQuestions", () => {
     expect(result.putting).toEqual({ _tag: "Done", answered: 0, left: 1 })
     expect(result.printed).not.toContain("ended without an answer")
     expect(result.logged.some((line) => line.includes("ended without an answer"))).toBe(true)
+  })
+
+  test("a talk that finds the question closed says so plainly and goes on, nothing left", async () => {
+    const result = await putAll(
+      [{ _tag: "Talk" }],
+      [TalkEnd.AlreadyAnswered({ question: "q-1" as OpenQuestion["id"] })],
+    )
+    expect(result.putTo).toEqual(["q-1"])
+    expect(result.putting).toEqual({ _tag: "Done", answered: 0, left: 0 })
+    expect(result.q1).toEqual([])
+    const text = "overnight pre-flight: q-1 (Which flag name?) is already answered"
+    expect(result.printed).toContain(text)
+    expect(result.logged).toContain(text)
+    expect(result.printed).not.toContain("ended without an answer")
   })
 
   test("a cancel after a talk stops there", async () => {

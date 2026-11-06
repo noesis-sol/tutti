@@ -1,8 +1,8 @@
 // `tutti answer --talk <question>` through the command line as main parses it (tutti-i0sz, § 8.1;
 // src/answer/questions.ts's talkAnswer): the talk's answer recorded as any other, the decision in
 // the blocked ticket's design; a talk left says the question stays open; one that ends otherwise
-// without an answer, or can't start, fails saying why; --talk with an answer, or on a question that
-// isn't open, is refused, nothing talked.
+// without an answer, can't start, or finds the question closed meanwhile, fails saying why; --talk
+// with an answer, or on a question that isn't open, is refused, nothing talked.
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -100,6 +100,16 @@ describe("tutti answer --talk", () => {
     const notStarted = await answer(["--talk", "q-1"], needsTerminal)
     expect(notStarted.errors).toBe(
       `tutti answer: the answer to q-1 wasn't recorded: the talk couldn't start: ${needsTerminal}`,
+    )
+  })
+
+  test("a talk that finds the question closed meanwhile says it isn't open", async () => {
+    const said = await answer(
+      ["--talk", "q-1"],
+      TalkEnd.AlreadyAnswered({ question: "q-1" as TicketId }),
+    )
+    expect(said.errors).toBe(
+      "tutti answer: the answer to q-1 wasn't recorded: it isn't an open question",
     )
   })
 

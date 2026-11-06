@@ -13,6 +13,7 @@
 //
 // An answer that finds bd has the question closed (tutti-cl5e) is no failure: answered already,
 // perhaps a moment ago from this same panel, it says so (AlreadyAnswered) and nothing comes back.
+// A talk that finds it so (tutti-ofhl) says the same, and the box goes on from the next question.
 import { Data, Effect, Result, SubscriptionRef } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import type { Attention } from "../agent/Attention.ts"
@@ -44,8 +45,8 @@ export type QuestionNews = Data.TaggedEnum<{
   NotAnswered: { readonly uuid: string; readonly question: TicketId; readonly why: string }
   /**
    * A talk is over, its answer recorded if it gave one (Answered, AlreadyAnswered or NotAnswered
-   * came first): `why`
-   * it gave none, or null; `next`, the question the box goes on from.
+   * came first), `answered` too where bd had the question closed before it started (AlreadyAnswered
+   * came first): `why` it gave none, or null; `next`, the question the box goes on from.
    */
   Talked: {
     readonly uuid: string
@@ -132,6 +133,14 @@ export const talkThrough = (
       (yield* SubscriptionRef.get(slot)) === null
         ? yield* talkQuestion({ id: question, title: request.title }, inSlot(slot))
         : TalkEnd.Ended({ why: talkingAlready })
+    if (ended._tag === "AlreadyAnswered") {
+      yield* logs.write(line`no talk about ${question} on the dashboard, it is already answered`)
+      yield* added(news, QuestionNews.AlreadyAnswered({ uuid, question }))
+      return yield* added(
+        news,
+        QuestionNews.Talked({ uuid, question, answered: true, why: null, next }),
+      )
+    }
     if (ended._tag === "Answered") {
       yield* answerQuestion({ question, answer: ended.answer, uuid }, news)
       return yield* added(

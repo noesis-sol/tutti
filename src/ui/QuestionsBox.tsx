@@ -12,7 +12,8 @@
 // Talk it through (tutti-i0sz, § 4.11) closes the box and offers TalkQuestion: the run shows the
 // talk in place of the screen (App.tsx) and records the answer it gives as any other. Once the run
 // says the talk is over (Talked), TalkReturn opens the box again: at the next question once it was
-// answered, at the same one otherwise; a toast says why a talk that wasn't left gave no answer.
+// answered, at the same one otherwise; a toast says why a talk that wasn't left gave no answer. A
+// question bd has closed starts no talk: the toast says it is already answered, and the box goes on.
 //
 // Opened from the Needs you list (NeedsList.tsx, tutti-fdv1), the box puts that question alone, and
 // once it is answered, left open or closed with Esc opens the list again at the next item. An answer

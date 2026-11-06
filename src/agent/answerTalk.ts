@@ -16,7 +16,8 @@
 // The session records nothing: once give_answer has taken the answer and the turn is over, tutti
 // closes the session and gives the answer back to the form, which records it as every other
 // (src/run/answerQuestion.ts). A talk left, or whose session ends, before an answer gives none, and
-// the question is put again.
+// the question is put again. A question bd closed since the form read it starts no session: it is
+// answered already (QuestionClosed, tutti-ofhl), and the form goes on without it.
 import { randomUUID } from "node:crypto"
 import {
   createSdkMcpServer,
@@ -24,7 +25,7 @@ import {
   type SdkMcpToolDefinition,
   tool,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Data, Effect, Option, Ref, type Scope, Stream, SubscriptionRef } from "effect"
+import { Data, Effect, Option, Ref, Schema, type Scope, Stream, SubscriptionRef } from "effect"
 import { z } from "zod"
 import { AppConfig } from "../cli/AppConfig.ts"
 import template from "../project/templates/answer-talk-prompt.md" with { type: "text" }
@@ -181,18 +182,29 @@ export const questionText = (
 /** The links a question was asked from: discovered-from and related, either way. */
 const askedFromTypes: ReadonlyArray<string> = ["discovered-from", "related"]
 
+/** The question has been closed since the form read it: answered already, nothing to talk through. */
+export class QuestionClosed extends Schema.TaggedError<QuestionClosed>()("QuestionClosed", {
+  question: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.question} is already answered`
+  }
+}
+
 /**
- * The open question `id`, as the first message brings it in: fails, saying why, where bd can't
- * show it or one of the tickets it blocks, or it isn't an open question.
+ * The open question `id`, as the first message brings it in: fails with QuestionClosed once bd has
+ * it closed, and saying why where bd can't show it or one of the tickets it blocks, or it isn't a
+ * question at all.
  */
-export const readQuestion = (id: TicketId): Effect.Effect<string, string, Beads> =>
+export const readQuestion = (id: TicketId): Effect.Effect<string, string | QuestionClosed, Beads> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const why = (error: Parameters<typeof beadsWhy>[0]) => beadsWhy(error)
     const question = yield* beads.show(id, { dependents: true }).pipe(Effect.mapError(why))
-    if (!question.labels.includes(HumanLabel) || question.status === "closed") {
+    if (!question.labels.includes(HumanLabel)) {
       return yield* Effect.fail(`${id} isn't an open question`)
     }
+    if (question.status === "closed") return yield* new QuestionClosed({ question: id })
     const dependents = question.dependents ?? []
     const blockedIds = [
       ...new Set(
@@ -221,6 +233,8 @@ export type TalkEnd = Data.TaggedEnum<{
   Answered: { readonly answer: string }
   /** The session ended, or was left, before an answer: the question stays open. */
   Ended: { readonly why: string }
+  /** bd had the question closed when the talk would have started: no session, nothing to record. */
+  AlreadyAnswered: { readonly question: TicketId }
 }>
 
 export const TalkEnd = Data.taggedEnum<TalkEnd>()
@@ -246,23 +260,28 @@ export interface AnswerTalk {
 
 /**
  * Starts the talk on the open question `question`: reads it and the tickets it blocks, starts the
- * session in the main checkout and sends it the first message. A question bd can't read, or one
- * no longer open, fails the start, as a session that doesn't start does. Its tools' calls are fibers
- * of the caller's scope, the talk's, which outlasts the session.
+ * session in the main checkout and sends it the first message. A question bd can't read fails the
+ * start, as a session that doesn't start does; one bd has closed fails it with QuestionClosed. Its
+ * tools' calls are fibers of the caller's scope, the talk's, which outlasts the session.
  */
 export const startAnswerTalk = (
   question: TicketId,
-): Effect.Effect<AnswerTalk, AgentStartFailed, AgentHost | AppConfig | Beads | Scope.Scope> =>
+): Effect.Effect<
+  AnswerTalk,
+  AgentStartFailed | QuestionClosed,
+  AgentHost | AppConfig | Beads | Scope.Scope
+> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const host = yield* AgentHost
     const text = yield* readQuestion(question).pipe(
-      Effect.mapError(
-        (why) =>
-          new AgentStartFailed({
-            ticket: interviewWorker,
-            reason: `${question} couldn't be read: ${why}`,
-          }),
+      Effect.mapError((why) =>
+        why instanceof QuestionClosed
+          ? why
+          : new AgentStartFailed({
+              ticket: interviewWorker,
+              reason: `${question} couldn't be read: ${why}`,
+            }),
       ),
     )
     const tools = yield* makeTalkTools(yield* sessionFibers)

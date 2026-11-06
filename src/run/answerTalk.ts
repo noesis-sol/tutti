@@ -2,7 +2,8 @@
 // shows the talk's session (agent/answerTalk.ts) in the Interview view, in the command's one
 // renderer, as a spec's refinement is shown (interview.ts's inInterviewView), until it ends: its
 // answer goes back to the form, which records it as every other (answerQuestion.ts); a talk left,
-// or whose session ended, before an answer gives none, and the form puts the question again.
+// or whose session ended, before an answer gives none, and the form puts the question again; one bd
+// has closed shows no view (TalkEnd's AlreadyAnswered), and the form goes on to the next.
 // Leaving before an answer asks `End the talk?`, the question staying open; once give_answer has
 // taken one, leaving asks nothing. In the overnight pre-flight the view is mounted in the
 // renderer in the form's place (App.tsx's interviewScreen); on the dashboard it is put in the
@@ -30,7 +31,7 @@ export const talkNotStarted = (why: string): TalkEnd =>
 
 /**
  * Talks `question` through in the Interview view with `screen`, until the talk ends: the answer
- * give_answer took, or why there is none.
+ * give_answer took, or why there is none; with no view at all where bd has it closed.
  */
 export const talkQuestion = (
   question: Pick<OpenQuestion, "id" | "title">,
@@ -38,7 +39,12 @@ export const talkQuestion = (
 ): Effect.Effect<TalkEnd, never, AgentHost | AppConfig | Beads | Attention | Transcripts> =>
   Effect.gen(function* () {
     const started = yield* Effect.result(startAnswerTalk(question.id))
-    if (started._tag === "Failure") return talkNotStarted(started.failure.reason)
+    if (started._tag === "Failure") {
+      const { failure } = started
+      return failure._tag === "QuestionClosed"
+        ? TalkEnd.AlreadyAnswered({ question: question.id })
+        : talkNotStarted(failure.reason)
+    }
     const talk = started.success
     const { ended } = yield* inInterviewView(
       {

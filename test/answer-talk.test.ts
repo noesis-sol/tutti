@@ -14,6 +14,7 @@ import {
   type AnswerTalk,
   answerTalkPrompt,
   makeTalkTools,
+  QuestionClosed,
   qualifiedTalkTools,
   questionText,
   readQuestion,
@@ -147,12 +148,12 @@ describe("the talk's first message", () => {
   })
 
   test("a closed question, or an issue that isn't one, isn't read", async () => {
-    for (const id of ["q-2", "tut-9"]) {
-      const read = await Effect.runPromise(
+    const read = (id: string) =>
+      Effect.runPromise(
         Effect.provide(Effect.flip(readQuestion(id as TicketId)), beadsLayer(backlog)),
       )
-      expect(read).toBe(`${id} isn't an open question`)
-    }
+    expect(await read("q-2")).toEqual(new QuestionClosed({ question: "q-2" }))
+    expect(await read("tut-9")).toBe("tut-9 isn't an open question")
   })
 
   test("whatever a worker wrote, its pasted block closes only at its end", async () => {
@@ -353,13 +354,20 @@ describe("startAnswerTalk, with the scripted host", () => {
     expect(answered.value).toEqual(TalkEnd.Answered({ answer: "--flag" }))
   })
 
-  test("a question no longer open doesn't start a session", async () => {
-    const { value } = await scenario(
+  test("a question no longer open, or never one, doesn't start a session", async () => {
+    const closed = await scenario(
       () => [],
       () => Effect.flip(startAnswerTalk("q-2" as TicketId)),
     )
-    expect(value._tag).toBe("AgentStartFailed")
-    expect(value.reason).toBe("q-2 couldn't be read: q-2 isn't an open question")
+    expect(closed.value).toEqual(new QuestionClosed({ question: "q-2" }))
+    const other = await scenario(
+      () => [],
+      () => Effect.flip(startAnswerTalk("tut-9" as TicketId)),
+    )
+    expect(other.value).toMatchObject({
+      _tag: "AgentStartFailed",
+      reason: "tut-9 couldn't be read: tut-9 isn't an open question",
+    })
   })
 })
 
@@ -428,7 +436,7 @@ describe("talkQuestion, the run's side", () => {
     ).toBe(false)
   })
 
-  test("a question that can't be read gives no answer, saying why", async () => {
+  test("a question bd has closed shows no view, and one that can't be read says why", async () => {
     const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-talk-")))
     const question = {
       id: "q-2" as TicketId,
@@ -438,28 +446,32 @@ describe("talkQuestion, the run's side", () => {
       maintainerOnly: false,
       waiting: [],
     }
-    const ended = await Effect.runPromise(
-      talkQuestion(question, () => Effect.die("not shown")).pipe(
-        Effect.provide(
-          scriptedHost({}).pipe(
-            Layer.provideMerge(
-              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
-            ),
-            Layer.provideMerge(
-              Layer.mergeAll(
-                logLayer(),
-                eventsLayer(),
-                configLayer(appConfig({}, repo)),
-                beadsLayer(backlog),
-                memoryGit({ dir: repo, files: {} }),
+    const talk = (id: string) =>
+      Effect.runPromise(
+        talkQuestion({ ...question, id: id as TicketId }, () => Effect.die("not shown")).pipe(
+          Effect.provide(
+            scriptedHost({}).pipe(
+              Layer.provideMerge(
+                Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+              ),
+              Layer.provideMerge(
+                Layer.mergeAll(
+                  logLayer(),
+                  eventsLayer(),
+                  configLayer(appConfig({}, repo)),
+                  beadsLayer(backlog),
+                  memoryGit({ dir: repo, files: {} }),
+                ),
               ),
             ),
           ),
         ),
-      ),
-    )
-    expect(ended).toEqual(
-      TalkEnd.Ended({ why: "couldn't start: q-2 couldn't be read: q-2 isn't an open question" }),
+      )
+    expect(await talk("q-2")).toEqual(TalkEnd.AlreadyAnswered({ question: "q-2" as TicketId }))
+    expect(await talk("tut-9")).toEqual(
+      TalkEnd.Ended({
+        why: "couldn't start: tut-9 couldn't be read: tut-9 isn't an open question",
+      }),
     )
   })
 })
