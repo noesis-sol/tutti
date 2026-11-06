@@ -4,7 +4,7 @@
 // focus off it.
 
 import { describe, expect, test } from "bun:test"
-import { TextAttributes } from "@opentui/core"
+import { type RGBA, TextAttributes } from "@opentui/core"
 import { Effect, Queue } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
@@ -25,6 +25,8 @@ import {
   type Panel,
   panelTowards,
 } from "../src/ui/panelFocus.ts"
+import { needsLines, upNextLines } from "../src/ui/SidePanel.tsx"
+import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
@@ -252,6 +254,25 @@ const tableFrameColour = (frame: Frame) => {
   return frame.spans.lines[label + 1]?.spans[0]?.fg.toInts()
 }
 
+/** The colour and boldness of the span saying `text`, on the first line of `frame` holding `on`. */
+const labelOf = (frame: Frame, text: string, on = text) => {
+  const y = linesOf(frame).findIndex((line) => line.includes(on))
+  const span = frame.spans.lines[y]?.spans.find((each) => each.text.trim() === text)
+  if (span === undefined) throw new Error(`no span says ${text} on the line of ${on}`)
+  return { fg: span.fg.toInts(), bold: (span.attributes & TextAttributes.BOLD) !== 0 }
+}
+
+/** The contrast of a colour on the terminal's white or black, as WCAG works it out. */
+const contrast = (colour: RGBA | undefined, on: "white" | "black") => {
+  const [r = 0, g = 0, b = 0] = colour?.toInts() ?? []
+  const linear = (channel: number) => {
+    const c = channel / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const light = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+  return on === "white" ? 1.05 / (light + 0.05) : (light + 0.05) / 0.05
+}
+
 const where = (frame: Frame, text: string) => {
   const lines = linesOf(frame)
   const y = lines.findIndex((line) => line.includes(text))
@@ -420,6 +441,88 @@ describe("at the top level", () => {
       expect(has(off, "┏")).toBe(true)
       expect(has(off, "> ")).toBe(false)
     })
+  })
+
+  test("each panel's label is lit with the focus on it, at the top level or inside, else quiet", async () => {
+    const dimmed = { fg: theme.rgba("quiet").toInts(), bold: false }
+    const lighted = { fg: theme.rgba("emphasis").toInts(), bold: true }
+    await scene(viewOf(1), wide, async ({ rendered }) => {
+      const labels = async () => {
+        const frame = await rendered.capture()
+        return [
+          labelOf(frame, "Tickets"),
+          labelOf(frame, "Needs you", "Needs you ·"),
+          labelOf(frame, "Current"),
+        ]
+      }
+      const on = await rendered.capture()
+      // The label's bright look is the frame's.
+      expect(tableFrameColour(on)).toEqual(labelOf(on, "Tickets").fg)
+      expect(await labels()).toEqual([lighted, dimmed, dimmed])
+      await press(rendered, "enter")
+      expect(await labels()).toEqual([lighted, dimmed, dimmed])
+      await rendered.input(pressEscape)
+      await press(rendered, "right")
+      expect(await labels()).toEqual([dimmed, lighted, dimmed])
+      await press(rendered, "enter")
+      expect(await labels()).toEqual([dimmed, lighted, dimmed])
+      await rendered.input(pressEscape)
+      await press(rendered, "down")
+      expect(await labels()).toEqual([dimmed, dimmed, lighted])
+      await press(rendered, "enter")
+      expect(await labels()).toEqual([dimmed, dimmed, lighted])
+    })
+  })
+
+  test("Needs you's count stays in the stop style wherever the focus is, faint at 0", async () => {
+    const stop = { fg: theme.rgba("needsYou").toInts(), bold: true }
+    await scene(viewOf(1), wide, async ({ rendered }) => {
+      expect(labelOf(await rendered.capture(), "1", "Needs you ·")).toEqual(stop)
+      await press(rendered, "right")
+      expect(labelOf(await rendered.capture(), "1", "Needs you ·")).toEqual(stop)
+    })
+    for (const shown of [themeOf("dark"), themeOf("light")]) {
+      const at = { focused: true, inside: false, choice: 0 }
+      const [none] = needsLines(undefined, 0, at, shown, 60, 8)
+      expect(none?.find((each) => each.text === "0")?.look).toBe(shown.styles.dim)
+      const [some] = needsLines(undefined, 2, { ...at, focused: false }, shown, 60, 8)
+      expect(some?.find((each) => each.text === "2")?.look).toBe(shown.styles.stop)
+    }
+  })
+
+  test("Up next's label is never lit, as the focus doesn't go there", () => {
+    for (const shown of [themeOf("dark"), themeOf("light")]) {
+      const [label] = upNextLines([], viewOf(1).totals, shown, 60, 8)
+      expect(label?.find((each) => each.text === "Up next")?.look).toBe(shown.styles.quiet)
+    }
+  })
+
+  test("the Tickets label's two looks are legible on either background, and under NO_COLOR", () => {
+    const reach = { highlighted: null, target: () => undefined, idTarget: () => 0, copied: null }
+    const label = (shown: ReturnType<typeof themeOf>, focused?: boolean) =>
+      ticketsLines(
+        viewOf(1).rows,
+        shown,
+        80,
+        { lines: 6 },
+        focused === undefined ? reach : { ...reach, focused },
+      )[0]?.find((each) => each.text === "Tickets")?.look
+    for (const shown of [themeOf("dark"), themeOf("light")]) {
+      expect(label(shown, true)).toBe(shown.look("emphasis", "bold"))
+      expect(label(shown, false)).toBe(shown.styles.quiet)
+    }
+    // Where the dim frame's own grey is too pale for a word on a light terminal, about 2.5:1.
+    expect(contrast(themeOf("light").look("frame").fg, "white")).toBeLessThan(3)
+    expect(contrast(label(themeOf("light"), false)?.fg, "white")).toBeGreaterThan(4.5)
+    expect(contrast(label(themeOf("dark"), false)?.fg, "black")).toBeGreaterThan(4.5)
+    const plain = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    expect((label(plain, true)?.attributes ?? 0) & TextAttributes.BOLD).toBe(TextAttributes.BOLD)
+    expect((label(plain, false)?.attributes ?? 0) & TextAttributes.DIM).toBe(TextAttributes.DIM)
+  })
+
+  test("printed, where nothing has the focus, the Tickets label stays lit", () => {
+    const [label] = ticketsLines(viewOf(1).rows, theme, 80, { lines: 6 })
+    expect(label?.find((each) => each.text === "Tickets")?.look).toBe(theme.styles.tickets)
   })
 
   test("← → move between the upper two, ↓ to Current, ↑ back to where it came from", async () => {

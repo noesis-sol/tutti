@@ -1,6 +1,6 @@
 // Up next's reasons, `ready`, `nothing queued` and `+N more` in `quiet` (§ 7.11, tutti-dzbv): the
-// grey a step above faint the title line's account windows take; faint under NO_COLOR. The IDs and
-// the label keep their styles.
+// grey a step above faint the title line's account windows take; faint under NO_COLOR. The IDs keep
+// their styles, and the label is quiet too, as the focus never goes to Up next (§ 7.3).
 
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
@@ -49,7 +49,7 @@ const segmentOf = (lines: ReturnType<typeof upNextLines>, text: string) =>
   lines.flat().find((segment) => segment.text === text)
 
 describe("Up next's quiet parts", () => {
-  test("the reasons, ready and +N more take the quiet style; the IDs and the label keep theirs", () => {
+  test("the reasons, ready, +N more and the label take the quiet style; the IDs keep theirs", () => {
     for (const appearance of ["dark", "light"] as const) {
       const theme = themeOf(appearance)
       const { styles } = theme
@@ -63,7 +63,7 @@ describe("Up next's quiet parts", () => {
       expect(segmentOf(lines, "+2 more")?.look).toBe(styles.quiet)
       expect(segmentOf(lines, "t-1")?.look).toBeNull()
       expect(segmentOf(lines, "t-2")?.look).toBe(styles.heldBack)
-      expect(segmentOf(lines, "Up next")?.look).toBe(styles.tickets)
+      expect(segmentOf(lines, "Up next")?.look).toBe(styles.quiet)
       expect(segmentOf(lines, " · 4 held back")?.look).toBe(styles.heldBack)
       // The quiet colour, not faint.
       expect(styles.quiet.fg).toBeDefined()

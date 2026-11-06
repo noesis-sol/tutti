@@ -19,6 +19,14 @@ export type Segment = Piece<Look | null>
 
 export type Segments = ReadonlyArray<Segment>
 
+/**
+ * A panel's label: lit, as the table's bright frame is, while the focus is on the panel, at the top
+ * level or inside it, else quiet, which the light variant's dim `frame` is too pale to write in, so
+ * that the label says where the keys are as its frame does (§ 7.3).
+ */
+export const labelLook = (theme: Theme, focused: boolean): Look =>
+  focused ? theme.styles.tickets : theme.styles.quiet
+
 /** `text` in `look`, a click on it pressing `target` where it has one (Line's `press`). */
 export const seg = (text: string, look: Look | null = null, target?: number): Segment =>
   target === undefined ? { text, look } : { text, look, target }

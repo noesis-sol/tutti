@@ -607,7 +607,8 @@ const scenes: ReadonlyArray<Scene> = [
       [" · 1 held back", look("notice")],
       // The section labels and the tickets table.
       ["Tickets", look("emphasis", "bold")],
-      ["Current", look("live", "bold")],
+      // The focus starts on Tickets, so Current's label is dim.
+      ["Current", look("quiet")],
       ["✓ done", look("done", "bold")],
       ["tut-dwv", look("done", "bold")],
       ["ffd6ce4 merged into batch/2026-10-20", look("text", "faint")],
@@ -1152,8 +1153,17 @@ describe("NO_COLOR", () => {
             const focus =
               before !== undefined &&
               recordOf(before.bg) === recorded(orchestraColours.formAccent[variantOf(appearance)])
+            // The quiet colour is faint without it (§ 7.11): the label of a panel without the focus.
+            const quiet =
+              before !== undefined &&
+              recordOf(before.fg) === recorded(orchestraColours.quiet[variantOf(appearance)])
             const same =
-              cell.attributes === (focus ? reversed(before.attributes) : before?.attributes)
+              cell.attributes ===
+              (focus
+                ? reversed(before.attributes)
+                : quiet
+                  ? before.attributes | TextAttributes.DIM
+                  : before?.attributes)
             // Selected text is the one exception: orchestra's selection colours (§ 7.11).
             const selected =
               fg === recorded(orchestraColours.selectionText[1]) &&

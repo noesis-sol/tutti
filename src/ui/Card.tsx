@@ -39,6 +39,7 @@ import {
   Line,
   Lines,
   type Look,
+  labelLook,
   type Segment,
   type Segments,
   seg,
@@ -599,6 +600,7 @@ export const Cards = ({
   highlighted,
   framed = null,
   focused = false,
+  labelLit = false,
   open,
   focusOf,
   press,
@@ -618,6 +620,8 @@ export const Cards = ({
   readonly framed?: string | null
   /** The focus is on Current at the top level: every frame in it is drawn heavy, as no card is yet. */
   readonly focused?: boolean
+  /** The focus is on Current, at the top level or inside it: its label is lit. */
+  readonly labelLit?: boolean
   /** Opens the view of the ticket's worker. */
   readonly open: (ticket: TicketId) => void
   /** The focused button of an attention card. */
@@ -625,7 +629,7 @@ export const Cards = ({
   /** Presses an attention card's button: the same function from one drawing to the next. */
   readonly press: (request: ShownRequest | undefined, index: number) => void
 }) => {
-  const label = <Lines lines={[[seg("  "), seg("Current", theme.styles.picked)]]} />
+  const label = <Lines lines={[[seg("  "), seg("Current", labelLook(theme, labelLit))]]} />
   const border: Border = focused ? "heavy" : "rounded"
   switch (layout._tag) {
     case "Idle":

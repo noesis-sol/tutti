@@ -22,7 +22,7 @@ Each role has a variant for light backgrounds and one for dark ones. In the `orc
 
 | Role | Light | Dark | Means |
 |---|---|---|---|
-| `live` | `#0E7490` | `#22D3EE` | live work: a picked-up ticket, a working worker, the `Current` label, spinners, ticket IDs |
+| `live` | `#0E7490` | `#22D3EE` | live work: a picked-up ticket, a working worker, spinners, ticket IDs |
 | `done` | `#15803D` | `#4ADE80` | done: merged, completed, a worker's finished turn, `✓` |
 | `notice` | `#A16207` | `#FACC15` | worth a look, nothing blocking: set aside, held back, resolving, fixing, testing (bold), retrying, usage, warnings, the stop question |
 | `needsYou` | `#B91C1C` | `#F87171` | needs you: blocked, a permission request or question waiting, stopped, a stop line |
@@ -32,8 +32,8 @@ Each role has a variant for light backgrounds and one for dark ones. In the `orc
 | `organText` | `#7C3AED` | `#C4B5FD` | the organ lines' text |
 | `toMerge` | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`) |
-| `emphasis` | `#374151` | `#E5E7EB` | keys to press, the `Tickets` label, tool names, `steered` |
-| `quiet` | `#6B7280` | `#9CA3AF` | secondary text a step above faint: the title line's account windows; `default` draws it faint |
+| `emphasis` | `#374151` | `#E5E7EB` | keys to press, the label of the panel with the focus, tool names, `steered` |
+| `quiet` | `#6B7280` | `#9CA3AF` | secondary text a step above faint: the title line's account windows, the labels of the panels without the focus; `default` draws it faint |
 | `estimate` | `#8A6D3B` | `#D4B483` | estimates, in italics beside `(estimate)`: the summary's dollars at API prices on a subscription login |
 | `pill` | `#7D56F4` | `#7D56F4` | the title pill's background, and the frame of `tutti init`'s **Next** box |
 | `pillText` | `#FAFAFA` | `#FAFAFA` | text on the pill |

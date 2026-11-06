@@ -1245,6 +1245,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
               highlighted={lit}
               framed={framed}
               focused={focus.panel === "current" && !focus.inside}
+              labelLit={focus.panel === "current"}
               open={openCard}
               focusOf={answering.focusOf}
               press={answering.press}

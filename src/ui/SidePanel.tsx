@@ -31,6 +31,7 @@ import {
   boxed,
   cut,
   fit,
+  labelLook,
   padded,
   type Segment,
   type Segments,
@@ -98,7 +99,8 @@ export const upNextLines = (
   const held = totals.heldBack
   const label: Segments = [
     seg("  "),
-    seg("Up next", styles.tickets),
+    // Up next is no panel the focus goes to, so its label is never lit.
+    seg("Up next", labelLook(theme, false)),
     ...(held > 0 ? [seg(` · ${held} held back`, styles.heldBack)] : []),
   ]
   const inner = Math.max(width - 4, 1)
@@ -415,8 +417,9 @@ export const rowParagraphs = (row: Row, theme: Theme): ReadonlyArray<Segment> =>
 }
 
 /**
- * The Needs you panel's lines, `width` wide, `lines` tall with its label: `Needs you · 2`, `count`
- * as the totals count it, faint at 0, then what it shows of the selected row in a frame in the
+ * The Needs you panel's lines, `width` wide, `lines` tall with its label: `Needs you · 2`, the words
+ * following the focus as every panel's label does, `count` as the totals count it, in the stop style
+ * while anything needs you, wherever the focus is, faint at 0, then what it shows of the selected row in a frame in the
  * needsYou colour while that waits on you, heavy while the focus is on it.
  */
 export const needsLines = (
@@ -431,8 +434,9 @@ export const needsLines = (
   const need = detail !== undefined && "_tag" in detail ? detail : undefined
   const label: Segments = [
     seg("  "),
-    seg("Needs you", count === 0 ? styles.dim : styles.stop),
-    seg(` · ${count}`, styles.dim),
+    seg("Needs you", labelLook(theme, at.focused)),
+    seg(" · ", styles.dim),
+    seg(`${count}`, count === 0 ? styles.dim : styles.stop),
   ]
   const inner = Math.max(width - 4, 1)
   const room = Math.max(lines - 3, 1)
