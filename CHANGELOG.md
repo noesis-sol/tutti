@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- With nothing chosen, only a Blocked or Asked row, or a need with no row, takes the panel beside the tickets table by itself, rather than a set-aside row holding it for the rest of the run with Up next out of sight; choosing a set-aside row still shows its detail, and `Esc` goes back to Up next (§ 5.1, § 7.2; `src/ui/SidePanel.tsx`' `selectedTicket`; tutti-149z.6). `test/set-aside-up-next.test.tsx` covers it.
+
 ## [0.6.12] - 2026-11-05
 
 - A dashboard run whose last ticket's merge conflict is set aside stays open for it, the end-of-run box naming it and saying what `h`, a rebase by hand and `q` do, rather than end at once with no time for either; a plain or overnight run, or one that holds, winds down or has its merges stopped, ends as before (§ 4.3, § 5 item 14; `src/run/runEnd.ts`, `src/run/look.ts`, `src/ui/EndOfRunBox.tsx`; tutti-tp2f).

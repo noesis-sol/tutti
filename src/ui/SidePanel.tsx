@@ -185,9 +185,10 @@ export const wantingRows = (
 /**
  * The row the panel shows, of the table's `rows` by attention, those with no room among them, with `needs` not answered here of `all` the run's:
  * `chosen` while it is a row and isn't answered here (the dashboard lets it go as its ticket stops
- * needing you); else by itself the first that wants you, a ticket with a need and no row (a conflict
- * hand-back waiting keeps its card) before one only set aside; else none. A ticket that comes in
- * more urgent bumps the count, and takes no chosen row's place.
+ * needing you); else by itself the first Blocked or Asked row, then a ticket with a need and no row
+ * (a conflict hand-back waiting keeps its card); else none, as a row only set aside is read by
+ * choosing it and leaves Up next showing (tutti-149z.6). A ticket that comes in more urgent bumps the
+ * count, and takes no chosen row's place.
  */
 export const selectedTicket = (
   rows: ReadonlyArray<Row>,
@@ -197,10 +198,9 @@ export const selectedTicket = (
 ): TicketId | null => {
   const answeredHere = answeredHereOf(needs, all)
   if (rows.some((row) => row.ticket === chosen && !answeredHere.has(row.ticket))) return chosen
-  const wanting = wantingRows(rows, needs, all)
-  const asks = wanting.find((row) => row.attention !== "setAside")
+  const asks = wantingRows(rows, needs, all).find((row) => row.attention !== "setAside")
   const unrowed = needs.find((need) => !rows.some((row) => row.ticket === need.ticket))
-  return asks?.ticket ?? unrowed?.ticket ?? wanting[0]?.ticket ?? null
+  return asks?.ticket ?? unrowed?.ticket ?? null
 }
 
 /** What the panel shows of `ticket`: its need, if it has one, else its row. */

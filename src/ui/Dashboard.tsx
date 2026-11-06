@@ -26,7 +26,7 @@
 // closing first. Inside Tickets `↑↓` select a row, a click on one too, and `Enter` opens it: an
 // Asked row's question in the questions box, a Blocked row's box saying what clears it, another's
 // worker view, or in a pane with no panel its box. The panel beside the table is the selected row's
-// detail (tutti-149z.3): with nothing chosen, the first row that wants you, by itself; a row you
+// detail (tutti-149z.3): with nothing chosen, the first Blocked or Asked row, by itself; a row you
 // choose stays chosen by its ticket until you `Esc` out of the table or it stops needing you, and
 // the panel says Up next, under `Nothing needs you`, with neither. Inside Needs you `↑↓` move through its options and `Enter` picks one. Inside Current
 // the arrows move across the cards' grid and `Enter` opens the card, as a click does, as an

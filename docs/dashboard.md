@@ -223,11 +223,12 @@ what needs you as the totals do:
 - a `■ stopped` row: that the next run resumes it;
 - a `✓ done` row: its merge commit and time, or that it had no change to merge.
 
-With nothing chosen, the first row that wants you is selected by itself. Go into Tickets and move, or
-click a row, to choose another: the panel stays on that ticket as rows re-sort, and a new, more urgent
-ticket goes to the top and bumps the count without taking it. `Esc` out of Tickets goes back to
-automatic, as does the ticket's no longer needing you: answered, merged, taken back. With no row that
-wants you and none chosen, the panel says `Nothing needs you`, over Up next.
+With nothing chosen, the first `■ blocked` or `? for you` row is selected by itself. Go into Tickets
+and move, or click a row, to choose another: the panel stays on that ticket as rows re-sort, and a
+new, more urgent ticket goes to the top and bumps the count without taking it. `Esc` out of Tickets
+goes back to automatic, as does the ticket's no longer needing you: answered, merged, taken back. With
+neither of those rows and none chosen, the panel says `Nothing needs you`, over Up next, however many
+rows are set aside: those you read by choosing them, and `Esc` brings Up next back.
 
 With the focus on the panel its frame is heavy, and `1`–`9` answer with an option at once, as
 `Shift+A`'s box does, but a digit a highlighted card's question takes, with the focus on it in
@@ -497,7 +498,7 @@ on its card, opens a worker too.
 | `Ctrl+R` | | release a steered worker |
 | the wheel, `PgUp`, `PgDn` | | scroll the transcript, or the whole ticket while it is open |
 | `g`, `G` | | jump to the top or the end |
-| `Esc` | close a box or the key help, else come out of the panel; out of Tickets, Needs you goes back to the first row that wants you | leave the composer, then close the whole ticket, then the view |
+| `Esc` | close a box or the key help, else come out of the panel; out of Tickets, Needs you goes back to the first blocked or asked row, else Up next | leave the composer, then close the whole ticket, then the view |
 | `?` | key help | key help |
 | `Ctrl+C` | the quit box | the quit box |
 | `Ctrl+Z` | a toast: tutti can't be suspended | the same |

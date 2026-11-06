@@ -1,5 +1,5 @@
 // Needs you as the tickets table's selected row (§ 7.2, tutti-149z.3): with nothing chosen the first
-// row that wants you, by itself; a row you choose stays chosen by its ticket as rows re-sort, until
+// Blocked or Asked row, by itself; a row you choose stays chosen by its ticket as rows re-sort, until
 // you Esc out of the table or it stops needing you; with neither, Up next under `Nothing needs you`.
 // Each kind of row says its own detail, in the panel or, in a pane with none, in a box.
 
@@ -147,7 +147,7 @@ const merge = (rendered: Rendered, view: Settable<RunView>, next: RunView) =>
   rendered.input(() => view.set(next))
 
 describe("with nothing chosen", () => {
-  test("the first row that wants you is selected by itself, and the panel shows it", async () => {
+  test("the first row that asks you is selected by itself, and the panel shows it", async () => {
     const tickets = [entryOf("d-1", 0, merged), entryOf("a-1", 1, asked), entryOf("b-1", 2, dirty)]
     await scene(projected(tickets), wide, async ({ rendered }) => {
       const panel = panelOf(await rendered.capture())
@@ -168,12 +168,12 @@ describe("with nothing chosen", () => {
     })
   })
 
-  test("a set-aside row is selected only with nothing asking more of you", () => {
+  test("a set-aside row is never selected by itself", () => {
     const view = projected([
       entryOf("s-1", 0, TicketPhase.Deferred({ why: "by the worker" })),
       entryOf("d-1", 1, merged),
     ])
-    expect(selectedTicket(view.rows, null, view.needs, view.needs)).toBe("s-1" as TicketId)
+    expect(selectedTicket(view.rows, null, view.needs, view.needs)).toBeNull()
     const both = projected([
       entryOf("s-1", 0, TicketPhase.Deferred({ why: "by the worker" })),
       entryOf("a-1", 1, asked),
