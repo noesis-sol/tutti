@@ -140,6 +140,7 @@ filing a batch of tickets: it proposes blocks links between tickets that touch t
 | `tutti init` | sets the project up |
 | `tutti checks` | sets the project's checks again after `tutti init`, in its Checks step |
 | `tutti plan [--apply]` | proposes blocks links between open tickets that touch the same code |
+| `tutti playbook [approve\|edit\|retire <id> [<text>]]` | lists the lessons tutti keeps from the project's tickets, or acts on one; [The playbook](docs/organs.md#the-reflector-and-the-playbook) |
 | `tutti answer [<request-id> allow\|allow-run\|deny] [--json]` | lists or answers the workers' open requests |
 | `tutti answer <question> [--] <answer>` | answers a question ticket a worker filed, by an option's number or label or in your own words (after `--` for a label that starts with `-`); `tutti answer` lists them after the requests |
 | `tutti login` | logs in to Claude, then says which account and billing workers get |

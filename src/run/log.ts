@@ -115,6 +115,8 @@ export const Tag = {
   predictFailed: "PREDICT_FAILED",
   criticFailed: "CRITIC_FAILED",
   auditFailed: "AUDIT_FAILED",
+  reflectFailed: "REFLECT_FAILED",
+  playbookFailed: "PLAYBOOK_FAILED",
   usage: "USAGE",
   usageLimit: "USAGE_LIMIT",
   apiUnavailable: "API_UNAVAILABLE",

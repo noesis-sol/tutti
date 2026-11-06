@@ -17,7 +17,7 @@ const Timestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/u),
 )
 
-const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+export const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const optional = Schema.optionalKey
 // A non-negative amount: -0 left out, as JSON writes it 0.
 const Amount = Schema.Finite.check(
@@ -174,6 +174,16 @@ export const Info = Schema.Struct({
   text: Schema.String,
 })
 
+/**
+ * What a ticket was dispatched with of the playbook (src/run/playbook.ts): its version, the lessons
+ * its worker's prompt has, and those in its scope held back from it, for the holdout.
+ */
+export const DispatchPlaybook = Schema.Struct({
+  version: Count,
+  lessons: Schema.Array(Schema.String),
+  held: Schema.Array(Schema.String),
+})
+
 /** A ticket was picked up: `n` and `limit` as in `[n/limit]`; no `limit` for a run without one. */
 export const Dispatch = Schema.Struct({
   ...head("dispatch"),
@@ -184,6 +194,8 @@ export const Dispatch = Schema.Struct({
   ...queueFields,
   /** How many files its footprint names, where the run read one: its size, for its scorecard. */
   footprint: optional(Count),
+  /** The playbook's lessons in its scope (src/run/playbook.ts), where it has any. */
+  playbook: optional(DispatchPlaybook),
   text: Schema.String,
 })
 
@@ -749,6 +761,97 @@ export const Audit = Schema.Struct({
   text: Schema.String,
 })
 
+/** What a lesson of the playbook is (src/run/playbook.ts). */
+export const lessonKinds = ["strategy", "pitfall", "recovery"] as const
+
+/** Why a lesson was retired: no effect after its uses, a measured harm, you, by a command. */
+export const lessonRetired = ["no_effect", "harmful", "by_you"] as const
+
+/** Where a lesson came from: a ticket, and a record of the run about it (`check@<time>`). */
+export const LessonEvidence = Schema.Struct({ ticket: Schema.String, event: Schema.String })
+
+/** Why the gate refused a lesson (src/run/playbook.ts). */
+export const lessonRefusals = [
+  "empty",
+  "too_long",
+  "bad_scope",
+  "weakens_checks",
+  "git_or_bd",
+  "quotes_transcript",
+  "no_evidence",
+  "duplicate",
+  "capped",
+] as const
+
+/** What called for a reflection: every so many ended tickets, or a cluster of failures. */
+export const reflectionTriggers = ["every", "failures"] as const
+
+/** One lesson the reflector proposed, and what the gate made of it. */
+export const ReflectedLesson = Schema.Struct({
+  text: Schema.String,
+  kind: Schema.Literals(lessonKinds),
+  scope: Schema.Array(Schema.String),
+  evidence: Schema.Array(LessonEvidence),
+  /** Admitted: its ID, and whether it went active or waits for you. */
+  id: optional(Schema.String),
+  state: optional(Schema.Literals(["proposed", "active"])),
+  /** Refused: why. */
+  refused: optional(Schema.Literals(lessonRefusals)),
+  /** The lesson it displaced from a full pool. */
+  displaced: optional(Schema.String),
+})
+
+/**
+ * The reflector read the run's scorecards and transcripts and proposed lessons for the playbook
+ * (src/run/playbookRun.ts), each gated. tutti's own; `text` is its log line.
+ */
+export const Reflection = Schema.Struct({
+  ...head("reflection"),
+  trigger: Schema.Literals(reflectionTriggers),
+  /** The ended tickets it was called for. */
+  tickets: Schema.Array(Schema.String),
+  /** The playbook's version after it. */
+  version: Count,
+  lessons: Schema.Array(ReflectedLesson),
+  text: Schema.String,
+})
+
+// A difference of two rates: any sign, and never -0, which a line of JSON can't keep.
+const RateDifference = Schema.Finite.check(
+  Schema.makeFilter((n: number) => !Object.is(n, -0) || "-0 is 0"),
+)
+
+/** One lesson's holdout after a ticket, with its counts so far. */
+export const MeasuredLesson = Schema.Struct({
+  id: Schema.String,
+  /** The ticket's worker had it; false: it was held back. */
+  shown: Schema.Boolean,
+  helpful: Count,
+  harmful: Count,
+  held_clean: Count,
+  held_bad: Count,
+  /** Clean rate shown less clean rate held back, -1 to 1, where both have a ticket. */
+  effect: optional(RateDifference),
+  /** Fisher's exact test of that difference, where both have a ticket. */
+  p: optional(Amount),
+  retired: optional(Schema.Literals(lessonRetired)),
+})
+
+/**
+ * A ticket with lessons in its scope ended, and its scorecard was counted for each
+ * (src/run/playbookRun.ts). tutti's own; `text` is its log line.
+ */
+export const LessonMeasure = Schema.Struct({
+  ...head("lesson_measure"),
+  ticket: Schema.String,
+  /** Its scorecard: merged or closed with no hand-back, failed check or failed verifier round. */
+  clean: Schema.Boolean,
+  /** The playbook's version after it. */
+  version: Count,
+  lessons: Schema.Array(MeasuredLesson),
+  text: Schema.String,
+})
+
 /** What called for a review: the run's every Nth merge, or a scorecard in its worst decile. */
 export const reviewTriggers = ["every", "worst"] as const
 
@@ -1006,6 +1109,8 @@ export const kinds = {
   score_update: ScoreUpdate,
   review: Review,
   audit: Audit,
+  reflection: Reflection,
+  lesson_measure: LessonMeasure,
   end: End,
   phase: Phase,
   attention: Attention,

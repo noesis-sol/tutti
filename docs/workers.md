@@ -145,6 +145,10 @@ Each rule of the template prevents a way a run goes wrong:
 changed, unless `--force`; `tutti init --update` takes what tutti has changed in its template since,
 section by section ([Keeping them up to date](setup.md#keeping-the-worker-prompt-and-the-verifier-up-to-date)).
 
+A worker's standing rules can end with a marked section of lessons from the project's earlier tickets,
+those in its ticket's scope: [The playbook](organs.md#the-reflector-and-the-playbook). Your rules stand
+over them.
+
 ## Permissions
 
 Workers start in the permission mode `workers.permission_mode` names in the settings:

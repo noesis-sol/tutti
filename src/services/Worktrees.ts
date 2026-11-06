@@ -78,6 +78,14 @@ export const runExcludeEntry = `/${runFolder}/`
 const runExcludeComment = "# per-ticket files written by tutti"
 
 /**
+ * The info/exclude entry that keeps the playbook out of git in a project whose .tutti/.gitignore,
+ * written by an earlier tutti init, doesn't name it.
+ */
+export const playbookExcludeEntry = "/.tutti/playbook.jsonl"
+
+const playbookExcludeComment = "# the lessons tutti keeps from a project's tickets"
+
+/**
  * The folder under the worktrees' folder that merged worktrees are moved into, to be deleted outside
  * the merge queue (trash.ts). A ticket's ID can't start with a dot, so it names no worktree.
  */
@@ -190,6 +198,19 @@ export const found = (
 export const ensureExcluded = (
   commonDir: string,
 ): Effect.Effect<void, ExcludeUnwritable, FileSystem.FileSystem> =>
+  excludeEntry(commonDir, runExcludeEntry, runExcludeComment)
+
+/** Adds the playbook to the info/exclude in the git folder `commonDir`, as `ensureExcluded` does. */
+export const ensurePlaybookExcluded = (
+  commonDir: string,
+): Effect.Effect<void, ExcludeUnwritable, FileSystem.FileSystem> =>
+  excludeEntry(commonDir, playbookExcludeEntry, playbookExcludeComment)
+
+const excludeEntry = (
+  commonDir: string,
+  entry: string,
+  comment: string,
+): Effect.Effect<void, ExcludeUnwritable, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const linked = join(commonDir, "info", "exclude")
@@ -203,8 +224,8 @@ export const ensureExcluded = (
       ),
     )
     const lines = text === "" ? [] : text.replace(/\n+$/, "").split("\n")
-    if (lines.some((line) => line.trim() === runExcludeEntry)) return
-    const updated = `${[...lines, runExcludeComment, runExcludeEntry].join("\n")}\n`
+    if (lines.some((line) => line.trim() === entry)) return
+    const updated = `${[...lines, comment, entry].join("\n")}\n`
     yield* fs
       .makeDirectory(join(file, ".."), { recursive: true })
       .pipe(Effect.andThen(writeFileAtomic(file, updated)), Effect.mapError(unwritable))

@@ -54,7 +54,8 @@ FROM read_json(path, format = 'newline_delimited', filename = true, columns = {
   checks: 'STRUCT(failed INTEGER, timed_out INTEGER)', resolving: 'DOUBLE', fixing: 'DOUBLE',
   working: 'DOUBLE', flaky: 'INTEGER', denied: 'INTEGER', asked: 'INTEGER', size: 'INTEGER',
   median: 'STRUCT(tickets INTEGER, working DOUBLE, cost_usd DOUBLE)',
-  items: 'STRUCT(item VARCHAR, answer VARCHAR, evidence VARCHAR, ungrounded BOOLEAN)[]'
+  items: 'STRUCT(item VARCHAR, answer VARCHAR, evidence VARCHAR, ungrounded BOOLEAN)[]',
+  lessons: 'STRUCT(id VARCHAR, "text" VARCHAR, kind VARCHAR, state VARCHAR, refused VARCHAR, displaced VARCHAR, shown BOOLEAN, helpful INTEGER, harmful INTEGER, held_clean INTEGER, held_bad INTEGER, effect DOUBLE, p DOUBLE, retired VARCHAR)[]'
 });
 
 CREATE OR REPLACE MACRO transcripts(path) AS TABLE
@@ -463,6 +464,33 @@ SELECT run, ticket,
   list(i.evidence ORDER BY i.item) FILTER (i.answer = 'yes') AS quoted,
   count(*) FILTER (i.answer = 'unclear') AS unclear
 FROM items GROUP BY run, ticket ORDER BY run, ticket;
+```
+
+## The playbook
+
+Each lesson's counts after the last ticket it was counted for, with what retired it. The
+[playbook](organs.md#the-reflector-and-the-playbook) itself is `.tutti/playbook.jsonl`.
+
+```sql
+WITH measures AS (
+  SELECT time, seq, unnest(lessons) AS l
+  FROM events('.tutti/run/events.jsonl') WHERE kind = 'lesson_measure'
+)
+SELECT l.id AS lesson, l.helpful, l.harmful, l.held_clean, l.held_bad, l.effect, l.p, l.retired
+FROM measures
+QUALIFY row_number() OVER (PARTITION BY l.id ORDER BY time DESC, seq DESC) = 1
+ORDER BY lesson;
+```
+
+What each reflection proposed, and what the gate made of it.
+
+```sql
+WITH reflections AS (
+  SELECT run, time, "trigger", unnest(lessons) AS l
+  FROM events('.tutti/run/events.jsonl') WHERE kind = 'reflection'
+)
+SELECT run, time, "trigger", l.id AS lesson, l.state, l.refused, l.kind, l.text
+FROM reflections ORDER BY time;
 ```
 
 ## Waiting on you

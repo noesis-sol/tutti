@@ -53,15 +53,19 @@ export const headCharacters = 15_000
 
 /**
  * A transcript as the auditor reads it: the lines of all its items, or, past
- * `transcriptCharacters`, its first `headCharacters` and its last ones, each cut at a line's end,
- * with how much was left out between them.
+ * `most` characters, its first `first` and its last ones, each cut at a line's end, with how much
+ * was left out between them.
  */
-export const transcriptText = (items: ReadonlyArray<Item>): string => {
+export const transcriptText = (
+  items: ReadonlyArray<Item>,
+  most = transcriptCharacters,
+  first = headCharacters,
+): string => {
   const text = items.flatMap(itemLines).join("\n")
-  if (text.length <= transcriptCharacters) return text
-  const start = text.slice(0, headCharacters)
+  if (text.length <= most) return text
+  const start = text.slice(0, first)
   const head = start.slice(0, Math.max(0, start.lastIndexOf("\n")))
-  const end = text.slice(text.length - (transcriptCharacters - headCharacters))
+  const end = text.slice(text.length - (most - first))
   const tail = end.slice(end.indexOf("\n") + 1)
   const left = text.length - head.length - tail.length
   return `${head}\n… (${left} characters of the transcript left out) …\n${tail}`

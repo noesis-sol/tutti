@@ -513,6 +513,58 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       text: "  audit a-1: 1 of 3 flagged (repeated a failing command); 1 unclear",
     },
   ],
+  reflection: [
+    {
+      ...head,
+      kind: "reflection",
+      trigger: "every",
+      tickets: ["a-1", "a-2"],
+      version: 4,
+      lessons: [
+        {
+          text: "The ledger's transitions run under its lock: keep bd out of them.",
+          kind: "pitfall",
+          scope: ["src/run/ledger.ts"],
+          evidence: [{ ticket: "a-1", event: "check@2026-10-02T09:12:04.51+02:00" }],
+          id: "L4",
+          state: "active",
+          displaced: "L1",
+        },
+        {
+          text: "Skip the slow tests.",
+          kind: "strategy",
+          scope: [],
+          evidence: [],
+          refused: "weakens_checks",
+        },
+      ],
+      text: "  reflection: 2 lessons; active L4; refused 1 weakens_checks",
+    },
+  ],
+  lesson_measure: [
+    {
+      ...head,
+      kind: "lesson_measure",
+      ticket: "a-1",
+      clean: true,
+      version: 5,
+      lessons: [
+        {
+          id: "L4",
+          shown: true,
+          helpful: 7,
+          harmful: 3,
+          held_clean: 6,
+          held_bad: 4,
+          effect: 0.1,
+          p: 1,
+          retired: "no_effect",
+        },
+        { id: "L5", shown: false, helpful: 0, harmful: 0, held_clean: 1, held_bad: 0 },
+      ],
+      text: "  lessons for a-1: clean; shown L4; held back L5; retired L4 (no_effect)",
+    },
+  ],
   phase: [
     { ...head, kind: "phase", ticket: "a-1", to: "Queued", cause: "ready" },
     {
@@ -709,7 +761,7 @@ describe("the records", () => {
           "resumed",
         ],
         ...["check", "turn", "organ", "ticket_end"],
-        ...["verifier", "score", "score_update", "review", "audit"],
+        ...["verifier", "score", "score_update", "review", "audit", "reflection", "lesson_measure"],
         "auto_answered",
       ].sort(),
     )

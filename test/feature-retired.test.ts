@@ -112,6 +112,7 @@ describe("the screen and plan organs", () => {
       "reviewer",
       "critic",
       "auditor",
+      "reflector",
       "scout",
     ])
   })

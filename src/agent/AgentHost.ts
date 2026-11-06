@@ -95,6 +95,8 @@ export interface Session {
   readonly cwd: string
   /** What it is for (sessionKind.ts); a worker's when left out. */
   readonly kind?: SessionKind
+  /** A worker's lessons from the playbook, as a section for its standing rules; none when empty. */
+  readonly lessons?: string
 }
 
 /**

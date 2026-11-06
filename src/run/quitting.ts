@@ -22,6 +22,7 @@ import { Ledger } from "./ledger.ts"
 import { type Line, Log } from "./log.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { stopsAtEnd } from "./phase.ts"
+import type { RunPlaybook } from "./playbookRun.ts"
 import {
   type Awaited,
   atOnceText,
@@ -98,6 +99,8 @@ export const make = (options: {
   readonly critic?: Pick<Critic, "interrupt">
   /** The auditor (auditor.ts), whose audit under way is aborted with triage's; none without it. */
   readonly auditor?: Pick<Auditor, "interrupt">
+  /** The playbook (playbookRun.ts), whose reflection under way is aborted with them; none without it. */
+  readonly playbook?: Pick<RunPlaybook, "interrupt">
   readonly status: SubscriptionRef.SubscriptionRef<Status>
   readonly exitNow?: (code: number, said: ReadonlyArray<Line>) => Effect.Effect<void>
 }): Effect.Effect<Quits, never, AgentHost | Attention | Ledger | Store | Log | EventStream> =>
@@ -200,6 +203,7 @@ export const make = (options: {
         yield* options.triage.interrupt
         yield* options.critic?.interrupt ?? Effect.void
         yield* options.auditor?.interrupt ?? Effect.void
+        yield* options.playbook?.interrupt ?? Effect.void
         yield* waitFor([])
       })
 

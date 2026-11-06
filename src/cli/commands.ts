@@ -102,6 +102,7 @@ import {
   runFlags,
 } from "./flags.ts"
 import { login, runInTerminal } from "./login.ts"
+import { playbook, playbookAct, playbookExits } from "./playbook.ts"
 import { requires, requiresExits } from "./requires.ts"
 import { buildKind, tuttiVersion } from "./version.ts"
 
@@ -420,6 +421,57 @@ export const coloursCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
   ).pipe(
     Command.withDescription(
       "preview a colour scheme, the one in use by default: every role's colour and where it comes from, a mock of the dashboard, and anything that keeps the scheme from being used, which exits 1",
+    ),
+  )
+
+/** `tutti playbook`, in the main checkout `repo` finds, beside a run or between runs. */
+export const playbookCommand = <E extends { readonly message: string } | string, R>(
+  repo: Effect.Effect<string, E, R>,
+) =>
+  Command.make(
+    "playbook",
+    {
+      action: Argument.String("action").pipe(
+        Argument.withDescription("approve, edit or retire; without it, the lessons are listed"),
+        Argument.optional,
+      ),
+      id: Argument.String("id").pipe(
+        Argument.withDescription("the lesson, as the list names it"),
+        Argument.optional,
+      ),
+      text: Argument.String("text").pipe(
+        Argument.withDescription("edit: the lesson's new words"),
+        Argument.optional,
+      ),
+    },
+    (given) =>
+      Effect.gen(function* () {
+        const error = (line: string) => process.stderr.write(`${line}\n`)
+        const act = playbookAct(
+          Option.getOrUndefined(given.action),
+          Option.getOrUndefined(given.id),
+          Option.getOrUndefined(given.text),
+        )
+        if (typeof act === "string") {
+          error(`tutti playbook: ${act}`)
+          process.exitCode = exitCodes.setup
+          return
+        }
+        const found = yield* Effect.result(repo)
+        if (Result.isFailure(found)) {
+          const why = found.failure
+          error(`tutti playbook: ${typeof why === "string" ? why : why.message}`)
+          process.exitCode = exitCodes.setup
+          return
+        }
+        process.exitCode = yield* playbook(found.success, act, {
+          out: (line) => process.stdout.write(`${line}\n`),
+          error,
+        })
+      }),
+  ).pipe(
+    Command.withDescription(
+      `list the lessons of the playbook, .tutti/playbook.jsonl, those proposed first, with their counts and effect against their holdout; approve <id> lets a proposed lesson reach workers, edit <id> <text> gives one new words, its counts begun again, retire <id> takes one out of workers' prompts. It works beside a run, whose next ticket reads the file afresh. ${playbookExits}`,
     ),
   )
 
@@ -1251,6 +1303,7 @@ export const tuttiWith = <
       loginCommand(repo),
       coloursCommand(repo),
       requiresCommand(here),
+      playbookCommand(repo),
       updateCommand,
     ]),
   )

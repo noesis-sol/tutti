@@ -16,6 +16,7 @@ import { changeStops, firstStop, type Gate, swapStop, takesBack, takesNew } from
 import type { HoldsGate } from "./holdsGate.ts"
 import type { Ledger } from "./ledger.ts"
 import { isSettled, type MergeQueue } from "./mergequeue.ts"
+import type { RunPlaybook } from "./playbookRun.ts"
 import { decide, End, endOfRunBox, type Look, limitedOnly } from "./runEnd.ts"
 import type { Scheduler } from "./schedule.ts"
 import type { ScreenCommands } from "./screenCommands.ts"
@@ -44,6 +45,8 @@ export interface LoopParts {
   readonly critic?: Pick<Critic, "pending">
   /** The auditor (auditor.ts): the run doesn't end while a ticket waits for its audit. */
   readonly auditor?: Pick<Auditor, "pending">
+  /** The playbook (playbookRun.ts): the run doesn't end while a reflection waits. */
+  readonly playbook?: Pick<RunPlaybook, "pending">
   readonly usage: Pick<UsageLimitHold, "limited" | "handBacks" | "look">
   readonly commands: Pick<ScreenCommands, "acted" | "endAsked" | "endAfter" | "askEnd">
   readonly environment: Pick<EnvironmentHold, "probe">
@@ -104,6 +107,7 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         triagePending: yield* parts.triage.pending,
         reviewsPending: parts.critic === undefined ? 0 : yield* parts.critic.pending,
         auditsPending: parts.auditor === undefined ? 0 : yield* parts.auditor.pending,
+        reflectionsPending: parts.playbook === undefined ? 0 : yield* parts.playbook.pending,
         dashboard: parts.dashboard,
         overnight: parts.overnight === true,
         setAside:

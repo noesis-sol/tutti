@@ -32,6 +32,7 @@ import { HumanLabel, type Issue } from "../services/Beads.ts"
 import type { Commit } from "../services/Git.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import type { AuditItemName, Event, verdicts } from "./events.ts"
+import { timestamp } from "./localTime.ts"
 
 type Verdict = (typeof verdicts)[number]
 
@@ -64,6 +65,8 @@ export interface Tally {
   readonly reverts: ReadonlyArray<string>
   /** Its latest audit's flags. */
   readonly audit?: ScoreAudit
+  /** The records that say how it went (`recordsOf`), as a lesson of the playbook cites them. */
+  readonly records: ReadonlyArray<string>
 }
 
 const noTally: Tally = {
@@ -78,6 +81,7 @@ const noTally: Tally = {
   questions: 0,
   followUps: [],
   reverts: [],
+  records: [],
 }
 
 /** The run's scoring: each ticket's tally, and each ticket's latest score, in the order they ended. */
@@ -123,8 +127,48 @@ const update = (scoring: Scoring, ticket: string, change: (t: Tally) => Tally): 
 
 const flakyText = /^\s*FLAKY: /
 
+/** A record as a lesson of the playbook cites it: its kind and the time it has in the stream. */
+export const recordRef = (kind: Event["kind"], at: number): string =>
+  `${kind}@${timestamp(new Date(at))}`
+
+// The ticket a record says something about how it went, of those scoring counts or that end it.
+const recordedTicket = (event: Event): string | undefined => {
+  switch (event.kind) {
+    case "dispatch":
+    case "verifier":
+    case "denied":
+    case "asked":
+    case "deferred":
+    case "closed":
+    case "ticket_end":
+    case "audit":
+    case "score":
+      return event.ticket
+    case "check":
+      return event.result === "failed" || event.result === "timed_out" ? event.ticket : undefined
+    case "warn":
+      return flakyText.test(event.text) ? event.ticket : undefined
+    case "attention":
+      return event.type === "question" ? event.ticket : undefined
+    case "attention_answered":
+      return event.answer === "deny" ? event.ticket : undefined
+  }
+  return undefined
+}
+
 /** `scoring` with `event`, written at `at` (epoch milliseconds), added. */
 export const scoreStep = (scoring: Scoring, event: Event, at: number): Scoring => {
+  const stepped = stepOf(scoring, event, at)
+  const ticket = recordedTicket(event)
+  return ticket === undefined
+    ? stepped
+    : update(stepped, ticket, (t) => ({
+        ...t,
+        records: [...t.records, recordRef(event.kind, at)],
+      }))
+}
+
+const stepOf = (scoring: Scoring, event: Event, at: number): Scoring => {
   switch (event.kind) {
     case "phase":
       return scoring.tallies.get(event.ticket)?.took !== undefined

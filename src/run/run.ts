@@ -169,6 +169,7 @@ import { make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { putBackLeft } from "./mergetrain.ts"
 import { make as makeOvernightAside } from "./overnightAside.ts"
 import type { TicketPhase } from "./phase.ts"
+import { make as makePlaybook, off as playbookOff } from "./playbookRun.ts"
 import { make as makePredictor } from "./predict.ts"
 import { capEvidence } from "./pressureCap.ts"
 import { make as makePressureGate } from "./pressureGate.ts"
@@ -582,6 +583,14 @@ const runFrom = (
       : yield* makeAuditor({ repo: config.repo, done: wakeUp("verdict") }).pipe(
           Effect.provideService(Organs, organs.value),
         )
+    // The playbook (playbookRun.ts): what each ticket dispatched is given of it, counted as it ends
+    // (followEnds, below), and, when the run has organs, a reflection every so many ends in the
+    // background. Each reflection's end wakes the run, which doesn't end while one waits.
+    const playbook = yield* makePlaybook({
+      repo: config.repo,
+      organs,
+      done: wakeUp("verdict"),
+    })
     const queue = yield* makeQueue(
       {
         repo: config.repo,
@@ -652,15 +661,18 @@ const runFrom = (
     const ticketFiber = (issue: Issue): Effect.Effect<void> =>
       outcomeOf(
         issue.id,
-        work(issue, {
-          base,
-          queue,
-          triage,
-          setUps,
-          closedBranches: branches,
-          onTicketLimit: onTicketLimit(issue.id),
-          ...overnight,
-        }),
+        work(
+          { ...issue, lessons: playbook.section(issue.id) },
+          {
+            base,
+            queue,
+            triage,
+            setUps,
+            closedBranches: branches,
+            onTicketLimit: onTicketLimit(issue.id),
+            ...overnight,
+          },
+        ),
       ).pipe(Effect.provideContext(context))
 
     // A merge that changed the requires list has it checked again before the next ticket starts
@@ -775,6 +787,7 @@ const runFrom = (
       carrying: Ref.get(carrying),
       ...(footprints === undefined ? {} : { footprints }),
       ...(predictor === undefined ? {} : { predictor }),
+      playbook,
       closedBranches: branches,
       show: ({ solo, unclosed, waits, skips }) =>
         Effect.andThen(
@@ -812,6 +825,8 @@ const runFrom = (
     yield* watch(apiOutage.watch)
     // Each ticket whose part in the run ends is audited, with the auditor on (auditor.ts).
     if (auditor !== auditorOff) yield* watch(followEnds(ledger.changes, auditor))
+    // And counted for the lessons it was given, and towards the next reflection (playbookRun.ts).
+    if (playbook !== playbookOff) yield* watch(followEnds(ledger.changes, playbook))
     // The title line's badge while the keep-awake command holds the machine awake.
     if (options.keepingAwake !== undefined) {
       yield* watch(Stream.runForEach(options.keepingAwake, showOn(status, "keepAwake")))
@@ -860,6 +875,7 @@ const runFrom = (
       triage,
       critic,
       auditor,
+      playbook,
       status,
       ...(options.exitNow === undefined ? {} : { exitNow: options.exitNow }),
     })
@@ -1199,6 +1215,7 @@ const runFrom = (
       triage,
       critic,
       auditor,
+      playbook,
       usage,
       commands,
       environment,
@@ -1335,7 +1352,7 @@ const runFrom = (
         ),
       )
     }
-    const after = scorecardsReport(scores) + checked.after
+    const after = scorecardsReport(scores) + (yield* playbook.report) + checked.after
     const exitCode = checked.code ?? exitCodeOf(all)
 
     // Gathered only for a report, which a quit skips: bd lists the scope's tickets level by level.

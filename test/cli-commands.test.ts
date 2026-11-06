@@ -1,4 +1,4 @@
-// `tutti answer`, `tutti plan` and `tutti requires` end to end (§ 8.1): `bun src/main.ts` started in
+// `tutti answer`, `tutti plan`, `tutti playbook` and `tutti requires` end to end (§ 8.1): `bun src/main.ts` started in
 // a repository on real git, with the tests' environment and, for plan, a fake bd on the PATH. Each
 // command's lines on stdout and stderr and its exit code: answer's listing and its errors as the
 // command prints them (src/answer/answer.ts), plan's proposal and the problems it stops on
@@ -64,6 +64,48 @@ const tutti = async (cwd: string, args: ReadonlyArray<string>, bin?: string) => 
   ])
   return { code, stdout, stderr }
 }
+
+// tutti playbook
+
+describe("tutti playbook", () => {
+  const seeded = {
+    id: "L1",
+    text: "Reset the parser's cursor between files.",
+    scope: ["src/parse/**"],
+    kind: "strategy",
+    evidence: [{ ticket: "t-1", event: "check@1" }],
+    state: "proposed",
+    helpful: 0,
+    harmful: 0,
+    held_clean: 0,
+    held_bad: 0,
+    measured: [],
+    admitted_at: "2026-11-06T09:00:00Z",
+    version: 1,
+  }
+
+  test("lists, approves, and refuses what it can't do, in the main checkout", async () => {
+    const repo = makeRepo()
+    mkdirSync(join(repo.dir, ".tutti"), { recursive: true })
+    writeFileSync(join(repo.dir, ".tutti", "playbook.jsonl"), `${JSON.stringify(seeded)}\n`)
+    const listed = await tutti(repo.dir, ["playbook"])
+    expect(listed.code).toBe(0)
+    expect(listed.stdout).toContain("L1 proposed strategy [src/parse/**]")
+    const approved = await tutti(repo.dir, ["playbook", "approve", "L1"])
+    expect(approved).toMatchObject({ code: 0, stdout: "L1 approved.\n" })
+    expect(readFileSync(join(repo.dir, ".tutti", "playbook.jsonl"), "utf8")).toContain(
+      '"state":"active"',
+    )
+    const edited = await tutti(repo.dir, ["playbook", "edit", "L1", "Reset the cursor per file."])
+    expect(edited.code).toBe(0)
+    const refused = await tutti(repo.dir, ["playbook", "retire", "L9"])
+    expect(refused.code).toBe(2)
+    expect(refused.stderr).toContain("tutti playbook: no lesson L9")
+    const wrong = await tutti(repo.dir, ["playbook", "merge", "L1"])
+    expect(wrong.code).toBe(2)
+    expect(wrong.stderr).toContain("give approve, edit or retire")
+  })
+})
 
 // tutti answer
 

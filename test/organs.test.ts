@@ -179,6 +179,7 @@ describe("Organs", () => {
       { organ: "reviewer", effort: "medium" },
       { organ: "critic", effort: "medium" },
       { organ: "auditor", effort: "low" },
+      { organ: "reflector", effort: "medium" },
       { organ: "scout", effort: "medium" },
     ])
   })
@@ -209,6 +210,7 @@ describe("Organs", () => {
       reviewer: 5,
       critic: 5,
       auditor: 3,
+      reflector: 5,
       scout: 5,
     })
   })

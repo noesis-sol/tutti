@@ -667,6 +667,7 @@ export const layer = (
               skills,
               readme,
               requires: requiresNow,
+              ...(session.lessons === undefined ? {} : { lessons: session.lessons }),
               callbacks,
               session: how,
             })

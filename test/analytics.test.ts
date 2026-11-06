@@ -9,7 +9,7 @@
 // PASS; each ticket_end has the score the EventStream writes after it, and proj-b1, dispatched in
 // the second run, is a follow-up of proj-a2 (a score_update), whose merge the critic reviews (a
 // review: a finding filed, a severe one asked, one a duplicate) and the auditor audits (an audit, one
-// item flagged, one unclear). Beside it, workers/ has proj-a1's,
+// item flagged, one unclear), and the playbook's reflection and counts. Beside it, workers/ has proj-a1's,
 // proj-a3's and proj-b1's transcripts, with the verifier's runs, and issues.jsonl is bd's export of
 // the tickets.
 import { describe, expect, test } from "bun:test"
@@ -421,6 +421,52 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
       flagged: ["repeated_failing_command"],
       quoted: ["tool Bash: perl -pi -e 's/old/new/' src/b.ts"],
       unclear: 1,
+    },
+  ],
+  // Each lesson's counts
+  [
+    {
+      lesson: "L1",
+      helpful: 1,
+      harmful: 0,
+      held_clean: 0,
+      held_bad: 1,
+      effect: 1,
+      p: 1,
+      retired: "no_effect",
+    },
+  ],
+  // What each reflection proposed
+  [
+    {
+      run: "2026-10-21T06:18:11.587Z",
+      time: "2026-10-21 06:34:16.04+00",
+      trigger: "every",
+      lesson: "L1",
+      state: "active",
+      refused: null,
+      kind: "pitfall",
+      text: "The parser keeps a cursor per file: reset it between files.",
+    },
+    {
+      run: "2026-10-21T06:18:11.587Z",
+      time: "2026-10-21 06:34:16.04+00",
+      trigger: "every",
+      lesson: "L2",
+      state: "proposed",
+      refused: null,
+      kind: "strategy",
+      text: "Plan the parser's states first.",
+    },
+    {
+      run: "2026-10-21T06:18:11.587Z",
+      time: "2026-10-21 06:34:16.04+00",
+      trigger: "every",
+      lesson: null,
+      state: null,
+      refused: "weakens_checks",
+      kind: "strategy",
+      text: "Skip the slow tests.",
     },
   ],
   // Each request

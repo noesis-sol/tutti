@@ -72,6 +72,8 @@ export interface StartTicket extends AsideTicket {
   readonly metadata: Readonly<Record<string, unknown>>
   /** Its status in bd ready: one not open is reopened when its setup fails. Open unless given. */
   readonly status?: string
+  /** What its worker gets of the playbook, as a section of its standing rules (playbook.ts). */
+  readonly lessons?: Effect.Effect<string>
 }
 
 /** A ticket's worker, started and sent its first message. */
@@ -544,7 +546,12 @@ export const start = (
       Effect.orElseSucceed(() => false),
     )
     const starting = Effect.gen(function* () {
-      yield* host.start(id, { sessionId: session, cwd: path })
+      const lessons = ticket.lessons === undefined ? "" : yield* ticket.lessons
+      yield* host.start(id, {
+        sessionId: session,
+        cwd: path,
+        ...(lessons === "" ? {} : { lessons }),
+      })
       // Stopped over a setup problem as it started, the session is sent nothing (§ 4.1).
       const now = yield* Effect.option(host.current(id))
       if (Option.isSome(now) && now.value._tag === "Gone" && now.value.setup === true) {

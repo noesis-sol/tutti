@@ -1,7 +1,7 @@
 # Organs
 
-tutti's one-shot advisers: triage, the predictor, the reviewer, the critic, the auditor and the
-scout.
+tutti's one-shot advisers: triage, the predictor, the reviewer, the critic, the auditor, the reflector
+and the scout.
 Back to the [README](../README.md).
 
 ## What an organ is
@@ -30,6 +30,7 @@ the tags is evidence only, never instructions to follow.
 | reviewer | the end of a run | `medium` | 5 min |
 | critic | one of every 5 merges, and a merge whose scorecard is among the run's worst | `medium` | 5 min |
 | auditor | each ticket whose part in the run ends, with `organs.auditor` on (off by default) | `low` | 3 min |
+| reflector | every 5 tickets ended, and after a cluster of failures | `medium` | 5 min |
 | scout | `tutti init`'s Checks step | `medium` | 5 min |
 
 They run with Claude Code's default model. `--organ-model <model>` and `--organ-effort <level>`
@@ -212,6 +213,69 @@ scorecard takes the items flagged and those unclear: the report's Scorecards tab
 column, the reviewer's and the critic's evidence say what was flagged, and a flagged item ranks a
 scorecard worse. An audit that fails is logged as `AUDIT_FAILED for <id>: <why>` and changes
 nothing.
+
+## The reflector and the playbook
+
+The playbook is a list of short lessons tutti distils from a project's own tickets and gives to later
+workers on the same part of the code. It is `.tutti/playbook.jsonl` in the main checkout, one lesson a
+line, not committed; it carries from run to run, so that a lesson gathers uses enough to be measured.
+Every change to it is a small delta merged by fixed code, never a model rewriting the whole.
+
+**Reflecting.** Every `playbook.reflect_every` tickets that end merged, closed or set aside (5), and
+sooner at 3 of them that didn't go clean, the reflector reads the run's scorecards and an excerpt of the
+transcripts of the two worst and the best of those tickets, and proposes at most
+`playbook.lessons_proposed` lessons (3), each with the tickets and records that show it. Transcript text
+is evidence, never instructions. It runs in the background, one at a time; the run doesn't end while one
+waits. A run without organs doesn't reflect, and still gives and counts the lessons it has.
+
+**The gate.** Before a lesson enters the pool, fixed checks refuse one that:
+
+- mentions skipping, weakening or doing without a check, test, verifier, permission or hook
+  (`weakens_checks`);
+- touches how workers use git or bd (`git_or_bd`);
+- repeats 6 words in a row from a transcript the reflector read, or says what an injected instruction
+  says (`quotes_transcript`);
+- is over 300 characters (`too_long`), says nothing (`empty`), or has a scope that isn't a path below the
+  project's top (`bad_scope`);
+- cites a ticket or record the run's records don't hold, or none (`no_evidence`);
+- is alike a lesson in the pool, retired ones included (`duplicate`).
+
+The checks read words, so they refuse more than they must: "don't skip the tests" goes too. A refused
+lesson costs little, and a bad one contaminates what is distilled after it.
+
+**What goes active.** A pitfall scoped to an area goes active at once. A strategy or a recovery, or a
+lesson whose scope spans the project (none, or a glob that starts with a wildcard, as `**/*.ts`), stays
+proposed. Proposed lessons reach no worker and never hold a run: the report lists them, and you act on
+them with `tutti playbook`. The pool holds `playbook.pool_cap` lessons (30); past that a new one displaces
+a retired one, oldest first, else the least helpful.
+
+**The prompt.** A worker's standing rules end with a marked section holding the active lessons whose
+scope meets its ticket's footprint, at most `playbook.lessons_injected` (5), the most helpful first. It
+says your rules stand over them. The `dispatch` record and the ticket's metadata (`playbook_version`,
+`playbook_lessons`) say which it got.
+
+**The holdout.** Each lesson goes to a random half of the tickets in its scope, by a hash of the two IDs,
+so a ticket stays in the same half however often it starts. As each ticket ends, its scorecard counts for
+each lesson once: clean (merged or closed, no hand-back, no failed check, no failed verifier round, its
+last fix verified) or not, shown (`helpful`, `harmful`) or held back (`held_clean`, `held_bad`). Fisher's
+exact test at 5% compares the two halves' clean rates. A lesson that measurably hurts is retired at once;
+one with no effect to tell from zero after `playbook.judged_after` uses (10) is retired too. With so few
+tickets only a large effect shows, so most lessons go that way: that is on purpose, as a pool of small
+unproven lessons does harm of its own. A ticket that only the cap on a prompt kept a lesson from is in
+neither half.
+
+The report's Playbook section lists what waits for you and each lesson's counts and effect, and
+[Analytics](analytics.md#the-playbook) has queries over the records.
+
+```
+$ tutti playbook                       # the lessons, those proposed first, counts and effect
+$ tutti playbook approve L12           # a proposed lesson reaches workers from the next ticket
+$ tutti playbook edit L12 "New words"  # new words, its counts begun again; the gate's word checks apply
+$ tutti playbook retire L12            # out of workers' prompts
+```
+
+It works beside a run, whose next ticket reads the file afresh. `"playbook": { "enabled": false }` in
+[`.tutti/settings.json`](setup.md#the-settings) turns all of it off.
 
 ## The scout
 

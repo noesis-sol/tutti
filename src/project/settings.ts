@@ -273,6 +273,21 @@ export const Settings = Schema.Struct({
     /** Gone with the plan organ (retiredOrganKeys): read whatever it is, and ignored. */
     plan: Schema.optionalKey(Schema.Unknown),
   }).pipe(withDefault({})),
+  /** The playbook of lessons from the project's own tickets (src/run/playbook.ts). */
+  playbook: Schema.Struct({
+    /** false: no reflection, no lessons in workers' prompts, nothing measured. */
+    enabled: Schema.Boolean.pipe(withDefault(true)),
+    /** The reflector reads every this many ended tickets; 0: only after a cluster of failures. */
+    reflect_every: Count.pipe(withDefault(5)),
+    /** The most lessons one reflection proposes. */
+    lessons_proposed: Count.pipe(withDefault(3)),
+    /** The most lessons a worker's prompt gets. */
+    lessons_injected: Count.pipe(withDefault(5)),
+    /** A lesson is judged after this many uses, its effect against its holdout's. */
+    judged_after: Count.pipe(withDefault(10)),
+    /** The most lessons the pool holds; a new one past it displaces another. */
+    pool_cap: Count.pipe(withDefault(30)),
+  }).pipe(withDefault({})),
   /** A spec run's breakdown (§ 4.14). */
   spec: Schema.Struct({
     /** How long a headless breakdown may take. */

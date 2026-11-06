@@ -89,6 +89,8 @@ export interface WorkerOptionsInput {
   readonly readme?: boolean
   /** The names of the run's requires list now (requiresNote); the settings' when left out. */
   readonly requires?: ReadonlyArray<string>
+  /** The playbook's lessons for its ticket, a marked section after its standing rules; or none. */
+  readonly lessons?: string
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
 }
@@ -224,7 +226,8 @@ export const workerOptions = (input: WorkerOptionsInput): SessionSpec => {
             append:
               forTicket(input.prompt, input.ticket) +
               changingNotes(input, input.prompt) +
-              usageLimitNote,
+              usageLimitNote +
+              (input.lessons ?? ""),
           }),
       snapshot: true,
     },

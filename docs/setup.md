@@ -530,6 +530,14 @@ for a project that sets them all; the table below gives each one's default:
     "critic_tickets": 5,
     "auditor": false
   },
+  "playbook": {
+    "enabled": true,
+    "reflect_every": 5,
+    "lessons_proposed": 3,
+    "lessons_injected": 5,
+    "judged_after": 10,
+    "pool_cap": 30
+  },
   "spec": { "timeout": "60m", "effort": "high" },
   "queue": { "exclude_types": ["epic"], "footprint": true, "shared_files": ["test/FEATURES.md"] },
   "vendored": [],
@@ -576,6 +584,12 @@ for a project that sets them all; the table below gives each one's default:
 | `organs.critic_every` | `5` | the critic reviews one of every this many merges; `0` only those whose scorecard is in the run's worst decile |
 | `organs.critic_tickets` | `5` | the most tickets the critic files in a run |
 | `organs.auditor` | `false` | the auditor, which reads each ended ticket's transcript against a rubric for its scorecard, a model turn a ticket; [The auditor](organs.md#the-auditor) |
+| `playbook.enabled` | `true` | the playbook of lessons from the project's tickets: reflecting, the lessons in workers' prompts and their counts; [The playbook](organs.md#the-reflector-and-the-playbook) |
+| `playbook.reflect_every` | `5` | the reflector reads every this many ended tickets; `0` only after a cluster of failures |
+| `playbook.lessons_proposed` | `3` | the most lessons one reflection proposes |
+| `playbook.lessons_injected` | `5` | the most lessons a worker's prompt gets |
+| `playbook.judged_after` | `10` | a lesson is judged against its holdout after this many uses; `0` only a measured harm retires one |
+| `playbook.pool_cap` | `30` | the most lessons the pool holds; a new one past it displaces another |
 | `spec.timeout`, `spec.effort` | `"60m"`, `"high"` | how long a spec's breakdown may take, and its effort; `--spec-timeout`, `--spec-effort` for a run; [A whole app from a spec](running.md#a-whole-app-from-a-spec) |
 | `queue.exclude_types` | `["epic"]` | issue types a run never takes; epics never run whatever it says |
 | `queue.footprint` | `true` | keep tickets that touch the same code apart; [Footprints](running.md#footprints) |

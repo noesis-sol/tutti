@@ -87,6 +87,7 @@ import { detail, type Line, Log, line } from "./log.ts"
 import { hasRoom, type Room } from "./machineGate.ts"
 import { type Mentions, readMentions, type Sources } from "./overlap.ts"
 import { type HoldBack, Move, phaseFacts, TicketPhase } from "./phase.ts"
+import type { RunPlaybook } from "./playbookRun.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
@@ -311,6 +312,8 @@ export interface Options {
    * footprints are on: its guesses join their footprints as they come in.
    */
   readonly predictor?: Predictor
+  /** What each ticket dispatched gets of the playbook (playbookRun.ts); none without it. */
+  readonly playbook?: Pick<RunPlaybook, "choose">
   /**
    * What git says of closed blockers the run knows nothing of (closed by hand, by another tool,
    * under an earlier tutti): one whose work is only on its branch holds back the tickets it blocks.
@@ -844,6 +847,7 @@ export const make = (
           issue.id,
           TicketPhase.Working(),
         ])
+        const lessons = yield* options.playbook?.choose(issue, footprint) ?? Effect.void
         const record: SaidRecord = {
           kind: "dispatch",
           ticket: issue.id,
@@ -852,6 +856,7 @@ export const make = (
           ...(options.limit === null ? {} : { limit: options.limit }),
           ...queue,
           ...(footprint === undefined ? {} : { footprint: footprint.files.length }),
+          ...(lessons === undefined ? {} : { playbook: lessons }),
           text,
         }
         // A ticket filed against one the run scored is a follow-up of it, for its scorecard.

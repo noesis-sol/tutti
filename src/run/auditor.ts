@@ -82,6 +82,22 @@ export const endsBetween = (before: State, after: State): ReadonlyArray<Ended> =
     return outcome === null ? [] : [{ ticket: entry.ticket, outcome }]
   })
 
+/** A worker's whole transcript, read back a page at a time from its end. */
+export const allItems = (transcripts: Transcripts["Service"], id: TicketId) =>
+  Effect.gen(function* () {
+    const pages: Array<ReadonlyArray<Item>> = []
+    let before: number | undefined
+    for (;;) {
+      const page = yield* transcripts.page(id, before)
+      if (page.length === 0) break
+      pages.unshift(page)
+      const first = page[0]?.seq ?? 0
+      if (first <= 1 || first === before) break
+      before = first
+    }
+    return pages.flat()
+  })
+
 /** Tells `auditor` of each ticket whose part in the run ends, from the ledger's `changes`. */
 export const followEnds = (
   changes: Stream.Stream<State>,
@@ -157,27 +173,11 @@ export const make = (options: {
     // Set once quitting began: no more audits.
     const stopped = yield* Ref.make(false)
 
-    // The worker's whole transcript, read back a page at a time from its end.
-    const allItems = (id: TicketId) =>
-      Effect.gen(function* () {
-        const pages: Array<ReadonlyArray<Item>> = []
-        let before: number | undefined
-        for (;;) {
-          const page = yield* transcripts.page(id, before)
-          if (page.length === 0) break
-          pages.unshift(page)
-          const first = page[0]?.seq ?? 0
-          if (first <= 1 || first === before) break
-          before = first
-        }
-        return pages.flat()
-      })
-
     // The evidence for one ended ticket, gathered as its audit starts; none without a transcript.
     const gather = (end: Ended) =>
       Effect.gen(function* () {
         const id = end.ticket
-        const items = yield* allItems(id)
+        const items = yield* allItems(transcripts, id)
         const transcript = transcriptText(items)
         if (transcript.trim() === "") return undefined
         const shown = yield* Effect.result(beads.show(id))
