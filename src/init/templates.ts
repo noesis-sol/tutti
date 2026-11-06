@@ -139,6 +139,12 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     what: "a worker leaves no dev server, watcher or other background command running as it ends its turn, as tutti stops them",
     marker: "Leave nothing running when you end your turn",
   },
+  {
+    version: 12,
+    section: "Close",
+    what: "a question is a stop of its own: the worker doesn't defer its ticket as well",
+    marker: "A question is a stop of its own",
+  },
 ]
 
 /** The changes to the verifier's template, verifier.md. */

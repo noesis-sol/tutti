@@ -10,7 +10,9 @@
 // question is answered" message (the `resumed` record, the RESUMED line), which names the option
 // --auto-answer chose when tutti answered it (autoAnswer.ts, which the fill runs first). The resumed worker takes
 // a slot, counting toward no limit (the scheduler's carry), and its ticket goes on as a dispatched
-// one does: settled, read, and moved as its worker leaves it. With no slot for it (every slot
+// one does: settled, read, and moved as its worker leaves it. A ticket deferred as well as asked about
+// is Asked all the same (settle.ts's read), and is put back in progress as it resumes, so that a
+// worker stopping again isn't read as deferring it again. With no slot for it (every slot
 // taken, a solo ticket running, the machine at --machine-workers, a hold), it stays Asked, and a
 // later poll brings it back; until then it no longer needs you, as the look tells RunView (the
 // look's noSlot, Status's answered), so its row says `↻ answered`. A look that takes nothing back,
@@ -31,7 +33,7 @@ import type { OpenQuestion } from "../ui/questions.ts"
 import { leaveForReview } from "./aside.ts"
 import { answeredWith } from "./autoAnswer.ts"
 import { Ledger, type State } from "./ledger.ts"
-import { line, Tag, ticketLine } from "./log.ts"
+import { detail, Log, line, Tag, ticketLine } from "./log.ts"
 import { openQuestionOf } from "./overnightQuestions.ts"
 import { Move } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"
@@ -167,6 +169,20 @@ export const readAnswers = (look: AskedLook): Effect.Effect<void, never, Beads |
     }
   })
 
+/** The note on a ticket put back in progress as its question is answered. */
+export const askedDeferralNote =
+  "tutti: deferred while it waited on a question; back in progress, as the question is answered " +
+  "and its worker carries on"
+
+/** `id`, deferred while it was Asked: back in progress as its worker comes back. */
+const undeferAnswered = (id: TicketId): Effect.Effect<void, never, Beads | Log> =>
+  Effect.gen(function* () {
+    yield* (yield* Beads).update(id, { status: "in_progress", appendNotes: askedDeferralNote })
+    yield* (yield* Log).write(
+      detail`${id}: deferred while it waited on its question; back in progress, as that is answered`,
+    )
+  }).pipe(Effect.ignore)
+
 /**
  * Resumes each Asked ticket whose question is answered (§ 5.1's Asked → Working): its session
  * told so and its fiber carried on in a slot; one with no slot for it stays Asked. With the look's
@@ -205,6 +221,7 @@ export const takeAnswers = (
           said: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
         })
         if (Result.isFailure(moved)) return undefined
+        if (issue.success.status === "deferred") yield* undeferAnswered(id)
         const saved = yield* store.ticket(id)
         const session = yield* Effect.result(
           resume({

@@ -11,11 +11,11 @@
 //   branch is on the base already, merged by hand (unmerged.ts's mergedSince), its worktree and
 //   branch removed as after a merge, unless the worktree has uncommitted changes
 //   (merge.ts's removeMerged, as handMerged.ts's byHand says);
-// - one deferred meanwhile is shown as deferred, and dropped: undeferred, it comes back through bd
-//   ready, its worktree reused;
-// - one waiting on a question, or asked as the last run ended, comes back Asked (§ 5.1's StillAsked);
-//   once its question is answered, it is resumed and told so (asked.ts), at once when it was
-//   answered between runs;
+// - one waiting on a question, or asked as the last run ended, comes back Asked (§ 5.1's StillAsked),
+//   deferred or not, as settle.ts's reading has it: the question is why it stopped. Once its question
+//   is answered, it is resumed and told so (asked.ts), at once when it was answered between runs;
+// - any other deferred meanwhile is shown as deferred, and dropped: undeferred, it comes back through
+//   bd ready, its worktree reused;
 // - any other is resumed, `resume: <session ID>`, Working (§ 5.1's Resumed): told it was interrupted
 //   and to carry on, with this run's facts (§ 4.1), as its session starts; or, where the last run's
 //   turn was refused for Claude's login, sent again what that turn was to tell it (login.ts),
@@ -448,18 +448,6 @@ const takeUp = (
         continue
       }
 
-      if (issue.status === "deferred") {
-        yield* dropped(
-          id,
-          "deferred",
-          carriedLine(
-            id,
-            line`is deferred since, so it isn't resumed; worktree ${worktree} left as it is`,
-          ),
-        )
-        continue
-      }
-
       const asked = openQuestion(issue)
       const question = asked?.id ?? (record.phase === "Asked" ? savedQuestion(record) : undefined)
       if (question !== undefined || record.phase === ("Asked" satisfies PhaseName)) {
@@ -478,6 +466,18 @@ const takeUp = (
             asked === undefined
               ? line`waited on ${q}, which is answered since`
               : line`still waits on your answer to ${asked.id} (${asked.title}); answer with: bd human respond ${asked.id}${leaves}`,
+          ),
+        )
+        continue
+      }
+
+      if (issue.status === "deferred") {
+        yield* dropped(
+          id,
+          "deferred",
+          carriedLine(
+            id,
+            line`is deferred since, so it isn't resumed; worktree ${worktree} left as it is`,
           ),
         )
         continue

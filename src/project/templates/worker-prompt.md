@@ -67,6 +67,7 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   `bd create --type=task --labels human --deps blocks:TICKET_ID --title "<the question, at most 60 characters>" --description "<the context, the options and your recommendation>" --metadata '<the options, as below>'`
   and `bd update TICKET_ID --status open --append-notes "Waiting on <the question's ID>: <the question>"`.
   The ticket comes back to a worker once the question is answered.
+  A question is a stop of its own: don't defer the ticket as well, whatever else here says to.
 - A decision only the maintainer can make about another ticket, a follow-up you file or one you
   name, is a question too: file it the same way, blocking that ticket and asked from yours
   (`--deps 'blocks:<that ticket>,discovered-from:TICKET_ID'`), and go on with yours.
