@@ -226,11 +226,11 @@ const narrow = { width: 100, height: 40 }
 
 const linesOf = (frame: Frame) => frame.chars.split("\n")
 
-/** The hint: its lines, from the first naming the arrows, on one. */
+/** The hint: its lines, from its first (Tab's at the top, Esc's inside, else the arrows'), on one. */
 const hintOf = (frame: Frame) => {
   const lines = linesOf(frame)
   return lines
-    .slice(lines.findIndex((line) => /^\s*(Tab select|arrows)/.test(line)))
+    .slice(lines.findIndex((line) => /^\s*(Tab select|Esc back|arrows)/.test(line)))
     .map((line) => line.trim())
     .join(" ")
     .trim()
@@ -378,7 +378,7 @@ describe("the hint follows the level", () => {
       .map((key) => `${key.keys} ${key.does}`)
   test("names the keys of each", () => {
     expect(words(false)).toEqual(["Tab select", "arrows panels", "Enter go in"])
-    expect(words(true)).toEqual(["arrows select", "Enter open", "Esc back"])
+    expect(words(true)).toEqual(["Esc back", "arrows select", "Enter open"])
   })
 
   test("going in moves nothing over the hint, however it wraps", () => {
@@ -400,7 +400,7 @@ describe("the hint follows the level", () => {
     await scene(viewOf(1), narrow, async ({ rendered }) => {
       expect(hintOf(await rendered.capture())).toContain("arrows panels · Enter go in · s stop")
       await press(rendered, "enter")
-      expect(hintOf(await rendered.capture())).toContain("arrows select · Enter open · Esc back")
+      expect(hintOf(await rendered.capture())).toContain("Esc back · arrows select · Enter open")
       await press(rendered, "escape")
       expect(hintOf(await rendered.capture())).toContain("arrows panels · Enter go in")
     })

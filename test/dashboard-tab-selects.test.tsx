@@ -261,14 +261,14 @@ describe("Tab at the top level", () => {
       const first = await rendered.capture()
       expect(heavyOn(first, "w-1")).toBe(true)
       expect(heavyOn(first, "w-2")).toBe(false)
-      expect(hintOf(first)).toContain("arrows select · Enter open · Esc back")
+      expect(hintOf(first)).toContain("Esc back · arrows select · Enter open")
     })
     await scene(quiet(3), narrow, async ({ rendered }) => {
       await press(rendered, "shift+tab")
       const last = await rendered.capture()
       expect(heavyOn(last, "w-3")).toBe(true)
       expect(heavyOn(last, "w-1")).toBe(false)
-      expect(hintOf(last)).toContain("arrows select · Enter open · Esc back")
+      expect(hintOf(last)).toContain("Esc back · arrows select · Enter open")
     })
   })
 

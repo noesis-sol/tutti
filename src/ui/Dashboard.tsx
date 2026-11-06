@@ -576,7 +576,7 @@ export const dashboardCommands = (
   const named = (shown: boolean, keys: string, does: string) => (shown ? { keys, does } : undefined)
   const waiting = targetOf(view)
   return [
-    // Tab starts the box selection from the top level, where the hint names it.
+    // Tab starts the box selection from the top level, where the hint names it first.
     {
       keys: ["tab"],
       run: () => act.tab(1),
@@ -584,6 +584,13 @@ export const dashboardCommands = (
       help: tabRow,
     },
     { keys: ["shift+tab"], run: () => act.tab(-1), help: tabRow },
+    // Esc comes out where Tab goes in: inside a panel its hint takes the place Tab's has at the top.
+    {
+      keys: ["escape"],
+      run: act.escape,
+      hint: named(inside, "Esc", "back"),
+      help: ["Esc", "come out of the panel; an open box closes first"],
+    },
     // The two levels (panelFocus.ts): the hint follows the one the focus is at.
     {
       keys: ["left"],
@@ -599,12 +606,6 @@ export const dashboardCommands = (
       run: act.enter,
       hint: { keys: "Enter", does: inside ? "open" : "go in" },
       help: ["Enter, a click", "go into the panel; inside it, open what is selected"],
-    },
-    {
-      keys: ["escape"],
-      run: act.escape,
-      hint: named(inside, "Esc", "back"),
-      help: ["Esc", "come out of the panel; an open box closes first"],
     },
     // The way to a waiting request, from any panel and level: the focus never goes there by itself.
     {

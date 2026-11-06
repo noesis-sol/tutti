@@ -743,9 +743,9 @@ describe("the hint and the key help", () => {
       │ Keys                                                                       │
       │                                                                            │
       │ Tab, Shift+Tab         select the cards and buttons, then what needs you   │
+      │ Esc                    come out of the panel; an open box closes first     │
       │ arrows                 move between the panels; inside one, select in it   │
       │ Enter, a click         go into the panel; inside it, open what is selected │
-      │ Esc                    come out of the panel; an open box closes first     │
       │ g                      go to the oldest request's card                     │
       │ d, Shift+D             deny the request; deny with a reason                │
       │ a                      allow the request, unless it opens on Deny          │

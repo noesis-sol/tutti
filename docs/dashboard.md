@@ -345,7 +345,7 @@ on you: `■ ■ ■ ■  Winding down · 3 running, no new tickets`. Warnings t
 as a colour scheme that can't be used or the usage limit's hold
 (`usage limit (five-hour) · resets 14:05 · 3 workers wait for it`).
 
-The hint names the keys there are, and follows the level the keys are at: `Tab select · arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys` at the top, `arrows select · Enter open · Esc back · …` inside a panel.
+The hint names the keys there are, and follows the level the keys are at: `Tab select · arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys` at the top, `Esc back · arrows select · Enter open · …` inside a panel.
 
 ### The end-of-run box
 
@@ -487,6 +487,7 @@ on its card, opens a worker too.
 | Key | Dashboard | Worker view |
 |---|---|---|
 | `Tab`, `Shift+Tab` | at the top, go into Current on its first or last card; from there through a card's buttons, the next card, then **Needs you** and the rows that want you | move between a request's buttons, else between items |
+| `Esc` | close a box or the key help, else come out of the panel; out of Tickets, Needs you goes back to the first blocked or asked row, else Up next | leave the composer, then close the whole ticket, then the view |
 | `←`, `→` | at the top, move between the panels; inside Current, between a card's buttons, then on to the next card | move between a request's buttons, else between items |
 | `↑`, `↓` | at the top, move between the panels; inside, select a row, an option or a card | move between items |
 | `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
@@ -507,7 +508,6 @@ on its card, opens a worker too.
 | `Ctrl+R` | | release a steered worker |
 | the wheel, `PgUp`, `PgDn` | | scroll the transcript, or the whole ticket while it is open |
 | `g`, `G` | | jump to the top or the end |
-| `Esc` | close a box or the key help, else come out of the panel; out of Tickets, Needs you goes back to the first blocked or asked row, else Up next | leave the composer, then close the whole ticket, then the view |
 | `?` | key help | key help |
 | `Ctrl+C` | the quit box | the quit box |
 | `Ctrl+Z` | a toast: tutti can't be suspended | the same |
