@@ -10,6 +10,9 @@
 // in a session shown in place of the screen (answerTalk.ts's talkQuestion, in the screen's talk
 // slot), records the answer it gives as AnswerQuestion does, and then says it is over in the news
 // (Talked), with the question the box goes on from: the next once answered, else the same.
+//
+// An answer that finds bd has the question closed (tutti-cl5e) is no failure: answered already,
+// perhaps a moment ago from this same panel, it says so (AlreadyAnswered) and nothing comes back.
 import { Data, Effect, Result, SubscriptionRef } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import type { Attention } from "../agent/Attention.ts"
@@ -18,7 +21,7 @@ import type { Transcripts } from "../agent/Transcripts.ts"
 import type { AppConfig } from "../cli/AppConfig.ts"
 import { type Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
-import { recordAnswer, recordWhy } from "./answerQuestion.ts"
+import { alreadyAnswered, recordAnswer, recordWhy } from "./answerQuestion.ts"
 import { inSlot, talkQuestion } from "./answerTalk.ts"
 import type { InterviewInputs } from "./interview.ts"
 import { Log, line } from "./log.ts"
@@ -36,9 +39,12 @@ export type QuestionNews = Data.TaggedEnum<{
     readonly title: string
     readonly decided: ReadonlyArray<TicketId>
   }
+  /** The question was closed when the answer came: this answer left out, nothing else done. */
+  AlreadyAnswered: { readonly uuid: string; readonly question: TicketId }
   NotAnswered: { readonly uuid: string; readonly question: TicketId; readonly why: string }
   /**
-   * A talk is over, its answer recorded if it gave one (Answered or NotAnswered came first): `why`
+   * A talk is over, its answer recorded if it gave one (Answered, AlreadyAnswered or NotAnswered
+   * came first): `why`
    * it gave none, or null; `next`, the question the box goes on from.
    */
   Talked: {
@@ -87,6 +93,12 @@ export const answerQuestion = (
     const { question, answer, uuid } = request
     const recorded = yield* Effect.result(recordAnswer(question, answer))
     if (Result.isFailure(recorded)) {
+      if (alreadyAnswered(recorded.failure)) {
+        yield* logs.write(
+          line`the dashboard's answer to ${question} left out, it is already answered: ${answer}`,
+        )
+        return yield* added(news, QuestionNews.AlreadyAnswered({ uuid, question }))
+      }
       const why = recordWhy(recorded.failure)
       yield* logs.write(line`couldn't record the dashboard's answer to ${question}: ${why}`)
       return yield* added(news, QuestionNews.NotAnswered({ uuid, question, why }))

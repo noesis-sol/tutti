@@ -10,6 +10,9 @@ import { Effect, Schema } from "effect"
 import { Beads, type BeadsError, beadsWhy, HumanLabel, type TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 
+/** QuestionNotOpen's `why` for a question bd has closed. */
+const closedWhy = "closed"
+
 /** The question isn't open: answered or closed meanwhile, or not a question at all. */
 export class QuestionNotOpen extends Schema.TaggedError<QuestionNotOpen>()("QuestionNotOpen", {
   question: Schema.String,
@@ -20,6 +23,10 @@ export class QuestionNotOpen extends Schema.TaggedError<QuestionNotOpen>()("Ques
     return `${this.question} is ${this.why}: it isn't an open question`
   }
 }
+
+/** Whether `error` says bd has the question closed: answered already, nothing left to record. */
+export const alreadyAnswered = (error: BeadsError | QuestionNotOpen): boolean =>
+  error._tag === "QuestionNotOpen" && error.why === closedWhy
 
 /** What answering a question did: the question's title, and the tickets whose design took it. */
 export interface Recorded {
@@ -63,7 +70,7 @@ export const recordAnswer = (
     if (!shown.labels.includes(HumanLabel)) {
       return yield* new QuestionNotOpen({ question, why: `not labelled ${HumanLabel}` })
     }
-    if (shown.status === "closed") return yield* new QuestionNotOpen({ question, why: "closed" })
+    if (shown.status === "closed") return yield* new QuestionNotOpen({ question, why: closedWhy })
     const title = sanitizeLine(shown.title).trim()
     const blocked = [
       ...new Set(

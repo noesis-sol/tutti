@@ -362,10 +362,23 @@ describe("the dashboard's questions", () => {
     const late = await withNews((news) =>
       answerQuestion({ question: "q-3" as TicketId, answer: "yes", uuid: "u-4" }, news),
     )
-    const said = Result.isSuccess(late.result) ? late.result.success[0] : undefined
+    expect((Result.isSuccess(late.result) && late.result.success) as unknown).toEqual([
+      { _tag: "AlreadyAnswered", uuid: "u-4", question: "q-3" },
+    ])
+    expect(late.logged).toContain(
+      "the dashboard's answer to q-3 left out, it is already answered: yes",
+    )
+    expect(late.logged.join("\n")).not.toContain("couldn't record")
+
+    const wrong = await withNews((news) =>
+      answerQuestion({ question: "tut-3" as TicketId, answer: "yes", uuid: "u-5" }, news),
+    )
+    const said = Result.isSuccess(wrong.result) ? wrong.result.success[0] : undefined
     expect(said?._tag).toBe("NotAnswered")
     expect(
-      late.logged.some((line) => line.startsWith("couldn't record the dashboard's answer to q-3")),
+      wrong.logged.some((line) =>
+        line.startsWith("couldn't record the dashboard's answer to tut-3"),
+      ),
     ).toBe(true)
   })
 

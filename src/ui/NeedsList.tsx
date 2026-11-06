@@ -208,7 +208,9 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   // The questions answered from the list, or recorded since: left out until the look has them.
   const done = new Set([
     ...answered.map((each) => each.question),
-    ...news.flatMap((each) => (each._tag === "Answered" ? [each.question] : [])),
+    ...news.flatMap((each) =>
+      each._tag === "Answered" || each._tag === "AlreadyAnswered" ? [each.question] : [],
+    ),
   ])
   const items = needsItems(needs, done, read?._tag === "Read" ? read.questions : undefined)
   const [chosen, setChosen, chosenNow] = useKeyState(() => at)

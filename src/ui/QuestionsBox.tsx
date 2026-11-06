@@ -65,6 +65,8 @@ export const newsToast = (
       return { text: sanitizeLine(`couldn't read the questions: ${news.why}`), failure: true }
     case "Answered":
       return { text: sanitizeLine(`Answered ${news.question} (${news.title})`), failure: false }
+    case "AlreadyAnswered":
+      return { text: sanitizeLine(`${news.question} is already answered`), failure: false }
     case "NotAnswered":
       return {
         text: sanitizeLine(`couldn't record the answer to ${news.question}: ${news.why}`),

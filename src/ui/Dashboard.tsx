@@ -68,6 +68,7 @@ import type { MouseEvent } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
+import type { QuestionNews } from "../run/questionNews.ts"
 import {
   type Card,
   isConflict,
@@ -443,9 +444,27 @@ export const dashboardLayout = (
   }
 }
 
-/** A need's key: its ticket, and an Asked one's question, so that a new question is a new need. */
-const needKey = (need: Need): string =>
-  need._tag === "Question" ? `${need.ticket} ${need.id}` : need.ticket
+/**
+ * The questions left off the panel, by the uuid of their answer, as `news` leaves `answered`: each
+ * the run says is recorded or closed, wherever it was answered, in; each it says bd refused, out.
+ * `answered` itself when that changes nothing.
+ */
+export const answersAfter = (
+  answered: ReadonlyMap<string, string>,
+  news: ReadonlyArray<QuestionNews>,
+): ReadonlyMap<string, string> => {
+  const after = new Map(answered)
+  for (const each of news) {
+    if (each._tag === "NotAnswered") after.delete(each.uuid)
+    if (each._tag === "Answered" || each._tag === "AlreadyAnswered") {
+      after.set(each.uuid, each.question)
+    }
+  }
+  const same =
+    after.size === answered.size &&
+    [...after].every(([uuid, question]) => answered.get(uuid) === question)
+  return same ? answered : after
+}
 
 /** The card highlighted while none is chosen: that of the oldest open request with one (§ 4.5). */
 export const targetOf = (view: RunView): string | null =>
@@ -732,6 +751,8 @@ export interface DashboardMemory {
   /** The chosen row, while it wanted you when last seen: its stopping lets it go. */
   readonly wanted: TicketId | null
   readonly upper: Panel
+  /** The questions left off the panel, by the uuid of their answer (answersAfter). */
+  readonly answered: ReadonlyMap<string, string>
 }
 
 /** Where the dashboard's keys start. */
@@ -741,6 +762,7 @@ export const startOfDashboard: DashboardMemory = {
   row: null,
   wanted: null,
   upper: "tickets",
+  answered: new Map(),
 }
 
 export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMemory } }) => {
@@ -766,22 +788,19 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   const wanted = useRef(kept.current.wanted)
   const [help, setHelp, helpOpen] = useKeyState(() => false)
   // The panel beside the tickets table: at which choice. A question answered here leaves it at once,
-  // before the run's next look takes its ticket back; it comes back if bd refuses that answer, by its
-  // uuid, as a failure of an earlier try says nothing of the answer given since.
+  // before the run's next look takes its ticket back, and one the run says is recorded or closed
+  // leaves it however it was answered; it comes back only if bd refuses that answer, by its uuid, as
+  // a failure of an earlier try says nothing of the answer given since. Kept over a worker's view,
+  // where the look may not have come by the time it closes.
   const [choice, setChoice, choiceNow] = useKeyState(() => 0)
-  const [answered, setAnswered] = useState<ReadonlyMap<string, string>>(() => new Map())
   const news = useQuestionNews()
-  useEffect(() => {
-    const refused = news.flatMap((each) =>
-      each._tag === "NotAnswered" && answered.has(each.uuid) ? [each.uuid] : [],
-    )
-    if (refused.length > 0) {
-      setAnswered((all) => new Map([...all].filter(([uuid]) => !refused.includes(uuid))))
-    }
-  }, [news, answered])
+  const [answered, setAnswered] = useState(() => answersAfter(kept.current.answered, news))
+  useEffect(() => setAnswered((all) => answersAfter(all, news)), [news])
   const needs = useMemo(() => {
     const left = new Set(answered.values())
-    return view.needs.filter((need) => !left.has(needKey(need)))
+    return view.needs.filter(
+      (need) => need._tag !== "Question" || !left.has(need.question?.id ?? need.id),
+    )
   }, [view.needs, answered])
   const panelFocused = focus.panel === "needs"
   const panelInside = panelFocused && focus.inside
@@ -897,7 +916,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
         setRow(() => (within ? automaticRow() : null))
       }
     }
-    kept.current = { focus, chosen: chosenShown, row, wanted: wanted.current, upper }
+    kept.current = { focus, chosen: chosenShown, row, wanted: wanted.current, upper, answered }
   })
   const insideOf = (panel: Panel) => {
     const now = focusNow()
@@ -933,7 +952,8 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
     if (option === undefined) return
     const uuid = crypto.randomUUID()
     command(UiCommand.AnswerQuestion({ question: need.question.id, answer: option.label, uuid }))
-    setAnswered((all) => new Map(all).set(uuid, needKey(need)))
+    const asked = need.question.id
+    setAnswered((all) => new Map(all).set(uuid, asked))
     setChoice(() => 0)
   }
   // The focus goes to `panel`, at the top level or inside it, the last panel above Current kept.
