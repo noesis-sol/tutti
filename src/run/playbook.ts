@@ -9,7 +9,8 @@
 //   sets; that repeats a run of words from the transcripts the reflector read; that is too long; that
 //   has a scope that isn't a path below the project's top; that is alike one in the pool; or whose
 //   evidence the run's records don't hold. The checks read words, so they refuse more than they must:
-//   "don't skip the tests" goes too. A lesson refused costs little and one let through costs a lot.
+//   "the parser's test doesn't reset the cursor" goes too. A lesson refused costs little and one let
+//   through costs a lot.
 // - Risk (`admittedState`): only a pitfall scoped to an area goes active; a strategy, a recovery, or a
 //   scope that spans the project (`spansProject`) stays proposed until you approve it, never blocking
 //   a run: the report lists them and `tutti playbook` acts on them.
@@ -194,6 +195,7 @@ const normal = (text: string): string =>
   text
     .normalize("NFKC")
     .replace(/\p{Cf}/gu, "")
+    .replace(/[\u2018\u2019\u02bc]/gu, "'")
     .toLowerCase()
     .split(/\s+/u)
     .join(" ")
@@ -201,42 +203,34 @@ const normal = (text: string): string =>
 
 const words = (text: string): ReadonlyArray<string> =>
   normal(text)
-    .split(/[^\p{L}\p{N}_./-]+/u)
+    .split(/[^\p{L}\p{N}_./'-]+/u)
     .filter((word) => word !== "")
 
+// Words of doing less or doing without. A lesson holding one anywhere, and a word of what guards,
+// is refused: no list of phrasings would hold them all ("you don't need to run", "changes here need
+// no tests"), and in one or two sentences the two rarely meet by chance.
 const weakening =
-  /^(?:skip\w*|bypass\w*|disabl\w*|weaken\w*|ignor\w*|omit\w*|avoid\w*|remov\w*|delet\w*|drop\w*|relax\w*|loosen\w*|lower\w*|reduc\w*|shorten\w*|silenc\w*|suppress\w*|mut(?:e|es|ed|ing)|stub\w*|overrid\w*|circumvent\w*|xfail)$/u
+  /^(?:skip\w*|bypass\w*|disabl\w*|weaken\w*|ignor\w*|omit\w*|avoid\w*|remov\w*|delet\w*|drop\w*|relax\w*|loosen\w*|lower\w*|reduc\w*|shorten\w*|silenc\w*|suppress\w*|mut(?:e|es|ed|ing)|stub\w*|overrid\w*|circumvent\w*|xfail|no|not|none|never|without|\w+n't|dont|cannot|unnecessary|needless\w*|optional|bother\w*|instead|rather|leav\w*|off|out|comment\w*|only|just|enough|suffic\w*|trust\w*|assum\w*|later|postpon\w*|defer\w*|fewer|less)$/u
 
 const guarded =
   /^(?:checks?|checking|tests?|testing|suites?|verifier\w*|verif\w*|permissions?|hooks?|lint\w*|typecheck\w*|tsc|biome|shellcheck|ci|assert\w*|gates?)$/u
 
-// A word that weakens within this many words of one that guards, on either side.
-const weakeningReach = 6
-
 const weakeningMark =
-  /--no-verify|--force|dangerously|\.skip\b|\.only\b|@ts-ignore|@ts-nocheck|biome-ignore|allowedtools|permission[-_ ]?mode/u
+  /--no-verify|--force|dangerously|\.skip\b|\.only\b|@ts-ignore|@ts-nocheck|biome-ignore|allowedtools|permission[-_ ]?mode|\bflak(?:y|es?|iness)\b|\bmove on\b/u
 
-// Words that say so with no such verb, wherever in the text they stand: "no need to run the suite".
-const notRunning =
-  /(?:don't|dont|do not|no need to|needn't|need not|never|not|without|instead of|rather than)\s+(?:\w+\s+)?(?:run|running|runs|wait|waiting|call|calling)\b|turn(?:ed|ing)?\s+(?:\w+\s+)?off\b|comment(?:ed|ing)?\s+(?:\w+\s+)?out\b/u
-
-/** Whether `text` mentions skipping or weakening a check, test, verifier, permission or hook. */
+/** Whether `text` mentions skipping, weakening or doing without a check, test, verifier, permission or hook. */
 export const weakensChecks = (text: string): boolean => {
-  const said = normal(text)
-  if (weakeningMark.test(said)) return true
-  const list = words(text).map((word) => word.replace(/[./-]+$/u, ""))
-  if (notRunning.test(said) && list.some((word) => guarded.test(word))) return true
-  return list.some(
-    (word, i) =>
-      weakening.test(word) &&
-      list
-        .slice(Math.max(0, i - weakeningReach), i + weakeningReach + 1)
-        .some((near) => guarded.test(near)),
-  )
+  if (weakeningMark.test(normal(text))) return true
+  // A path's parts count, so that a test file is a test; a possessive is its word.
+  const list = words(text).flatMap((word) => word.split(/[./-]+/u))
+  const bare = list.map((word) => word.replace(/'s$/u, ""))
+  return bare.some((word) => weakening.test(word)) && bare.some((word) => guarded.test(word))
 }
 
+// A word of git's or bd's as a word, not a file's name: src/run/merge.ts is code, and a merge conflict
+// or the merge check is what happens to a ticket, not how a worker uses git.
 const gitOrBd =
-  /(?:^|[^\p{L}\p{N}_-])(?:git|bd|beads|commits?|committing|committed|amend\w*|push(?:es|ed|ing)?|rebas\w*|stash\w*|cherry-pick\w*|worktrees?|branch(?:es)?|(?:close|closing|reopen\w*|claim\w*|defer\w*|file|filing)\s+(?:\w+\s+)?(?:ticket|issue|question)s?)(?![\p{L}\p{N}_-])/u
+  /(?<![\p{L}\p{N}_./-])(?:git|bd|beads|commits?|committing|committed|amend\w*|push(?:es|ed|ing)?|rebas\w*|stash\w*|cherry-pick\w*|worktrees?|branch(?:es)?|checkouts?|origin|revert\w*|squash\w*|--hard|reset\s+--\w+|merg(?:e|es|ing)(?!\s+(?:conflicts?|queue|checks?|train))|(?:close|closing|reopen\w*|claim\w*|defer\w*|file|filing)\s+(?:\w+\s+)?(?:ticket|issue|question)s?)(?![\p{L}\p{N}_-]|\.\p{L})/u
 
 /** Whether `text` touches the git or bd usage the worker prompt sets. */
 export const touchesGitOrBd = (text: string): boolean => gitOrBd.test(normal(text))

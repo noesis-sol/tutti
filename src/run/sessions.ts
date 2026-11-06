@@ -104,6 +104,9 @@ export const resumeRetry: Duration.Duration = Duration.seconds(30)
 /** The state.json reason a ticket whose session couldn't be resumed is suspended with, kept. */
 export const resumeFailedWhy = "its session could not be resumed"
 
+/** The key of the run's metadata for a ticket that holds its worker's lessons (playbook.ts). */
+export const lessonsKey = "playbook_lessons"
+
 /** A resume of a ticket's session: what it is for, what it is sent, and what its line says. */
 export interface Resuming {
   readonly ticket: TicketId
@@ -138,9 +141,15 @@ export const resume = ({
     if (session === undefined || worktree === undefined) {
       return yield* new ResumeFailed({ ticket, reason: "it has no session to resume" })
     }
+    // A resumed launch's standing rules are made afresh: a recorded system prompt isn't everywhere.
+    const lessons = saved?.metadata[lessonsKey]
     const once = host.resume(
       ticket,
-      { sessionId: session, cwd: worktree },
+      {
+        sessionId: session,
+        cwd: worktree,
+        ...(typeof lessons === "string" ? { lessons } : {}),
+      },
       { text: message, from: "clientComposed" },
     )
     const uuid = yield* once.pipe(

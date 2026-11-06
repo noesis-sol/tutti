@@ -62,7 +62,7 @@ import * as log from "./log.ts"
 import { withoutTold } from "./login.ts"
 import { asideOvernight, overnightWhy } from "./overnightAside.ts"
 import { info } from "./say.ts"
-import { resume } from "./sessions.ts"
+import { lessonsKey, resume } from "./sessions.ts"
 import { leaveSetupFailed, makeSetUps, type SetUps, setUpWorktree, setupNote } from "./setup.ts"
 import { asideResumedText } from "./told.ts"
 
@@ -539,14 +539,20 @@ export const start = (
     // Saved once Claude Code has made the session, as its first system/init says (§ 4.8): a start
     // that fails or is interrupted before then (a quit) ends it, leaving nothing to resume, and the
     // next start draws a new session, in the same worktree.
-    const save = store.saveSession(id, { session, worktree: path, branch })
+    const lessons = ticket.lessons === undefined ? "" : yield* ticket.lessons
+    // Its lessons with it, for a resume of the session (sessions.ts).
+    const save = Effect.andThen(
+      store.saveSession(id, { session, worktree: path, branch }),
+      lessons === ""
+        ? store.unsetMetadata(id, lessonsKey)
+        : store.setMetadata(id, lessonsKey, lessons),
+    )
     const begunNow = host.begun(id).pipe(
       Stream.runHead,
       Effect.map(Option.getOrElse(() => false)),
       Effect.orElseSucceed(() => false),
     )
     const starting = Effect.gen(function* () {
-      const lessons = ticket.lessons === undefined ? "" : yield* ticket.lessons
       yield* host.start(id, {
         sessionId: session,
         cwd: path,

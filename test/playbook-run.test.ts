@@ -5,13 +5,16 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Clock, Effect, Fiber, Layer, Option } from "effect"
+import { Clock, Effect, Fiber, Layer, Option, type Schema, type Scope } from "effect"
+import { AgentHost } from "../src/agent/AgentHost.ts"
 import { Transcripts } from "../src/agent/Transcripts.ts"
 import { playbookAct, playbook as playbookCommand } from "../src/cli/playbook.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { reflector } from "../src/organs/reflector.ts"
 import { EventStream } from "../src/run/eventstream.ts"
+import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
+import { Move } from "../src/run/phase.ts"
 import { armOf, type Lesson, parsePlaybook, playbookFile } from "../src/run/playbook.ts"
 import {
   admit,
@@ -26,12 +29,18 @@ import {
 } from "../src/run/playbookRun.ts"
 import { run } from "../src/run/run.ts"
 import { recordRef, type Score } from "../src/run/scorecard.ts"
+import { lessonsKey, resume } from "../src/run/sessions.ts"
+import { start } from "../src/run/start.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
+import { Store } from "../src/services/Store.ts"
 import { bash, result, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
+import { Repository } from "../src/testing/Git.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
-import { backlog, expectExitCode, scenario } from "./harness.ts"
+import { backlog, type Env, expectExitCode, scenario } from "./harness.ts"
+
+type Json = Schema.Json
 
 const folder = (name = "repo") =>
   realpathSync(mkdtempSync(join(tmpdir(), `tutti-playbook-run-${name}-`)))
@@ -558,6 +567,166 @@ describe("the playbook in a run", () => {
     const kinds = ran.events.map((each) => each.kind)
     expect(kinds.indexOf("lesson_measure")).toBeGreaterThan(kinds.indexOf("score"))
     expect(readLessons(repo)[0]).toMatchObject({ harmful: 1, measured: [ticket] })
+  })
+})
+
+describe("the run's last end, and a session again", () => {
+  const issueFields = { title: "Parse inputs", metadata: { files: ["src/parse/run.ts"] } }
+  const organsLayer = (answers: Answers, calls: Array<OrganCallRecord>) =>
+    Organs.layer.pipe(Layer.provide(cannedLayer(answers, calls)))
+
+  test("a run's last end is counted and reflected on before the run ends", async () => {
+    const repo = folder()
+    const root = folder("worktrees")
+    const ticket = ticketIn("L1", true)
+    writeLessons(repo, [lesson("L1")])
+    const settings = appConfig().settings
+    const calls: Array<OrganCallRecord> = []
+    const ran = await scenario(
+      {
+        config: {
+          repo,
+          settings: {
+            ...settings,
+            concurrent: 1,
+            playbook: { ...settings.playbook, reflect_every: 1 },
+          },
+        },
+        backlog: backlog().ticket(ticket, issueFields).seeds,
+        git: { dir: repo },
+        worktrees: { root },
+        scripts: (world) => ({
+          [ticket]: [
+            turn(
+              [...bash("bd close", Effect.asVoid(Effect.orDie(world.beads.close(ticket, "done"))))],
+              result("Closed."),
+            ),
+          ],
+        }),
+      },
+      Effect.gen(function* () {
+        const git = yield* Git
+        yield* git.addWorktree(repo, join(root, ticket), {
+          branch: `tutti/${ticket}`,
+          base: "main",
+        })
+        yield* (yield* Transcripts).record(ticket, {
+          session: "s-1",
+          message: {
+            type: "assistant",
+            message: { role: "assistant", content: [{ type: "text", text: "Done." }] },
+            parent_tool_use_id: null,
+          } as unknown as SDKMessage,
+        })
+        const fiber = yield* Effect.forkChild(
+          run({ version: "0.1.0-test", base: "main", start: [line`START tutti`] }),
+        )
+        return yield* Fiber.join(fiber)
+      }).pipe(Effect.provide(organsLayer({ reflector: { lessons: [] } }, calls))),
+    )
+    expectExitCode(ran, 0)
+    expect(calls.map((each) => each.call.organ)).toEqual(["reflector"])
+    const kinds = ran.events.map((each) => each.kind)
+    expect(kinds.indexOf("lesson_measure")).toBeGreaterThan(-1)
+    expect(kinds.indexOf("lesson_measure")).toBeLessThan(kinds.indexOf("done"))
+    expect(kinds.indexOf("reflection")).toBeGreaterThan(-1)
+    expect(kinds.indexOf("reflection")).toBeLessThan(kinds.indexOf("done"))
+  })
+
+  test("an end the ledger hasn't told of yet is taken in by the run's look", async () => {
+    const repo = folder()
+    const ran = await scenario(
+      {
+        config: { repo, settings: { ...appConfig().settings } },
+        backlog: backlog().seeds,
+      },
+      Effect.gen(function* () {
+        const organs = yield* Organs
+        const book = yield* makePlaybook({ repo, organs: Option.some(organs) })
+        const transcripts = yield* Transcripts
+        for (const each of ["a", "b", "c"]) {
+          yield* transcripts.record(each as TicketId, {
+            session: "s-1",
+            message: {
+              type: "assistant",
+              message: { role: "assistant", content: [{ type: "text", text: "Working." }] },
+              parent_tool_use_id: null,
+            } as unknown as SDKMessage,
+          })
+          yield* (yield* EventStream).emit(score(each, bad))
+        }
+        const pending = yield* book.pending
+        for (let i = 0; i < 5000 && (yield* book.pending) > 0; i++) yield* Effect.yieldNow
+        return pending
+      }).pipe(Effect.provide(organsLayer({ reflector: { lessons: [] } }, []))),
+    )
+    expect(ran.exit).toMatchObject({ _tag: "Success", value: 1 })
+    expect(ran.events.find((each) => each.kind === "reflection")).toMatchObject({
+      trigger: "failures",
+      tickets: ["a", "b", "c"],
+    })
+  })
+
+  test("a start keeps the worker's lessons, and a resume of its session is given them", async () => {
+    const root = folder("worktrees")
+    const id = "t-1" as TicketId
+    const session = turn([], result("Going."))
+    const ran = await scenario(
+      {
+        backlog: backlog().ticket(id, issueFields).seeds,
+        worktrees: { root },
+        scripts: { [id]: [session, session] },
+      },
+      Effect.gen(function* () {
+        const ledger = yield* Ledger
+        const repository = yield* Repository
+        yield* (yield* Git).addWorktree(repository.dir, join(root, id), {
+          branch: `tutti/${id}`,
+          base: "main",
+        })
+        yield* ledger.transition(id, Move.Ready(), { title: "Parse inputs" })
+        yield* ledger.transition(id, Move.Dispatched())
+        yield* start(
+          { id, title: "Parse inputs", metadata: {}, lessons: Effect.succeed("\n\n## Lessons\n") },
+          "main",
+        )
+        const kept = (yield* (yield* Store).metadata(id))[lessonsKey]
+        yield* (yield* AgentHost).close(id)
+        yield* resume({ ticket: id, why: "hand_back", message: "Go on.", what: line`going on` })
+        return kept
+      }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<
+        Json | undefined,
+        unknown,
+        Env | Scope.Scope
+      >,
+    )
+    expect(ran.exit).toMatchObject({ _tag: "Success", value: "\n\n## Lessons\n" })
+    const sessions = ran.sent.flatMap((each) =>
+      each._tag === "Started" || each._tag === "Resumed" ? [each] : [],
+    )
+    expect(sessions.map((each) => [each._tag, each.session.lessons])).toEqual([
+      ["Started", "\n\n## Lessons\n"],
+      ["Resumed", "\n\n## Lessons\n"],
+    ])
+  })
+
+  test("a session with no lessons kept is given none", async () => {
+    const id = "t-1" as TicketId
+    const ran = await scenario(
+      {
+        backlog: backlog().ticket(id, issueFields).seeds,
+        scripts: { [id]: [turn([], result("Going."))] },
+      },
+      Effect.gen(function* () {
+        yield* (yield* Store).saveSession(id, { session: "s-1", worktree: "/wt", branch: "b" })
+        yield* resume({ ticket: id, why: "hand_back", message: "Go on.", what: line`going on` })
+      }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<void, unknown, Env | Scope.Scope>,
+    )
+    const resumed = ran.sent.find((each) => each._tag === "Resumed")
+    expect(resumed?._tag === "Resumed" && resumed.session).toEqual({
+      sessionId: "s-1",
+      cwd: "/wt",
+    })
   })
 })
 

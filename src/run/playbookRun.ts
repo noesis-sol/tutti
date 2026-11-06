@@ -1,11 +1,15 @@
 // The playbook in the run (§ 5 item 13, tutti-5fs7.3; run/playbook.ts has its rules):
 //
 // - As a ticket is dispatched (`choose`), its worker is given the active lessons in its scope, in its
-//   holdout's arm. What it was given stays for the run, however often it starts again; the dispatch
-//   record says it, and the ticket's metadata has the version and the lessons.
-// - As a ticket ends (`ended`, from the ledger, as the auditor's), merged, closed or set aside, its
-//   scorecard is counted for each lesson of its choosing, and those it judges are retired: a
-//   `lesson_measure` record and a line in the log.
+//   holdout's arm. What it was given stays for the run, however often it starts again, and a resume
+//   of its session is given it too (`lessonsKey`), as a session's recorded system prompt is not to
+//   be counted on; the dispatch record says it, and the ticket's metadata has the version and the
+//   lessons.
+// - As a ticket ends merged, closed or set aside, its scorecard is counted for each lesson of its
+//   choosing, and those it judges are retired: a `lesson_measure` record and a line in the log. The
+//   scorecards themselves say which ended (`catchUp`): the ledger tells it soon after each end
+//   (`ended`, as the auditor's), and each look of the run asks (`pending`), so that no end can slip
+//   past the run's last look, its count and the reflection it calls for lost with it.
 // - Every `playbook.reflect_every` such ends, or at `clusterFailures` not clean since the last
 //   reflection, the reflector (organs/reflector.ts) reads the scorecards and the worst and the best
 //   of those tickets, one reflection at a time, in the run's scope, so that no ticket waits for a
@@ -28,6 +32,7 @@ import {
   Ref,
   Result,
   type Scope,
+  Semaphore,
 } from "effect"
 import { Transcripts } from "../agent/Transcripts.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -89,13 +94,13 @@ export interface RunPlaybook {
   ): Effect.Effect<typeof DispatchPlaybook.Type | undefined>
   /** The section of `ticket`'s worker's standing rules that holds its lessons; empty with none. */
   section(ticket: TicketId): Effect.Effect<string>
-  /** The ticket's part in the run ended: its scorecard is counted, and a reflection may be due. */
+  /** A ticket's part in the run ended: the scorecards not yet counted are, as `pending` does. */
   ended(end: Ended): Effect.Effect<void>
-  /** The reflection under way, and those queued. */
+  /** The scorecards not yet counted are, then: the reflection under way, and those queued. */
   readonly pending: Effect.Effect<number>
   /** Aborts the reflection under way and starts no more, as quitting does (quit.ts). */
   readonly interrupt: Effect.Effect<void>
-  /** The tickets still to be counted, then the report's Playbook section. */
+  /** The scorecards not yet counted are, then: the report's Playbook section. */
   readonly report: Effect.Effect<string>
 }
 
@@ -322,6 +327,9 @@ export const make = (options: {
     const queued = yield* Queue.unbounded<Due>()
     const pending = yield* Ref.make(0)
     const stopped = yield* Ref.make(false)
+    // Each ticket's end last taken in, by its scorecard's outcome and seconds; one at a time.
+    const taken = yield* Ref.make<ReadonlyMap<string, string>>(new Map())
+    const taking = yield* Semaphore.make(1)
     const excluded = yield* Ref.make(false)
     const fileSystem = yield* FileSystemService
     // One warning a run for a file that can't be used: it would say the same for every ticket.
@@ -483,6 +491,21 @@ export const make = (options: {
         yield* Queue.offer(queued, due)
       })
 
+    // Each judged end the scorecards hold and this hasn't taken in: counted, and towards a reflection.
+    const catchUp = taking.withPermits(1)(
+      Effect.gen(function* () {
+        const { scoring } = yield* events.figures
+        for (const [ticket, score] of scoring.scores) {
+          if (!judgedOutcome(score.outcome)) continue
+          const end = `${score.outcome} ${score.seconds}`
+          if ((yield* Ref.get(taken)).get(ticket) === end) continue
+          yield* countFor(ticket, score)
+          yield* reflectionDue(ticket)
+          yield* Ref.update(taken, (now) => new Map(now).set(ticket, end))
+        }
+      }),
+    )
+
     return {
       choose: (issue, footprint) =>
         Effect.gen(function* () {
@@ -520,29 +543,14 @@ export const make = (options: {
           const given = now.get(ticket)
           return given === undefined ? "" : lessonsSection(given)
         }),
-      ended: (end) =>
-        Effect.gen(function* () {
-          if (!judgedOutcome(end.outcome)) return
-          const score = (yield* events.figures).scoring.scores.get(end.ticket)
-          if (score === undefined) return
-          yield* countFor(end.ticket, score)
-          yield* reflectionDue(end.ticket)
-        }),
-      pending: Ref.get(pending),
+      ended: () => catchUp,
+      pending: Effect.andThen(catchUp, Ref.get(pending)),
       interrupt: Effect.gen(function* () {
         yield* Ref.set(stopped, true)
         yield* FiberSet.clear(fibers)
         yield* Queue.clear(queued)
         yield* Ref.set(pending, 0)
       }),
-      report: Effect.gen(function* () {
-        // A ticket that ended as the run did may not have been told yet: counting one twice does nothing.
-        const { scoring } = yield* events.figures
-        for (const ticket of (yield* Ref.get(chosen)).keys()) {
-          const score = scoring.scores.get(ticket)
-          if (score !== undefined && judgedOutcome(score.outcome)) yield* countFor(ticket, score)
-        }
-        return playbookReport(yield* lessonsNow)
-      }),
+      report: Effect.andThen(catchUp, Effect.map(lessonsNow, playbookReport)),
     } satisfies RunPlaybook
   })
