@@ -1340,9 +1340,10 @@ what becomes of each, `<id>, carried over from the last run, …`:
   left off: `RESUMED: tut-a was suspended as the last run ended (quit); resuming its session …`. It
   takes a slot, but counts toward no limit;
 - a ticket closed meanwhile waits to merge;
-- a ticket waiting on a question is resumed once you answer it, and told so;
-- a ticket deferred meanwhile is left deferred; one deleted from Beads, or whose worktree is gone, is
-  dropped;
+- a ticket waiting on a question is resumed once you answer it, and told so, even one deferred as
+  well, which goes back in progress;
+- any other ticket deferred meanwhile is left deferred; one deleted from Beads, or whose worktree is
+  gone, is dropped;
 - a ticket merged by hand meanwhile is dropped, its worktree and branch removed as after a merge
   (unless the worktree has uncommitted changes, which the line names);
 - a run that crashed (`kill -9`, a power cut) suspended nothing: its tickets still in progress are
