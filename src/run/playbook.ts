@@ -155,10 +155,13 @@ export const inScope = (
 /** The most globs a lesson's scope has, and the longest. */
 export const scopeGlobs = { most: 8, characters: 200 }
 
+// A path below the project's top, not in a hidden folder: .git, .github, .claude, .beads and .tutti
+// hold what checks and runs the work, not code a lesson is about.
 const goodGlob = (glob: string): boolean =>
   glob !== "" &&
   glob.length <= scopeGlobs.characters &&
   !glob.startsWith("/") &&
+  !glob.startsWith(".") &&
   !/\s/u.test(glob) &&
   !glob.split("/").includes("..")
 
@@ -201,20 +204,22 @@ const normal = (text: string): string =>
     .join(" ")
     .trim()
 
+// Its words, punctuation at either end of one aside, so that a comma doesn't hide a quote.
 const words = (text: string): ReadonlyArray<string> =>
   normal(text)
     .split(/[^\p{L}\p{N}_./'-]+/u)
+    .map((word) => word.replace(/^[./'-]+|[./'-]+$/gu, ""))
     .filter((word) => word !== "")
 
-// What guards the work, named anywhere, a test file's path or a word run together included: a lesson
+// What guards the work, named anywhere, a test file's path included: a lesson
 // has no need of it, as a lesson is about the code, and no list of the ways to do without a check
 // would hold them all ("stop running the tests", "waive the verifier", "failures here are expected").
 const guarded =
-  /(?<![\p{L}\p{N}])(?:check|test|suite|verif|lint|typecheck|tsc|biome|shellcheck|ci(?![\p{L}\p{N}])|assert|gate|coverage|pre-commit|pre-push|snapshot)|permission|hook/u
+  /(?<![\p{L}\p{N}])(?:check|test|spec|suite|lint|typecheck|tsc|biome|shellcheck|ci(?![\p{L}\p{N}])|assert|expect(?![\p{L}\p{N}])|gate|coverage|pre-commit|pre-push|snapshot|review|approv)|verif|permission|hook/u
 
-// What dismisses something else, whatever it is called there.
+// What dismisses something else, whatever it is called there, a failure among it.
 const dismissing =
-  /--no-verify|--force|dangerously|\.skip\b|\.only\b|@ts-ignore|@ts-nocheck|biome-ignore|allowedtools|(?<![\p{L}\p{N}])(?:skip|bypass|disregard|waive|forgo|sidestep|circumvent|xfail|flak(?:y|es?|iness))|\bmove on\b|\bcarry on\b/u
+  /--no-verify|--force|dangerously|\.skip\b|\.only\b|@ts-|biome-ignore|allowedtools|(?<![\p{L}\p{N}])(?:skip|ignor|bypass|disregard|waive|forgo|sidestep|circumvent|xfail|flak(?:y|es?|iness)|fail|harmless)|comment(?:ed|ing)?\s+(?:\S+\s+){0,3}out\b|\bmove on\b|\bcarry on\b/u
 
 /**
  * Whether `text` could skip or weaken a check, test, verifier, permission or hook: it names one at
@@ -229,7 +234,7 @@ export const weakensChecks = (text: string): boolean => {
 // is what happens to a ticket, not how a worker uses git. A ticket named at all is bd's: the worker
 // prompt sets what a worker does with one. "main" and the like say which ref, whatever the verb.
 const gitOrBd =
-  /(?<![\p{L}\p{N}_./])(?:git|bd|beads|commits?|committing|committed|amend\w*|push(?:es|ed|ing)?|pull(?:s|ed|ing)?|fetch\w*|rebas\w*|stash\w*|cherry[- ]pick\w*|worktrees?|branch(?:es)?|checkouts?|origin|main|master|revert\w*|squash\w*|tickets?|follow-?ups?|--hard|reset\s+(?:--\w+|your\b|hard\b)|switch\s+to|stag(?:e|ing)\s+(?:all|everything|your|the\s+changes)|merg(?:e|es|ing)(?!\s+(?:conflicts?|queue|train))|(?:close|closing|mark|reopen\w*|claim\w*|defer\w*|file|filing)\s+(?:\w+\s+){0,3}(?:issue|question)s?)(?![\p{L}\p{N}_-]|\.\p{L})/u
+  /(?<![\p{L}\p{N}_./])(?:git|gh|bd|beads?|\w*commit\w*|amend\w*|push(?:es|ed|ing)?|pull(?:s|ed|ing)?|fetch\w*|rebas\w*|stash\w*|cherry[- ]pick\w*|worktrees?|branch(?:es)?|checkouts?|origin|main|master|head|prs?|revert\w*|rollback\w*|roll(?:s|ed|ing)?\s+back|restor\w*|discard\w*|history|squash\w*|tickets?|issues?|follow-?ups?|--hard|reset\s+(?:--\w+|your\b|hard\b)|switch\s+to|stag(?:e|ing)\s+(?:all|everything|your|the\s+changes)|merg(?:e|es|ing)(?!\s+(?:conflicts?|queue|train))|(?:close|closing|mark|reopen\w*|claim\w*|defer\w*|file|filing)\s+(?:\w+\s+){0,3}questions?)(?![\p{L}\p{N}_-]|\.\p{L})/u
 
 /** Whether `text` touches the git or bd usage the worker prompt sets. */
 export const touchesGitOrBd = (text: string): boolean => gitOrBd.test(normal(text))
@@ -261,7 +266,8 @@ export const gate = (candidate: Candidate, context: GateContext): Refusal | unde
   if (candidate.scope.length > scopeGlobs.most || !candidate.scope.every(goodGlob)) {
     return "bad_scope"
   }
-  if (weakensChecks(text)) return "weakens_checks"
+  // A lesson's scope is printed beside its words, so it can say what they leave out.
+  if ([text, ...candidate.scope].some(weakensChecks)) return "weakens_checks"
   if (touchesGitOrBd(text)) return "git_or_bd"
   if (quotesTranscript(text, context.transcripts)) return "quotes_transcript"
   if (
