@@ -9,7 +9,8 @@
 // inside its frame, so that it doesn't grow with its first action (tutti-pgl6).
 //
 // A card is framed `live` while its worker works and `needsYou` when it waits for you, `frame`
-// otherwise; the highlighted one keeps its colour, bold in the heavy border style. From 120 columns
+// otherwise; the highlighted one, and the card of the request the hint names, keep their colour,
+// bold in the heavy border style. From 120 columns
 // the cards go two to a row, a row as tall as its tallest card and a shorter card stretched to it,
 // its frame drawn round blank lines, so that the cards meet frame to frame across and down alike, no
 // blank line under a card as there is no blank column between two (tutti-5sf0). When the pane can't
@@ -260,16 +261,18 @@ const heavyBar = (frame: Look) => seg("┃", frame.bold())
 
 /**
  * The cards the compact box has a line for in `lines` lines, its frame included: all of them when
- * they fit, else as many as fit beside a `+N more` line, the highlighted card first, then those
- * waiting for you, then the rest, in their order.
+ * they fit, else as many as fit beside a `+N more` line, the highlighted card first, then `framed`,
+ * then those waiting for you, then the rest, in their order.
  */
 export const compactShown = (
   cards: ReadonlyArray<Card>,
   highlighted: string | null,
   lines: number,
+  framed: string | null = null,
 ): ReadonlyArray<Card> => {
   if (cards.length + 2 <= lines) return cards
-  const rank = (card: Card) => (card.ticket === highlighted ? 0 : waitsForYou(card) ? 1 : 2)
+  const rank = (card: Card) =>
+    card.ticket === highlighted ? 0 : card.ticket === framed ? 1 : waitsForYou(card) ? 2 : 3
   const kept = new Set(
     [...cards].sort((a, b) => rank(a) - rank(b)).slice(0, Math.max(lines - 3, 0)),
   )
@@ -279,8 +282,8 @@ export const compactShown = (
 /**
  * The compact box's lines `width` wide, a line a card, its ticket, status and time in
  * columns: framed `needsYou` when any of them waits for you, `live` while any works, `frame`
- * otherwise. The highlighted card's line has a heavy left bar. In fewer `lines` than a line each,
- * the cards compactShown leaves out are a `+N more` line at the box's foot.
+ * otherwise. The highlighted card's line, and `framed`'s, has a heavy left bar. In fewer `lines`
+ * than a line each, the cards compactShown leaves out are a `+N more` line at the box's foot.
  */
 export const compactLines = (
   cards: ReadonlyArray<Card>,
@@ -291,6 +294,8 @@ export const compactLines = (
     readonly width: number
     /** The highlighted card's ticket. */
     readonly highlighted: string | null
+    /** The card of the request the hint names, framed whichever panel has the focus. */
+    readonly framed?: string | null
     /** The most lines the box takes, its frame included; as many as it needs when left out. */
     readonly lines?: number
     /** Heavy where the focus is on Current; rounded when left out. */
@@ -302,7 +307,8 @@ export const compactLines = (
     : cards.some(runs)
       ? theme.look("live")
       : theme.look("frame")
-  const shown = compactShown(cards, options.highlighted, options.lines ?? cards.length + 2)
+  const framed = options.framed ?? null
+  const shown = compactShown(cards, options.highlighted, options.lines ?? cards.length + 2, framed)
   const more = cards.length - shown.length
   // The tickets, statuses and times line up as columns, each as wide as the widest.
   const cols = shown.reduce(
@@ -320,7 +326,9 @@ export const compactLines = (
   )
   return lines.map((line, i) => {
     const card = shown[i - 1]
-    if (card === undefined || card.ticket !== options.highlighted) return line
+    if (card === undefined || (card.ticket !== options.highlighted && card.ticket !== framed)) {
+      return line
+    }
     return [heavyBar(frame), ...line.slice(1)]
   })
 }
@@ -462,6 +470,7 @@ const CompactBox = ({
   width,
   lines,
   highlighted,
+  framed,
   border,
   open,
 }: {
@@ -470,13 +479,14 @@ const CompactBox = ({
   readonly width: number
   readonly lines: number
   readonly highlighted: string | null
+  readonly framed: string | null
   readonly border: Border
   readonly open: (ticket: TicketId) => void
 }) => {
   const now = useNow()
   const spin = useSpinner(cards.some((card) => card.motion === "spinner"))
-  const drawn = compactLines(cards, theme, { now, spin, width, highlighted, lines, border })
-  const shown = compactShown(cards, highlighted, lines)
+  const drawn = compactLines(cards, theme, { now, spin, width, highlighted, framed, lines, border })
+  const shown = compactShown(cards, highlighted, lines, framed)
   return drawn.map((line, i) => {
     const card = shown[i - 1]
     return (
@@ -581,6 +591,7 @@ export const Cards = ({
   stopping,
   fullCheck,
   highlighted,
+  framed = null,
   focused = false,
   open,
   focusOf,
@@ -597,6 +608,8 @@ export const Cards = ({
   readonly fullCheck: FullCheckRun | null
   /** The highlighted card's ticket. */
   readonly highlighted: string | null
+  /** The card of the request the hint names, framed whichever panel has the focus. */
+  readonly framed?: string | null
   /** The focus is on Current at the top level: every frame in it is drawn heavy, as no card is yet. */
   readonly focused?: boolean
   /** Opens the view of the ticket's worker. */
@@ -633,6 +646,7 @@ export const Cards = ({
             width={width}
             lines={room - labelLines}
             highlighted={highlighted}
+            framed={framed}
             border={border}
             open={open}
           />
@@ -665,7 +679,9 @@ export const Cards = ({
                         theme={theme}
                         width={w}
                         inside={tall - 2}
-                        highlighted={focused || card.ticket === highlighted}
+                        highlighted={
+                          focused || card.ticket === highlighted || card.ticket === framed
+                        }
                         focus={focusOf(card.requests[0])}
                         press={press}
                       />

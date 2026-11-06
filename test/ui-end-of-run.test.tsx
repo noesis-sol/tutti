@@ -208,7 +208,8 @@ describe("the end-of-run box on the dashboard", () => {
       │ Answering lets them carry on. q ends the run, suspending them: the next run  │
       │ resumes them.                                                                │
       ╰──────────────────────────────────────────────────────────────────────────────╯
-        Tab select · arrows panels · Enter go in · q end the run · ? keys
+        Tab select · arrows panels · Enter go in · g request on tut-9a1
+        q end the run · ? keys
       "
     `)
     expect(linesOf(frame).some((line) => line.trim() === "Current")).toBe(false)
@@ -228,7 +229,7 @@ describe("the end-of-run box on the dashboard", () => {
       │ Everything else is done. 2 workers wait for you: tut-9a1 (Allow Bash(rm -rf build)?), tut-7k2 (a question)           │
       │ Answering lets them carry on. q ends the run, suspending them: the next run resumes them.                            │
       ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-        Tab select · arrows panels · Enter go in · q end the run · ? keys
+        Tab select · arrows panels · Enter go in · g request on tut-9a1 · q end the run · ? keys
       "
     `)
   })

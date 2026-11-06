@@ -237,17 +237,17 @@ describe("the dashboard's hint", () => {
 
   test("names d and a with the buttons drawn, and neither without", () => {
     const view = viewOf([permission("r1", "t-1" as TicketId)], 2)
-    expect(words(view, true)).toEqual(["Tab", "arrows", "Enter", "d", "a", "s", "?"])
-    expect(words(view, false)).toEqual(["Tab", "arrows", "Enter", "s", "?"])
+    expect(words(view, true)).toEqual(["Tab", "arrows", "Enter", "g", "d", "a", "s", "?"])
+    expect(words(view, false)).toEqual(["Tab", "arrows", "Enter", "g", "s", "?"])
   })
 
   test("names a only where it allows the highlighted card's request", () => {
     const view = viewOf([{ ...permission("r1", "t-1" as TicketId), defaultToNo: true }], 2)
-    expect(words(view, true)).toEqual(["Tab", "arrows", "Enter", "d", "s", "?"])
+    expect(words(view, true)).toEqual(["Tab", "arrows", "Enter", "g", "d", "s", "?"])
   })
 
   test("names neither on a card with no request highlighted, where they answer nothing", () => {
     const view = viewOf([permission("r1", "t-1" as TicketId)], 2)
-    expect(words(view, true, "t-2")).toEqual(["Tab", "arrows", "Enter", "s", "?"])
+    expect(words(view, true, "t-2")).toEqual(["Tab", "arrows", "Enter", "g", "s", "?"])
   })
 })

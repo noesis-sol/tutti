@@ -493,7 +493,7 @@ describe("wind-down and hint", () => {
         .join(" · ")
     expect(result.before.windDown).toBeNull()
     expect(hint(result.before)).toBe(
-      "Tab select · arrows panels · Enter go in · d deny · s stop after current · ? keys",
+      "Tab select · arrows panels · Enter go in · g request on c · d deny · s stop after current · ? keys",
     )
     expect(result.during.windDown).toEqual({
       marks: [

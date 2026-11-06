@@ -279,7 +279,7 @@ describe("the card", () => {
         ┃   Path is outside allowed working directories                                ┃
         ┃   [ Deny ]  [ Allow ]  [ Allow for this run ]  +2 more                       ┃
         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-          Tab select · arrows panels · Enter go in · d deny · a allow
+          Tab select · arrows panels · Enter go in · g request on t-2 · d deny · a allow
           s stop after current · ? keys
         "
       `)
@@ -376,8 +376,8 @@ describe("the card", () => {
           │   https://docs.example/login                                                 │
           │   [ Decline ]  [ Open URL ]                                                  │
           ╰──────────────────────────────────────────────────────────────────────────────╯
-            Tab select · arrows panels · Enter go in · d deny · s stop after current
-            ? keys
+            Tab select · arrows panels · Enter go in · g request on t-1 · d deny
+            s stop after current · ? keys
           "
         `)
       },

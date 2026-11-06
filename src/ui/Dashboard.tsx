@@ -55,6 +55,12 @@
 // answer keys open the Answer box instead, the 500 ms guard starts only once the buttons are drawn,
 // and the hint offers neither `d` nor `a`.
 //
+// A waiting request is shown, and the focus never moves to it by itself (tutti-149z.4): the oldest
+// request's card stays heavy whichever panel has the focus, unless the keys are on another request's
+// card, the one heavy there as it says which card they answer, and the hint names `g`, which goes to
+// it from any panel and level. Where no buttons are drawn, `g` opens its Answer box, as `Enter` on
+// its line does.
+//
 // With everything else done and workers waiting on you (D19), the end-of-run box (EndOfRunBox.tsx)
 // replaces the cards, and `q` ends the run (EndRun). Going into Current in its place, `Enter` opens a
 // worker's view to answer there. The box is placed before the tickets table: the table gives up rows for it, down
@@ -124,6 +130,7 @@ import {
   upNextLines,
   wantingRows,
 } from "./SidePanel.tsx"
+import { sanitizeLine } from "./sanitize.ts"
 import {
   byAttention,
   fewestTableLines,
@@ -264,12 +271,14 @@ export const dashboardLayout = (
   // Below the minimum size and behind the end-of-run box no card's buttons are drawn.
   const drawnButtons = !small && view.endOfRun === null
   const allHint = hintAt(drawnButtons)
-  // As many lines at either level, a request's keys named or not, so that nothing over the hint
-  // moves as the focus goes into a panel, where they aren't.
+  // As many lines at either level, on any card, a request's keys named or not, so that nothing over
+  // the hint moves as the focus goes into a panel, where they aren't, or on to another card.
   const hintKept = take(
     Math.max(
       ...[false, true].flatMap((inside) =>
-        [highlighted, targetOf(view)].map((card) => hintAt(drawnButtons, inside, card).length),
+        [highlighted, null, ...view.cards.map((card) => card.ticket)].map(
+          (card) => hintAt(drawnButtons, inside, card).length,
+        ),
       ),
     ),
   )
@@ -439,9 +448,10 @@ export const dashboardLayout = (
 const needKey = (need: Need): string =>
   need._tag === "Question" ? `${need.ticket} ${need.id}` : need.ticket
 
-/** The card highlighted while none is chosen: that of the oldest open request (§ 4.5). */
+/** The card highlighted while none is chosen: that of the oldest open request with one (§ 4.5). */
 export const targetOf = (view: RunView): string | null =>
-  view.cards.find((card) => card.ticket === view.requests[0]?.ticket)?.ticket ?? null
+  view.requests.find((request) => view.cards.some((card) => card.ticket === request.ticket))
+    ?.ticket ?? null
 
 /** Where the dashboard's keys are: the card they act on, and whether a request's buttons are drawn. */
 export interface DashboardAt {
@@ -480,6 +490,8 @@ export interface DashboardActions {
   /** Opens the Answer box on the card, drawn on a compact line, to read its request first. */
   readonly openAnswer: (card: Card) => void
   readonly pick: (card: Card, n: number) => void
+  /** `g`: goes to the oldest request's card, or where no buttons are drawn opens its Answer box. */
+  readonly toRequest: (ticket: string) => void
   /** `s`: the stop question. */
   readonly stop: () => void
   /** `q`, with the end-of-run box shown: ends the run. */
@@ -505,6 +517,7 @@ const inertDashboard: DashboardActions = {
   denyWithReason: nothing,
   openAnswer: nothing,
   pick: nothing,
+  toRequest: nothing,
   stop: nothing,
   endRun: nothing,
   questions: nothing,
@@ -562,6 +575,7 @@ export const dashboardCommands = (
     if (found !== undefined) run(found)
   }
   const named = (shown: boolean, keys: string, does: string) => (shown ? { keys, does } : undefined)
+  const waiting = targetOf(view)
   return [
     // Tab starts the box selection from the top level, where the hint names it.
     {
@@ -592,6 +606,16 @@ export const dashboardCommands = (
       run: act.escape,
       hint: named(inside, "Esc", "back"),
       help: ["Esc", "come out of the panel; an open box closes first"],
+    },
+    // The way to a waiting request, from any panel and level: the focus never goes there by itself.
+    {
+      keys: ["g"],
+      when: () => waiting !== null,
+      run: () => {
+        if (waiting !== null) act.toRequest(waiting)
+      },
+      hint: named(waiting !== null, "g", `request on ${sanitizeLine(waiting ?? "")}`),
+      help: ["g", "go to the oldest request's card"],
     },
     {
       keys: ["d"],
@@ -774,6 +798,9 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   // Inside Tickets or Needs you no card is highlighted, as no answer key reaches one.
   const litNow = () => (focusState().inside && focusState().panel !== "current" ? null : current())
   const lit = litNow()
+  // The oldest request's card stays framed, unless the keys are on another request's: there the one
+  // frame says which card they answer.
+  const framed = cards.some((card) => card.ticket === lit && grows(card)) ? lit : target
   const choose = (ticket: string | null) => setChosen(() => ticket)
   const open = (ticket: TicketId) => command(UiCommand.OpenWorker({ ticket }))
 
@@ -936,6 +963,16 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
       choose(target ?? known ?? cards[0]?.ticket ?? null)
     }
     focusOn(panel, true)
+  }
+  // `g`: into Current on the request's card, its buttons from their default; with the keys already
+  // on it, nothing. Where no buttons are drawn there is only its Answer box to go to.
+  const toRequest = (ticket: string) => {
+    const there = insideOf("current") && current() === ticket
+    if (there && buttons) return
+    answering.reset()
+    choose(ticket)
+    focusOn("current", true)
+    if (!buttons) box.set(Box.Answer({ ticket: ticket as TicketId }))
   }
   // A click on a card opens it, and the keys are on it when its view closes.
   const openCard = useEvent((ticket: TicketId) => {
@@ -1121,6 +1158,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
           choose(card.ticket)
           focusOn("current", true)
         }),
+        toRequest: unlessHelp(toRequest),
         stop: unlessHelp(() => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
         endRun: unlessHelp(() => command(UiCommand.EndRun())),
         questions: unlessHelp(() => box.set(Box.Questions({}))),
@@ -1185,6 +1223,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
               }
               fullCheck={view.fullCheck}
               highlighted={lit}
+              framed={framed}
               focused={focus.panel === "current" && !focus.inside}
               open={openCard}
               focusOf={answering.focusOf}

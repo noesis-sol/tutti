@@ -3,6 +3,7 @@
 ## Unreleased
 
 - With nothing chosen, only a Blocked or Asked row, or a need with no row, takes the panel beside the tickets table by itself, rather than a set-aside row holding it for the rest of the run with Up next out of sight; choosing a set-aside row still shows its detail, and `Esc` goes back to Up next (§ 5.1, § 7.2; `src/ui/SidePanel.tsx`' `selectedTicket`; tutti-149z.6). `test/set-aside-up-next.test.tsx` covers it.
+- A worker's waiting request is plain on the dashboard and one key away, and the focus never moves to it by itself, as the maintainer chose (§ 4.5, § 7.3; `src/ui/Dashboard.tsx`, `src/ui/Card.tsx`; tutti-149z.4): the oldest request's card stays heavy in `needsYou` whichever panel has the focus, the hint says `g request on <id>`, and `g`, a new key, goes into Current on that card with Deny focused from any panel and level, `Esc` coming back out to the top level. Where no buttons are drawn, it opens the request's Answer box, as `Enter` on its line does. `test/request-framed-and-g.test.tsx` covers it.
 
 ## [0.6.12] - 2026-11-05
 

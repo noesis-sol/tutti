@@ -301,7 +301,7 @@ or the last line the worker wrote).
   or `failed its check ahead of its turn, on top of tutti/<id>: checked again in its turn`, until its
   turn comes.
 - **The frame** is coloured while the worker works, red while it waits for you, and heavy on the
-  highlighted card.
+  highlighted card and on the oldest request's.
 
 A card is always 5 lines tall, its action line blank until the worker's first action, so that the
 cards don't jump as actions come and go; only an attention card grows (below). Cards go two to a
@@ -328,6 +328,15 @@ A worker waiting on you turns its card red, and the card grows to show the reque
 Deny has the focus when a card opens; Allow never does. `+2 more` says the worker has more
 requests, which follow as each is answered. In the one-line layout, a card waiting on you reads
 `■ allow?` or `■ answer?`, and `Enter` opens its request in a box over the dashboard.
+
+**A request waits for you; the focus never goes to it by itself.** The oldest request's card stays
+heavy and red whichever panel has the focus, or its line keeps a heavy bar in the one-line layout,
+and the hint says `g request on <id>`. **g** goes there from any panel, at either level: inside
+**Current** on that card with its buttons ready, Deny focused, and `Esc` comes back out to the top
+level, as from any card. With the keys already on the card it does nothing. With the keys on a younger
+request's card, inside Current, that card alone is heavy, so the frame says which one `d` and `a`
+answer. In the one-line layout, behind the end-of-run box and below the smallest size there are no
+buttons to go to, so `g` opens the request in a box over the dashboard, as `Enter` on its line does.
 
 ### The foot
 
@@ -484,6 +493,7 @@ on its card, opens a worker too.
 | `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
 | `1`–`9` | answer **Needs you**'s question at once, but a digit a highlighted card's question takes, with the focus on it in Current | |
 | `Enter`, a click | at the top, go into the panel, a click to what it clicked; inside, press the focused button, or open the card (in the one-line layout, open its request) or the row: a `? for you` row's question, what clears a blocked one, a worker's view, or for a row with none (done, set aside) a box with what the panel says of it; on the totals' Needs you, the list of what needs you | expand or collapse the item; press the focused button |
+| `g` | go to the oldest request's card, from any panel; where no buttons are drawn, open it in a box | |
 | `d` | deny the request (decline an MCP server's) | the same |
 | `Shift+D` | deny, with a reason you type for the worker | the same |
 | `a` | allow, when the request has a one-key allow | the same |

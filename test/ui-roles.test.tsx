@@ -1259,8 +1259,8 @@ describe("layouts", () => {
 
 
 
-
-        Tab select · arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · g request on tut-9a1
+        s stop after current · ? keys
       "
     `)
     },
@@ -1313,7 +1313,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · arrows panels · Enter go in · d deny · a allow · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · g request on tut-9a1 · d deny · a allow · s stop after current · ? keys
       "
     `)
     },
@@ -1346,7 +1346,7 @@ describe("layouts", () => {
 
 
         Tab select · arrows panels · Enter go in
-        s stop after current · ? keys
+        g request on tut-9a1 · s stop after current · ? keys
       "
     `)
     },
@@ -1424,8 +1424,8 @@ describe("layouts", () => {
 
 
 
-
-        Tab select · arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · g request on t-1
+        s stop after current · ? keys
       "
     `)
     },
@@ -1465,8 +1465,8 @@ describe("layouts", () => {
 
 
 
-
-        Tab select · arrows panels · Enter go in · q end the run · ? keys
+        Tab select · arrows panels · Enter go in · g request on tut-9a1
+        q end the run · ? keys
       "
     `)
     },

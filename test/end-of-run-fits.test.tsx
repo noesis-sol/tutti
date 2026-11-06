@@ -207,8 +207,8 @@ describe("the end-of-run box on a short dashboard", () => {
 
 
 
-
-        Tab select · arrows panels · Enter go in · q end the run · ? keys
+        Tab select · arrows panels · Enter go in · g request on tut-9a1
+        q end the run · ? keys
 
       "
     `)
@@ -226,8 +226,7 @@ describe("the end-of-run box on a short dashboard", () => {
       │ test test/tut-9a1.test.ts --timeout 60000 --rerun-each 3)?), tut-7k2 (Allow  │
       │ Bash(bun test test/tut-7k2.test.ts --timeout 60000 --rerun-each 3)?),        │
       │ tut-3fx (Allow Bash(bun test test/tut-3fx.test.ts --timeout 60000            │
-      │ --rerun-each 3)?), tut-5qe (Allow Bash(bun test test/tut-5qe.test.ts         │
-      │ --timeout 60000 --rerun-each 3)?), +1 more                                   │
+      │ --rerun-each 3)?), +2 more                                                   │
       │ Answering lets them carry on. q ends the run, suspending them: the next run  │
       │ resumes them.                                                                │
       ╰──────────────────────────────────────────────────────────────────────────────╯

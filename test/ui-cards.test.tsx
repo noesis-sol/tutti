@@ -481,7 +481,8 @@ describe("the Current section", () => {
       │ ◼ tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                           │
       ┃ • tut-b7c  ■ allow?        1m07s  Title of tut-b7c                           │
       ╰──────────────────────────────────────────────────────────────────────────────╯
-        Tab select · arrows panels · Enter go in · s stop after current · ? keys
+        Tab select · arrows panels · Enter go in · g request on tut-b7c
+        s stop after current · ? keys
       "
     `)
     // The card of the oldest request is highlighted, with none chosen (§ 4.5). Any worker in the
@@ -745,6 +746,7 @@ describe("the hint and the key help", () => {
       │ arrows                 move between the panels; inside one, select in it   │
       │ Enter, a click         go into the panel; inside it, open what is selected │
       │ Esc                    come out of the panel; an open box closes first     │
+      │ g                      go to the oldest request's card                     │
       │ d, Shift+D             deny the request; deny with a reason                │
       │ a                      allow the request, unless it opens on Deny          │
       │ r                      allow for this run                                  │

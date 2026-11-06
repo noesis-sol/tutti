@@ -128,6 +128,7 @@ const everyKey = [
   "Tab select",
   "arrows panels",
   "Enter go in",
+  "g request on t-1",
   "d deny",
   "a allow",
   "s stop after current",
@@ -135,16 +136,16 @@ const everyKey = [
 ]
 
 describe("the dashboard's hint", () => {
-  test("is 93 columns whole with a request open, so it takes one line from 93 columns", () => {
-    for (const width of [93, 120]) {
+  test("is 112 columns whole with a request open, so it takes one line from 112 columns", () => {
+    for (const width of [112, 120]) {
       const laid = dashboardLayout(viewOf(1), theme, width, 40)
       expect(laid.cards._tag).toBe("Cards")
       expect(laid.hint).toHaveLength(1)
     }
   })
 
-  test("at 60 to 92 columns, with a request's buttons drawn, wraps every key onto two lines", async () => {
-    for (const width of [60, 65, 70, 79, 92]) {
+  test("at 61 to 111 columns, with a request's buttons drawn, wraps every key onto two lines", async () => {
+    for (const width of [61, 65, 70, 79, 92, 111]) {
       const size = { width, height: 40 }
       const laid = dashboardLayout(viewOf(1), theme, width, size.height)
       expect(laid.cards._tag).toBe("Cards")
@@ -159,9 +160,21 @@ describe("the dashboard's hint", () => {
     }
   })
 
+  test("at 60 columns, a third line, every key named", () => {
+    for (const width of [60]) {
+      const laid = dashboardLayout(viewOf(1), theme, width, 40)
+      expect(laid.hint).toHaveLength(3)
+      const named = laid.hint
+        .flat()
+        .map((part) => part.text)
+        .join("")
+      for (const key of everyKey) expect(named).toContain(key)
+    }
+  })
+
   test("without a request's buttons, leaves out d and a and gives the line it frees to the blanks", () => {
     const view = viewOf(4)
-    const laid = dashboardLayout(view, theme, 76, 24)
+    const laid = dashboardLayout(view, theme, 95, 24)
     expect(laid.cards._tag).toBe("Compact")
     expect(laid.hint).toHaveLength(1)
     const sections = [
@@ -197,7 +210,7 @@ describe("the dashboard's hint", () => {
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
       const lines = await until(rendered, "can't be suspended")
       expect(footOf(lines, size.height, 2)).toBe(
-        "Tab select · arrows panels · Enter go in · d deny · a allow s stop after current · ? keys",
+        "Tab select · arrows panels · Enter go in · g request on t-1 · d deny a allow · s stop after current · ? keys",
       )
       expect(lines[size.height - 3]).toContain(suspendToast.slice(0, 30))
     })
