@@ -15,6 +15,7 @@ import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
+import { compactShown } from "../src/ui/Card.tsx"
 import { dashboardHint, dashboardLayout, targetOf } from "../src/ui/Dashboard.tsx"
 import type { Panel } from "../src/ui/panelFocus.ts"
 import { sanitizeLine } from "../src/ui/sanitize.ts"
@@ -298,43 +299,112 @@ describe("the frame on a waiting request's card", () => {
   describe("with two waiting", () => {
     const two = () => askingView([permission("r-1", "w-2"), permission("r-2", "w-1")], 3)
 
-    test("is the oldest's, the other's staying rounded in its colour", async () => {
+    /** The title line of `ticket`'s card, as drawn. */
+    const titleOf = (frame: Frame, ticket: string) =>
+      linesOf(frame).find((line) => line.includes(`Title of ${ticket}`)) ?? ""
+    const pointedAt = (frame: Frame, ticket: string) =>
+      new RegExp(`▸ Title of ${ticket}`).test(titleOf(frame, ticket))
+
+    test("is on both, from inside Tickets, where the answer keys reach neither", async () => {
       await scene(two(), wide, async ({ rendered }) => {
         await press(rendered, "enter")
         const frame = await rendered.capture()
         expect(heavyOn(frame, "w-2")).toBe(true)
-        expect(heavyOn(frame, "w-1")).toBe(false)
+        expect(heavyOn(frame, "w-1")).toBe(true)
+        expect(heavyOn(frame, "w-3")).toBe(false)
+        expect(pointedAt(frame, "w-1")).toBe(false)
+        expect(pointedAt(frame, "w-2")).toBe(false)
       })
     })
 
-    test("is only the card the keys answer, with them on the younger's", async () => {
-      await scene(two(), wide, async ({ rendered }) => {
+    test("is on both, the oldest's pointed at from the top level, where d answers it", async () => {
+      await scene(two(), wide, async ({ rendered, commands, pass }) => {
+        const frame = await rendered.capture()
+        expect(heavyOn(frame, "w-1")).toBe(true)
+        expect(heavyOn(frame, "w-2")).toBe(true)
+        expect(pointedAt(frame, "w-2")).toBe(true)
+        expect(pointedAt(frame, "w-1")).toBe(false)
+        await pass(settle)
+        await press(rendered, "d")
+        expect(answered(commands)).toEqual([["r-1", "Deny"]])
+      })
+    })
+
+    test("is on both inside Current, the pointer on the card the keys answer", async () => {
+      await scene(two(), wide, async ({ rendered, commands, pass }) => {
         await press(rendered, "tab")
         const frame = await rendered.capture()
         expect(heavyOn(frame, "w-1")).toBe(true)
-        expect(heavyOn(frame, "w-2")).toBe(false)
+        expect(heavyOn(frame, "w-2")).toBe(true)
+        expect(pointedAt(frame, "w-1")).toBe(true)
+        expect(pointedAt(frame, "w-2")).toBe(false)
+        await pass(settle)
+        await press(rendered, "d")
+        expect(answered(commands)).toEqual([["r-2", "Deny"]])
       })
     })
 
-    test("is the oldest's beside the card the keys are on, one with no request", async () => {
+    test("is on both beside the card the keys are on, one with no request, no pointer", async () => {
       await scene(two(), wide, async ({ rendered }) => {
         await press(rendered, "tab", "down")
         const frame = await rendered.capture()
         expect(heavyOn(frame, "w-3")).toBe(true)
         expect(heavyOn(frame, "w-2")).toBe(true)
-        expect(heavyOn(frame, "w-1")).toBe(false)
+        expect(heavyOn(frame, "w-1")).toBe(true)
+        expect(pointedAt(frame, "w-1")).toBe(false)
+        expect(pointedAt(frame, "w-2")).toBe(false)
       })
     })
 
-    test("moves on to the next once the oldest is answered", async () => {
+    test("goes with each request, the pointer with the second", async () => {
       await scene(two(), wide, async ({ rendered, view }) => {
         await press(rendered, "enter")
         view.set(askingView([permission("r-2", "w-1")], 3))
         const frame = await rendered.capture()
         expect(heavyOn(frame, "w-1")).toBe(true)
         expect(heavyOn(frame, "w-2")).toBe(false)
+        expect(has(frame, "▸ Title")).toBe(false)
       })
     })
+  })
+
+  test("draws no pointer with one waiting, the frame enough", async () => {
+    await scene(oneRequest(), wide, async ({ rendered }) => {
+      await press(rendered, "g")
+      expect(has(await rendered.capture(), "▸ Title")).toBe(false)
+    })
+  })
+
+  test("on compact lines is the oldest's bar, or the line the keys are on alone", async () => {
+    const view = viewOf(6, [permission("r-1", "w-6"), permission("r-2", "w-1")])
+    await scene(view, { width: 100, height: 28 }, async ({ rendered }) => {
+      await press(rendered, "enter")
+      const inTickets = await rendered.capture()
+      expect(heavyOn(inTickets, "w-6")).toBe(true)
+      expect(heavyOn(inTickets, "w-1")).toBe(false)
+      await press(rendered, "tab")
+      const onLine = await rendered.capture()
+      expect(has(onLine, "[ Deny ]")).toBe(false)
+      expect(heavyOn(onLine, "w-1")).toBe(true)
+      expect(heavyOn(onLine, "w-6")).toBe(false)
+    })
+  })
+
+  test("on a compact line keeps its line as others fold into +N more", () => {
+    const view = viewOf(6, [permission("r-1", "w-6")])
+    const kept = (framed: string | null) =>
+      compactShown(view.cards, "w-1", 5, framed).map((card): string => card.ticket)
+    expect(kept("w-6")).toEqual(["w-1", "w-6"])
+    expect(kept(null)).toEqual(["w-1", "w-6"])
+    const others = viewOf(6, [
+      permission("r-1", "w-6"),
+      permission("r-2", "w-2"),
+      permission("r-3", "w-3"),
+    ])
+    expect(compactShown(others.cards, "w-1", 5, "w-6").map((card): string => card.ticket)).toEqual([
+      "w-1",
+      "w-6",
+    ])
   })
 
   test("on a compact line is its heavy bar, from inside Tickets, and it isn't left out", async () => {
@@ -466,8 +536,8 @@ describe("g", () => {
     await scene(view, wide, async ({ rendered, commands, pass }) => {
       await press(rendered, "tab", "g")
       const frame = await rendered.capture()
-      expect(heavyOn(frame, "w-2")).toBe(true)
-      expect(heavyOn(frame, "w-1")).toBe(false)
+      expect(has(frame, "▸ Title of w-2")).toBe(true)
+      expect(has(frame, "▸ Title of w-1")).toBe(false)
       await pass(settle)
       await press(rendered, "enter")
       expect(answered(commands)).toEqual([["r-1", "Deny"]])

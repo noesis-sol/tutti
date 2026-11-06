@@ -301,7 +301,7 @@ or the last line the worker wrote).
   or `failed its check ahead of its turn, on top of tutti/<id>: checked again in its turn`, until its
   turn comes.
 - **The frame** is coloured while the worker works, red while it waits for you, and heavy on the
-  highlighted card and on the oldest request's.
+  highlighted card and on every card waiting on a request.
 
 A card is always 5 lines tall, its action line blank until the worker's first action, so that the
 cards don't jump as actions come and go; only an attention card grows (below). Cards go two to a
@@ -329,13 +329,12 @@ Deny has the focus when a card opens; Allow never does. `+2 more` says the worke
 requests, which follow as each is answered. In the one-line layout, a card waiting on you reads
 `■ allow?` or `■ answer?`, and `Enter` opens its request in a box over the dashboard.
 
-**A request waits for you; the focus never goes to it by itself.** The oldest request's card stays
-heavy and red whichever panel has the focus, or its line keeps a heavy bar in the one-line layout,
-and the hint says `g request on <id>`. **g** goes there from any panel, at either level: inside
-**Current** on that card with its buttons ready, Deny focused, and `Esc` comes back out to the top
-level, as from any card. With the keys already on the card it does nothing. With the keys on a younger
-request's card, inside Current, that card alone is heavy, so the frame says which one `d` and `a`
-answer. In the one-line layout, behind the end-of-run box and below the smallest size there are no
+**A request waits for you; the focus never goes to it by itself.** Its card stays heavy and red
+whichever panel has the focus, and the hint says `g request on <id>`, naming the oldest. **g** goes
+there from any panel, at either level: inside **Current** on that card with its buttons ready, Deny
+focused, and `Esc` comes back out to the top level, as from any card. With the keys already on the
+card it does nothing. With several cards waiting, `▸` before a title says which one `d` and `a`
+answer. In the one-line layout, the oldest's line keeps a heavy bar. In that layout, behind the end-of-run box and below the smallest size there are no
 buttons to go to, so `g` opens the request in a box over the dashboard, as `Enter` on its line does.
 
 ### The foot

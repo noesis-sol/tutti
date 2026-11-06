@@ -364,18 +364,18 @@ describe("the card", () => {
             Current
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
           ┃ • t-1  question — waiting for you  0s                                        ┃
-          ┃   Title of t-1                                                               ┃
+          ┃ ▸ Title of t-1                                                               ┃
           ┃   Which migration?                                                           ┃
           ┃   [ 1 Keep the old ]                                                         ┃
           ┃   [ 2 Write a new ]                                                          ┃
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-          ╭──────────────────────────────────────────────────────────────────────────────╮
-          │ • t-2  input — waiting for you  0s                                           │
-          │   Title of t-2                                                               │
-          │   docs: Log in to the docs server                                            │
-          │   https://docs.example/login                                                 │
-          │   [ Decline ]  [ Open URL ]                                                  │
-          ╰──────────────────────────────────────────────────────────────────────────────╯
+          ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+          ┃ • t-2  input — waiting for you  0s                                           ┃
+          ┃   Title of t-2                                                               ┃
+          ┃   docs: Log in to the docs server                                            ┃
+          ┃   https://docs.example/login                                                 ┃
+          ┃   [ Decline ]  [ Open URL ]                                                  ┃
+          ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
             Tab select · arrows panels · Enter go in · g request on t-1 · d deny
             s stop after current · ? keys
           "

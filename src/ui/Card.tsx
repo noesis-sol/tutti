@@ -9,8 +9,9 @@
 // inside its frame, so that it doesn't grow with its first action (tutti-pgl6).
 //
 // A card is framed `live` while its worker works and `needsYou` when it waits for you, `frame`
-// otherwise; the highlighted one, and the card of the request the hint names, keep their colour,
-// bold in the heavy border style. From 120 columns
+// otherwise; the highlighted one, and every card whose worker has a request open, keep their colour,
+// bold in the heavy border style. With several of those, `▸` before a title says which the answer
+// keys reach. From 120 columns
 // the cards go two to a row, a row as tall as its tallest card and a shorter card stretched to it,
 // its frame drawn round blank lines, so that the cards meet frame to frame across and down alike, no
 // blank line under a card as there is no blank column between two (tutti-5sf0). When the pane can't
@@ -294,7 +295,7 @@ export const compactLines = (
     readonly width: number
     /** The highlighted card's ticket. */
     readonly highlighted: string | null
-    /** The card of the request the hint names, framed whichever panel has the focus. */
+    /** The line of the request the hint names, barred whichever panel has the focus. */
     readonly framed?: string | null
     /** The most lines the box takes, its frame included; as many as it needs when left out. */
     readonly lines?: number
@@ -534,6 +535,7 @@ const CardBox = memo(
     width,
     inside,
     highlighted,
+    pointed,
     focus,
     press,
   }: {
@@ -543,6 +545,8 @@ const CardBox = memo(
     /** The lines inside its frame: its row's tallest card's, blank lines padding a shorter one. */
     readonly inside: number
     readonly highlighted: boolean
+    /** Has `▸` before its title: the attention card the answer keys reach, among several. */
+    readonly pointed: boolean
     readonly focus: number | null
     /** Presses an attention card's button: the same function from one drawing to the next. */
     readonly press: (request: ShownRequest | undefined, index: number) => void
@@ -550,15 +554,17 @@ const CardBox = memo(
     // The card's lines but its head, which CardHead draws in their place, at the clock's time.
     const lines = useMemo(() => {
       const [now, spin] = [card.since, ""]
+      const [head = [], title = []] = contentOf(card, theme, now, spin)
+      const pointer = pointed ? [seg(`${marks.selected} `, theme.styles.key)] : title.slice(0, 1)
       return grows(card)
-        ? attentionLines(card, theme, contentOf(card, theme, now, spin).slice(0, 2), {
+        ? attentionLines(card, theme, [head, [...pointer, ...title.slice(1)]], {
             width,
             highlighted,
             focus,
             inside,
           })
         : cardLines(card, theme, { now, spin, width, inside, highlighted })
-    }, [card, theme, width, inside, highlighted, focus])
+    }, [card, theme, width, inside, highlighted, pointed, focus])
     const [top, below] = useMemo(() => [lines.slice(0, 1), lines.slice(2)], [lines])
     const pressed = useCallback((index: number) => press(card.requests[0], index), [press, card])
     return (
@@ -608,7 +614,7 @@ export const Cards = ({
   readonly fullCheck: FullCheckRun | null
   /** The highlighted card's ticket. */
   readonly highlighted: string | null
-  /** The card of the request the hint names, framed whichever panel has the focus. */
+  /** The compact line of the request the hint names, barred whichever panel has the focus. */
   readonly framed?: string | null
   /** The focus is on Current at the top level: every frame in it is drawn heavy, as no card is yet. */
   readonly focused?: boolean
@@ -658,6 +664,7 @@ export const Cards = ({
         rows.push(cards.slice(i, i + layout.across))
       }
       const first = Math.floor(width / layout.across)
+      const waiting = cards.filter(grows).length
       return (
         <box flexDirection="column" flexShrink={0}>
           {label}
@@ -679,9 +686,8 @@ export const Cards = ({
                         theme={theme}
                         width={w}
                         inside={tall - 2}
-                        highlighted={
-                          focused || card.ticket === highlighted || card.ticket === framed
-                        }
+                        highlighted={focused || card.ticket === highlighted || grows(card)}
+                        pointed={waiting > 1 && card.ticket === highlighted && grows(card)}
                         focus={focusOf(card.requests[0])}
                         press={press}
                       />

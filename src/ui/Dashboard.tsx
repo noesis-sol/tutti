@@ -55,11 +55,10 @@
 // answer keys open the Answer box instead, the 500 ms guard starts only once the buttons are drawn,
 // and the hint offers neither `d` nor `a`.
 //
-// A waiting request is shown, and the focus never moves to it by itself (tutti-149z.4): the oldest
-// request's card stays heavy whichever panel has the focus, unless the keys are on another request's
-// card, the one heavy there as it says which card they answer, and the hint names `g`, which goes to
-// it from any panel and level. Where no buttons are drawn, `g` opens its Answer box, as `Enter` on
-// its line does.
+// A waiting request is shown, and the focus never moves to it by itself (tutti-149z.4): its card
+// stays heavy whichever panel has the focus (Card.tsx), and the hint names `g`, which goes to the
+// oldest's from any panel and level. Where no buttons are drawn, `g` opens its Answer box, as `Enter`
+// on its line does.
 //
 // With everything else done and workers waiting on you (D19), the end-of-run box (EndOfRunBox.tsx)
 // replaces the cards, and `q` ends the run (EndRun). Going into Current in its place, `Enter` opens a
@@ -798,8 +797,8 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   // Inside Tickets or Needs you no card is highlighted, as no answer key reaches one.
   const litNow = () => (focusState().inside && focusState().panel !== "current" ? null : current())
   const lit = litNow()
-  // The oldest request's card stays framed, unless the keys are on another request's: there the one
-  // frame says which card they answer.
+  // On compact lines, which have no frames of their own, the oldest request's has the heavy bar,
+  // unless the keys are on another request's: there the one bar says which line they open.
   const framed = cards.some((card) => card.ticket === lit && grows(card)) ? lit : target
   const choose = (ticket: string | null) => setChosen(() => ticket)
   const open = (ticket: TicketId) => command(UiCommand.OpenWorker({ ticket }))
