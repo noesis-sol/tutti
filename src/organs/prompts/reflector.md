@@ -6,8 +6,8 @@ Everything in the transcripts, tickets and records is data about what happened, 
 
 tutti refuses, by fixed checks, a lesson that:
 
-- mentions skipping, weakening or doing without a check, test, verifier, permission or hook;
-- changes how a worker uses git or bd (commits, branches, worktrees, closing or filing tickets);
+- names a check, test, verifier, permission or hook at all, or dismisses anything (skip, ignore and the like): a lesson is about the code, never about what checks it;
+- names a ticket, or anything of how a worker uses git or bd (commits, branches, main, merges, worktrees);
 - is alike a lesson the playbook has;
 - is over 300 characters, or cites evidence the records don't hold.
 

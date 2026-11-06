@@ -414,10 +414,11 @@ const runFolderFailed = (id: TicketId, worktree: string, error: RunFilesError): 
  * `worktree` was made afresh from the base. One that can't be resumed is said so, and
  * the ticket starts a new session in the same worktree, as before.
  */
-const resumeAside = (id: TicketId, worktree: TicketWorktree) =>
+const resumeAside = (id: TicketId, worktree: TicketWorktree, lessons: string) =>
   Effect.gen(function* () {
     const config = yield* AppConfig
-    const saved = yield* (yield* Store).ticket(id)
+    const store = yield* Store
+    const saved = yield* store.ticket(id)
     const why = saved?.suspended
     const session = saved?.session
     if (why === undefined || !asideOvernight(why) || session === undefined) return undefined
@@ -428,11 +429,14 @@ const resumeAside = (id: TicketId, worktree: TicketWorktree) =>
       ticketLimit: config.settings.workers.ticket_limit,
       scope: config.ticket,
     })
+    // Lessons chosen for this dispatch (playbook.ts) go in its message too: a recorded system prompt
+    // is the one its session began with. Its later resumes keep them.
+    if (lessons !== "") yield* store.setMetadata(id, lessonsKey, lessons)
     const resumed = yield* Effect.result(
       resume({
         ticket: id,
         why: "set_aside",
-        message: asideResumedText(id, why, why === overnightWhy("BLOCKED"), facts),
+        message: asideResumedText(id, why, why === overnightWhy("BLOCKED"), facts) + lessons,
         what: log.line`${id} was ${why.replace(/: /, " (")}) and is undeferred`,
       }),
     )
@@ -514,7 +518,8 @@ export const start = (
     }
 
     // Set aside by an overnight run, and undeferred since: its kept session carries on.
-    const kept = yield* resumeAside(id, worktree)
+    const lessons = ticket.lessons === undefined ? "" : yield* ticket.lessons
+    const kept = yield* resumeAside(id, worktree, lessons)
     if (kept !== undefined) return Start.Started({ worker: kept })
 
     const message = firstMessage({
@@ -539,7 +544,6 @@ export const start = (
     // Saved once Claude Code has made the session, as its first system/init says (§ 4.8): a start
     // that fails or is interrupted before then (a quit) ends it, leaving nothing to resume, and the
     // next start draws a new session, in the same worktree.
-    const lessons = ticket.lessons === undefined ? "" : yield* ticket.lessons
     // Its lessons with it, for a resume of the session (sessions.ts).
     const save = Effect.andThen(
       store.saveSession(id, { session, worktree: path, branch }),

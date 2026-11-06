@@ -14,6 +14,7 @@ import { reflector } from "../src/organs/reflector.ts"
 import { EventStream } from "../src/run/eventstream.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
+import { overnightWhy } from "../src/run/overnightAside.ts"
 import { Move } from "../src/run/phase.ts"
 import { armOf, type Lesson, parsePlaybook, playbookFile } from "../src/run/playbook.ts"
 import {
@@ -710,6 +711,42 @@ describe("the run's last end, and a session again", () => {
     ])
   })
 
+  test("a session kept by an overnight aside is told the lessons chosen for this dispatch", async () => {
+    const root = folder("worktrees")
+    const id = "t-1" as TicketId
+    const section = "\n\n## Lessons\n"
+    const ran = await scenario(
+      {
+        backlog: backlog().ticket(id, issueFields).seeds,
+        worktrees: { root },
+        scripts: { [id]: [turn([], result("Going."))] },
+      },
+      Effect.gen(function* () {
+        const ledger = yield* Ledger
+        const store = yield* Store
+        const path = join(root, id)
+        mkdirSync(path, { recursive: true })
+        yield* store.saveSession(id, { session: "s-old", worktree: path, branch: `tutti/${id}` })
+        yield* store.suspend(id, overnightWhy("BLOCKED"), "Deferred")
+        yield* ledger.transition(id, Move.Ready(), { title: "Parse inputs" })
+        yield* ledger.transition(id, Move.Dispatched())
+        yield* start(
+          { id, title: "Parse inputs", metadata: {}, lessons: Effect.succeed(section) },
+          "main",
+        )
+      }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<void, unknown, Env | Scope.Scope>,
+    )
+    const resumed = ran.sent.find((each) => each._tag === "Resumed")
+    expect(resumed?._tag === "Resumed" && resumed.session).toMatchObject({
+      sessionId: "s-old",
+      lessons: section,
+    })
+    const messages = ran.sent.flatMap((each) =>
+      each._tag === "Message" ? [JSON.stringify(each)] : [],
+    )
+    expect(messages.some((each) => each.includes("## Lessons"))).toBe(true)
+  })
+
   test("a session with no lessons kept is given none", async () => {
     const id = "t-1" as TicketId
     const ran = await scenario(
@@ -814,7 +851,7 @@ describe("tutti playbook", () => {
       [{ _tag: "Approve", id: "L9" }, "no lesson L9"],
       [{ _tag: "Approve", id: "L1" }, "L1 is active already"],
       [{ _tag: "Retire", id: "L3" }, "L3 is retired"],
-      [{ _tag: "Edit", id: "L1", text: "Skip the slow tests." }, "doesn't skip or weaken"],
+      [{ _tag: "Edit", id: "L1", text: "Skip the slow tests." }, "doesn't name a check"],
       [{ _tag: "Edit", id: "L1", text: "Run git rebase first." }, "git or bd"],
       [{ _tag: "Edit", id: "L1", text: " " }, "empty"],
       [{ _tag: "Edit", id: "L1", text: "a".repeat(400) }, "at most 300"],

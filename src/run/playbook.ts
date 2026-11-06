@@ -4,13 +4,13 @@
 // This file is its fixed code: no model rewrites the whole, and every change is a delta merged here.
 //
 // - Gate (`gate`), before a lesson enters the pool, as a defective one contaminates what is distilled
-//   after it (arXiv 2608.05810): fixed checks refuse a lesson that mentions skipping or weakening a
-//   check, test, verifier, permission or hook; that touches the git or bd usage the worker prompt
-//   sets; that repeats a run of words from the transcripts the reflector read; that is too long; that
+//   after it (arXiv 2608.05810): fixed checks refuse a lesson that could skip or weaken a
+//   check, test, verifier, permission or hook, by refusing one that names any at all; that touches
+//   the git or bd usage the worker prompt sets, a ticket or a ref named at all among it; that repeats a run of words from the transcripts the reflector read; that is too long; that
 //   has a scope that isn't a path below the project's top; that is alike one in the pool; or whose
 //   evidence the run's records don't hold. The checks read words, so they refuse more than they must:
-//   "the parser's test doesn't reset the cursor" goes too. A lesson refused costs little and one let
-//   through costs a lot.
+//   "the parser's tests share a cursor" goes too. A lesson refused costs little and one let through
+//   costs a lot, and each refusal is in its `reflection` record, to loosen by if it costs too many.
 // - Risk (`admittedState`): only a pitfall scoped to an area goes active; a strategy, a recovery, or a
 //   scope that spans the project (`spansProject`) stays proposed until you approve it, never blocking
 //   a run: the report lists them and `tutti playbook` acts on them.
@@ -206,31 +206,30 @@ const words = (text: string): ReadonlyArray<string> =>
     .split(/[^\p{L}\p{N}_./'-]+/u)
     .filter((word) => word !== "")
 
-// Words of doing less or doing without. A lesson holding one anywhere, and a word of what guards,
-// is refused: no list of phrasings would hold them all ("you don't need to run", "changes here need
-// no tests"), and in one or two sentences the two rarely meet by chance.
-const weakening =
-  /^(?:skip\w*|bypass\w*|disabl\w*|weaken\w*|ignor\w*|omit\w*|avoid\w*|remov\w*|delet\w*|drop\w*|relax\w*|loosen\w*|lower\w*|reduc\w*|shorten\w*|silenc\w*|suppress\w*|mut(?:e|es|ed|ing)|stub\w*|overrid\w*|circumvent\w*|xfail|no|not|none|never|without|\w+n't|dont|cannot|unnecessary|needless\w*|optional|bother\w*|instead|rather|leav\w*|off|out|comment\w*|only|just|enough|suffic\w*|trust\w*|assum\w*|later|postpon\w*|defer\w*|fewer|less)$/u
-
+// What guards the work, named anywhere, a test file's path or a word run together included: a lesson
+// has no need of it, as a lesson is about the code, and no list of the ways to do without a check
+// would hold them all ("stop running the tests", "waive the verifier", "failures here are expected").
 const guarded =
-  /^(?:checks?|checking|tests?|testing|suites?|verifier\w*|verif\w*|permissions?|hooks?|lint\w*|typecheck\w*|tsc|biome|shellcheck|ci|assert\w*|gates?)$/u
+  /(?<![\p{L}\p{N}])(?:check|test|suite|verif|lint|typecheck|tsc|biome|shellcheck|ci(?![\p{L}\p{N}])|assert|gate|coverage|pre-commit|pre-push|snapshot)|permission|hook/u
 
-const weakeningMark =
-  /--no-verify|--force|dangerously|\.skip\b|\.only\b|@ts-ignore|@ts-nocheck|biome-ignore|allowedtools|permission[-_ ]?mode|\bflak(?:y|es?|iness)\b|\bmove on\b/u
+// What dismisses something else, whatever it is called there.
+const dismissing =
+  /--no-verify|--force|dangerously|\.skip\b|\.only\b|@ts-ignore|@ts-nocheck|biome-ignore|allowedtools|(?<![\p{L}\p{N}])(?:skip|bypass|disregard|waive|forgo|sidestep|circumvent|xfail|flak(?:y|es?|iness))|\bmove on\b|\bcarry on\b/u
 
-/** Whether `text` mentions skipping, weakening or doing without a check, test, verifier, permission or hook. */
+/**
+ * Whether `text` could skip or weaken a check, test, verifier, permission or hook: it names one at
+ * all, or dismisses something.
+ */
 export const weakensChecks = (text: string): boolean => {
-  if (weakeningMark.test(normal(text))) return true
-  // A path's parts count, so that a test file is a test; a possessive is its word.
-  const list = words(text).flatMap((word) => word.split(/[./-]+/u))
-  const bare = list.map((word) => word.replace(/'s$/u, ""))
-  return bare.some((word) => weakening.test(word)) && bare.some((word) => guarded.test(word))
+  const said = normal(text)
+  return guarded.test(said) || dismissing.test(said)
 }
 
 // A word of git's or bd's as a word, not a file's name: src/run/merge.ts is code, and a merge conflict
-// or the merge check is what happens to a ticket, not how a worker uses git.
+// is what happens to a ticket, not how a worker uses git. A ticket named at all is bd's: the worker
+// prompt sets what a worker does with one. "main" and the like say which ref, whatever the verb.
 const gitOrBd =
-  /(?<![\p{L}\p{N}_./-])(?:git|bd|beads|commits?|committing|committed|amend\w*|push(?:es|ed|ing)?|rebas\w*|stash\w*|cherry-pick\w*|worktrees?|branch(?:es)?|checkouts?|origin|revert\w*|squash\w*|--hard|reset\s+--\w+|merg(?:e|es|ing)(?!\s+(?:conflicts?|queue|checks?|train))|(?:close|closing|reopen\w*|claim\w*|defer\w*|file|filing)\s+(?:\w+\s+)?(?:ticket|issue|question)s?)(?![\p{L}\p{N}_-]|\.\p{L})/u
+  /(?<![\p{L}\p{N}_./])(?:git|bd|beads|commits?|committing|committed|amend\w*|push(?:es|ed|ing)?|pull(?:s|ed|ing)?|fetch\w*|rebas\w*|stash\w*|cherry[- ]pick\w*|worktrees?|branch(?:es)?|checkouts?|origin|main|master|revert\w*|squash\w*|tickets?|follow-?ups?|--hard|reset\s+(?:--\w+|your\b|hard\b)|switch\s+to|stag(?:e|ing)\s+(?:all|everything|your|the\s+changes)|merg(?:e|es|ing)(?!\s+(?:conflicts?|queue|train))|(?:close|closing|mark|reopen\w*|claim\w*|defer\w*|file|filing)\s+(?:\w+\s+){0,3}(?:issue|question)s?)(?![\p{L}\p{N}_-]|\.\p{L})/u
 
 /** Whether `text` touches the git or bd usage the worker prompt sets. */
 export const touchesGitOrBd = (text: string): boolean => gitOrBd.test(normal(text))

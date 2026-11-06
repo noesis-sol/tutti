@@ -230,10 +230,10 @@ waits. A run without organs doesn't reflect, and still gives and counts the less
 
 **The gate.** Before a lesson enters the pool, fixed checks refuse one that:
 
-- holds a word of skipping, weakening or doing without (`no`, `don't`, `without`, `only`, `skip` and the
-  like) and a word of a check, test, verifier, permission or hook, a test file's path included, or calls a
-  thing flaky (`weakens_checks`);
-- touches how workers use git or bd (`git_or_bd`);
+- could skip or weaken a check, test, verifier, permission or hook: it names one at all, a test file's
+  path included, or dismisses anything, with `skip`, `bypass`, `disregard` or `flaky` and the like
+  (`weakens_checks`);
+- touches how workers use git or bd: it names a ticket, a ref, or a word of git's or bd's (`git_or_bd`);
 - repeats 6 words in a row from a transcript the reflector read, or says what an injected instruction
   says (`quotes_transcript`);
 - is over 300 characters (`too_long`), says nothing (`empty`), or has a scope that isn't a path below the
@@ -241,8 +241,9 @@ waits. A run without organs doesn't reflect, and still gives and counts the less
 - cites a ticket or record the run's records don't hold, or none (`no_evidence`);
 - is alike a lesson in the pool, retired ones included (`duplicate`).
 
-The checks read words, so they refuse more than they must: "the parser's test doesn't reset the cursor"
-goes too. A refused lesson costs little, and a bad one contaminates what is distilled after it.
+The checks read words, so they refuse more than they must: "the parser's tests share a cursor" goes too.
+A refused lesson costs little, and a bad one contaminates what is distilled after it. A lesson is about
+the code; each refusal is in the `reflection` record, to loosen the checks by if they cost too many.
 
 **What goes active.** A pitfall scoped to an area goes active at once. A strategy or a recovery, or a
 lesson whose scope spans the project (none, or a glob that starts with a wildcard, as `**/*.ts`), stays

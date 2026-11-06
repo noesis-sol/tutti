@@ -85,9 +85,10 @@ export const refusedAct = (act: PlaybookAct, lesson: Lesson | undefined): string
   if (text === "") return "the lesson's text is empty"
   if (text.length > lessonCharacters) return `a lesson is at most ${lessonCharacters} characters`
   if (weakensChecks(text)) {
-    return "a lesson doesn't skip or weaken a check, test, verifier, permission or hook"
+    return "a lesson doesn't name a check, test, verifier, permission or hook, or dismiss anything"
   }
-  if (touchesGitOrBd(text)) return "a lesson doesn't change how workers use git or bd"
+  if (touchesGitOrBd(text))
+    return "a lesson doesn't name a ticket, or anything of how workers use git or bd"
   return undefined
 }
 
