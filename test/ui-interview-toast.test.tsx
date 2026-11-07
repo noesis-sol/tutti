@@ -24,6 +24,7 @@ import {
 } from "../src/ui/transcriptItems.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
+import { hintAt, hintRows } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -108,14 +109,14 @@ describe("a toast over the Interview view", () => {
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
       const frame = await until(rendered, "can't be suspended")
       const lines = linesOf(frame)
-      const hintAt = lines.findIndex((line) => line.startsWith("  Esc back"))
-      expect(lines.slice(hintAt, hintAt + 2)).toEqual([
-        "  Esc back · i answer · ↑↓ select · Enter expand",
-        "  PgUp/PgDn scroll · ? keys",
+      const at = hintAt(lines)
+      expect(hintRows(lines)).toEqual([
+        ["Esc back", "i answer", "↑↓ select", "Enter expand"],
+        ["PgUp/PgDn scroll", "? keys"],
       ])
-      expect(lines[hintAt - 1]).toBe(" > i to answer")
+      expect(lines[at - 1]).toBe(" > i to answer")
       // The rule's row: none of its line shows through the toast's spaces.
-      expect(lines[hintAt - 2]).toBe(`─ ${toastAt(50)}─`)
+      expect(lines[at - 2]).toBe(`─ ${toastAt(50)}─`)
     })
   })
 
@@ -125,9 +126,10 @@ describe("a toast over the Interview view", () => {
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
       const frame = await until(rendered, suspendToast)
       const lines = linesOf(frame)
-      expect(lines[19]).toBe(
-        "  Esc back · i answer · ↑↓ select · Enter expand · PgUp/PgDn scroll · ? keys",
-      )
+      expect(hintAt(lines)).toBe(19)
+      expect(hintRows(lines)).toEqual([
+        ["Esc back", "i answer", "↑↓ select", "Enter expand", "PgUp/PgDn scroll", "? keys"],
+      ])
       expect(lines[18]).toBe(" > i to answer")
       expect(lines[17]).toBe(`──── ${suspendToast} ─`)
     })

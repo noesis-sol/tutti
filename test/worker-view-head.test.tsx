@@ -35,6 +35,7 @@ import { external } from "../src/ui/useRunView.ts"
 import { fullHeadFrom, headExtras } from "../src/ui/WorkerView.tsx"
 import { aboveLines, lineOneSegments } from "../src/ui/worker/Head.tsx"
 import { type Frame, type Rendered, withRender } from "./render.ts"
+import { cardHead } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -291,12 +292,14 @@ describe("line 1", () => {
       width,
     )
   const memoryText = workerMemory(memory)
+  /** Line 1's mark and ID, as the spinner turns to ⣻. */
+  const head = cardHead("⣻", "t-1")
   const resetsAt = new Date(2026, 9, 25, 14, 20, 0).getTime()
   const usage: Usage = { utilization: 0.92, resetsAt, limit: "five-hour" }
 
   test("on a subscription: ID, status, time, estimate, context, compactions, memory; no type", () => {
     expect(textOf(lineOf())).toBe(
-      `⣻  t-1  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}`,
+      `${head}  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}`,
     )
   })
 
@@ -304,7 +307,7 @@ describe("line 1", () => {
     const api = viewOf({ apiKey: true }).resources[0]
     if (api === undefined) throw new Error("no resources")
     expect(textOf(lineOf({ resources: api }))).toBe(
-      `⣻  t-1  working  12m53s  $1.84  context 40k of 200k  ${memoryText}`,
+      `${head}  working  12m53s  $1.84  context 40k of 200k  ${memoryText}`,
     )
   })
 
@@ -321,12 +324,12 @@ describe("line 1", () => {
 
   test("the warning near a limit after the memory, still naming its window", () => {
     expect(textOf(lineOf({ usage }))).toBe(
-      `⣻  t-1  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20`,
+      `${head}  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20`,
     )
   })
 
   test("a narrow pane drops the memory, the reset time, the compactions, then from the end", () => {
-    const lead = "⣻  t-1  working  12m53s"
+    const lead = `${head}  working  12m53s`
     const context = "context 40k of 200k"
     const steps = [
       `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20`,
@@ -344,12 +347,12 @@ describe("line 1", () => {
       if (next !== undefined) expect(at(Bun.stringWidth(step) - 1)).toBe(next)
     }
     // The ID, status and time are never dropped: the line is cut once nothing more can go.
-    expect(at(10)).toBe("⣻  t-1  w…")
+    expect(at(10)).toBe(`${lead.slice(0, 9)}…`)
     expect(widthOf(lineOf({ usage }, 10))).toBe(10)
   })
 
   test("where the box isn't drawn: the type and priority at its end, the first whole part from it to go", () => {
-    const lead = "⣻  t-1  working  12m53s"
+    const lead = `${head}  working  12m53s`
     const context = "context 40k of 200k"
     const steps = [
       `${lead}  ≈1% (estimate)  ${context}  ↻ 2 compactions  ${memoryText}  ⚠ 5h window 92% · resets 14:20  feature · P2`,
@@ -374,7 +377,7 @@ describe("line 1", () => {
       const frame = await until(rendered, has("Reading the scripts."))
       const lines = linesOf(frame)
       expect(lines[1]).toBe(
-        ` ← Dashboard   ⣻  t-1  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}`,
+        ` ← Dashboard   ${head}  working  12m53s  ≈1% (estimate)  context 40k of 200k  ↻ 2 compactions  ${memoryText}`,
       )
       expect(frame.chars.split("12m53s").length - 1).toBe(1)
       expect(frame.chars.split(memoryText).length - 1).toBe(1)

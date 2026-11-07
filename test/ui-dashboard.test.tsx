@@ -23,6 +23,7 @@ import { type Appearance, makeTheme, orchestra, type StyleName } from "../src/ui
 import { external, type Settable, type ShellValue, tick } from "../src/ui/useRunView.ts"
 import { workersDoing } from "./activity.ts"
 import { type Frame, renderFrame, type Size, withRender } from "./render.ts"
+import { hintAt, hintFrom, hintRows, rowsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -255,8 +256,15 @@ describe("frames", () => {
       const { text } = await draw(illustrated, size)
       const lines = text.trim().split("\n")
       expect(lines[0]).toBe("✓ 1 · ↷ 1 ◆ 1 · ? 1 · ▶ 2/3 · queue 1 of 16 · 1 held back")
-      const hint = lines.slice(1).filter((line) => line !== "")
-      expect(hint[0]).toContain("arrows panels · Enter go in · s stop after current")
+      const hint = hintRows(text)
+      const shown = text.split("\n")
+      const totals = shown.findIndex((line) => line.includes("✓ 1 ·"))
+      expect(shown.slice(totals + 1, hintAt(text)).every((line) => line === "")).toBe(true)
+      expect(hintFrom(text, "arrows panels", 3)).toEqual([
+        "arrows panels",
+        "Enter go in",
+        "s stop after current",
+      ])
       expect(hint.at(-1)).toContain("? keys")
       expect(hint.length).toBeLessThanOrEqual(2)
     }
@@ -520,21 +528,28 @@ describe("the tickets table", () => {
     const top = lines.findIndex((line) => line === "  Tickets") + 1
     // 10 lines in all: the label, the frame, and 7 rows.
     expect(lines[top]).toStartWith("╭───────────────┬")
-    expect(lines.slice(top + 1, top + 7).map((line) => line.split("│")[2]?.trim())).toEqual([
+    const rows = rowsIn(text)
+    expect(rows.map((row) => row.ticket)).toEqual([
       "tut-9",
       "tut-8",
       "tut-7",
       "tut-6",
       "tut-5",
       "tut-4",
+      "+3",
     ])
-    expect(lines[top + 7]).toMatch(/^│ +│ \+3 +│ earlier tickets, see the log +│$/)
+    expect(rows.at(-1)).toEqual({
+      state: "",
+      ticket: "+3",
+      note: "earlier tickets, see the log",
+      selected: false,
+    })
     expect(lines[top + 8]).toStartWith("╰")
     const few = await draw(viewOf([entry("tut-1" as TicketId, "One", TicketPhase.Working(), 0)]), {
       width: 80,
       height: 35,
     })
-    const blank = few.text.split("\n").filter((line) => /^│ +│ +│ +│$/.test(line))
+    const blank = rowsIn(few.text).filter((row) => row.ticket === "" && row.note === "")
     expect(blank).toHaveLength(6)
   })
 

@@ -20,6 +20,7 @@ import { dashboardHint } from "../src/ui/Dashboard.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, type Size, withRender } from "./render.ts"
+import { hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -102,13 +103,6 @@ const linesOf = (frame: Frame): ReadonlyArray<string> =>
 
 const shows = (frame: Frame, text: string): boolean =>
   linesOf(frame).some((line) => line.includes(text))
-
-/** The hint: the last line that isn't blank. */
-const hintOf = (frame: Frame): string =>
-  linesOf(frame)
-    .filter((line) => line.trim() !== "")
-    .slice(-2)
-    .join(" ")
 
 const taken = (commands: Commands) => Effect.runSync(Queue.clear(commands))
 

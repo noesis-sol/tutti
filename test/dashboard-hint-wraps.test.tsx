@@ -16,11 +16,13 @@ import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
+import { hintSeparator } from "../src/ui/Hint.tsx"
 import { widthOf } from "../src/ui/line.tsx"
 import { suspendToast } from "../src/ui/Toasts.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Rendered, renderFrame, type Size, withRender } from "./render.ts"
+import { hintAt, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -156,7 +158,7 @@ describe("the dashboard's hint", () => {
       const foot = footOf(lines, size.height, 2)
       for (const key of everyKey) expect(foot).toContain(key)
       // A line breaks between two keys, not inside one.
-      expect(lines[size.height - 2]?.trimEnd().endsWith("·")).toBe(false)
+      expect(lines[size.height - 2]?.trimEnd().endsWith(hintSeparator.trim())).toBe(false)
     }
   })
 
@@ -209,9 +211,10 @@ describe("the dashboard's hint", () => {
     await withRender(dashboard(viewOf(1)), size, async (rendered) => {
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
       const lines = await until(rendered, "can't be suspended")
-      expect(footOf(lines, size.height, 2)).toBe(
-        "Tab select · arrows panels · Enter go in · g request on t-1 · d deny a allow · s stop after current · ? keys",
-      )
+      // The toast has the hint's indent: the frame's looks tell its line from the hint's.
+      const frame = await rendered.capture()
+      expect(hintAt(frame)).toBe(size.height - 2)
+      expect(hintOf(frame)).toEqual(everyKey)
       expect(lines[size.height - 3]).toContain(suspendToast.slice(0, 30))
     })
   })

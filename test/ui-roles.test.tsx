@@ -28,6 +28,7 @@ import { emptyStatus, project, type RunView, type Status } from "../src/run/runV
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { App, Root } from "../src/ui/App.tsx"
+import { hintSeparator } from "../src/ui/Hint.tsx"
 import { useInput } from "../src/ui/keys.ts"
 import { TicketCount } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
@@ -50,6 +51,7 @@ import {
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { workersDoing } from "./activity.ts"
 import { type Frame, type Rendered, type Size, withRender } from "./render.ts"
+import { cardHead, cardLine } from "./screen.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
 /** § 7.11's tables: each role's colour in the `orchestra` scheme, light and dark. */
@@ -617,28 +619,28 @@ const scenes: ReadonlyArray<Scene> = [
       ["↷ deferred", look("notice")],
       ["◆ environment · high", look("organ", "bold")],
       // The cards: a worker testing, a merge, and one waiting for you, highlighted.
-      [{ text: "│", on: "│ ⣾  tut-zq4" }, look("live")],
-      [{ text: "⣾", on: "│ ⣾  tut-zq4" }, look("live", "bold")],
+      [{ text: "│", on: cardHead("⣾", "tut-zq4", "│") }, look("live")],
+      [{ text: "⣾", on: cardHead("⣾", "tut-zq4", "│") }, look("live", "bold")],
       [{ text: "tut-zq4", on: head("tut-zq4") }, look("live", "bold")],
       [{ text: "testing", on: head("tut-zq4") }, look("notice", "bold")],
       [{ text: "18m40s", on: head("tut-zq4") }, look("text", "faint")],
       ["▸ Bash(bun test)", look("text", "faint")],
-      [{ text: "│", on: "│ ◆  tut-kco" }, look("frame")],
-      [{ text: "◆", on: "│ ◆  tut-kco" }, look("merging", "bold")],
+      [{ text: "│", on: cardHead("◆", "tut-kco", "│") }, look("frame")],
+      [{ text: "◆", on: cardHead("◆", "tut-kco", "│") }, look("merging", "bold")],
       [{ text: "merging", on: head("tut-kco") }, look("merging", "bold")],
       ["running the check on batch/2026-10-20", look("text", "faint")],
       ["┏━━", look("needsYou", "bold")],
-      [{ text: "┃", on: "┃ •  tut-9a1" }, look("needsYou", "bold")],
+      [{ text: "┃", on: cardHead("•", "tut-9a1", "┃") }, look("needsYou", "bold")],
       ["permission — waiting for you", look("needsYou", "bold")],
       ["Bash: Remove the build cache", look("text")],
-      [{ text: "rm -rf build", on: "┃    rm -rf" }, look("text", "faint")],
+      [{ text: "rm -rf build", on: `┃ ${cardLine("rm -rf")}` }, look("text", "faint")],
       ["outside the working directories", look("text", "faint")],
       ["[ Deny ]", look("formAccentText", { bg: "formAccent" })],
       ["[ Allow ]", look("formText", { bg: "formButton" })],
       // The hint.
       ["arrows", look("emphasis", "bold")],
       [" panels", look("text", "faint")],
-      [{ text: " · ", on: "arrows panels" }, look("text", "faint")],
+      [{ text: hintSeparator, on: "arrows panels" }, look("text", "faint")],
     ],
   },
   {
@@ -763,13 +765,13 @@ const scenes: ReadonlyArray<Scene> = [
     ),
     ready: "steered",
     checks: [
-      [{ text: "•", on: "│ •  t-1" }, look("done")],
+      [{ text: "•", on: cardHead("•", "t-1", "│") }, look("done")],
       [{ text: "done", on: head("t-1") }, look("done")],
       ["steered", look("emphasis")],
       [{ text: "stopped", on: head("t-2") }, look("notice")],
       [{ text: "failed", on: head("t-3") }, look("needsYou")],
       [{ text: "gone", on: head("t-4") }, look("needsYou")],
-      [{ text: "◼", on: "│ ◼  t-5" }, look("toMerge")],
+      [{ text: "◼", on: cardHead("◼", "t-5", "│") }, look("toMerge")],
       ["to merge (2nd)", look("toMerge")],
       ["fixing check", look("notice")],
       ["question — waiting for you", look("needsYou", "bold")],
@@ -918,10 +920,13 @@ const scenes: ReadonlyArray<Scene> = [
     view: illustrated,
     ready: "? keys",
     checks: [
-      [{ text: "│", on: "│ ⣾  tut-zq4" }, look("needsYou")],
-      [{ text: "Add an undo stack for property edits", on: "│ ⣾  tut-zq4" }, look("text", "faint")],
-      [{ text: "┃", on: "┃ •  tut-9a1" }, look("needsYou", "bold")],
-      [{ text: "■ allow?", on: "┃ •  tut-9a1" }, look("needsYou", "bold")],
+      [{ text: "│", on: cardHead("⣾", "tut-zq4", "│") }, look("needsYou")],
+      [
+        { text: "Add an undo stack for property edits", on: cardHead("⣾", "tut-zq4", "│") },
+        look("text", "faint"),
+      ],
+      [{ text: "┃", on: cardHead("•", "tut-9a1", "┃") }, look("needsYou", "bold")],
+      [{ text: "■ allow?", on: cardHead("•", "tut-9a1", "┃") }, look("needsYou", "bold")],
     ],
   },
   {

@@ -11,6 +11,7 @@ import { Command } from "effect/cli"
 import { previewLines } from "../src/cli/colours.ts"
 import { planServices, tuttiWith } from "../src/cli/commands.ts"
 import { type LoadedScheme, loadScheme, orchestra, roles } from "../src/ui/theme.ts"
+import { hintFrom } from "./screen.ts"
 
 const dusk = {
   name: "dusk",
@@ -122,7 +123,7 @@ describe("the preview", () => {
     expect(text).toContain("tut-14  permission — waiting for you")
     expect(text).toContain("[ Deny ]  [ Allow ]")
     expect(lines.some((line) => /│ ◼ to merge\s+│ tut-13\s+│ Tidy the log/.test(line))).toBe(true)
-    expect(text).toContain("arrows panels · Enter go in")
+    expect(hintFrom(lines, "arrows panels", 2)).toEqual(["arrows panels", "Enter go in"])
   })
 
   test("draws the mock's frames and words in the scheme's roles", async () => {

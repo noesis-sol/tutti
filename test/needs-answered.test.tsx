@@ -18,6 +18,7 @@ import { upNextLines } from "../src/ui/SidePanel.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { withRender } from "./render.ts"
+import { insideOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -146,7 +147,7 @@ describe("a question answered, its ticket with no slot yet", () => {
     expect(view.queue.map((each) => each.ticket)).toEqual(["fab-a", "fab-q"] as Array<TicketId>)
     expect(view.totals.queued).toBe(1)
     const lines = upNextLines(view.queue, view.totals, theme, 50, 7).map(text)
-    expect(lines.slice(3, 5).map((line) => line.replace(/^│ | *│$/g, "").trimEnd())).toEqual([
+    expect(lines.slice(3, 5).map(insideOf)).toEqual([
       "fab-a  answered · the next free slot",
       "fab-q  ready",
     ])

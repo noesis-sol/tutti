@@ -15,7 +15,8 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, spinnerAt } from "../src/ui/useRunView.ts"
-import { type Frame, withRender } from "./render.ts"
+import { withRender } from "./render.ts"
+import { cardOn, cardsIn, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -64,9 +65,6 @@ const viewOf = (
     actions: new Map(),
   })
 
-const linesOf = (frame: Frame): ReadonlyArray<string> =>
-  frame.chars.split("\n").map((line) => line.trimEnd())
-
 /** The commands the dashboard has sent since last asked, none when there are none. */
 const taken = (commands: Commands): ReadonlyArray<UiCommand> =>
   Effect.runSync(Queue.size(commands)) === 0 ? [] : Effect.runSync(Queue.takeAll(commands))
@@ -109,26 +107,43 @@ describe("opening a worker without its number", () => {
       ["c" as TicketId, 3],
     ] as const
     await dashboard(viewOf(tickets), async ({ rendered }) => {
-      const lines = linesOf(await rendered.capture())
-      expect(lines.filter((line) => /^│ \S {2}[abc] {2}/.test(line))).toHaveLength(3)
-      expect(lines.some((line) => /[│┃] \d \S {2}[abc]/.test(line))).toBe(false)
-      expect(lines.at(-2)).toBe(
-        "  Tab select · arrows panels · Enter go in · s stop after current · ? keys",
-      )
+      // Each card's head starts with its mark, its ID straight after: no number before either.
+      const frame = await rendered.capture()
+      expect(cardsIn(frame).map((card) => [card.mark, card.ticket, card.compact])).toEqual([
+        [turned, "a", false],
+        [turned, "b", false],
+        [turned, "c", false],
+      ])
+      expect(hintOf(frame)).toEqual([
+        "Tab select",
+        "arrows panels",
+        "Enter go in",
+        "s stop after current",
+        "? keys",
+      ])
     })
     // Too short for a card each: one line each, the IDs straight after the mark.
     await dashboard(
       viewOf(tickets),
       async ({ rendered }) => {
-        const lines = linesOf(await rendered.capture())
-        const compact = lines
-          .filter((line) => line.startsWith(`│ ${turned} `))
-          .map((line) => line.replace(/ *│$/, ""))
-        expect(compact).toEqual([
-          `│ ${turned}  a  working  1m07s  Title of a`,
-          `│ ${turned}  b  working  1m07s  Title of b`,
-          `│ ${turned}  c  working  1m07s  Title of c`,
+        const compact = cardsIn(await rendered.capture()).map((card) => [
+          card.compact,
+          card.mark,
+          card.ticket,
+          card.status,
+          card.time,
+          card.title,
         ])
+        expect(compact).toEqual(
+          ["a", "b", "c"].map((ticket) => [
+            true,
+            turned,
+            ticket,
+            "working",
+            "1m07s",
+            `Title of ${ticket}`,
+          ]),
+        )
       },
       { width: 80, height: 18 },
     )
@@ -152,7 +167,7 @@ describe("opening a worker without its number", () => {
           setup.mockInput.pressEnter()
         })
         expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "b" as TicketId })])
-        const y = linesOf(await rendered.capture()).findIndex((line) => line.includes(" a  "))
+        const y = cardOn(await rendered.capture(), "a").line
         await rendered.input((setup) => setup.mockMouse.click(10, y))
         expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "a" as TicketId })])
       },
@@ -183,8 +198,7 @@ describe("opening a worker without its number", () => {
             ]),
           ),
         )
-        const lines = linesOf(await rendered.capture())
-        expect(lines.some((line) => line.startsWith(`┃ ${turned}  b  `))).toBe(true)
+        expect(cardOn(await rendered.capture(), "b").highlighted).toBe(true)
         await rendered.input((setup) => setup.mockInput.pressEnter())
         expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "b" as TicketId })])
         // b finishes and e takes its worker's number, b's place in the order: the highlight goes
@@ -199,7 +213,7 @@ describe("opening a worker without its number", () => {
             ]),
           ),
         )
-        expect(linesOf(await rendered.capture()).some((line) => line.startsWith("┃"))).toBe(false)
+        expect(cardsIn(await rendered.capture()).some((card) => card.highlighted)).toBe(false)
         await rendered.input((setup) => setup.mockInput.pressEnter())
         expect(taken(commands)).toEqual([])
         await rendered.input((setup) => {

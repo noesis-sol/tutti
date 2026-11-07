@@ -17,6 +17,7 @@ import { panelWidth, upNextLines } from "../src/ui/SidePanel.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, withRender } from "./render.ts"
+import { insideOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -268,13 +269,7 @@ describe("the panel beside the tickets table", () => {
     })
     const lines = upNextLines(view.queue, view.totals, theme, 76, 7)
     expect(
-      lines.slice(3, 5).map((line) =>
-        line
-          .map((each) => each.text)
-          .join("")
-          .replace(/^│ | *│$/g, "")
-          .trimEnd(),
-      ),
+      lines.slice(3, 5).map((line) => insideOf(line.map((each) => each.text).join(""))),
     ).toEqual([
       "tutti-07nj  › after tutti-a, tutti-b merge",
       "tutti-kkb   › after its subtickets: tutti-kkb.1, tutti-kkb.2, then +3",
@@ -291,7 +286,7 @@ describe("the panel beside the tickets table", () => {
       line.map((each) => each.text).join(""),
     )
     expect(lines[0]?.trim()).toBe("Up next · 3 held back")
-    expect(lines.slice(2, 6).map((line) => line.replace(/^│ | *│$/g, "").trimEnd())).toEqual([
+    expect(lines.slice(2, 6).map(insideOf)).toEqual([
       "Nothing needs you",
       "tutti-gr4z.11  ready",
       "tutti-h2o9     ready",

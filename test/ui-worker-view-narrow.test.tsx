@@ -16,12 +16,13 @@ import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
-import { hintLines } from "../src/ui/Hint.tsx"
+import { hintLines, hintSeparator } from "../src/ui/Hint.tsx"
 import { type Segments, seg, widthOf, wrap } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { transcriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
+import { hintAt, hintLine, hintRows } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -166,14 +167,14 @@ describe("the worker view in a narrow pane", () => {
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
       const frame = await until(rendered, "can't be suspended")
       const lines = frame.chars.split("\n").map((line) => line.trimEnd())
-      const hintAt = lines.findIndex((line) => line.startsWith("  Esc dashboard"))
-      expect(lines[hintAt - 2]).toContain("tutti can't be suspended")
-      expect(lines[hintAt - 2]).toStartWith("─")
-      expect(lines[hintAt - 1]).toBe(" > i to write to the worker")
-      expect(lines.slice(hintAt, hintAt + 3)).toEqual([
-        "  Esc dashboard · i write · t ticket · Ctrl+X interrupt",
-        "  ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll",
-        "  g/G top/end",
+      const at = hintAt(lines)
+      expect(lines[at - 2]).toContain("tutti can't be suspended")
+      expect(lines[at - 2]).toStartWith("─")
+      expect(lines[at - 1]).toBe(" > i to write to the worker")
+      expect(hintRows(lines)).toEqual([
+        ["Esc dashboard", "i write", "t ticket", "Ctrl+X interrupt"],
+        ["↑↓ select", "Enter expand", "? keys", "PgUp/PgDn scroll"],
+        ["g/G top/end"],
       ])
     })
   })
@@ -247,7 +248,7 @@ describe("hintLines", () => {
           const lines = hintLines(keys, theme, width)
           for (const line of lines) expect(widthOf(line)).toBeLessThanOrEqual(width)
           const shown = lines.map((line) => line.map((each) => each.text).join("")).join(" ")
-          const text = shown.replace(/[\s·]+/g, "")
+          const text = shown.split(hintSeparator.trim()).join("").replace(/\s+/g, "")
           expect(text).toBe(keys.map((each) => `${each.keys}${each.does}`).join(""))
         },
       ),
@@ -262,8 +263,8 @@ describe("hintLines", () => {
     ]
     const lines = hintLines(keys, theme, 28)
     expect(lines.map((line) => line.map((each) => each.text).join(""))).toEqual([
-      "  Esc dashboard · i write",
-      "  ? keys",
+      hintLine("Esc dashboard", "i write"),
+      hintLine("? keys"),
     ])
   })
 })

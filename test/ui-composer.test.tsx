@@ -40,6 +40,7 @@ import {
 } from "../src/ui/transcriptItems.ts"
 import { external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { hintFrom } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -277,7 +278,11 @@ describe("the composer", () => {
       )
       let frame = await rendered.capture()
       expect(frame.chars).toContain(composerPlaceholder(true))
-      expect(frame.chars).toContain("Enter send · Alt+Enter/Ctrl+J new line · Esc leave")
+      expect(hintFrom(frame, "Enter send", 3)).toEqual([
+        "Enter send",
+        "Alt+Enter/Ctrl+J new line",
+        "Esc leave",
+      ])
       // `i` itself isn't typed; keys the view binds (2, d, ?, g) are.
       await press(rendered, "2d?g")
       frame = await rendered.capture()

@@ -28,6 +28,7 @@ import {
   ticker,
 } from "../src/ui/useRunView.ts"
 import { withRender } from "./render.ts"
+import { cardsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -208,9 +209,12 @@ describe("the dashboard's cards", () => {
       </Root>,
       { width: 80, height: 40 },
       async (rendered) => {
-        const shown = (await rendered.capture()).chars
-        expect(shown).toContain(`╭`)
-        expect(shown.split(`${spinnerAt(began)}  t-`).length - 1).toBe(2)
+        const shown = await rendered.capture()
+        expect(shown.chars).toContain(`╭`)
+        expect(cardsIn(shown).map((card) => card.mark)).toEqual([
+          spinnerAt(began),
+          spinnerAt(began),
+        ])
         // One interval for both cards' spinners, and one for every time on screen.
         expect(intervals.count(spinnerTick)).toBe(1)
         expect(intervals.count(tick)).toBe(1)
@@ -221,8 +225,8 @@ describe("the dashboard's cards", () => {
             intervals.fire(spinnerTick)
           })
           expect(look.drawn.lines - before).toBe(2)
-          const turned = (await rendered.capture()).chars
-          expect(turned.split(`${spinnerAt(clock.at)}  t-`).length - 1).toBe(2)
+          const turned = cardsIn(await rendered.capture()).map((card) => card.mark)
+          expect(turned).toEqual([spinnerAt(clock.at), spinnerAt(clock.at)])
         }
       },
     )

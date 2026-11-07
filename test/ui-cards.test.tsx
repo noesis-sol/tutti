@@ -31,7 +31,7 @@ import {
   statusLook,
 } from "../src/ui/Card.tsx"
 import { dashboardCommands, dashboardHint } from "../src/ui/Dashboard.tsx"
-import { hintSegments } from "../src/ui/Hint.tsx"
+import { hintSegments, hintSeparator } from "../src/ui/Hint.tsx"
 import { keyHelpLines, screenHelp } from "../src/ui/KeyHelp.tsx"
 import { helpOf } from "../src/ui/keyCommands.ts"
 import { type Look, type Segments, widthOf } from "../src/ui/line.tsx"
@@ -39,6 +39,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue, spinnerAt, spinnerFrames } from "../src/ui/useRunView.ts"
 import { windDownSegments } from "../src/ui/WindDown.tsx"
 import { type Frame, pressEscape, renderFrame, type Size, withRender } from "./render.ts"
+import { cardOn, cardsIn, hintAt, hintLine, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -257,12 +258,12 @@ describe("a card for each status", () => {
   })
 
   test("the marks: the spinner while it works, ◼ to merge, ◆ merging, ⟳ resolving, • after a turn", () => {
-    const head = (card: Card) => textOf(drawn(card)).split("\n")[2]
-    expect(head(cardOf(working, states(WS.Working({ doing: "editing" }))))).toContain("│ ⣾  t-1")
-    expect(head(cardOf(TicketPhase.Resolving({ attempt: 1 })))).toContain("│ ⟳  t-1")
-    expect(head(cardOf(TicketPhase.ToMerge({ place: 1 })))).toContain("│ ◼  t-1")
-    expect(head(cardOf(TicketPhase.Merging({ step: "rebase" })))).toContain("│ ◆  t-1")
-    expect(head(cardOf(working, states(WS.Idle({ at: now }))))).toContain("│ •  t-1")
+    const mark = (card: Card) => cardOn(drawn(card), "t-1").mark
+    expect(mark(cardOf(working, states(WS.Working({ doing: "editing" }))))).toBe("⣾")
+    expect(mark(cardOf(TicketPhase.Resolving({ attempt: 1 })))).toBe("⟳")
+    expect(mark(cardOf(TicketPhase.ToMerge({ place: 1 })))).toBe("◼")
+    expect(mark(cardOf(TicketPhase.Merging({ step: "rebase" })))).toBe("◆")
+    expect(mark(cardOf(working, states(WS.Idle({ at: now }))))).toBe("•")
     sameLook(lookOf(drawn(cardOf(TicketPhase.ToMerge({ place: 1 }))), "◼"), theme.styles.toMerge)
     sameLook(lookOf(drawn(cardOf(working, states(WS.Idle({ at: now })))), "•"), theme.styles.done)
   })
@@ -294,7 +295,7 @@ describe("a card for each status", () => {
 
   test("steered beside the status, emphasis", () => {
     const lines = drawn(cardOf(working, { ...states(WS.Idle({ at: now })), steered: true }))
-    expect(textOf(lines).split("\n")[2]).toBe("│ •  t-1  done  steered  1m07s                   │")
+    expect(cardOn(lines, "t-1")).toMatchObject({ status: "done", steered: true, time: "1m07s" })
     sameLook(lookOf(lines, "steered"), theme.look("emphasis"))
   })
 
@@ -519,7 +520,10 @@ describe("the Current section", () => {
     ]) {
       const lines = linesOf(await draw(view, size))
       // A card's title has a line of its own, where the compact box has it on the card's line.
-      expect(lines.flatMap((line) => line.match(/│ {4}Title of tut-/g) ?? [])).toHaveLength(6)
+      const cards = cardsIn(lines)
+      expect(cards.map((card) => [card.compact, card.title])).toEqual(
+        six.map((t) => [false, `Title of ${t.ticket}`]),
+      )
       const tickets = lines.findIndex((line) => line === "  Tickets")
       const current = lines.findIndex((line) => line === "  Current")
       // The label, the frame and 7 blank rows, the tickets Current shows left out; 4 at 120×32.
@@ -534,20 +538,29 @@ describe("the Current section", () => {
       { ticket: "c" as TicketId, phase: working, worker: 3 },
     ]
     const heads = async (view: RunView) =>
-      linesOf(await draw(view, { width: 80, height: 40 }))
-        .filter((line) => /^│ \S {2}[a-d] {2}/.test(line))
-        .map((line) => line.slice(2, 6))
-    expect(await heads(viewOf(all))).toEqual([`${turned}  a`, `${turned}  b`, `${turned}  c`])
+      cardsIn(await draw(view, { width: 80, height: 40 })).map((card) => [card.mark, card.ticket])
+    expect(await heads(viewOf(all))).toEqual([
+      [turned, "a"],
+      [turned, "b"],
+      [turned, "c"],
+    ])
     const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) })
     const finished: ReadonlyArray<Ticket> = all.map((t) =>
       t.ticket === "a" ? { ...t, phase: merged, worker: null } : t,
     )
-    expect(await heads(viewOf(finished))).toEqual([`${turned}  b`, `${turned}  c`])
+    expect(await heads(viewOf(finished))).toEqual([
+      [turned, "b"],
+      [turned, "c"],
+    ])
     const next: ReadonlyArray<Ticket> = [
       ...finished,
       { ticket: "d" as TicketId, phase: working, worker: 1 },
     ]
-    expect(await heads(viewOf(next))).toEqual([`${turned}  d`, `${turned}  b`, `${turned}  c`])
+    expect(await heads(viewOf(next))).toEqual([
+      [turned, "d"],
+      [turned, "b"],
+      [turned, "c"],
+    ])
   })
 
   test("with no worker, the box says the run is picking the next ticket, or stopping", async () => {
@@ -573,8 +586,7 @@ describe("the spinner", () => {
       <Root value={value(view, { clock: () => time })} />,
       { width: 80, height: 24 },
       async (rendered) => {
-        const mark = async () =>
-          linesOf(await rendered.capture()).find((line) => /^│ \S {2}a {2}/.test(line))?.[2]
+        const mark = async () => cardOn(await rendered.capture(), "a").mark
         expect(await mark()).toBe("⣾")
         time = 300
         await rendered.input(() => new Promise((done) => setTimeout(done, 250)))
@@ -597,7 +609,7 @@ describe("opening a worker", () => {
       { width: 120, height: 40 },
       async (rendered) => {
         const lines = linesOf(await rendered.capture())
-        const y = lines.findIndex((line) => line.includes("◼  tut-9a1"))
+        const y = cardOn(lines, "tut-9a1").line
         await rendered.input((setup) => setup.mockMouse.click(10, y))
         await rendered.input((setup) => setup.mockMouse.click(70, y))
         expect(taken(commands)).toEqual([
@@ -609,8 +621,7 @@ describe("opening a worker", () => {
           setup.mockInput.pressArrow("up")
           setup.mockInput.pressEnter()
         })
-        const highlighted = linesOf(await rendered.capture())
-        expect(highlighted.some((line) => line.includes(`┃ ${turned}  tut-zq4`))).toBe(true)
+        expect(cardOn(await rendered.capture(), "tut-zq4").highlighted).toBe(true)
         await rendered.input((setup) => {
           setup.mockInput.pressArrow("left")
           setup.mockInput.pressEnter()
@@ -684,9 +695,14 @@ describe("the wind-down line", () => {
       windDown: { since: began, tickets: ["a" as TicketId] },
     })
     const lines = linesOf(await draw(view, { width: 80, height: 24 }))
-    expect(lines.slice(-2)).toEqual([
-      "  ■  Winding down · 1 running, no new tickets",
-      "  Tab select · arrows panels · Enter go in · s keep taking tickets · ? keys",
+    expect(lines.at(-2)).toBe("  ■  Winding down · 1 running, no new tickets")
+    expect(hintAt(lines)).toBe(lines.length - 1)
+    expect(hintOf(lines)).toEqual([
+      "Tab select",
+      "arrows panels",
+      "Enter go in",
+      "s keep taking tickets",
+      "? keys",
     ])
   })
 })
@@ -695,11 +711,11 @@ describe("the hint and the key help", () => {
   test("the hint's keys emphasis bold, their words and the dots faint", () => {
     const line = hintSegments(dashboardHint(viewOf(four), true), theme, 120)
     expect(line.map((s) => s.text).join("")).toBe(
-      "  Tab select · arrows panels · Enter go in · s stop after current · ? keys",
+      hintLine("Tab select", "arrows panels", "Enter go in", "s stop after current", "? keys"),
     )
     sameLook(lookOf([line], "arrows"), theme.styles.key)
     sameLook(lookOf([line], " panels"), theme.styles.dim)
-    sameLook(lookOf([line], " · "), theme.styles.dim)
+    sameLook(lookOf([line], hintSeparator), theme.styles.dim)
   })
 
   test("? opens the key help over the dashboard, and Esc or ? closes it", async () => {

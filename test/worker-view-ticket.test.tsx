@@ -34,6 +34,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { transcriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -354,7 +355,7 @@ describe("the whole ticket", () => {
         const panel = lines.filter((line) => /^[╭│╰]/.test(line))
         expect(panel.length).toBeLessThanOrEqual(panelCap(40))
         expect(open.chars).toContain("Reading the scripts.")
-        expect(open.chars).toContain("t/Esc less · i write · Ctrl+X")
+        expect(hintOf(open).slice(0, 3)).toEqual(["t/Esc less", "i write", "Ctrl+X interrupt"])
         await typeKey(rendered, "t")
         const closed = await until(rendered, lacks("▴ less"))
         expect(closed.chars).toContain("▾ whole ticket  t")

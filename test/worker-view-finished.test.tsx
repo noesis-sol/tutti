@@ -26,6 +26,7 @@ import {
 } from "../src/ui/transcriptItems.ts"
 import { external, type Settable, tick } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
+import { cardHead } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -154,7 +155,7 @@ describe("the worker view of a worker that has finished", () => {
       await rendered.input(() => view.set(viewOf(true)))
       frame = await until(rendered, has(finishedWords("t-1").finished))
       const head = headOfFrame(frame)
-      expect(head).toContain(`•  t-1  ${finishedWords("t-1").status}`)
+      expect(head).toContain(`${cardHead("•", "t-1")}  ${finishedWords("t-1").status}`)
       // The title on its own line, under line 1.
       expect(frame.chars.split("\n").map((line) => line.trimEnd())).toContain("  Title of t-1")
       expect(head).not.toContain("working")

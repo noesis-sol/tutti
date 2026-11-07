@@ -14,6 +14,7 @@ import type { Segments } from "../src/ui/line.tsx"
 import { lookOf, marks, motionTones } from "../src/ui/marks.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { lineOneSegments } from "../src/ui/worker/Head.tsx"
+import { cardHead, cardOn } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 const began = new Date(2026, 10, 3, 13, 0, 0).getTime()
@@ -91,15 +92,14 @@ describe("a card resolving or fixing", () => {
     test(`${word}: the full card's head starts ⟳ and never the spinner`, () => {
       const card = cardOf(viewOf(phase, working))
       const lines = cardLines(card, theme, { now, spin, width: 60, inside: 3, highlighted: false })
-      const head = textOf(lines[1] ?? [])
-      expect(head).toContain(`⟳  t-1  ${card.status}`)
+      expect(cardOn(lines, "t-1")).toMatchObject({ mark: "⟳", status: card.status })
       expect(lines.map(textOf).join("\n")).not.toContain(spin)
     })
 
     test(`${word}: the compact line and the worker view's line 1 draw ⟳`, () => {
       const card = cardOf(viewOf(phase, working))
       const compact = compactLines([card], theme, { now, spin, width: 80, highlighted: null })
-      expect(textOf(compact[1] ?? [])).toContain(`⟳  t-1`)
+      expect(cardOn(compact, "t-1")).toMatchObject({ mark: "⟳", compact: true })
       const lineOne = lineOneSegments(
         card,
         {
@@ -112,7 +112,7 @@ describe("a card resolving or fixing", () => {
         theme,
         200,
       )
-      expect(textOf(lineOne).startsWith(`⟳  t-1  ${card.status}`)).toBe(true)
+      expect(textOf(lineOne).startsWith(`${cardHead("⟳", "t-1")}  ${card.status}`)).toBe(true)
     })
 
     test(`${word}: framed live while its worker works, plain once its turn has ended`, () => {

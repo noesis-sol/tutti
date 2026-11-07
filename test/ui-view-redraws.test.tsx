@@ -31,6 +31,7 @@ import {
   useRunView,
 } from "../src/ui/useRunView.ts"
 import { withRender } from "./render.ts"
+import { cardHead } from "./screen.ts"
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
@@ -158,7 +159,7 @@ describe("the worker view while its worker works", () => {
       <Root value={shellOf(view, clock)} />,
       { width: 80, height: 20 },
       async (rendered) => {
-        expect((await rendered.capture()).chars).toContain("•  t-1")
+        expect((await rendered.capture()).chars).toContain(cardHead("•", "t-1"))
         await rendered.input(() => view.set(working))
         const before = reads()
         // Ten turns outside act(), as the terminal draws them: act() would draw them once.

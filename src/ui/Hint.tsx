@@ -5,6 +5,12 @@ import type { Key } from "../run/runView.ts"
 import { cut, type Segments, seg, widthOf, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
+/** What the hint has before its first key on each line. */
+export const hintIndent = "  "
+
+/** What the hint has between two keys on a line, faint. */
+export const hintSeparator = " · "
+
 /** A key as the hint draws it: its keys bold, what it does faint. */
 const keySegments = (key: Key, theme: Theme): Segments => [
   seg(key.keys, theme.styles.key),
@@ -16,9 +22,9 @@ export const hintSegments = (keys: ReadonlyArray<Key>, theme: Theme, width: numb
   const { styles } = theme
   return cut(
     [
-      seg("  "),
+      seg(hintIndent),
       ...keys.flatMap((key, i) => [
-        ...(i === 0 ? [] : [seg(" · ", styles.dim)]),
+        ...(i === 0 ? [] : [seg(hintSeparator, styles.dim)]),
         ...keySegments(key, theme),
       ]),
     ],
@@ -36,20 +42,20 @@ export const hintLines = (
   width: number,
 ): ReadonlyArray<Segments> => {
   const lines: Array<Segments> = []
-  let line: Segments = [seg("  ")]
+  let line: Segments = [seg(hintIndent)]
   let fresh = true
   for (const key of keys) {
     const each = keySegments(key, theme)
     const joined: Segments = fresh
       ? [...line, ...each]
-      : [...line, seg(" · ", theme.styles.dim), ...each]
+      : [...line, seg(hintSeparator, theme.styles.dim), ...each]
     if (fresh || widthOf(joined) <= width) {
       line = joined
       fresh = false
       continue
     }
     lines.push(line)
-    line = [seg("  "), ...each]
+    line = [seg(hintIndent), ...each]
   }
   lines.push(line)
   return lines.flatMap((each) =>

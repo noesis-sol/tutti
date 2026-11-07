@@ -30,6 +30,7 @@ import type { Look, Segments } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { cardOn, cardsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -388,10 +389,7 @@ describe("the card", () => {
     await scene(
       [permission("r1", "t-1" as TicketId)],
       async ({ rendered }) => {
-        const lines = linesOf(await rendered.capture())
-        const heads = lines.flatMap((line) =>
-          [...line.matchAll(/[│┃] [•⣾] {2}(t-\d)/g)].map((m) => m[1]),
-        )
+        const heads = cardsIn(await rendered.capture()).map((card) => card.ticket)
         expect(heads).toEqual(["t-1", "t-2", "t-3", "t-4"])
       },
       { size: { width: 120, height: 40 }, workers: 4 },
@@ -408,7 +406,7 @@ describe("the card", () => {
       [permission("r1", "t-3" as TicketId)],
       async ({ rendered, commands, clock }) => {
         const frame = await rendered.capture()
-        expect(linesOf(frame).some((line) => line.includes("•  t-3  ■ allow?"))).toBe(true)
+        expect(cardOn(frame, "t-3")).toMatchObject({ mark: "•", status: "■ allow?", compact: true })
         expect(linesOf(frame).some((line) => line.includes("[ Deny ]"))).toBe(false)
         await press(rendered, "down", "enter", "enter")
         expect(linesOf(await rendered.capture()).some((line) => line.includes("[ Deny ]"))).toBe(
@@ -709,7 +707,7 @@ describe("the answer names the request shown", () => {
       clock.pass(settle)
       const frame = await rendered.capture()
       const lines = linesOf(frame)
-      const second = lines.findIndex((line) => line.includes("•  t-2"))
+      const second = cardOn(frame, "t-2").line
       const deny = lines.findIndex((line, i) => i > second && line.includes("[ Deny ]"))
       const x = (lines[deny] ?? "").indexOf("[ Allow ]")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, deny))

@@ -21,6 +21,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { hintFrom, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -207,8 +208,6 @@ const lit = (frame: Frame, text: string) =>
     ),
   )
 
-const hintOf = (frame: Frame) => linesOf(frame).slice(-3).join(" ")
-
 /** The colour of the Tickets table's top border, in `frame`: the line under its label. */
 const tableFrameColour = (frame: Frame) => {
   const label = linesOf(frame).findIndex((line) => line.trimStart().startsWith("Tickets"))
@@ -261,14 +260,14 @@ describe("Tab at the top level", () => {
       const first = await rendered.capture()
       expect(heavyOn(first, "w-1")).toBe(true)
       expect(heavyOn(first, "w-2")).toBe(false)
-      expect(hintOf(first)).toContain("Esc back · arrows select · Enter open")
+      expect(hintFrom(first, "Esc back", 3)).toEqual(["Esc back", "arrows select", "Enter open"])
     })
     await scene(quiet(3), narrow, async ({ rendered }) => {
       await press(rendered, "shift+tab")
       const last = await rendered.capture()
       expect(heavyOn(last, "w-3")).toBe(true)
       expect(heavyOn(last, "w-1")).toBe(false)
-      expect(hintOf(last)).toContain("Esc back · arrows select · Enter open")
+      expect(hintFrom(last, "Esc back", 3)).toEqual(["Esc back", "arrows select", "Enter open"])
     })
   })
 
@@ -335,7 +334,11 @@ describe("Tab at the top level", () => {
   test("Esc comes back out to the top, on Current", async () => {
     await scene(quiet(2), narrow, async ({ commands, rendered }) => {
       await press(rendered, "tab", "tab", "escape")
-      expect(hintOf(await rendered.capture())).toContain("Tab select · arrows panels · Enter go in")
+      expect(hintOf(await rendered.capture()).slice(0, 3)).toEqual([
+        "Tab select",
+        "arrows panels",
+        "Enter go in",
+      ])
       expect(taken(commands)).toEqual([])
       // Back in with Enter on the card it left, and out of it again with Tab from the top.
       await press(rendered, "enter", "enter")
@@ -518,7 +521,7 @@ describe("Tab with no cards", () => {
     await scene(quiet(0), wide, async ({ commands, rendered }) => {
       const before = await rendered.capture()
       expect(hintOf(before)).not.toContain("Tab select")
-      expect(hintOf(before)).toContain("arrows panels · Enter go in")
+      expect(hintFrom(before, "arrows panels", 2)).toEqual(["arrows panels", "Enter go in"])
       await press(rendered, "tab")
       const after = await rendered.capture()
       expect(after.chars).toBe(before.chars)
@@ -656,7 +659,11 @@ describe("the two levels stay", () => {
 
   test("the hint and the key help name Tab apart from the arrows", async () => {
     await scene(quiet(1), narrow, async ({ rendered }) => {
-      expect(hintOf(await rendered.capture())).toContain("Tab select · arrows panels · Enter go in")
+      expect(hintOf(await rendered.capture()).slice(0, 3)).toEqual([
+        "Tab select",
+        "arrows panels",
+        "Enter go in",
+      ])
       await press(rendered, "?")
       const help = await rendered.capture()
       expect(help.chars).toContain("select the cards and buttons, then what needs you")

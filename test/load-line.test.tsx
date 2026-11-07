@@ -45,6 +45,7 @@ import { type Appearance, makeTheme, orchestra, type StyleName } from "../src/ui
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { advance, expectExitCode, scenario } from "./harness.ts"
 import { renderFrame } from "./render.ts"
+import { cardHead } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -284,8 +285,8 @@ describe("Current", () => {
     const [one, two] = view.cards
     if (one === undefined || two === undefined) throw new Error("no cards")
     const head = (card: typeof one) => text(headOf(card, theme, 42_000, "⣾", [seg(card.status)]))
-    expect(head(one)).toBe("⣾  tut-1  editing  42s  1.2 GB")
-    expect(head(two)).toBe("⣾  tut-2  editing  42s  ? GB")
+    expect(head(one)).toBe(`${cardHead("⣾", "tut-1")}  editing  42s  1.2 GB`)
+    expect(head(two)).toBe(`${cardHead("⣾", "tut-2")}  editing  42s  ? GB`)
     expect(workerMemory(0)).toBe("0.0 GB")
   })
 

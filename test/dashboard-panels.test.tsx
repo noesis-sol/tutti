@@ -31,6 +31,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { hintFrom, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -228,16 +229,6 @@ const narrow = { width: 100, height: 40 }
 
 const linesOf = (frame: Frame) => frame.chars.split("\n")
 
-/** The hint: its lines, from its first (Tab's at the top, Esc's inside, else the arrows'), on one. */
-const hintOf = (frame: Frame) => {
-  const lines = linesOf(frame)
-  return lines
-    .slice(lines.findIndex((line) => /^\s*(Tab select|Esc back|arrows)/.test(line)))
-    .map((line) => line.trim())
-    .join(" ")
-    .trim()
-}
-
 /** Whether a span of `text` on `frame` has the focus's fill. */
 const lit = (frame: Frame, text: string): boolean =>
   frame.spans.lines.some((line) =>
@@ -419,11 +410,22 @@ describe("the hint follows the level", () => {
 
   test("is drawn at each level", async () => {
     await scene(viewOf(1), narrow, async ({ rendered }) => {
-      expect(hintOf(await rendered.capture())).toContain("arrows panels · Enter go in · s stop")
+      expect(hintFrom(await rendered.capture(), "arrows panels", 3)).toEqual([
+        "arrows panels",
+        "Enter go in",
+        "s stop after current",
+      ])
       await press(rendered, "enter")
-      expect(hintOf(await rendered.capture())).toContain("Esc back · arrows select · Enter open")
+      expect(hintFrom(await rendered.capture(), "Esc back", 3)).toEqual([
+        "Esc back",
+        "arrows select",
+        "Enter open",
+      ])
       await press(rendered, "escape")
-      expect(hintOf(await rendered.capture())).toContain("arrows panels · Enter go in")
+      expect(hintFrom(await rendered.capture(), "arrows panels", 2)).toEqual([
+        "arrows panels",
+        "Enter go in",
+      ])
     })
   })
 })
@@ -566,7 +568,7 @@ describe("at the top level", () => {
       narrow,
       async ({ commands, pass, rendered }) => {
         pass(settle)
-        expect(hintOf(await rendered.capture())).toContain("d deny · a allow")
+        expect(hintFrom(await rendered.capture(), "d deny", 2)).toEqual(["d deny", "a allow"])
         await press(rendered, "a")
         expect(taken(commands)).toEqual([
           UiCommand.Answer({ requestId: "r1", answer: { _tag: "Allow" } }),
