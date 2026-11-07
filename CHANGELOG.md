@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.7.0] - 2026-11-07
+
 - The spec moved from `.orchestra/specs/tutti-spec.md` to `docs/spec/tutti-spec.md`, and orchestra's leftover `.orchestra/` folder is gone: its settings and worker prompt, which nothing read since tutti's own `.tutti/`, and its last run's files. Its one setting still meant, the duckdb requirement, is in `.tutti/settings.json`'s `requires`, so the README's section on what to install is tutti's (`tutti requires --readme`). CLAUDE.md, the verifier and the check scripts name `.tutti/settings.json`'s `checks` in place of orchestra's keys. tutti's import from another project's `.orchestra/` is unchanged.
 - A card's mark has two spaces after it, `⟳  t-1  resolving`, on the full card, the compact line and the worker view's line 1, and the lines under a full card's head start a column further in, under its ticket: `⟳` is drawn past its cell in common fonts and touched the ticket, which seemed to move as the card went from the spinner to `⟳` (§ 7.2; `src/ui/marks.ts`' `markGap` and `cardIndent`).
 - The selected row's note in the tickets table stands out a little more: it lifts to the pointer's look, `emphasis` bold, in the light themes too, rather than a faint note staying dim and a verdict, already bold, not changing at all; a verdict's `◆` keeps its `organ` colour, and there is still no fill (§ 7.3; `src/ui/TicketsTable.tsx`' `aboutCell`; tutti-149z.8).
