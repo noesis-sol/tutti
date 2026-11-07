@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { type Segments, sectionLabel, seg } from "../src/ui/line.tsx"
 import { separator } from "../src/ui/marks.ts"
+import { needsListLabel } from "../src/ui/NeedsList.tsx"
 import { needsLines, upNextLines } from "../src/ui/SidePanel.tsx"
 import { labelIndent } from "../src/ui/spacing.ts"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
@@ -75,6 +76,16 @@ describe("the dashboard's labels", () => {
       ticketsLines([], theme, 80, { lines: 4 })[0],
       sectionLabel("Tickets", theme, { lit: true }),
     )
+  })
+
+  test("the Needs you list's is unindented, in the stop style, its place spaced from it", () => {
+    expect(needsListLabel(0, 3, 5, 60, theme)).toEqual(
+      sectionLabel("Needs you", theme, { lit: true, look: theme.styles.stop, indented: false }),
+    )
+    const counted = needsListLabel(1, 5, 3, 60, theme)
+    // Its place went through fit with the separator once, which lost the space before the `·`.
+    expect(text(counted)).toBe(`Needs you${separator}2 of 5`)
+    expect(counted.at(-1)).toEqual(seg("2 of 5", theme.styles.dim))
   })
 
   test("take labelIndent from sectionLabel alone", () => {

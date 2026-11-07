@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The dashboard's section labels, `Tickets`, `Current`, `Up next`, `Needs you · N`, the Needs you list's and `tutti colours`' sample, are drawn by one `sectionLabel` in `src/ui/line.tsx`, past `labelIndent`, in the focus's look and with an optional count; nothing else on screen changes, but the Needs you list's place among more items than fit has its space back before the `·`, `Needs you · 2 of 5` rather than `Needs you· 2 of 5` (tutti-6bwa.6).
 - The ` · ` between a list's parts (the hint's keys, the totals' figures, the title line's, a box's choices, the panel's foot) is one constant, `src/ui/marks.ts`' `separator`, drawn faint by `src/ui/line.tsx`'s `joined`, which every such list is built with; `test/separator.test.ts` fails a `·` written elsewhere in `src/ui`, and nothing on screen changes.
 - The TUI's gaps and indents are named in one module, `src/ui/spacing.ts`, for what each separates (`fieldGap`, `labelIndent`, `buttonGap`, `markGap` and `cardIndent` among them), and Biome refuses a bare `seg("  ")` in `src/ui` (`test/lint/bare-spaces.grit`); nothing on screen changes.
 

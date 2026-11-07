@@ -164,6 +164,32 @@ export const BlockedBox = ({ ticket }: { readonly ticket: TicketId }) => {
 }
 
 /** The list, the Blocked ticket's box over it once one is opened. */
+/**
+ * The list's label, `Needs you · 2 of 5`, the place of the chosen item among `count` when no more
+ * than `room` of them fit, `inner` wide at most: in the stop style whatever has the focus, as the
+ * list is all it has, and not indented, as its box's side sets it in.
+ */
+export const needsListLabel = (
+  index: number,
+  count: number,
+  room: number,
+  inner: number,
+  theme: Theme,
+): Segments =>
+  sectionLabel("Needs you", theme, {
+    lit: true,
+    look: theme.styles.stop,
+    indented: false,
+    ...(count > room
+      ? {
+          count: seg(
+            fit(`${index + 1} of ${count}`, inner - Bun.stringWidth(separator)),
+            theme.styles.dim,
+          ),
+        }
+      : {}),
+  })
+
 export const NeedsList = ({ at, answered }: NeedsAt) => {
   const theme = useTheme()
   const command = useCommand()
@@ -304,20 +330,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   )
   if (read === undefined) lines.push([seg(`  ${listReadingText}`, theme.styles.dim)])
   if (empty) lines.push([seg(`  ${nothingNeedsYou}`, theme.styles.dim)])
-  // In the stop style whatever has the focus, as the list is all it has; its box's side sets it in.
-  const label = sectionLabel("Needs you", theme, {
-    lit: true,
-    look: theme.styles.stop,
-    indented: false,
-    ...(items.length > room
-      ? {
-          count: seg(
-            fit(`${index + 1} of ${items.length}`, inner - Bun.stringWidth(separator)),
-            theme.styles.dim,
-          ),
-        }
-      : {}),
-  })
+  const label = needsListLabel(index, items.length, room, inner, theme)
   const rows = boxed([label, [], ...lines, [], ...keys], outer, theme.look("needsYou"))
   const press = (target: number) =>
     target >= itemTarget ? open(target - itemTarget) : drawn[target]?.run()
