@@ -26,6 +26,9 @@ export const organLines = (text: string, width: number, height: number) => {
   return lines.slice(Math.max(lines.length - Math.max(height, 0), 0))
 }
 
+/** The columns the screen keeps clear each side of its lines. */
+const screenPad = 1
+
 /** The screen: the organ lines, then the hint, `Ctrl+C stop`; Ctrl+C runs `stop`. */
 export const OrganScreen = ({
   theme,
@@ -41,10 +44,10 @@ export const OrganScreen = ({
   const hint = useFormCommands([
     { keys: ["ctrl+c"], run: stop, hint: { keys: "Ctrl+C", does: "stop" } },
   ])
-  const hintLine = cut(formHintSegments(hint, theme), Math.max(width - 2, 1))
-  const lines = organLines(written, width - 2, height - 3)
+  const hintLine = cut(formHintSegments(hint, theme), Math.max(width - 2 * screenPad, 1))
+  const lines = organLines(written, width - 2 * screenPad, height - 3)
   return (
-    <box flexDirection="column" paddingX={1} paddingTop={1}>
+    <box flexDirection="column" paddingX={screenPad} paddingTop={1}>
       <box flexDirection="column" height={Math.max(height - 3, 0)} flexShrink={0}>
         <Lines lines={lines} />
       </box>

@@ -11,7 +11,18 @@
 // reaches it (NeedsReach, tutti-fdv1): it opens the list of what needs you (NeedsList.tsx).
 import type { Totals as TotalsView } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
-import { cut, framed, joined, type Look, type Segments, seg, targeting, widthOf } from "./line.tsx"
+import {
+  columnGap,
+  cut,
+  framed,
+  framedWidth,
+  joined,
+  type Look,
+  type Segments,
+  seg,
+  targeting,
+  widthOf,
+} from "./line.tsx"
 import { marks, separator } from "./marks.ts"
 import { edgeIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
@@ -122,7 +133,7 @@ export const totalsLine = (
  * The room a strip `width` wide has for its four cells: each one's padding and the bar after it,
  * and the frame's first bar, taken out.
  */
-const roomOf = (width: number): number => width - 1 - 3 * 4
+const roomOf = (width: number): number => width - framedWidth([0, 0, 0, 0])
 
 /** The first three cells' width where they line up: a fifth of a strip `width` wide's room. */
 const fifthOf = (width: number): number => Math.floor(roomOf(width) / 5)
@@ -132,7 +143,7 @@ const fifthOf = (width: number): number => Math.floor(roomOf(width) / 5)
  * are a fifth of it each, as beside the panel, over the gap between the tickets table and the panel
  * (SidePanel.tsx's panelWidth reads it, tutti-ebra, tutti-nsw2).
  */
-export const queueDivider = (width: number): number => 3 * (fifthOf(width) + 3)
+export const queueDivider = (width: number): number => 3 * (fifthOf(width) + columnGap)
 
 /**
  * The strip's line `width` wide, in its frame, or null when the pane is too narrow for it, even

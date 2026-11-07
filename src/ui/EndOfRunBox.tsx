@@ -7,7 +7,7 @@
 // the frame and its first words, and always keeps what `q` does.
 import { conflictSetAside, conflictWaits, type Waiting } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
-import { type Border, boxed, cut, padded, type Segments, seg, wrap } from "./line.tsx"
+import { type Border, boxed, cut, frameInner, padded, type Segments, seg, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /**
@@ -53,7 +53,7 @@ export const endOfRunLines = (
   height: number = Number.POSITIVE_INFINITY,
   border: Border = "rounded",
 ): ReadonlyArray<Segments> => {
-  const inner = Math.max(width - 4, 1)
+  const inner = frameInner(width)
   const look = theme.look("needsYou")
   const about = wrap([seg(endOfRunAbout, theme.styles.dim)], inner, { long: "line" })
   const says = (what: string, line: string) =>

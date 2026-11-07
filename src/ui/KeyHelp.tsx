@@ -8,7 +8,18 @@ import { type MouseEvent, RGBA } from "@opentui/core"
 import { useState } from "react"
 import { globalHelp, type HelpRow } from "./keyCommands.ts"
 import { useLayer } from "./keys.ts"
-import { boxed, cut, joined, Lines, padded, type Segments, seg, widthOf } from "./line.tsx"
+import {
+  boxed,
+  cut,
+  frameChrome,
+  frameInner,
+  joined,
+  Lines,
+  padded,
+  type Segments,
+  seg,
+  widthOf,
+} from "./line.tsx"
 import { arrowKeys } from "./marks.ts"
 import { fieldGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
@@ -37,8 +48,8 @@ export const keyHelpLines = (
   const { styles } = theme
   const keyWidth = Math.max(...keys.map(([each]) => Bun.stringWidth(each)))
   const natural = Math.max(...keys.map(([, does]) => keyWidth + 2 + Bun.stringWidth(does)))
-  const boxWidth = Math.min(natural + 4, width)
-  const inner = Math.max(boxWidth - 4, 0)
+  const outer = Math.min(natural + frameChrome, width)
+  const inner = frameInner(outer, 0)
   const { spaced, shown } = keyHelpRoom(keys.length, height)
   const from = Math.max(Math.min(top, keys.length - shown), 0)
   const scrolls = shown < keys.length
@@ -72,7 +83,7 @@ export const keyHelpLines = (
         inner,
       ),
     ],
-    boxWidth,
+    outer,
     theme.look("frame"),
   )
 }

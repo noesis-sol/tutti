@@ -39,9 +39,11 @@ import { useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
 import {
   boxSides,
+  boxWidth,
   cut,
   FrameRow,
   frameEdge,
+  frameInner,
   Line,
   Lines,
   padded,
@@ -226,8 +228,8 @@ const FormBody = ({
 
   const { form: looks } = theme
   const frame = theme.look("needsYou")
-  const outer = Math.max(Math.min(width - 4, formWidth), 16)
-  const inner = outer - 4
+  const outer = boxWidth(width, { max: formWidth, least: 16 })
+  const inner = frameInner(outer)
   // The body's lines: each field's title lines and rows, a blank line between fields.
   const tall = form.fields.reduce(
     (sum, field, i) => sum + (i === 0 ? 0 : 1) + titleLines(field, theme).length,

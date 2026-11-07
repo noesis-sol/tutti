@@ -10,7 +10,7 @@
 import { RGBA } from "@opentui/core"
 import { memo, type ReactNode } from "react"
 import { clickable } from "../click.ts"
-import { cut, Line, padded, type Segments, seg, widthOf, wrap } from "../line.tsx"
+import { cut, frameInner, Line, padded, type Segments, seg, widthOf, wrap } from "../line.tsx"
 import { ellipsis, marks } from "../marks.ts"
 import { sanitize } from "../sanitize.ts"
 import { asideGap, fieldGap, unpointed, wordSpace } from "../spacing.ts"
@@ -211,7 +211,7 @@ const Children = ({
       {entries.length === 0 ? (
         <Line segments={[seg("nothing yet", theme.styles.dim)]} />
       ) : (
-        <EntryList entries={entries} width={Math.max(width - 4, 1)} {...props} />
+        <EntryList entries={entries} width={frameInner(width)} {...props} />
       )}
     </box>
   )

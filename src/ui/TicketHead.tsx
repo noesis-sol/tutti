@@ -28,6 +28,7 @@ import {
   cut,
   FrameRow,
   frameEdge,
+  frameInner,
   joined,
   Line,
   Lines,
@@ -398,7 +399,7 @@ export const panelLines = (
   width: number,
   head = 0,
 ) => {
-  const inner = Math.max(width - 4, 1)
+  const inner = frameInner(width)
   const content =
     issue === undefined
       ? 1

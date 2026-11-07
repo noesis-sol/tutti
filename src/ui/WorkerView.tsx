@@ -63,7 +63,7 @@ import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
-import { Line, Lines, Section, type Segments, seg, widthOf } from "./line.tsx"
+import { frameInner, Line, Lines, Section, type Segments, seg, widthOf } from "./line.tsx"
 import { arrowKeys, marks } from "./marks.ts"
 import { boxIndent, namePad } from "./spacing.ts"
 import {
@@ -479,7 +479,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
   const issue = card?.issue
   const cardTitle = card?.title
   // The title and the description's lines inside the box's frame.
-  const textWidth = Math.max(inner - 4, 1)
+  const textWidth = frameInner(inner)
   const boxTitle = useMemo(
     () => (cardTitle === undefined ? [] : titleLines(cardTitle, theme, textWidth)),
     [cardTitle, theme, textWidth],

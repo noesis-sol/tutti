@@ -22,7 +22,18 @@ import type { TicketId } from "../services/Beads.ts"
 import { clickable } from "./click.ts"
 import { type Command, isOn, useCommands } from "./keyCommands.ts"
 import { Box, type NeedsAt, useInput } from "./keys.ts"
-import { boxed, cut, fit, Lines, type Segments, sectionLabel, seg, separatorOf } from "./line.tsx"
+import {
+  boxed,
+  boxWidth,
+  cut,
+  fit,
+  frameInner,
+  Lines,
+  type Segments,
+  sectionLabel,
+  seg,
+  separatorOf,
+} from "./line.tsx"
 import { Backdrop, choiceRows, Modal, modalMaxWidth } from "./Modal.tsx"
 import { arrowKeys, marks, separator } from "./marks.ts"
 import { quietUuid } from "./QuestionsBox.tsx"
@@ -307,8 +318,8 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
     )
   }
   if (empty && readTag !== "Read") return null
-  const outer = Math.max(Math.min(width - 4, modalMaxWidth), 8)
-  const inner = outer - 4
+  const outer = boxWidth(width, { max: modalMaxWidth, least: 8 })
+  const inner = frameInner(outer)
   const keys = choiceRows(
     commands.flatMap((each) =>
       each.hint !== undefined && isOn(each)

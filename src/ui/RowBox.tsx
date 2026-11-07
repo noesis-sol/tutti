@@ -28,8 +28,10 @@ import { type Command, isOn, useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
 import {
   boxSides,
+  boxWidth,
   FrameRow,
   frameEdge,
+  frameInner,
   Line,
   Lines,
   padded,
@@ -235,8 +237,8 @@ export const RowBox = ({ ticket }: { readonly ticket: TicketId }) => {
   if (row === undefined) return null
 
   const frame = theme.look("frame")
-  const outer = Math.max(Math.min(width - 4, formWidth), leastWidth)
-  const inner = outer - 4
+  const outer = boxWidth(width, { max: formWidth, least: leastWidth })
+  const inner = frameInner(outer)
   const head = rowParagraphs(row, theme).flatMap((each) => wrap([each], inner, { long: "line" }))
   const stats = statsLines(row, peers, theme, inner, now)
   const drawn = commands.flatMap((each) =>

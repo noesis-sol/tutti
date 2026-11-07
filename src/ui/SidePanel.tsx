@@ -31,6 +31,7 @@ import {
   boxed,
   cut,
   fit,
+  frameInner,
   padded,
   type Segment,
   type Segments,
@@ -103,7 +104,7 @@ export const upNextLines = (
     ...sectionLabel("Up next", theme, { lit: false }),
     ...(held > 0 ? [seg(`${separator}${held} held back`, styles.heldBack)] : []),
   ]
-  const inner = Math.max(width - 4, 1)
+  const inner = frameInner(width)
   const room = Math.max(lines - 3, 1)
   // An ID longer than a third of the panel is cut, as the table cuts one.
   const idWidth = Math.min(
@@ -348,7 +349,7 @@ export const clearsOf = (need: Blocked): ReadonlyArray<string> => {
  * box saying all of it (Box.Blocked), rather than the worker view.
  */
 export const blockedCut = (need: Blocked, width: number, lines: number): boolean => {
-  const inner = Math.max(width - 4, 1)
+  const inner = frameInner(width)
   const height = (text: string, limit?: number) =>
     wrap([seg(text, null)], inner, limit === undefined ? {} : { limit }).length
   const said = clearsOf(need).reduce((total, text) => total + height(text), 0)
@@ -436,7 +437,7 @@ export const needsLines = (
     lit: at.focused,
     count: seg(`${count}`, count === 0 ? styles.dim : styles.stop),
   })
-  const inner = Math.max(width - 4, 1)
+  const inner = frameInner(width)
   const room = Math.max(lines - 3, 1)
   const dim = (text: string, target?: number) => seg(text, styles.dim, target)
   const wrapped = (segments: Segments, limit?: number) =>

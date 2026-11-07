@@ -29,7 +29,9 @@ import { useInput, useLayer } from "./keys.ts"
 import {
   type Border,
   boxed,
+  boxWidth,
   FrameRow,
+  frameInner,
   Line,
   Lines,
   type Look,
@@ -173,7 +175,7 @@ export const AnswerBox = () => {
     "Answer",
   )
   if (card === undefined) return null
-  const outer = Math.max(Math.min(width - 4, answerBoxWidth), 8)
+  const outer = boxWidth(width, { max: answerBoxWidth, least: 8 })
   const head: ReadonlyArray<Segments> = [
     [
       seg(answerIndent),
@@ -255,8 +257,8 @@ export const ReasonBox = ({
     answer({ id: requestId, ticket }, { _tag: "Deny", ...(reason === "" ? {} : { reason }) })
   }
   const frame: Look = theme.look("needsYou")
-  const outer = Math.max(Math.min(width - 4, modalMaxWidth), 12)
-  const inner = outer - 4
+  const outer = boxWidth(width, { max: modalMaxWidth, least: 12 })
+  const inner = frameInner(outer)
   // The box's rows: its question, a blank line, the field's row, which a FrameRow draws in its
   // place, a blank line and the keys.
   const framed = boxed(

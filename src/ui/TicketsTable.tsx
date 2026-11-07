@@ -19,7 +19,16 @@
 // panel, its frame is drawn bright.
 import type { Attention, Card, Row } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { fit, framed, padded, type Segments, sectionLabel, seg, targeting } from "./line.tsx"
+import {
+  fit,
+  framed,
+  framedWidth,
+  padded,
+  type Segments,
+  sectionLabel,
+  seg,
+  targeting,
+} from "./line.tsx"
 import { lookOf, marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
@@ -197,16 +206,18 @@ export const ticketsLines = (
   // On the dashboard the state column has the pointer's gutter before it.
   const gutter = reach === undefined ? 0 : pointerWidth
   const stateColumn = stateWidth + gutter
+  // What the table `width` wide leaves a column beside columns `others` wide.
+  const room = (others: ReadonlyArray<number>) => width - framedWidth([...others, 0])
   // A worker files tickets, so an ID is untrusted, and one longer than a third of the table is cut.
   const idWidth = Math.max(
     Math.min(
       Math.max(minIdWidth, ...rows.map((row) => Bun.stringWidth(row.label))),
       Math.max(Math.floor(width / 3), minIdWidth),
-      width - 4 - (stateColumn + 2) - 2 - (minAboutWidth + 2),
+      room([stateColumn, minAboutWidth]),
     ),
     1,
   )
-  const aboutWidth = Math.max(width - 4 - (stateColumn + 2) - (idWidth + 2) - 2, 1)
+  const aboutWidth = Math.max(room([stateColumn, idWidth]), 1)
   const limit = "lines" in size ? Math.max(size.lines - sectionChrome, 1) : rows.length
   const shown = shownRows(rows, size)
   const drawnRows = new Set(shown)

@@ -82,6 +82,9 @@ export const useLinesUnderToasts = (store: ToastStore, lines: number): void => {
   }, [store, lines])
 }
 
+/** The columns a toast keeps from each side of the screen. */
+const toastMargin = 1
+
 /** The toasts of `store`, right-aligned above the lines under them (ToastStore's `under`). */
 export const Toasts = ({ store }: { readonly store: ToastStore }) => {
   const toasts = useSyncExternalStore(store.subscribe, store.get)
@@ -89,7 +92,7 @@ export const Toasts = ({ store }: { readonly store: ToastStore }) => {
   const theme = useTheme()
   const { width, height } = useTerminalDimensions()
   if (toasts.length === 0) return null
-  const room = Math.max(width - 2, 0)
+  const room = Math.max(width - 2 * toastMargin, 0)
   const lines = toasts.map((toast) =>
     cut([seg(` ${toast.text} `, toast.failure ? theme.look("needsYou") : theme.styles.dim)], room),
   )
@@ -97,7 +100,7 @@ export const Toasts = ({ store }: { readonly store: ToastStore }) => {
     <box
       position="absolute"
       zIndex={20}
-      right={1}
+      right={toastMargin}
       top={Math.max(height - under - lines.length, 0)}
       flexDirection="column"
       alignItems="flex-end"

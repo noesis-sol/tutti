@@ -12,6 +12,8 @@ import { clickable } from "./click.ts"
 import { type Command, isOn } from "./keyCommands.ts"
 import {
   boxed,
+  boxWidth,
+  frameInner,
   Lines,
   type Look,
   type Segment,
@@ -96,8 +98,8 @@ export const Modal = ({
 }) => {
   const theme = useTheme()
   const { width, height } = useTerminalDimensions()
-  const outer = Math.max(Math.min(width - 4, modalMaxWidth), 8)
-  const inner = outer - 4
+  const outer = boxWidth(width, { max: modalMaxWidth, least: 8 })
+  const inner = frameInner(outer)
   const lines = paragraphs.flatMap((paragraph) => wrap([paragraph], inner, { long: "line" }))
   const drawn = choices.flatMap((choice) =>
     choice.hint !== undefined && isOn(choice) ? [{ hint: choice.hint, run: choice.run }] : [],

@@ -8,7 +8,17 @@ import type { MouseEvent } from "@opentui/core"
 import { useMemo, useRef, useState } from "react"
 import type { AttentionRequest } from "../../agent/Attention.ts"
 import { buttonsOf, picksOptions, requestText } from "../attentionKeys.ts"
-import { boxed, boxSides, Line, Lines, type Press, type Segments, seg, wrap } from "../line.tsx"
+import {
+  boxed,
+  boxSides,
+  frameInner,
+  Line,
+  Lines,
+  type Press,
+  type Segments,
+  seg,
+  wrap,
+} from "../line.tsx"
 import { requestInputLines } from "../requestInput.ts"
 import { sanitize, sanitizeLine } from "../sanitize.ts"
 import { buttonGap } from "../spacing.ts"
@@ -43,7 +53,7 @@ export const panelInput = (
   request: AttentionRequest,
   theme: Theme,
   width: number,
-): ReadonlyArray<Segments> => requestInputLines(request, theme, Math.max(width - 4, 1))
+): ReadonlyArray<Segments> => requestInputLines(request, theme, frameInner(width))
 
 /**
  * A request's box in the panel, `width` wide, framed `needsYou`, heavy when it is selected: the
@@ -64,7 +74,7 @@ export const panelParts = (
   const { styles } = theme
   const text = requestText(request)
   // Within the frame's sides and the space each side of them; wrapped there, never cut (§ 4.5).
-  const inner = Math.max(options.width - 4, 1)
+  const inner = frameInner(options.width)
   const faint = (lines: ReadonlyArray<string>): ReadonlyArray<Segments> =>
     lines.flatMap((line) => wrap([seg(line, styles.dim)], inner, { indent: 2 }))
   const description =

@@ -496,9 +496,40 @@ export const Section = ({
     </box>
   )
 
+/** The columns a frame's side takes: `│`. */
+export const frameBorder = 1
+
+/** The columns boxed's frame takes from a box's width: a side and boxPad inside it, each side. */
+export const frameChrome = 2 * (frameBorder + boxPad.length)
+
+/**
+ * The columns inside boxed's frame `width` wide, between its sides and their boxPad: never fewer
+ * than `least`.
+ */
+export const frameInner = (width: number, least = 1): number => Math.max(width - frameChrome, least)
+
+/** The columns a box over the screen keeps at least from each of the screen's sides. */
+export const boxMargin = 2
+
+/**
+ * How wide a box over a screen `width` wide is: as wide as the screen leaves it within boxMargin of
+ * each side, up to `max`, and never narrower than `least`, past the screen where it must be.
+ */
+export const boxWidth = (
+  width: number,
+  { max, least }: { readonly max: number; readonly least: number },
+): number => Math.max(Math.min(width - 2 * boxMargin, max), least)
+
+/** The columns framed's frame takes after each cell: boxPad each side of it and the bar after it. */
+export const columnGap = 2 * boxPad.length + frameBorder
+
+/** How wide framed draws cells in columns `widths` wide: each with its columnGap, and the first bar. */
+export const framedWidth = (widths: ReadonlyArray<number>): number =>
+  frameBorder + widths.reduce((sum, w) => sum + w + columnGap, 0)
+
 /**
  * A rounded frame around `rows`, each of cells in columns `widths` wide (boxPad each side
- * besides), its lines in `frame`: one line a row, and the top and bottom borders.
+ * besides), its lines in `frame`: one line a row, and the top and bottom borders, framedWidth wide.
  */
 export const framed = (
   rows: ReadonlyArray<ReadonlyArray<Segments>>,
@@ -552,6 +583,12 @@ const borderLook = (frame: Look, border: Border): Look =>
   border === "heavy" ? frame.bold() : frame
 
 /**
+ * The columns a label in the top or bottom of a frame takes besides its text: the corners, a space
+ * each side of it and one `─`, as frameEdge draws it.
+ */
+export const labelChrome = 2 * frameBorder + 3
+
+/**
  * The top or bottom of boxed's frame, `width` wide, with `label` in it at its right, a space each
  * side of it and the frame's `─` after it: `╭──── ▴ less  t · Esc ─╮`. A label wider than the frame
  * holds is cut with `…`; its segments keep their looks and their targets.
@@ -566,9 +603,11 @@ export const frameEdge = (
   const c = corners[border]
   const look = borderLook(frame, border)
   const [left, right] = edge === "top" ? [c.tl, c.tr] : [c.bl, c.br]
-  const shown = cut(label, Math.max(width - 5, 0))
-  if (shown.length === 0) return [seg(left + c.h.repeat(Math.max(width - 2, 0)) + right, look)]
-  const fill = Math.max(width - widthOf(shown) - 5, 0)
+  const shown = cut(label, Math.max(width - labelChrome, 0))
+  if (shown.length === 0) {
+    return [seg(left + c.h.repeat(Math.max(width - 2 * frameBorder, 0)) + right, look)]
+  }
+  const fill = Math.max(width - widthOf(shown) - labelChrome, 0)
   return [seg(`${left}${c.h.repeat(fill)} `, look), ...shown, seg(` ${c.h}${right}`, look)]
 }
 
@@ -589,13 +628,13 @@ export const boxSides = (
   border: Border = "rounded",
 ): ReadonlyArray<Segments> => {
   const { left, right } = frameSides(frame, border)
-  const inner = Math.max(width - 4, 0)
+  const inner = frameInner(width, 0)
   return lines.map((line) => [...left, ...padded(cut(line, inner), inner), ...right])
 }
 
 /**
  * `lines` rows of boxed's frame `width` wide, its sides drawn as boxSides draws them, around
- * `children`, which take the `width - 4` columns between: for what isn't segments, such as a field
+ * `children`, which take the frameInner columns between: for what isn't segments, such as a field
  * or a scrollbox, in a frame whose other rows are boxed's.
  */
 export const FrameRow = ({
@@ -618,7 +657,7 @@ export const FrameRow = ({
       <box width={widthOf(left)} flexShrink={0}>
         <Lines lines={Array.from({ length: rows }, () => left)} />
       </box>
-      <box width={Math.max(width - 4, 0)} height={rows} flexShrink={0} flexDirection="column">
+      <box width={frameInner(width, 0)} height={rows} flexShrink={0} flexDirection="column">
         {children}
       </box>
       <box width={widthOf(right)} flexShrink={0}>

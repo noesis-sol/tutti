@@ -13,10 +13,13 @@ import type { Key } from "../run/runView.ts"
 import { formHintSegments } from "./Form.tsx"
 import {
   boxSides,
+  boxWidth,
   cut,
   frameEdge,
+  frameInner,
   Lines,
   type Look,
+  labelChrome,
   padded,
   type Segments,
   seg,
@@ -212,7 +215,7 @@ export const browserLines = (
   keys: ReadonlyArray<Key> = [],
 ): ReadonlyArray<Segments> => {
   const { form } = theme
-  const inner = Math.max(width - 4, 1)
+  const inner = frameInner(width)
   const rows = browsing.rows.slice(browsing.top, browsing.top + shown).map((row, i) => {
     const index = browsing.top + i
     const { text, look } = rowText(row, theme)
@@ -252,14 +255,15 @@ export const browserLines = (
 
 /** The top of the browser's frame, `width` wide, with `label` at its left: `╭─ ~/specs/ ───╮`. */
 const labelledTop = (width: number, frame: Look, label: Segments): Segments => {
-  const shown = cut(label, Math.max(width - 6, 0))
-  const fill = Math.max(width - 5 - widthOf(shown), 0)
+  // frameEdge's chrome, its `─` before the label rather than after it, and a `─` at least after.
+  const shown = cut(label, Math.max(width - labelChrome - 1, 0))
+  const fill = Math.max(width - labelChrome - widthOf(shown), 0)
   return [seg("╭─ ", frame), ...shown, seg(` ${"─".repeat(fill)}╮`, frame)]
 }
 
 /** The browser's width on a screen `width` wide. */
 export const browserWidth = (width: number): number =>
-  Math.max(Math.min(width - 4, browserMaxWidth), 16)
+  boxWidth(width, { max: browserMaxWidth, least: 16 })
 
 /**
  * The browser over the question, in the middle of the `height` lines above its hint: a click on a
