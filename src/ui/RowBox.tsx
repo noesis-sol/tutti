@@ -1,6 +1,6 @@
 // A row's box (Box.Row, § 7.2, tutti-149z.3, tutti-149z.9), which Enter opens on a row with no worker
 // view to go to, one done or set aside, or on any row with no need in a pane with no panel: over the
-// dashboard, as large as the pane allows up to the answer form's width, the whole ticket and how it
+// dashboard, the pane's whole height and up to the answer form's width, the whole ticket and how it
 // went, where the panel can only say what happened last. Under the top border (TicketHead's, `Ticket`
 // and its type and priority), in a scrollbox: what the panel says of the row (rowParagraphs); the
 // whole ticket, drawn with <markdown> as the worker view's is (wholeTicket), read again with bd show
@@ -40,7 +40,7 @@ import {
 } from "./line.tsx"
 import { Backdrop, choiceRows } from "./Modal.tsx"
 import { rowParagraphs } from "./SidePanel.tsx"
-import { badgesOf, ticketEdge, wholeTicket, wholeTicketLines } from "./TicketHead.tsx"
+import { badgesOf, ticketEdge, wholeTicket } from "./TicketHead.tsx"
 import type { Theme } from "./theme.ts"
 import { useCommand, useNow, useRunViewPart, useTheme } from "./useRunView.ts"
 import { useSyntaxStyles } from "./worker/Looks.tsx"
@@ -248,8 +248,9 @@ export const RowBox = ({ ticket }: { readonly ticket: TicketId }) => {
     seg(" · ", theme.styles.dim),
     inner,
   )
-  const natural = head.length + 1 + wholeTicketLines(issue, inner) + 1 + stats.length
-  const lines = Math.min(natural, Math.max(height - keys.length - 2, 1))
+  // The pane's whole height, however short the ticket: <markdown> lays out more lines than it has
+  // as written (a table's rules), and the box doesn't jump as bd answers.
+  const lines = Math.max(height - keys.length - 2, 1)
   const boxHeight = lines + keys.length + 2
   // Counted as it is drawn, from the scrollbox as it is then, so that scrolling changes no state.
   const bottom = function (this: Renderable, buffer: OptimizedBuffer) {

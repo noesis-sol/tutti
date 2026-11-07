@@ -348,17 +348,47 @@ describe("scrolling", () => {
     })
   })
 
-  test("a short ticket has no count, and the box is no taller than it needs", async () => {
+  test("a short ticket has no count", async () => {
     const short = projected([entryOf("d-1", 0, merged, { issue: issueOf("Short.") })])
     await scene(short, wide, async ({ rendered }) => {
       await press(rendered, "enter", "enter")
       const box = await rendered.capture()
       expect(has(box, "more line")).toBe(false)
       expect(has(box, "Short.")).toBe(true)
-      expect(box.chars.split("\n").findIndex((line) => line.includes("╭─ Ticket"))).toBeGreaterThan(
-        0,
-      )
     })
+  })
+
+  // <markdown> lays a table out in more lines than it has as written.
+  test("it takes the pane's whole height, whatever the ticket, a table's lines all reachable", async () => {
+    const rows = Array.from({ length: 12 }, (_, i) => `| ${i} | value ${i} |`).join("\n")
+    const table = `Before.\n\n| key | value |\n|---|---|\n${rows}\n\nAfter.`
+    for (const issue of [issueOf("Short."), issueOf(table)]) {
+      const tall = projected([entryOf("d-1", 0, merged, { issue })])
+      await withRender(
+        <Root
+          value={{
+            view: external(tall),
+            screen: external<Screen>(Screen.Dashboard()),
+            commands: Effect.runSync(makeCommands),
+            appearance: external<Appearance>("dark"),
+            themeOf,
+            now: () => began,
+          }}
+        />,
+        { width: 155, height: 60 },
+        async (rendered) => {
+          await press(rendered, "enter", "enter")
+          const box = await rendered.capture()
+          const lines = box.chars.trimEnd().split("\n")
+          expect(lines[0]).toContain("╭─ Ticket")
+          expect(lines[59]).toContain("╯")
+          if (has(box, "Reverts")) return
+          for (let i = 0; i < 5; i++) await press(rendered, "pagedown")
+          expect(has(await rendered.capture(), "Reverts")).toBe(true)
+        },
+        { treeSitter: "real" },
+      )
+    }
   })
 })
 

@@ -384,14 +384,6 @@ export const useTicketPanel = (ticket: TicketId): TicketPanel => {
   }
 }
 
-/** The lines `issue`'s whole ticket takes `inner` wide: its Markdown's, as written, wrapped; 1 unread. */
-export const wholeTicketLines = (issue: TicketText | undefined, inner: number): number =>
-  issue === undefined
-    ? 1
-    : wholeTicket(issue)
-        .split("\n")
-        .reduce((sum, line) => sum + wrapText(line, inner).length, 0)
-
 /**
  * The lines the whole ticket takes in a pane `height` tall, `width` wide with its frame: the `head`
  * lines at its top (the title and the blank line under it), its Markdown's lines as written,
@@ -404,7 +396,13 @@ export const panelLines = (
   width: number,
   head = 0,
 ) => {
-  const content = wholeTicketLines(issue, Math.max(width - 4, 1))
+  const inner = Math.max(width - 4, 1)
+  const content =
+    issue === undefined
+      ? 1
+      : wholeTicket(issue)
+          .split("\n")
+          .reduce((sum, line) => sum + wrapText(line, inner).length, 0)
   return Math.min(panelCap(height), head + content + 2)
 }
 

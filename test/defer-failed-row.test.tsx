@@ -125,7 +125,14 @@ describe("a Deferred row bd couldn't defer", () => {
   })
 
   test("so does its box in a pane with no panel", async () => {
-    const box = unwrapped(await said(viewOf(await setAside(false)), 100, 2))
+    // The pane's whole height: only the box's own columns, the dashboard's frames beside it left out.
+    const pane = await said(viewOf(await setAside(false)), 100, 2)
+    const box = unwrapped(
+      pane
+        .split("\n")
+        .map((line) => line.slice(14, 86))
+        .join("\n"),
+    )
     expect(box).toContain(saysFailed)
     expect(box).not.toContain("bd undefer")
   })
