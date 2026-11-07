@@ -163,7 +163,6 @@ export const BlockedBox = ({ ticket }: { readonly ticket: TicketId }) => {
   )
 }
 
-/** The list, the Blocked ticket's box over it once one is opened. */
 /**
  * The list's label, `Needs you · 2 of 5`, the place of the chosen item among `count` when no more
  * than `room` of them fit, `inner` wide at most: in the stop style whatever has the focus, as the
@@ -190,6 +189,7 @@ export const needsListLabel = (
       : {}),
   })
 
+/** The list, the Blocked ticket's box over it once one is opened. */
 export const NeedsList = ({ at, answered }: NeedsAt) => {
   const theme = useTheme()
   const command = useCommand()
