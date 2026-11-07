@@ -517,7 +517,7 @@ on its card, opens a worker too.
 | `h` | with Needs you's panel showing a ticket blocked on its merge conflict: hand it back | the same, for the ticket in view |
 | `Ctrl+X` | | interrupt the worker's turn (asks first) |
 | `Ctrl+R` | | release a steered worker |
-| the wheel, `PgUp`, `PgDn` | | scroll the transcript, or the whole ticket while it is open |
+| the wheel, `PgUp`, `PgDn` | scroll a row's box | scroll the transcript, or the whole ticket while it is open |
 | `g`, `G` | | jump to the top or the end |
 | `?` | key help | key help |
 | `Ctrl+C` | the quit box | the quit box |

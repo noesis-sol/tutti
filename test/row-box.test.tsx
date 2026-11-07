@@ -291,8 +291,7 @@ describe("Enter on a done row", () => {
 })
 
 describe("scrolling", () => {
-  // One worker's room in Current: the table has its place at the minimum size too.
-  const view = projected([entryOf("d-1", 0, merged, { issue: longTicket })], { concurrency: 1 })
+  const view = projected([entryOf("d-1", 0, merged, { issue: longTicket })])
   const moreOf = (frame: Frame) => Number(/↓ (\d+) more lines?/.exec(frame.chars)?.[1] ?? 0)
 
   test("the keys and the wheel move it, the lines below counted, and Esc closes it", async () => {
