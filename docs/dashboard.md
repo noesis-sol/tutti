@@ -25,15 +25,15 @@ terminal shows what it showed before, followed by the run's summary.
 ╰────────────┴─────────────┴─────────────────────────────────────────────╯
   Current
 ╭──────────────────────────────────╮╭──────────────────────────────────╮
-│ ◆ tut-kco  merging  6m31s  1.1 … ││ ⣾ tut-zq4  testing  1m07s  1.4 … │
-│   Open the property model: Int…  ││   Add an undo stack for propert… │
-│   merging into batch/2026-10-20  ││   ▸ Bash(scripts/check-fast.sh)  │
+│ ◆  tut-kco  merging  6m31s  1.1… ││ ⣾  tut-zq4  testing  1m07s  1.4… │
+│    Open the property model: Int… ││    Add an undo stack for proper… │
+│    merging into batch/2026-10-20 ││    ▸ Bash(scripts/check-fast.sh) │
 ╰──────────────────────────────────╯╰──────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────╮
-│ • tut-9a1  permission — waiting for you  2m10s  0.9 GB               │
-│   Bash: Remove the build cache                                       │
-│   rm -rf build                                                       │
-│   [ Deny ]  [ Allow ]                                                │
+│ •  tut-9a1  permission — waiting for you  2m10s  0.9 GB              │
+│    Bash: Remove the build cache                                      │
+│    rm -rf build                                                      │
+│    [ Deny ]  [ Allow ]                                               │
 ╰──────────────────────────────────────────────────────────────────────╯
   Tab select · arrows panels · Enter go in · d deny · s stop after current · ? keys
 ```
@@ -397,7 +397,7 @@ When the run ends, the dashboard closes and the main screen gets:
 
 ```
 
- ← Dashboard   ⣾ tut-zq4  testing  6m53s  ≈1% (estimate)  context 126k of 200k  0.8 GB
+ ← Dashboard   ⣾  tut-zq4  testing  6m53s  ≈1% (estimate)  context 126k of 200k  0.8 GB
 
 ╭─ Ticket ───────────────────────────────────────────────────────────────── feature · P2 ─╮
 │ Add an undo stack for property edits                                                    │

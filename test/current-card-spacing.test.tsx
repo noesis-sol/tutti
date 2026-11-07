@@ -187,8 +187,8 @@ describe("Current's cards meet frame to frame across and down", () => {
     expect(`\n${right.join("\n")}\n`).toMatchInlineSnapshot(`
       "
       ╭──────────────────────────────────────────────────────────╮
-      │ * t-2  working  25s                                      │
-      │   Title of t-2                                           │
+      │ *  t-2  working  25s                                     │
+      │    Title of t-2                                          │
       │                                                          │
       │                                                          │
       ╰──────────────────────────────────────────────────────────╯

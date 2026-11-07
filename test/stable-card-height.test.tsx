@@ -130,8 +130,8 @@ describe("a full card", () => {
     expect(textOf(starting)).toMatchInlineSnapshot(`
       "
       ╭────────────────────────────────────────────────╮
-      │ ⣾ t-1  working  25s                            │
-      │   Title of t-1                                 │
+      │ ⣾  t-1  working  25s                           │
+      │    Title of t-1                                │
       │                                                │
       ╰────────────────────────────────────────────────╯
       "
@@ -140,9 +140,9 @@ describe("a full card", () => {
     expect(textOf(acting)).toMatchInlineSnapshot(`
       "
       ╭────────────────────────────────────────────────╮
-      │ ⣾ t-1  working  25s                            │
-      │   Title of t-1                                 │
-      │   ▸ Bash(sed -n 1,40p src/ui/Card.tsx)         │
+      │ ⣾  t-1  working  25s                           │
+      │    Title of t-1                                │
+      │    ▸ Bash(sed -n 1,40p src/ui/Card.tsx)        │
       ╰────────────────────────────────────────────────╯
       "
     `)
@@ -226,8 +226,8 @@ describe("the exceptions", () => {
     expect(textOf(lines)).toMatchInlineSnapshot(`
       "
       ╭──────────────────────────────────────────────────────────╮
-      │ ⣾ t-1  working  25s  Title of t-1                        │
-      │ ⣾ t-2  working  25s  Title of t-2                        │
+      │ ⣾  t-1  working  25s  Title of t-1                       │
+      │ ⣾  t-2  working  25s  Title of t-2                       │
       ╰──────────────────────────────────────────────────────────╯
       "
     `)

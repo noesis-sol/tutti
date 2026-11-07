@@ -513,7 +513,7 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("The undo stack now records"))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s  $0.00
+         ← Dashboard   •  t-1  done  1m07s  $0.00
           Title of t-1
         ── Output ──────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
@@ -543,7 +543,7 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("214 tests"))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s  $0.00
+         ← Dashboard   •  t-1  done  1m07s  $0.00
           Title of t-1
         ── Output ──────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
@@ -622,7 +622,7 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("Looking for callers."))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s  $0.00
+         ← Dashboard   •  t-1  done  1m07s  $0.00
           Title of t-1
         ── Output ──────────────────────────────────────────────────────────────────────
         ▸ Agent  Find the callers                                                      ✓
@@ -720,7 +720,7 @@ describe("the attention panel", () => {
         const frame = await until(rendered, has("clean the build"))
         expect(shownOf(frame)).toMatchInlineSnapshot(`
           "
-           ← Dashboard   • t-1  permission — waiting for you  1m07s  $0.00
+           ← Dashboard   •  t-1  permission — waiting for you  1m07s  $0.00
             Title of t-1
           ── Output ──────────────────────────────────────────────────────────────────────
             I'll clean the build.

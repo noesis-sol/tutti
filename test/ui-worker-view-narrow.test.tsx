@@ -124,7 +124,7 @@ describe("the worker view in a narrow pane", () => {
       const frame = await until(rendered, "Reading the scripts.")
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s  $0.00
+         ← Dashboard   •  t-1  done  1m07s  $0.00
           Add tools/lint.sh to run Biome and shellcheck on the files
           a branch changed
         ── Output ──────────────────────────────────────────────────
@@ -146,7 +146,7 @@ describe("the worker view in a narrow pane", () => {
       const frame = await until(rendered, "Enter send")
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s  $0.00
+         ← Dashboard   •  t-1  done  1m07s
           Add tools/lint.sh to run Biome and
           shellcheck on the files a branch…
         ── Output ──────────────────────────────

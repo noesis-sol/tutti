@@ -206,7 +206,7 @@ describe("the ticket's description in the head", () => {
       const frame = await until(rendered, has("Reading the scripts."))
       expect(linesOf(frame).slice(0, 8).join("\n")).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s  $0.00
+         ← Dashboard   •  t-1  done  1m07s  $0.00
         ╭─ Ticket ────────────────────────────────────────────────────────── bug · P2 ─╮
         │ Read Chrome's AccountBookmarks                                               │
         │ Chromium keeps bookmarks saved to the Google account in a second file,       │

@@ -617,21 +617,21 @@ const scenes: ReadonlyArray<Scene> = [
       ["↷ deferred", look("notice")],
       ["◆ environment · high", look("organ", "bold")],
       // The cards: a worker testing, a merge, and one waiting for you, highlighted.
-      [{ text: "│", on: "│ ⣾ tut-zq4" }, look("live")],
-      [{ text: "⣾", on: "│ ⣾ tut-zq4" }, look("live", "bold")],
+      [{ text: "│", on: "│ ⣾  tut-zq4" }, look("live")],
+      [{ text: "⣾", on: "│ ⣾  tut-zq4" }, look("live", "bold")],
       [{ text: "tut-zq4", on: head("tut-zq4") }, look("live", "bold")],
       [{ text: "testing", on: head("tut-zq4") }, look("notice", "bold")],
       [{ text: "18m40s", on: head("tut-zq4") }, look("text", "faint")],
       ["▸ Bash(bun test)", look("text", "faint")],
-      [{ text: "│", on: "│ ◆ tut-kco" }, look("frame")],
-      [{ text: "◆", on: "│ ◆ tut-kco" }, look("merging", "bold")],
+      [{ text: "│", on: "│ ◆  tut-kco" }, look("frame")],
+      [{ text: "◆", on: "│ ◆  tut-kco" }, look("merging", "bold")],
       [{ text: "merging", on: head("tut-kco") }, look("merging", "bold")],
       ["running the check on batch/2026-10-20", look("text", "faint")],
       ["┏━━", look("needsYou", "bold")],
-      [{ text: "┃", on: "┃ • tut-9a1" }, look("needsYou", "bold")],
+      [{ text: "┃", on: "┃ •  tut-9a1" }, look("needsYou", "bold")],
       ["permission — waiting for you", look("needsYou", "bold")],
       ["Bash: Remove the build cache", look("text")],
-      [{ text: "rm -rf build", on: "┃   rm -rf" }, look("text", "faint")],
+      [{ text: "rm -rf build", on: "┃    rm -rf" }, look("text", "faint")],
       ["outside the working directories", look("text", "faint")],
       ["[ Deny ]", look("formAccentText", { bg: "formAccent" })],
       ["[ Allow ]", look("formText", { bg: "formButton" })],
@@ -763,13 +763,13 @@ const scenes: ReadonlyArray<Scene> = [
     ),
     ready: "steered",
     checks: [
-      [{ text: "•", on: "│ • t-1" }, look("done")],
+      [{ text: "•", on: "│ •  t-1" }, look("done")],
       [{ text: "done", on: head("t-1") }, look("done")],
       ["steered", look("emphasis")],
       [{ text: "stopped", on: head("t-2") }, look("notice")],
       [{ text: "failed", on: head("t-3") }, look("needsYou")],
       [{ text: "gone", on: head("t-4") }, look("needsYou")],
-      [{ text: "◼", on: "│ ◼ t-5" }, look("toMerge")],
+      [{ text: "◼", on: "│ ◼  t-5" }, look("toMerge")],
       ["to merge (2nd)", look("toMerge")],
       ["fixing check", look("notice")],
       ["question — waiting for you", look("needsYou", "bold")],
@@ -918,10 +918,10 @@ const scenes: ReadonlyArray<Scene> = [
     view: illustrated,
     ready: "? keys",
     checks: [
-      [{ text: "│", on: "│ ⣾ tut-zq4" }, look("needsYou")],
-      [{ text: "Add an undo stack for property edits", on: "│ ⣾ tut-zq4" }, look("text", "faint")],
-      [{ text: "┃", on: "┃ • tut-9a1" }, look("needsYou", "bold")],
-      [{ text: "■ allow?", on: "┃ • tut-9a1" }, look("needsYou", "bold")],
+      [{ text: "│", on: "│ ⣾  tut-zq4" }, look("needsYou")],
+      [{ text: "Add an undo stack for property edits", on: "│ ⣾  tut-zq4" }, look("text", "faint")],
+      [{ text: "┃", on: "┃ •  tut-9a1" }, look("needsYou", "bold")],
+      [{ text: "■ allow?", on: "┃ •  tut-9a1" }, look("needsYou", "bold")],
     ],
   },
   {
@@ -1256,9 +1256,9 @@ describe("layouts", () => {
       ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ ⣾ tut-zq4  testing   18m40s  Add an undo stack for property edits            │
-      │ ◆ tut-kco  merging   18m40s  Open the property model                         │
-      ┃ • tut-9a1  ■ allow?  18m40s  Remove the build cache                          │
+      │ ⣾  tut-zq4  testing   18m40s  Add an undo stack for property edits           │
+      │ ◆  tut-kco  merging   18m40s  Open the property model                        │
+      ┃ •  tut-9a1  ■ allow?  18m40s  Remove the build cache                         │
       ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
@@ -1306,17 +1306,17 @@ describe("layouts", () => {
       ╰───────────────┴─────────┴────────────────────────────────────────────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────╮
-      │ ⣾ tut-zq4  testing  18m40s                               ││ ◆ tut-kco  merging  18m40s                               │
-      │   Add an undo stack for property edits                   ││   Open the property model                                │
-      │   ▸ Bash(bun test)                                       ││   running the check on batch/2026-10-20                  │
+      │ ⣾  tut-zq4  testing  18m40s                              ││ ◆  tut-kco  merging  18m40s                              │
+      │    Add an undo stack for property edits                  ││    Open the property model                               │
+      │    ▸ Bash(bun test)                                      ││    running the check on batch/2026-10-20                 │
       ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
       ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-      ┃ • tut-9a1  permission — waiting for you  18m40s          ┃
-      ┃   Remove the build cache                                 ┃
-      ┃   Bash: Remove the build cache                           ┃
-      ┃   rm -rf build                                           ┃
-      ┃   outside the working directories                        ┃
-      ┃   [ Deny ]  [ Allow ]                                    ┃
+      ┃ •  tut-9a1  permission — waiting for you  18m40s         ┃
+      ┃    Remove the build cache                                ┃
+      ┃    Bash: Remove the build cache                          ┃
+      ┃    rm -rf build                                          ┃
+      ┃    outside the working directories                       ┃
+      ┃    [ Deny ]  [ Allow ]                                   ┃
       ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 
@@ -1348,9 +1348,9 @@ describe("layouts", () => {
        ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
         Current
       ╭──────────────────────────────────────────────────────────╮
-      │ ⣾ tut-zq4  testing   18m40s  Add an undo stack for prop… │
-      │ ◆ tut-kco  merging   18m40s  Open the property model     │
-      ┃ • tut-9a1  ■ allow?  18m40s  Remove the build cache      │
+      │ ⣾  tut-zq4  testing   18m40s  Add an undo stack for pro… │
+      │ ◆  tut-kco  merging   18m40s  Open the property model    │
+      ┃ •  tut-9a1  ■ allow?  18m40s  Remove the build cache     │
       ╰──────────────────────────────────────────────────────────╯
 
 
@@ -1419,8 +1419,8 @@ describe("layouts", () => {
       ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      ┃ • t-1  ■ allow?  18m40s  Title of t-1                                        │
-      │ • t-2  ■ allow?  18m40s  Title of t-2                                        │
+      ┃ •  t-1  ■ allow?  18m40s  Title of t-1                                       │
+      │ •  t-2  ■ allow?  18m40s  Title of t-2                                       │
       ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
@@ -1533,8 +1533,8 @@ describe("layouts", () => {
       ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ ⣾ a  editing  18m40s                                                         │
-      │   Title of a                                                                 │
+      │ ⣾  a  editing  18m40s                                                        │
+      │    Title of a                                                                │
       │                                                                              │
       ╰──────────────────────────────────────────────────────────────────────────────╯
 
@@ -1654,8 +1654,8 @@ test(
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ tut-1  editing  18m40s                                                     │
-    │   Add an undo stack for property edits                                       │
+    │ ⣾  tut-1  editing  18m40s                                                    │
+    │    Add an undo stack for property edits                                      │
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
@@ -1677,8 +1677,8 @@ test(
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ◼ tut-1  to merge (2nd)  18m40s                                              │
-    │   Add an undo stack for property edits                                       │
+    │ ◼  tut-1  to merge (2nd)  18m40s                                             │
+    │    Add an undo stack for property edits                                      │
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
@@ -1700,9 +1700,9 @@ test(
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ◆ tut-1  merging  18m40s                                                     │
-    │   Add an undo stack for property edits                                       │
-    │   rebasing onto batch/2026-10-20                                             │
+    │ ◆  tut-1  merging  18m40s                                                    │
+    │    Add an undo stack for property edits                                      │
+    │    rebasing onto batch/2026-10-20                                            │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
       Tab select · arrows panels · Enter go in · s stop after current · ? keys
@@ -1723,8 +1723,8 @@ test(
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⟳ tut-1  resolving  18m40s                                                   │
-    │   Add an undo stack for property edits                                       │
+    │ ⟳  tut-1  resolving  18m40s                                                  │
+    │    Add an undo stack for property edits                                      │
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
@@ -1746,8 +1746,8 @@ test(
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⟳ tut-1  fixing check  18m40s                                                │
-    │   Add an undo stack for property edits                                       │
+    │ ⟳  tut-1  fixing check  18m40s                                               │
+    │    Add an undo stack for property edits                                      │
     │                                                                              │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 

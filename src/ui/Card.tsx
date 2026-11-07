@@ -45,7 +45,7 @@ import {
   seg,
   widthOf,
 } from "./line.tsx"
-import { lookOf, marks, motionTones } from "./marks.ts"
+import { cardIndent, lookOf, markGap, marks, motionTones } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 import { useNow, useSpinner } from "./useRunView.ts"
 
@@ -163,7 +163,7 @@ const padding = (segments: Segments, width: number): Segments => {
  */
 const headLine = (cells: HeadCells, mark: Segment, cols: HeadColumns): Segments => [
   mark,
-  seg(" "),
+  seg(markGap),
   ...cells.ticket,
   ...padding(cells.ticket, cols.ticket),
   seg("  "),
@@ -189,10 +189,10 @@ export const headOf = (
 /** The card's action line: the phase's, else its worker's latest action behind `▸`; null for none. */
 export const actionLine = (card: Card, theme: Theme): Segments | null => {
   const { styles } = theme
-  if (card.action !== null) return [seg("  "), seg(card.action, styles.dim)]
+  if (card.action !== null) return [seg(cardIndent), seg(card.action, styles.dim)]
   if (card.latest === null) return null
   return [
-    seg("  "),
+    seg(cardIndent),
     seg(`${marks.latest} ${card.latest.text}`, card.latest.denied ? styles.deferred : styles.dim),
   ]
 }
@@ -206,7 +206,7 @@ export const contentOf = (
 ): ReadonlyArray<Segments> => {
   const head = headOf(card, theme, now, spin, [seg(card.status, statusLook(card, theme))])
   const action = actionLine(card, theme)
-  return [head, [seg("  "), seg(card.title)], ...(action === null ? [] : [action])]
+  return [head, [seg(cardIndent), seg(card.title)], ...(action === null ? [] : [action])]
 }
 
 /**
@@ -556,7 +556,7 @@ const CardBox = memo(
     const lines = useMemo(() => {
       const [now, spin] = [card.since, ""]
       const [head = [], title = []] = contentOf(card, theme, now, spin)
-      const pointer = pointed ? [seg(`${marks.selected} `, theme.styles.key)] : title.slice(0, 1)
+      const pointer = pointed ? [seg(`${marks.selected}  `, theme.styles.key)] : title.slice(0, 1)
       return grows(card)
         ? attentionLines(card, theme, [head, [...pointer, ...title.slice(1)]], {
             width,

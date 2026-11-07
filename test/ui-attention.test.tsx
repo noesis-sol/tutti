@@ -267,17 +267,17 @@ describe("the card", () => {
         "
           Current
         ╭──────────────────────────────────────────────────────────────────────────────╮
-        │ • t-1  done  0s                                                              │
-        │   Title of t-1                                                               │
+        │ •  t-1  done  0s                                                             │
+        │    Title of t-1                                                              │
         │                                                                              │
         ╰──────────────────────────────────────────────────────────────────────────────╯
         ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-        ┃ • t-2  permission — waiting for you (3)  0s                                  ┃
-        ┃   Title of t-2                                                               ┃
-        ┃   Bash: Remove the build cache                                               ┃
-        ┃   rm -rf build                                                               ┃
-        ┃   Path is outside allowed working directories                                ┃
-        ┃   [ Deny ]  [ Allow ]  [ Allow for this run ]  +2 more                       ┃
+        ┃ •  t-2  permission — waiting for you (3)  0s                                 ┃
+        ┃    Title of t-2                                                              ┃
+        ┃    Bash: Remove the build cache                                              ┃
+        ┃    rm -rf build                                                              ┃
+        ┃    Path is outside allowed working directories                               ┃
+        ┃    [ Deny ]  [ Allow ]  [ Allow for this run ]  +2 more                      ┃
         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           Tab select · arrows panels · Enter go in · g request on t-2 · d deny · a allow
           s stop after current · ? keys
@@ -363,18 +363,18 @@ describe("the card", () => {
           "
             Current
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-          ┃ • t-1  question — waiting for you  0s                                        ┃
-          ┃ ▸ Title of t-1                                                               ┃
-          ┃   Which migration?                                                           ┃
-          ┃   [ 1 Keep the old ]                                                         ┃
-          ┃   [ 2 Write a new ]                                                          ┃
+          ┃ •  t-1  question — waiting for you  0s                                       ┃
+          ┃ ▸  Title of t-1                                                              ┃
+          ┃    Which migration?                                                          ┃
+          ┃    [ 1 Keep the old ]                                                        ┃
+          ┃    [ 2 Write a new ]                                                         ┃
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-          ┃ • t-2  input — waiting for you  0s                                           ┃
-          ┃   Title of t-2                                                               ┃
-          ┃   docs: Log in to the docs server                                            ┃
-          ┃   https://docs.example/login                                                 ┃
-          ┃   [ Decline ]  [ Open URL ]                                                  ┃
+          ┃ •  t-2  input — waiting for you  0s                                          ┃
+          ┃    Title of t-2                                                              ┃
+          ┃    docs: Log in to the docs server                                           ┃
+          ┃    https://docs.example/login                                                ┃
+          ┃    [ Decline ]  [ Open URL ]                                                 ┃
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
             Tab select · arrows panels · Enter go in · g request on t-1 · d deny
             s stop after current · ? keys
@@ -390,7 +390,7 @@ describe("the card", () => {
       async ({ rendered }) => {
         const lines = linesOf(await rendered.capture())
         const heads = lines.flatMap((line) =>
-          [...line.matchAll(/[│┃] [•⣾] (t-\d)/g)].map((m) => m[1]),
+          [...line.matchAll(/[│┃] [•⣾] {2}(t-\d)/g)].map((m) => m[1]),
         )
         expect(heads).toEqual(["t-1", "t-2", "t-3", "t-4"])
       },
@@ -408,7 +408,7 @@ describe("the card", () => {
       [permission("r1", "t-3" as TicketId)],
       async ({ rendered, commands, clock }) => {
         const frame = await rendered.capture()
-        expect(linesOf(frame).some((line) => line.includes("• t-3  ■ allow?"))).toBe(true)
+        expect(linesOf(frame).some((line) => line.includes("•  t-3  ■ allow?"))).toBe(true)
         expect(linesOf(frame).some((line) => line.includes("[ Deny ]"))).toBe(false)
         await press(rendered, "down", "enter", "enter")
         expect(linesOf(await rendered.capture()).some((line) => line.includes("[ Deny ]"))).toBe(
@@ -709,7 +709,7 @@ describe("the answer names the request shown", () => {
       clock.pass(settle)
       const frame = await rendered.capture()
       const lines = linesOf(frame)
-      const second = lines.findIndex((line) => line.includes("• t-2"))
+      const second = lines.findIndex((line) => line.includes("•  t-2"))
       const deny = lines.findIndex((line, i) => i > second && line.includes("[ Deny ]"))
       const x = (lines[deny] ?? "").indexOf("[ Allow ]")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, deny))

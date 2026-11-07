@@ -13,6 +13,7 @@ import { clickable } from "../click.ts"
 import { minHeight, minWidth } from "../Dashboard.tsx"
 import { type FitPart, fitParts } from "../fit.ts"
 import { cut, Line, Lines, type Press, type Segments, seg, styled, wrap } from "../line.tsx"
+import { markGap } from "../marks.ts"
 import { sanitizeLine } from "../sanitize.ts"
 import { badgeLabel, badgesOf, titleSegment } from "../TicketHead.tsx"
 import type { Theme } from "../theme.ts"
@@ -110,7 +111,7 @@ export const lineOneSegments = (
     forms: [
       [
         cardMark(card, theme, inputs.spin),
-        seg(" "),
+        seg(markGap),
         seg(card.label, theme.styles.picked),
         seg(gap),
         ...inputs.status,

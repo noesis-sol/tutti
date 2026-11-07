@@ -158,7 +158,7 @@ describe("the worker view while its worker works", () => {
       <Root value={shellOf(view, clock)} />,
       { width: 80, height: 20 },
       async (rendered) => {
-        expect((await rendered.capture()).chars).toContain("• t-1")
+        expect((await rendered.capture()).chars).toContain("•  t-1")
         await rendered.input(() => view.set(working))
         const before = reads()
         // Ten turns outside act(), as the terminal draws them: act() would draw them once.

@@ -182,9 +182,9 @@ describe("a card for each status", () => {
     expect(textOf(lines)).toMatchInlineSnapshot(`
       "
       ╭────────────────────────────────────────────────╮
-      │ ⣾ t-1  testing  1m07s                          │
-      │   Title of t-1                                 │
-      │   ▸ Bash(scripts/check-fast.sh)                │
+      │ ⣾  t-1  testing  1m07s                         │
+      │    Title of t-1                                │
+      │    ▸ Bash(scripts/check-fast.sh)               │
       ╰────────────────────────────────────────────────╯
       "
     `)
@@ -258,11 +258,11 @@ describe("a card for each status", () => {
 
   test("the marks: the spinner while it works, ◼ to merge, ◆ merging, ⟳ resolving, • after a turn", () => {
     const head = (card: Card) => textOf(drawn(card)).split("\n")[2]
-    expect(head(cardOf(working, states(WS.Working({ doing: "editing" }))))).toContain("│ ⣾ t-1")
-    expect(head(cardOf(TicketPhase.Resolving({ attempt: 1 })))).toContain("│ ⟳ t-1")
-    expect(head(cardOf(TicketPhase.ToMerge({ place: 1 })))).toContain("│ ◼ t-1")
-    expect(head(cardOf(TicketPhase.Merging({ step: "rebase" })))).toContain("│ ◆ t-1")
-    expect(head(cardOf(working, states(WS.Idle({ at: now }))))).toContain("│ • t-1")
+    expect(head(cardOf(working, states(WS.Working({ doing: "editing" }))))).toContain("│ ⣾  t-1")
+    expect(head(cardOf(TicketPhase.Resolving({ attempt: 1 })))).toContain("│ ⟳  t-1")
+    expect(head(cardOf(TicketPhase.ToMerge({ place: 1 })))).toContain("│ ◼  t-1")
+    expect(head(cardOf(TicketPhase.Merging({ step: "rebase" })))).toContain("│ ◆  t-1")
+    expect(head(cardOf(working, states(WS.Idle({ at: now }))))).toContain("│ •  t-1")
     sameLook(lookOf(drawn(cardOf(TicketPhase.ToMerge({ place: 1 }))), "◼"), theme.styles.toMerge)
     sameLook(lookOf(drawn(cardOf(working, states(WS.Idle({ at: now })))), "•"), theme.styles.done)
   })
@@ -271,9 +271,9 @@ describe("a card for each status", () => {
     expect(textOf(drawn(cardOf(TicketPhase.Merging({ step: "check" }))))).toMatchInlineSnapshot(`
       "
       ╭────────────────────────────────────────────────╮
-      │ ◆ t-1  merging  1m07s                          │
-      │   Title of t-1                                 │
-      │   running the check on batch/2026-10-20        │
+      │ ◆  t-1  merging  1m07s                         │
+      │    Title of t-1                                │
+      │    running the check on batch/2026-10-20       │
       ╰────────────────────────────────────────────────╯
       "
     `)
@@ -294,7 +294,7 @@ describe("a card for each status", () => {
 
   test("steered beside the status, emphasis", () => {
     const lines = drawn(cardOf(working, { ...states(WS.Idle({ at: now })), steered: true }))
-    expect(textOf(lines).split("\n")[2]).toBe("│ • t-1  done  steered  1m07s                    │")
+    expect(textOf(lines).split("\n")[2]).toBe("│ •  t-1  done  steered  1m07s                   │")
     sameLook(lookOf(lines, "steered"), theme.look("emphasis"))
   })
 
@@ -317,8 +317,8 @@ describe("a card for each status", () => {
     expect(textOf(lines)).toMatchInlineSnapshot(`
       "
       ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-      ┃ ⣾ t-1  testing  1m07s      ┃
-      ┃   Title of t-1             ┃
+      ┃ ⣾  t-1  testing  1m07s     ┃
+      ┃    Title of t-1            ┃
       ┃                            ┃
       ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
       "
@@ -430,13 +430,13 @@ describe("the Current section", () => {
       "
         Current
       ╭──────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────╮
-      │ ◆ tut-kco  merging  1m07s                                ││ ⣯ tut-zq4  testing  1m07s                                │
-      │   Title of tut-kco                                       ││   Title of tut-zq4                                       │
-      │   merging into batch/2026-10-20                          ││   ▸ Bash(scripts/check-fast.sh)                          │
+      │ ◆  tut-kco  merging  1m07s                               ││ ⣯  tut-zq4  testing  1m07s                               │
+      │    Title of tut-kco                                      ││    Title of tut-zq4                                      │
+      │    merging into batch/2026-10-20                         ││    ▸ Bash(scripts/check-fast.sh)                         │
       ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
       ╭──────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────╮
-      │ ◼ tut-9a1  to merge (1st)  1m07s                         ││ • tut-b7c  done  1m07s                                   │
-      │   Title of tut-9a1                                       ││   Title of tut-b7c                                       │
+      │ ◼  tut-9a1  to merge (1st)  1m07s                        ││ •  tut-b7c  done  1m07s                                  │
+      │    Title of tut-9a1                                      ││    Title of tut-b7c                                      │
       │                                                          ││                                                          │
       ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
         Tab select · arrows panels · Enter go in · s stop after current · ? keys
@@ -450,14 +450,14 @@ describe("the Current section", () => {
       "
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ ◆ tut-kco  merging  1m07s                                                    │
-      │   Title of tut-kco                                                           │
-      │   merging into batch/2026-10-20                                              │
+      │ ◆  tut-kco  merging  1m07s                                                   │
+      │    Title of tut-kco                                                          │
+      │    merging into batch/2026-10-20                                             │
       ╰──────────────────────────────────────────────────────────────────────────────╯
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ ⣯ tut-zq4  testing  1m07s                                                    │
-      │   Title of tut-zq4                                                           │
-      │   ▸ Bash(scripts/check-fast.sh)                                              │
+      │ ⣯  tut-zq4  testing  1m07s                                                   │
+      │    Title of tut-zq4                                                          │
+      │    ▸ Bash(scripts/check-fast.sh)                                             │
       ╰──────────────────────────────────────────────────────────────────────────────╯
         Tab select · arrows panels · Enter go in · s stop after current · ? keys
       "
@@ -476,10 +476,10 @@ describe("the Current section", () => {
       "
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ ◆ tut-kco  merging         1m07s  Title of tut-kco                           │
-      │ ⣯ tut-zq4  testing         1m07s  Title of tut-zq4                           │
-      │ ◼ tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                           │
-      ┃ • tut-b7c  ■ allow?        1m07s  Title of tut-b7c                           │
+      │ ◆  tut-kco  merging         1m07s  Title of tut-kco                          │
+      │ ⣯  tut-zq4  testing         1m07s  Title of tut-zq4                          │
+      │ ◼  tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                          │
+      ┃ •  tut-b7c  ■ allow?        1m07s  Title of tut-b7c                          │
       ╰──────────────────────────────────────────────────────────────────────────────╯
         Tab select · arrows panels · Enter go in · g request on tut-b7c
         s stop after current · ? keys
@@ -519,7 +519,7 @@ describe("the Current section", () => {
     ]) {
       const lines = linesOf(await draw(view, size))
       // A card's title has a line of its own, where the compact box has it on the card's line.
-      expect(lines.flatMap((line) => line.match(/│ {3}Title of tut-/g) ?? [])).toHaveLength(6)
+      expect(lines.flatMap((line) => line.match(/│ {4}Title of tut-/g) ?? [])).toHaveLength(6)
       const tickets = lines.findIndex((line) => line === "  Tickets")
       const current = lines.findIndex((line) => line === "  Current")
       // The label, the frame and 7 blank rows, the tickets Current shows left out; 4 at 120×32.
@@ -535,19 +535,19 @@ describe("the Current section", () => {
     ]
     const heads = async (view: RunView) =>
       linesOf(await draw(view, { width: 80, height: 40 }))
-        .filter((line) => /^│ \S [a-d] {2}/.test(line))
-        .map((line) => line.slice(2, 5))
-    expect(await heads(viewOf(all))).toEqual([`${turned} a`, `${turned} b`, `${turned} c`])
+        .filter((line) => /^│ \S {2}[a-d] {2}/.test(line))
+        .map((line) => line.slice(2, 6))
+    expect(await heads(viewOf(all))).toEqual([`${turned}  a`, `${turned}  b`, `${turned}  c`])
     const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) })
     const finished: ReadonlyArray<Ticket> = all.map((t) =>
       t.ticket === "a" ? { ...t, phase: merged, worker: null } : t,
     )
-    expect(await heads(viewOf(finished))).toEqual([`${turned} b`, `${turned} c`])
+    expect(await heads(viewOf(finished))).toEqual([`${turned}  b`, `${turned}  c`])
     const next: ReadonlyArray<Ticket> = [
       ...finished,
       { ticket: "d" as TicketId, phase: working, worker: 1 },
     ]
-    expect(await heads(viewOf(next))).toEqual([`${turned} d`, `${turned} b`, `${turned} c`])
+    expect(await heads(viewOf(next))).toEqual([`${turned}  d`, `${turned}  b`, `${turned}  c`])
   })
 
   test("with no worker, the box says the run is picking the next ticket, or stopping", async () => {
@@ -574,7 +574,7 @@ describe("the spinner", () => {
       { width: 80, height: 24 },
       async (rendered) => {
         const mark = async () =>
-          linesOf(await rendered.capture()).find((line) => /^│ \S a {2}/.test(line))?.[2]
+          linesOf(await rendered.capture()).find((line) => /^│ \S {2}a {2}/.test(line))?.[2]
         expect(await mark()).toBe("⣾")
         time = 300
         await rendered.input(() => new Promise((done) => setTimeout(done, 250)))
@@ -597,7 +597,7 @@ describe("opening a worker", () => {
       { width: 120, height: 40 },
       async (rendered) => {
         const lines = linesOf(await rendered.capture())
-        const y = lines.findIndex((line) => line.includes("◼ tut-9a1"))
+        const y = lines.findIndex((line) => line.includes("◼  tut-9a1"))
         await rendered.input((setup) => setup.mockMouse.click(10, y))
         await rendered.input((setup) => setup.mockMouse.click(70, y))
         expect(taken(commands)).toEqual([
@@ -610,7 +610,7 @@ describe("opening a worker", () => {
           setup.mockInput.pressEnter()
         })
         const highlighted = linesOf(await rendered.capture())
-        expect(highlighted.some((line) => line.includes(`┃ ${turned} tut-zq4`))).toBe(true)
+        expect(highlighted.some((line) => line.includes(`┃ ${turned}  tut-zq4`))).toBe(true)
         await rendered.input((setup) => {
           setup.mockInput.pressArrow("left")
           setup.mockInput.pressEnter()

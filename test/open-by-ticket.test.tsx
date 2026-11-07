@@ -110,7 +110,7 @@ describe("opening a worker without its number", () => {
     ] as const
     await dashboard(viewOf(tickets), async ({ rendered }) => {
       const lines = linesOf(await rendered.capture())
-      expect(lines.filter((line) => /^│ \S [abc] {2}/.test(line))).toHaveLength(3)
+      expect(lines.filter((line) => /^│ \S {2}[abc] {2}/.test(line))).toHaveLength(3)
       expect(lines.some((line) => /[│┃] \d \S {2}[abc]/.test(line))).toBe(false)
       expect(lines.at(-2)).toBe(
         "  Tab select · arrows panels · Enter go in · s stop after current · ? keys",
@@ -125,9 +125,9 @@ describe("opening a worker without its number", () => {
           .filter((line) => line.startsWith(`│ ${turned} `))
           .map((line) => line.replace(/ *│$/, ""))
         expect(compact).toEqual([
-          `│ ${turned} a  working  1m07s  Title of a`,
-          `│ ${turned} b  working  1m07s  Title of b`,
-          `│ ${turned} c  working  1m07s  Title of c`,
+          `│ ${turned}  a  working  1m07s  Title of a`,
+          `│ ${turned}  b  working  1m07s  Title of b`,
+          `│ ${turned}  c  working  1m07s  Title of c`,
         ])
       },
       { width: 80, height: 18 },
@@ -184,7 +184,7 @@ describe("opening a worker without its number", () => {
           ),
         )
         const lines = linesOf(await rendered.capture())
-        expect(lines.some((line) => line.startsWith(`┃ ${turned} b  `))).toBe(true)
+        expect(lines.some((line) => line.startsWith(`┃ ${turned}  b  `))).toBe(true)
         await rendered.input((setup) => setup.mockInput.pressEnter())
         expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "b" as TicketId })])
         // b finishes and e takes its worker's number, b's place in the order: the highlight goes

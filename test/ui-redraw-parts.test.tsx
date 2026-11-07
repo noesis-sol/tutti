@@ -210,7 +210,7 @@ describe("the dashboard's cards", () => {
       async (rendered) => {
         const shown = (await rendered.capture()).chars
         expect(shown).toContain(`╭`)
-        expect(shown.split(`${spinnerAt(began)} t-`).length - 1).toBe(2)
+        expect(shown.split(`${spinnerAt(began)}  t-`).length - 1).toBe(2)
         // One interval for both cards' spinners, and one for every time on screen.
         expect(intervals.count(spinnerTick)).toBe(1)
         expect(intervals.count(tick)).toBe(1)
@@ -222,7 +222,7 @@ describe("the dashboard's cards", () => {
           })
           expect(look.drawn.lines - before).toBe(2)
           const turned = (await rendered.capture()).chars
-          expect(turned.split(`${spinnerAt(clock.at)} t-`).length - 1).toBe(2)
+          expect(turned.split(`${spinnerAt(clock.at)}  t-`).length - 1).toBe(2)
         }
       },
     )

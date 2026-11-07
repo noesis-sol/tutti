@@ -323,10 +323,10 @@ describe("the compact Current list's columns", () => {
     expect(`\n${text.join("\n")}\n`).toMatchInlineSnapshot(`
       "
       ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-      │ ◆ tut-kco   merging           42s  Title of tut-kco                                              │
-      │ ⣾ tut-zq4b  testing         6m31s  Title of tut-zq4b                                             │
-      │ ◼ tut-9a1   to merge (2nd)  1h05m  Title of tut-9a1                                              │
-      │ • t-1       done  steered      5s  Title of t-1                                                  │
+      │ ◆  tut-kco   merging           42s  Title of tut-kco                                             │
+      │ ⣾  tut-zq4b  testing         6m31s  Title of tut-zq4b                                            │
+      │ ◼  tut-9a1   to merge (2nd)  1h05m  Title of tut-9a1                                             │
+      │ •  t-1       done  steered      5s  Title of t-1                                                 │
       ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
       "
     `)

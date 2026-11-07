@@ -303,7 +303,7 @@ describe("the frame on a waiting request's card", () => {
     const titleOf = (frame: Frame, ticket: string) =>
       linesOf(frame).find((line) => line.includes(`Title of ${ticket}`)) ?? ""
     const pointedAt = (frame: Frame, ticket: string) =>
-      new RegExp(`▸ Title of ${ticket}`).test(titleOf(frame, ticket))
+      new RegExp(`▸  Title of ${ticket}`).test(titleOf(frame, ticket))
 
     test("is on both, from inside Tickets, where the answer keys reach neither", async () => {
       await scene(two(), wide, async ({ rendered }) => {
@@ -363,7 +363,7 @@ describe("the frame on a waiting request's card", () => {
         const frame = await rendered.capture()
         expect(heavyOn(frame, "w-1")).toBe(true)
         expect(heavyOn(frame, "w-2")).toBe(false)
-        expect(has(frame, "▸ Title")).toBe(false)
+        expect(has(frame, "▸  Title")).toBe(false)
       })
     })
   })
@@ -371,7 +371,7 @@ describe("the frame on a waiting request's card", () => {
   test("draws no pointer with one waiting, the frame enough", async () => {
     await scene(oneRequest(), wide, async ({ rendered }) => {
       await press(rendered, "g")
-      expect(has(await rendered.capture(), "▸ Title")).toBe(false)
+      expect(has(await rendered.capture(), "▸  Title")).toBe(false)
     })
   })
 
@@ -536,8 +536,8 @@ describe("g", () => {
     await scene(view, wide, async ({ rendered, commands, pass }) => {
       await press(rendered, "tab", "g")
       const frame = await rendered.capture()
-      expect(has(frame, "▸ Title of w-2")).toBe(true)
-      expect(has(frame, "▸ Title of w-1")).toBe(false)
+      expect(has(frame, "▸  Title of w-2")).toBe(true)
+      expect(has(frame, "▸  Title of w-1")).toBe(false)
       await pass(settle)
       await press(rendered, "enter")
       expect(answered(commands)).toEqual([["r-1", "Deny"]])

@@ -10,6 +10,15 @@
 import type { Style, StyleName, Theme } from "./theme.ts"
 
 /** Each mark's glyph, by its meaning. */
+/**
+ * The gap after a card's mark, before its ticket: two columns, as some marks (`⟳`) are drawn past
+ * their cell, so that no mark touches the ticket and the ticket doesn't seem to move as marks change.
+ */
+export const markGap = "  "
+
+/** Where the lines under a card's head start: under its ticket, past the mark and markGap. */
+export const cardIndent = " ".repeat(1 + markGap.length)
+
 export const marks = {
   /** Waits its turn: queued, held back, waiting on a blocker, at a usage limit. */
   queued: "◷",

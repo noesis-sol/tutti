@@ -147,7 +147,7 @@ describe("the request panel's height", () => {
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
 
-         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
+         ← Dashboard   •  t-1  permission — waiting for you (2)  1m07s  $0.00
           Title of t-1
         ── Output ──────────────────────────────────────────────────────────────────────
           Two commands to run.
@@ -182,7 +182,7 @@ describe("the request panel's height", () => {
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
 
-         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
+         ← Dashboard   •  t-1  permission — waiting for you (2)  1m07s  $0.00
           Title of t-1
         ── Output ──────────────────────────────────────────────────────────────────────
           Two commands to run.
@@ -230,7 +230,7 @@ describe("the request panel's height", () => {
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
 
-         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
+         ← Dashboard   •  t-1  permission — waiting for you (2)  1m07s  $0.00
 
           Title of t-1
         ── Output ──────────────────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ describe("the request panel's height", () => {
       const frame = await rendered.capture()
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  permission — wait…
+         ← Dashboard   •  t-1  permission — wai…
           Title of t-1
         ── Output ──────────────────────────────
           Two commands to run.

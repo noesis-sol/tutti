@@ -37,6 +37,7 @@ import {
   seg,
 } from "./line.tsx"
 import { Backdrop, modalMaxWidth } from "./Modal.tsx"
+import { cardIndent } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 import { useLatestRunView, useRunViewPart, useTheme } from "./useRunView.ts"
 
@@ -49,14 +50,14 @@ const requestLines = (card: Card, theme: Theme, focus: number | null): ReadonlyA
     seg(`[ ${label} ]`, index === focus ? theme.form.focusedButton : theme.form.button, index)
   const buttons = buttonsOf(request).map((each, i) => button(each.label, i))
   const rows: Array<Segments> = picksOptions(request)
-    ? buttons.map((each) => [seg("  "), each])
-    : [[seg("  "), ...buttons.flatMap((each, i) => (i === 0 ? [each] : [seg("  "), each]))]]
+    ? buttons.map((each) => [seg(cardIndent), each])
+    : [[seg(cardIndent), ...buttons.flatMap((each, i) => (i === 0 ? [each] : [seg("  "), each]))]]
   const more = card.requests.length - 1
   const last = rows.length - 1
   if (more > 0) rows[last] = [...(rows[last] ?? []), seg(`  +${more} more`, theme.styles.dim)]
   return [
-    [seg("  "), seg(text.line)],
-    ...text.faint.map((faint) => [seg("  "), seg(faint, theme.styles.dim)]),
+    [seg(cardIndent), seg(text.line)],
+    ...text.faint.map((faint) => [seg(cardIndent), seg(faint, theme.styles.dim)]),
     ...rows,
   ]
 }
