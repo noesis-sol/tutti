@@ -25,7 +25,9 @@ import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Bea
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as gitLayer, Repository } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { boxPad } from "../src/ui/spacing.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type BoxShown, boxesIn, boxWith } from "./screen.ts"
 
 // The message a run with nothing to run shows, in a box on a terminal and as plain lines otherwise,
 // as orchestra's nothing_test.go has them; the check that finds it; and DEFERRED_FREE.
@@ -58,8 +60,19 @@ const options = (fields: Partial<Options> = {}): Options => ({
   ...fields,
 })
 
-/** The box on an 80-column terminal, without styles, as the terminal shows it. */
-const plainBox = (n: NothingToRun, width = 80) => `${box(n, width, noStyles)}\n`
+/**
+ * The box on a terminal `width` columns wide, without styles, read back by its heading: the only
+ * box printed, from the first line to the last, and as narrow as its widest line.
+ */
+const boxOf = (n: NothingToRun, heading: string, width = 80): BoxShown => {
+  const drawn = box(n, width, noStyles)
+  const shown = boxWith(drawn, heading)
+  expect(boxesIn(drawn)).toEqual([shown])
+  expect([shown.top, shown.bottom, shown.left]).toEqual([0, drawn.split("\n").length - 1, 0])
+  const widest = Math.max(...shown.lines.map((l) => Bun.stringWidth(l)))
+  expect(shown.right - 1).toBe(widest + 2 * boxPad.length)
+  return shown
+}
 
 /** The plain lines, as stdout shows them after their time. */
 const plain = (n: NothingToRun) => plainLines(n).join("\n")
@@ -68,36 +81,31 @@ describe("the box and its lines", () => {
   const cases: ReadonlyArray<{
     readonly name: string
     readonly n: NothingToRun
-    readonly styled: string
+    readonly boxed: ReadonlyArray<string>
     readonly plain: string
   }> = [
     {
       name: "all done",
       n: make({ allDone: true }),
-      styled: "╭────────────╮\n│ ✓ All done │\n╰────────────╯\n",
+      boxed: ["✓ All done"],
       plain: "✓ All done",
     },
     {
       name: "all done, epics still open",
       n: make({ allDone: true, stillOpen: ["k-1", "k-7"] }),
-      styled:
-        "╭───────────────────────────────────────────╮\n" +
-        "│ ✓ All done                                │\n" +
-        "│   Still open: k-1, k-7 (bd close k-1 k-7) │\n" +
-        "╰───────────────────────────────────────────╯\n",
+      boxed: ["✓ All done", "  Still open: k-1, k-7 (bd close k-1 k-7)"],
       plain: "✓ All done\n  Still open: k-1, k-7 (bd close k-1 k-7)",
     },
     {
       name: "nothing ready",
       n: make({ questions: 2, waiting: 1, inProgress: 3, other: 1, unmerged: 1 }),
-      styled:
-        "╭─────────────────────────────────────────────────────╮\n" +
-        "│ ○ Nothing ready to run                              │\n" +
-        "│   2 questions wait for your answer: bd human list   │\n" +
-        "│   1 ticket waits on other tickets: bd blocked       │\n" +
-        "│   3 in progress · 1 other                           │\n" +
-        "│   1 closed but not merged: bd list --label unmerged │\n" +
-        "╰─────────────────────────────────────────────────────╯\n",
+      boxed: [
+        "○ Nothing ready to run",
+        "  2 questions wait for your answer: bd human list",
+        "  1 ticket waits on other tickets: bd blocked",
+        "  3 in progress · 1 other",
+        "  1 closed but not merged: bd list --label unmerged",
+      ],
       plain:
         "○ Nothing ready to run\n" +
         "  2 questions wait for your answer: bd human list\n" +
@@ -114,12 +122,11 @@ describe("the box and its lines", () => {
           { id: "k-3" as TicketId, why: "closed but not merged: left unmerged by an earlier run" },
         ],
       }),
-      styled:
-        "╭────────────────────────────────────────────────────────────────╮\n" +
-        "│ ○ Nothing under k-1 is ready to run                            │\n" +
-        "│   k-2 (blocked by k-9 outside the scope)                       │\n" +
-        "│   k-3 (closed but not merged: left unmerged by an earlier run) │\n" +
-        "╰────────────────────────────────────────────────────────────────╯\n",
+      boxed: [
+        "○ Nothing under k-1 is ready to run",
+        "  k-2 (blocked by k-9 outside the scope)",
+        "  k-3 (closed but not merged: left unmerged by an earlier run)",
+      ],
       plain:
         "○ Nothing under k-1 is ready to run\n" +
         "  k-2 (blocked by k-9 outside the scope)\n" +
@@ -129,7 +136,7 @@ describe("the box and its lines", () => {
 
   for (const each of cases) {
     test(`${each.name}: a box on a terminal, plain lines otherwise`, () => {
-      expect(plainBox(each.n)).toBe(each.styled)
+      expect(boxOf(each.n, each.boxed[0] ?? "").lines).toEqual(each.boxed)
       expect(plain(each.n)).toBe(each.plain)
     })
   }
@@ -177,14 +184,14 @@ describe("the box and its lines", () => {
       ],
     })
     const got = box(n, 40, noStyles)
-    expect(got).toBe(
-      "╭──────────────────────────────────────╮\n" +
-        "│ ○ Nothing under k-1 is ready to run  │\n" +
-        "│   k-3 (closed but not merged: left   │\n" +
-        "│     unmerged by an earlier run)      │\n" +
-        "╰──────────────────────────────────────╯",
-    )
-    for (const each of got.split("\n")) expect(Bun.stringWidth(each)).toBeLessThanOrEqual(40)
+    const shown = boxWith(got, "Nothing under k-1")
+    expect(shown.lines).toEqual([
+      "○ Nothing under k-1 is ready to run",
+      "  k-3 (closed but not merged: left",
+      "    unmerged by an earlier run)",
+    ])
+    expect(shown.right).toBe(39)
+    for (const each of got.split("\n")) expect(Bun.stringWidth(each)).toBe(40)
   })
 
   test("all done is framed done, ✓ done bold; nothing ready is framed frame, ○ faint", () => {
@@ -546,7 +553,8 @@ describe("a run with nothing to run", () => {
       }).pipe(Effect.provideService(Console.Console, console)),
     )
     expect(ended.ended).toBe(true)
-    expect(printed).toEqual(["╭────────────╮\n│ ✓ All done │\n╰────────────╯"])
+    expect(printed).toEqual([box(make({ allDone: true }), 80, noStyles)])
+    expect(boxWith(printed[0] ?? "", "All done").lines).toEqual(["✓ All done"])
     expect(ended.log).toEqual(["READY_EMPTY after 0 tickets: everything is done"])
     expect(ended.records.map((r) => r.kind)).toEqual(["done"])
   })

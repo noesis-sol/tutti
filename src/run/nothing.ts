@@ -8,7 +8,9 @@
 import { Console, Effect, Result } from "effect"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
+import { boxed, type Look, paint, seg } from "../ui/line.tsx"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { boxPad } from "../ui/spacing.ts"
 import type { Theme } from "../ui/theme.ts"
 import type { Branches } from "./closedBranches.ts"
 import * as free from "./deferredFree.ts"
@@ -294,9 +296,9 @@ export type Paint = (text: string) => string
 /** How the box draws each of its parts (§ 7.11 "Nothing to run"). */
 export interface Styles {
   /** All done's frame: `done`. */
-  readonly doneFrame: Paint
+  readonly doneFrame: Look
   /** Nothing ready's frame: `frame`. */
-  readonly frame: Paint
+  readonly frame: Look
   /** All done's `✓`: `done` bold. */
   readonly check: Paint
   /** Nothing ready's `○`: faint. */
@@ -311,10 +313,20 @@ export interface Styles {
 
 const asIs: Paint = (text) => text
 
+/** The frame without a style: drawn as it is. */
+const unstyled: Look = {
+  fg: undefined,
+  bg: undefined,
+  attributes: 0,
+  open: "",
+  paint: asIs,
+  bold: () => unstyled,
+}
+
 /** No styles: the plain lines, and the box where no theme is given. */
 export const noStyles: Styles = {
-  doneFrame: asIs,
-  frame: asIs,
+  doneFrame: unstyled,
+  frame: unstyled,
   check: asIs,
   circle: asIs,
   heading: asIs,
@@ -329,8 +341,8 @@ export const themeStyles = (theme: Theme): Styles => {
     (text) =>
       open === "" ? text : `${open}${text}\x1b[0m`
   return {
-    doneFrame: coloured(theme.ansi("done")),
-    frame: coloured(theme.ansi("frame")),
+    doneFrame: theme.look("done"),
+    frame: theme.look("frame"),
     check: theme.styles.closed.paint,
     circle: theme.styles.dim.paint,
     heading: coloured("\x1b[1m"),
@@ -435,8 +447,8 @@ export const lines = (
 /** The narrowest the box is drawn. */
 export const minWidth = 20
 
-/** The columns a box takes besides its content: its rounded border and a space either side. */
-const chrome = 4
+/** The columns boxed's frame takes besides its content: its side and boxPad, either side. */
+const chrome = 2 * (1 + boxPad.length)
 
 /** `text` after `indent`, wrapped to `width`: the lines it wraps onto indented two spaces more. */
 const hang = (text: string, indent: string, width: number): ReadonlyArray<string> => {
@@ -457,14 +469,14 @@ export const box = (n: NothingToRun, width: number, styles: Styles): string => {
   const inner = Math.min(widest, Math.max(width, minWidth) - chrome)
   const content = [...hang(head, "", inner), ...rest.flatMap((l) => hang(l, "  ", inner))]
   const frame = n.allDone ? styles.doneFrame : styles.frame
-  return [
-    frame(`╭${"─".repeat(inner + 2)}╮`),
-    ...content.map(
-      (l) =>
-        `${frame("│")} ${l}${" ".repeat(Math.max(inner - Bun.stringWidth(l), 0))} ${frame("│")}`,
-    ),
-    frame(`╰${"─".repeat(inner + 2)}╯`),
-  ].join("\n")
+  // Each line is painted already: a segment in no look, which boxed measures without its ANSI.
+  return boxed(
+    content.map((l) => [seg(l)]),
+    inner + chrome,
+    frame,
+  )
+    .map(paint)
+    .join("\n")
 }
 
 /** The message as plain lines, as the log writes them: the heading, and the rest indented. */
