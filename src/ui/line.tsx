@@ -4,7 +4,7 @@
 import { RGBA } from "@opentui/core"
 import { createContext, memo, type ReactNode, useContext } from "react"
 import { clickable } from "./click.ts"
-import { ellipsis } from "./marks.ts"
+import { ellipsis, separator } from "./marks.ts"
 import { oneLine } from "./oneLine.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import { boxPad } from "./spacing.ts"
@@ -32,6 +32,23 @@ export const labelLook = (theme: Theme, focused: boolean): Look =>
 /** `text` in `look`, a click on it pressing `target` where it has one (Line's `press`). */
 export const seg = (text: string, look: Look | null = null, target?: number): Segment =>
   target === undefined ? { text, look } : { text, look, target }
+
+/**
+ * The separator as a segment, in `look`: faint, as every list draws it but a form's hint, which
+ * draws it in its own `helpSeparator`.
+ */
+export const separatorOf = (theme: Theme, look: Look = theme.styles.dim): Segment =>
+  seg(separator, look)
+
+/** `parts` joined by the separator in `look` (separatorOf), the empty ones left out: `bug · P2`. */
+export const joined = (
+  parts: ReadonlyArray<Segments>,
+  theme: Theme,
+  look: Look = theme.styles.dim,
+): Segments =>
+  parts
+    .filter((part) => part.length > 0)
+    .flatMap((part, i) => (i === 0 ? part : [separatorOf(theme, look), ...part]))
 
 /** `segments`, each part of the click target `target`: a click anywhere on them presses it. */
 export const targeting = (segments: Segments, target: number): Segments =>

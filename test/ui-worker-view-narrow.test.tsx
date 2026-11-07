@@ -16,8 +16,9 @@ import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
-import { hintLines, hintSeparator } from "../src/ui/Hint.tsx"
+import { hintLines } from "../src/ui/Hint.tsx"
 import { type Segments, seg, widthOf, wrap } from "../src/ui/line.tsx"
+import { separator } from "../src/ui/marks.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { transcriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
@@ -248,7 +249,7 @@ describe("hintLines", () => {
           const lines = hintLines(keys, theme, width)
           for (const line of lines) expect(widthOf(line)).toBeLessThanOrEqual(width)
           const shown = lines.map((line) => line.map((each) => each.text).join("")).join(" ")
-          const text = shown.split(hintSeparator.trim()).join("").replace(/\s+/g, "")
+          const text = shown.split(separator.trim()).join("").replace(/\s+/g, "")
           expect(text).toBe(keys.map((each) => `${each.keys}${each.does}`).join(""))
         },
       ),

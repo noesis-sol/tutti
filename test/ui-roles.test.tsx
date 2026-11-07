@@ -28,8 +28,8 @@ import { emptyStatus, project, type RunView, type Status } from "../src/run/runV
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { App, Root } from "../src/ui/App.tsx"
-import { hintSeparator } from "../src/ui/Hint.tsx"
 import { useInput } from "../src/ui/keys.ts"
+import { separator } from "../src/ui/marks.ts"
 import { TicketCount } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import {
@@ -640,7 +640,7 @@ const scenes: ReadonlyArray<Scene> = [
       // The hint.
       ["arrows", look("emphasis", "bold")],
       [" panels", look("text", "faint")],
-      [{ text: hintSeparator, on: "arrows panels" }, look("text", "faint")],
+      [{ text: separator, on: "arrows panels" }, look("text", "faint")],
     ],
   },
   {

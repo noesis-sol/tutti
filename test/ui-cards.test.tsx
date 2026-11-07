@@ -31,10 +31,11 @@ import {
   statusLook,
 } from "../src/ui/Card.tsx"
 import { dashboardCommands, dashboardHint } from "../src/ui/Dashboard.tsx"
-import { hintSegments, hintSeparator } from "../src/ui/Hint.tsx"
+import { hintSegments } from "../src/ui/Hint.tsx"
 import { keyHelpLines, screenHelp } from "../src/ui/KeyHelp.tsx"
 import { helpOf } from "../src/ui/keyCommands.ts"
 import { type Look, type Segments, widthOf } from "../src/ui/line.tsx"
+import { separator } from "../src/ui/marks.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue, spinnerAt, spinnerFrames } from "../src/ui/useRunView.ts"
 import { windDownSegments } from "../src/ui/WindDown.tsx"
@@ -715,7 +716,7 @@ describe("the hint and the key help", () => {
     )
     sameLook(lookOf([line], "arrows"), theme.styles.key)
     sameLook(lookOf([line], " panels"), theme.styles.dim)
-    sameLook(lookOf([line], hintSeparator), theme.styles.dim)
+    sameLook(lookOf([line], separator), theme.styles.dim)
   })
 
   test("? opens the key help over the dashboard, and Esc or ? closes it", async () => {

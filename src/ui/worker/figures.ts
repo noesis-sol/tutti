@@ -18,7 +18,7 @@ import { elapsed } from "../Card.tsx"
 import type { FitPart } from "../fit.ts"
 import { workerMemory } from "../LoadLine.tsx"
 import { type Look, type Segments, seg } from "../line.tsx"
-import { marks } from "../marks.ts"
+import { marks, separator } from "../marks.ts"
 import { sanitizeLine } from "../sanitize.ts"
 import type { Theme } from "../theme.ts"
 
@@ -130,7 +130,7 @@ export const figureParts = (
     const look = usage.utilization >= 1 ? styles.testing : styles.deferred
     const figure = `${marks.nearLimit} ${limitLabel(usage.limit)} ${Math.round(usage.utilization * 100)}%`
     const resets =
-      usage.resetsAt === null ? "" : ` · resets ${resetLabel(usage.resetsAt, inputs.now)}`
+      usage.resetsAt === null ? "" : `${separator}resets ${resetLabel(usage.resetsAt, inputs.now)}`
     parts.push({
       forms: [[seg(`${figure}${resets}`, look)], [seg(figure, look)], []],
       rank: [shortWarning, fromTheEnd],

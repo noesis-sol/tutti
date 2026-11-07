@@ -12,6 +12,7 @@ import { type ReactNode, useMemo, useSyncExternalStore } from "react"
 import type { Key } from "../run/runView.ts"
 import { InputGuards } from "./keys.ts"
 import {
+  joined,
   Lines,
   type Press,
   padded,
@@ -85,11 +86,14 @@ export const targetLines = (each: ReadonlyArray<Segments>, room: number): Readon
  * words in helpDesc, ` · ` in helpSeparator between them.
  */
 export const formHintSegments = (keys: ReadonlyArray<Key>, theme: Theme): Segments =>
-  keys.flatMap((key, i) => [
-    ...(i === 0 ? [] : [seg(" · ", theme.form.helpSeparator)]),
-    seg(key.keys, theme.form.helpKey),
-    seg(` ${key.does}`, theme.form.helpDesc),
-  ])
+  joined(
+    keys.map((key) => [
+      seg(key.keys, theme.form.helpKey),
+      seg(` ${key.does}`, theme.form.helpDesc),
+    ]),
+    theme,
+    theme.form.helpSeparator,
+  )
 
 /** The keys there are, under a form, as formHintSegments draws them, wrapped as the form is. */
 export const Hint = ({

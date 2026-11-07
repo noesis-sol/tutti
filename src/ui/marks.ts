@@ -105,6 +105,13 @@ export type Mark = keyof typeof marks
  */
 export const ellipsis = "…"
 
+/**
+ * What a list's parts are joined with, `Esc back · ↑↓ select`, `bug · P2`, `✓ 2 · ↷ 1`: the one
+ * spelling of it, drawn faint where its line has looks (joined and separatorOf, line.tsx), and
+ * written into a line of words, `t-1 · Fix it waits on it`, as it is.
+ */
+export const separator = " · "
+
 /** The arrow keys, as the hints and the key table name them. */
 export const arrowKeys = {
   upDown: "↑↓",

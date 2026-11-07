@@ -1,12 +1,11 @@
 // The drawn screen read back into its parts, so that a test says what it checks (a card's mark and
 // ticket, the hint's keys, a table row's state) and not the spacing the TUI draws them with: that
-// lives in src/ui's constants (spacing.ts' markGap, cardIndent and hintIndent, the hint's
+// lives in src/ui's constants (spacing.ts' markGap, cardIndent and hintIndent, marks.ts'
 // separator), which these helpers read the screen with, and the builders at the end write it with
 // for the rare test that wants the exact text. A test that checks a spacing on purpose does it once, through them.
 import { TextAttributes } from "@opentui/core"
-import { hintSeparator } from "../src/ui/Hint.tsx"
 import type { Segments } from "../src/ui/line.tsx"
-import { marks } from "../src/ui/marks.ts"
+import { marks, separator } from "../src/ui/marks.ts"
 import { cardIndent, hintIndent, markGap } from "../src/ui/spacing.ts"
 import { spinnerFrames } from "../src/ui/useRunView.ts"
 import type { Frame } from "./render.ts"
@@ -215,7 +214,7 @@ export const hintRows = (screen: Screen): ReadonlyArray<ReadonlyArray<string>> =
       last[last.length - 1] = `${last.at(-1)} ${line.trim()}`
       continue
     }
-    rows.push(line.slice(hintIndent.length).split(hintSeparator))
+    rows.push(line.slice(hintIndent.length).split(separator))
   }
   return rows
 }
@@ -299,4 +298,4 @@ export const cardLine = (text: string): string => `${cardIndent}${text}`
 
 /** The hint's line naming `keys`: `  Esc back · arrows select`. */
 export const hintLine = (...keys: ReadonlyArray<string>): string =>
-  `${hintIndent}${keys.join(hintSeparator)}`
+  `${hintIndent}${keys.join(separator)}`

@@ -1745,6 +1745,7 @@ Carried over too, and not part of any scheme:
 - the state glyphs `▶ ✓ ↷ ! ■ ? ↻ ◷ ◼ ◆ ⟳ •`, and `○ ♪`
 - tutti's latest-action glyph, `▸`
 - each named in `src/ui/marks.ts` by what it marks, and src/ui writes none of them inline (tutti-6bwa.4): the state glyphs, `▸`, the more-below `↓`, the links' `▾ ▴ ←`, the arrow keys of the hints; and `ellipsis`, the `…` that `cut`, `fit` and every other cutter end a text in, a word still going (`Reading the ticket…`) being prose
+- the separator ` · ` between a list's parts, the hint's keys, the totals' figures, the title line's, a box's choices: `separator` in `src/ui/marks.ts`, the one src/ui writes, drawn faint (a form's hint in its `helpSeparator`) by `src/ui/line.tsx`'s `joined` and `separatorOf` (tutti-6bwa.3)
 
 ---
 

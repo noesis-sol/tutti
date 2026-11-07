@@ -8,7 +8,7 @@ import { type MouseEvent, RGBA } from "@opentui/core"
 import { useState } from "react"
 import { globalHelp, type HelpRow } from "./keyCommands.ts"
 import { useLayer } from "./keys.ts"
-import { boxed, cut, Lines, padded, type Segments, seg, widthOf } from "./line.tsx"
+import { boxed, cut, joined, Lines, padded, type Segments, seg, widthOf } from "./line.tsx"
 import { arrowKeys } from "./marks.ts"
 import { fieldGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
@@ -60,17 +60,15 @@ export const keyHelpLines = (
         ),
       ...blank,
       cut(
-        [
-          seg("Esc", styles.key),
-          seg(" close", styles.dim),
-          ...(scrolls
-            ? [
-                seg(" · ", styles.dim),
-                seg(`${arrowKeys.upDown} PgUp PgDn`, styles.key),
-                seg(" scroll", styles.dim),
-              ]
-            : []),
-        ],
+        joined(
+          [
+            [seg("Esc", styles.key), seg(" close", styles.dim)],
+            scrolls
+              ? [seg(`${arrowKeys.upDown} PgUp PgDn`, styles.key), seg(" scroll", styles.dim)]
+              : [],
+          ],
+          theme,
+        ),
         inner,
       ),
     ],

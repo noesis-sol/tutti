@@ -7,7 +7,7 @@ import type { WindDownMark } from "../run/phase.ts"
 import type { WindDownView } from "../run/runView.ts"
 import { firstFit } from "./fit.ts"
 import { type Look, type Segments, seg } from "./line.tsx"
-import { marks } from "./marks.ts"
+import { marks, separator } from "./marks.ts"
 import { fieldGap, squareGap, windDownIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
@@ -45,7 +45,7 @@ export const windDownSegments = (view: WindDownView, theme: Theme, width: number
   // As many squares as fit, after the two spaces, where not even the words do.
   const fit = Math.min(Math.floor((width - 1) / 2), squares.length)
   const forms = function* () {
-    for (const rest of rests) yield [...lead, words, seg(` · ${rest}`, theme.styles.dim)]
+    for (const rest of rests) yield [...lead, words, seg(`${separator}${rest}`, theme.styles.dim)]
     yield [...lead, words]
     yield fit <= 0 ? [] : [seg(windDownIndent), ...spaced(fit)]
   }

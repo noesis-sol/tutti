@@ -16,8 +16,8 @@ import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
-import { hintSeparator } from "../src/ui/Hint.tsx"
 import { widthOf } from "../src/ui/line.tsx"
+import { separator } from "../src/ui/marks.ts"
 import { suspendToast } from "../src/ui/Toasts.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
@@ -158,7 +158,7 @@ describe("the dashboard's hint", () => {
       const foot = footOf(lines, size.height, 2)
       for (const key of everyKey) expect(foot).toContain(key)
       // A line breaks between two keys, not inside one.
-      expect(lines[size.height - 2]?.trimEnd().endsWith(hintSeparator.trim())).toBe(false)
+      expect(lines[size.height - 2]?.trimEnd().endsWith(separator.trim())).toBe(false)
     }
   })
 

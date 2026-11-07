@@ -31,6 +31,7 @@ import {
   boxed,
   cut,
   fit,
+  joined,
   labelLook,
   padded,
   type Segment,
@@ -38,7 +39,7 @@ import {
   seg,
   wrap,
 } from "./line.tsx"
-import { arrowKeys, ellipsis, lookOf, marks } from "./marks.ts"
+import { arrowKeys, ellipsis, lookOf, marks, separator } from "./marks.ts"
 import { fieldGap, labelIndent, unpointed } from "./spacing.ts"
 import { queueDivider } from "./Totals.tsx"
 import type { Style, Theme } from "./theme.ts"
@@ -102,7 +103,7 @@ export const upNextLines = (
     seg(labelIndent),
     // Up next is no panel the focus goes to, so its label is never lit.
     seg("Up next", labelLook(theme, false)),
-    ...(held > 0 ? [seg(` · ${held} held back`, styles.heldBack)] : []),
+    ...(held > 0 ? [seg(`${separator}${held} held back`, styles.heldBack)] : []),
   ]
   const inner = Math.max(width - 4, 1)
   const room = Math.max(lines - 3, 1)
@@ -121,7 +122,7 @@ export const upNextLines = (
       idWidth,
     )
     if (each.held === null) {
-      const word = each.answered === undefined ? readyWord : `answered · ${each.answered}`
+      const word = each.answered === undefined ? readyWord : `answered${separator}${each.answered}`
       return [[...id, seg(fieldGap), seg(word, styles.quiet)]]
     }
     const reason = afterParts(each.held).map((part) =>
@@ -435,9 +436,13 @@ export const needsLines = (
   const need = detail !== undefined && "_tag" in detail ? detail : undefined
   const label: Segments = [
     seg(labelIndent),
-    seg("Needs you", labelLook(theme, at.focused)),
-    seg(" · ", styles.dim),
-    seg(`${count}`, count === 0 ? styles.dim : styles.stop),
+    ...joined(
+      [
+        [seg("Needs you", labelLook(theme, at.focused))],
+        [seg(`${count}`, count === 0 ? styles.dim : styles.stop)],
+      ],
+      theme,
+    ),
   ]
   const inner = Math.max(width - 4, 1)
   const room = Math.max(lines - 3, 1)
@@ -448,7 +453,7 @@ export const needsLines = (
   if (need?._tag === "Question") {
     const question = need.question
     const title = wrapped([seg(question?.title ?? need.title, styles.key, panelTargets.read)], 2)
-    const about = [dim(`${need.id} · ${need.label} waits on it`)]
+    const about = [dim(`${need.id}${separator}${need.label} waits on it`)]
     if (question === null) {
       body.push(...title, about, [dim("reading its question…")])
     } else {
@@ -487,9 +492,9 @@ export const needsLines = (
       const keys = at.inside
         ? options.length === 0
           ? "Enter answer"
-          : `${arrowKeys.upDown} 1–${options.length} · Enter answer`
+          : `${arrowKeys.upDown} 1–${options.length}${separator}Enter answer`
         : at.focused
-          ? [digits, "Enter goes in"].filter((each) => each !== "").join(" · ")
+          ? [digits, "Enter goes in"].filter((each) => each !== "").join(separator)
           : digits !== ""
             ? digits
             : options.length === 0
@@ -521,7 +526,7 @@ export const needsLines = (
     const clears = paragraphs.flat()
     // What is true from where the focus is: `h` from anywhere, Enter once it is on the panel.
     const handsBack = handBackKey(need)
-    const andH = (enter: string) => [enter, handsBack].filter((each) => each !== "").join(" · ")
+    const andH = (enter: string) => [enter, handsBack].filter((each) => each !== "").join(separator)
     const reach = at.focused ? andH("Enter goes in") : handsBack || "move here to choose"
     const keys = !short
       ? at.inside
@@ -529,7 +534,7 @@ export const needsLines = (
         : reach
       : at.inside
         ? andH(`${ellipsis} click or Enter reads it all`)
-        : `${ellipsis} click reads it all · ${reach}`
+        : `${ellipsis} click reads it all${separator}${reach}`
     body.push(
       [seg(`${marks.waitsForYou} ${need.label} blocked: ${need.why}`, styles.stop)],
       ...titled,

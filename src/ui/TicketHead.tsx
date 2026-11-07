@@ -28,17 +28,19 @@ import {
   cut,
   FrameRow,
   frameEdge,
+  joined,
   Line,
   Lines,
   type Look,
   plainFg,
   type Segments,
   seg,
+  targeting,
   widthOf,
   wrap,
   wrapText,
 } from "./line.tsx"
-import { ellipsis, marks } from "./marks.ts"
+import { ellipsis, marks, separator } from "./marks.ts"
 import { escapeMarkdown, sanitizeLine } from "./sanitize.ts"
 import { keyGap, namePad } from "./spacing.ts"
 import type { Role, Theme } from "./theme.ts"
@@ -105,9 +107,7 @@ export const badgesOf = (issue: TicketText | undefined, theme: Theme): Badges =>
 
 /** `badges` as one label, `bug · P2`, the ` · ` between them faint; none for neither. */
 export const badgeLabel = (badges: Badges, theme: Theme): Segments =>
-  badges.type.length > 0 && badges.priority.length > 0
-    ? [...badges.type, seg(" · ", theme.styles.dim), ...badges.priority]
-    : [...badges.type, ...badges.priority]
+  joined([badges.type, badges.priority], theme)
 
 /** The box's name, at the left of its top border. */
 export const boxName = "Ticket"
@@ -311,10 +311,10 @@ export const wholeTicket = (issue: TicketText): string => {
     ...section("Design", issue.design),
     ...(issue.acceptance.trim() === "" ? [] : [`### Acceptance\n\n${checklist(issue.acceptance)}`]),
     ...section("Notes", issue.notes),
-    ...(links.length === 0 ? [] : [`**Links**  ${links.join(" · ")}`]),
+    ...(links.length === 0 ? [] : [`**Links**  ${links.join(separator)}`]),
     ...(issue.labels.length === 0
       ? []
-      : [`**Labels**  ${issue.labels.map(escapeMarkdown).join(" · ")}`]),
+      : [`**Labels**  ${issue.labels.map(escapeMarkdown).join(separator)}`]),
   ].join("\n\n")
 }
 
@@ -409,13 +409,15 @@ export const panelLines = (
 }
 
 /** `▴ less  t · Esc`, in the link colour and its keys', a click on it pressing target 0. */
-export const lessControl = (theme: Theme): Segments => [
-  seg(`${marks.collapse} less`, theme.look("link"), 0),
-  seg(keyGap, null, 0),
-  seg("t", theme.styles.key, 0),
-  seg(" · ", theme.styles.dim, 0),
-  seg("Esc", theme.styles.key, 0),
-]
+export const lessControl = (theme: Theme): Segments =>
+  targeting(
+    [
+      seg(`${marks.collapse} less`, theme.look("link")),
+      seg(keyGap),
+      ...joined([[seg("t", theme.styles.key)], [seg("Esc", theme.styles.key)]], theme),
+    ],
+    0,
+  )
 
 /**
  * The open box's bottom border, `width` wide: `↓ 12 more lines ── ▴ less  t · Esc` at its right

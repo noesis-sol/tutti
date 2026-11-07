@@ -14,7 +14,7 @@
 import { type Level, swappingPerMinute } from "../run/load.ts"
 import type { LoadView, Totals } from "../run/runView.ts"
 import { type FitPart, fitParts } from "./fit.ts"
-import { cut, type Look, type Segments, seg } from "./line.tsx"
+import { cut, type Look, type Segments, seg, separatorOf } from "./line.tsx"
 import { marks } from "./marks.ts"
 import { edgeIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
@@ -122,6 +122,6 @@ export const loadSegments = (
       kept(loadPart(load), levelLook(levels.cpu, theme)),
     ],
     width,
-    [seg(" · ", theme.styles.dim)],
+    [separatorOf(theme)],
   )
 }

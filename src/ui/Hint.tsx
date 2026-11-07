@@ -2,12 +2,9 @@
 // now, as RunView names them, each `emphasis` bold, its words faint, ` · ` faint between them, on
 // as many lines as it takes (hintLines), or cut to one (hintSegments).
 import type { Key } from "../run/runView.ts"
-import { cut, type Segments, seg, widthOf, wrap } from "./line.tsx"
+import { cut, joined, type Segments, seg, separatorOf, widthOf, wrap } from "./line.tsx"
 import { hintIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
-
-/** What the hint has between two keys on a line, faint. */
-export const hintSeparator = " · "
 
 /** A key as the hint draws it: its keys bold, what it does faint. */
 const keySegments = (key: Key, theme: Theme): Segments => [
@@ -16,19 +13,17 @@ const keySegments = (key: Key, theme: Theme): Segments => [
 ]
 
 /** The hint `width` wide. */
-export const hintSegments = (keys: ReadonlyArray<Key>, theme: Theme, width: number): Segments => {
-  const { styles } = theme
-  return cut(
+export const hintSegments = (keys: ReadonlyArray<Key>, theme: Theme, width: number): Segments =>
+  cut(
     [
       seg(hintIndent),
-      ...keys.flatMap((key, i) => [
-        ...(i === 0 ? [] : [seg(hintSeparator, styles.dim)]),
-        ...keySegments(key, theme),
-      ]),
+      ...joined(
+        keys.map((key) => keySegments(key, theme)),
+        theme,
+      ),
     ],
     width,
   )
-}
 
 /**
  * The hint on as many lines `width` wide as it takes to show every key: a line breaks between two
@@ -44,9 +39,7 @@ export const hintLines = (
   let fresh = true
   for (const key of keys) {
     const each = keySegments(key, theme)
-    const joined: Segments = fresh
-      ? [...line, ...each]
-      : [...line, seg(hintSeparator, theme.styles.dim), ...each]
+    const joined: Segments = fresh ? [...line, ...each] : [...line, separatorOf(theme), ...each]
     if (fresh || widthOf(joined) <= width) {
       line = joined
       fresh = false

@@ -17,6 +17,7 @@ import {
   type Segment,
   type Segments,
   seg,
+  separatorOf,
   widthOf,
   wrap,
 } from "./line.tsx"
@@ -106,7 +107,7 @@ export const Modal = ({
       seg(hint.keys, theme.styles.key),
       seg(` ${hint.does}`, theme.styles.dim),
     ]),
-    seg(" · ", theme.styles.dim),
+    separatorOf(theme),
     inner,
   )
   // A pane too short for it all keeps the keys and what comes first.

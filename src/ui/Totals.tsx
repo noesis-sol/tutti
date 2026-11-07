@@ -11,8 +11,8 @@
 // reaches it (NeedsReach, tutti-fdv1): it opens the list of what needs you (NeedsList.tsx).
 import type { Totals as TotalsView } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
-import { cut, framed, type Look, type Segments, seg, targeting, widthOf } from "./line.tsx"
-import { marks } from "./marks.ts"
+import { cut, framed, joined, type Look, type Segments, seg, targeting, widthOf } from "./line.tsx"
+import { marks, separator } from "./marks.ts"
 import { edgeIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
@@ -56,13 +56,17 @@ const cells = (
       ? [faint(`0 ${label}`)]
       : [seg(mark === "" ? String(n) : `${mark} ${n}`, look), faint(` ${label}`)]
   const verdict = `${marks.verdict} ${t.triaged}`
-  const note = { full: ` · ${verdict} triaged`, short: ` · ${verdict}`, none: "" }[triage]
+  const note = {
+    full: `${separator}${verdict} triaged`,
+    short: `${separator}${verdict}`,
+    none: "",
+  }[triage]
   const triaged: Segments = t.triaged > 0 && note !== "" ? [seg(note, styles.organ)] : []
   return [
     cell(t.completed, marks.done, styles.closed, "Completed"),
     [...cell(t.deferred + t.review, marks.setAside, styles.deferred, "Set aside"), ...triaged],
     reached(cell(t.needsYou, "", styles.stop, "Needs you"), theme, reach),
-    [...queueCount(t, theme), faint(" In queue"), ...queueNotes(t, theme, " · ")],
+    [...queueCount(t, theme), faint(" In queue"), ...queueNotes(t, theme, separator)],
   ]
 }
 
@@ -79,8 +83,10 @@ const queueCount = (t: TotalsView, theme: Theme): Segments => {
 const queueNotes = (t: TotalsView, theme: Theme, held: string): Segments => {
   const { styles } = theme
   return [
-    ...(t.heldBack > 0 ? [seg(` · ${t.heldBack} held back`, styles.heldBack)] : []),
-    ...(t.setupFailed > 0 ? [seg(` · ${t.setupFailed} setup failed`, styles.deferred)] : []),
+    ...(t.heldBack > 0 ? [seg(`${separator}${t.heldBack} held back`, styles.heldBack)] : []),
+    ...(t.setupFailed > 0
+      ? [seg(`${separator}${t.setupFailed} setup failed`, styles.deferred)]
+      : []),
     ...(t.queueHeld ? [seg(`${held}held`, styles.windDown)] : []),
   ]
 }
@@ -97,7 +103,6 @@ export const totalsLine = (
   reach?: NeedsReach,
 ): Segments => {
   const { styles } = theme
-  const dot = seg(" · ", styles.dim)
   const parts: ReadonlyArray<Segments> = [
     [seg(`${marks.done} ${t.completed}`, styles.closed)],
     [
@@ -110,10 +115,7 @@ export const totalsLine = (
       : []),
     [seg("queue ", styles.dim), ...queueCount(t, theme), ...queueNotes(t, theme, " ")],
   ]
-  return cut(
-    [seg(edgeIndent), ...parts.flatMap((part, i) => (i === 0 ? part : [dot, ...part]))],
-    width,
-  )
+  return cut([seg(edgeIndent), ...joined(parts, theme)], width)
 }
 
 /**

@@ -10,8 +10,8 @@ import { formatDuration } from "../project/configFile.ts"
 import { resetLabel } from "../run/localTime.ts"
 import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
-import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
-import { marks } from "./marks.ts"
+import { cut, Line, type Segment, type Segments, seg, separatorOf, widthOf } from "./line.tsx"
+import { marks, separator } from "./marks.ts"
 import { badgeGap, fieldGap, whereGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useNow, useRunViewPart, useTheme } from "./useRunView.ts"
@@ -43,24 +43,25 @@ const bannerText = (
   now: number,
   form: Form,
 ): string => {
-  const resets = banner.resetsAt === null ? "" : ` · resets ${resetLabel(banner.resetsAt, now)}`
+  const resets =
+    banner.resetsAt === null ? "" : `${separator}resets ${resetLabel(banner.resetsAt, now)}`
   if (banner._tag === "Usage") {
     const percent = `usage ${Math.round(banner.utilization * 100)}%`
     if (form === "short") return percent
     if (form === "reset") return `${percent}${resets}`
     const of = banner.limit === undefined ? "" : ` of the ${banner.limit} limit`
-    const overage = banner.overage === true ? " · overage" : ""
+    const overage = banner.overage === true ? `${separator}overage` : ""
     return `${percent}${of}${resets}${overage}`
   }
   if (form === "word") return banner.word
   if (banner.rising === true) {
     return banner.resetsAt !== null && banner.resetsAt > now
-      ? `${banner.word} · rising in ${countdown(banner.resetsAt, now)}`
+      ? `${banner.word}${separator}rising in ${countdown(banner.resetsAt, now)}`
       : banner.word
   }
   const left =
     banner.waiting === true && banner.resetsAt !== null && banner.resetsAt > now
-      ? ` · in ${countdown(banner.resetsAt, now)}`
+      ? `${separator}in ${countdown(banner.resetsAt, now)}`
       : ""
   return `${banner.word}${resets}${left}`
 }
@@ -121,7 +122,10 @@ const windowSegments = (
           seg(percent(first), quiet),
         ]
       : [seg(figure(first), quiet)]
-  return [...head, ...rest.flatMap((window) => [seg(" · ", quiet), seg(figure(window), quiet)])]
+  return [
+    ...head,
+    ...rest.flatMap((window) => [separatorOf(theme, quiet), seg(figure(window), quiet)]),
+  ]
 }
 
 /**
@@ -200,29 +204,34 @@ function* titleForms(
   if (badges !== null && badges.autoAnswer !== null) {
     left.push(seg(badgeGap), seg(` ${badges.autoAnswer} `, styles.autoAnswer))
   }
-  if (title.quitting !== null) left.push(seg(`  · ${title.quitting}`, styles.stop))
-  else if (title.stopping) left.push(seg("  · stopping", styles.stop))
+  // The notes after the pill and badges, each a badgeGap and the separator in.
+  const note = `${badgeGap}${separator}`
+  if (title.quitting !== null) left.push(seg(`${note}${title.quitting}`, styles.stop))
+  else if (title.stopping) left.push(seg(`${note}stopping`, styles.stop))
   if (title.solo !== null) {
     left.push(
       title.solo.running
-        ? seg(`  · solo ${title.solo.ticket} running`, styles.picked)
-        : seg(`  · solo ${title.solo.ticket} next`, styles.deferred),
+        ? seg(`${note}solo ${title.solo.ticket} running`, styles.picked)
+        : seg(`${note}solo ${title.solo.ticket} next`, styles.deferred),
     )
   }
   if (title.shared > 0) {
     left.push(
-      seg(`  · shared with ${title.shared} run${title.shared === 1 ? "" : "s"}`, styles.deferred),
+      seg(
+        `${note}shared with ${title.shared} run${title.shared === 1 ? "" : "s"}`,
+        styles.deferred,
+      ),
     )
   }
   const scoped =
     title.spec != null
-      ? ` · spec ${title.spec}`
+      ? `${separator}spec ${title.spec}`
       : title.scope === null
         ? ""
-        : ` · ticket ${title.scope}`
+        : `${separator}ticket ${title.scope}`
   // `began` is 0 until the run's first real view: no time since 1970 before it (tutti-0t8p).
   const time = runTime(title.began === 0 ? 0 : now - title.began)
-  const where = `${title.branch === "" ? "" : `${title.branch} · `}${time}${scoped}`
+  const where = `${title.branch === "" ? "" : `${title.branch}${separator}`}${time}${scoped}`
   const usage = banners.filter((banner) => banner._tag !== "Hold")
   const holds = banners.filter((banner) => banner._tag === "Hold")
   /**

@@ -36,6 +36,7 @@ import {
   plainFg,
   type Segments,
   seg,
+  separatorOf,
   wrap,
 } from "./line.tsx"
 import { Backdrop, choiceRows } from "./Modal.tsx"
@@ -246,7 +247,7 @@ export const RowBox = ({ ticket }: { readonly ticket: TicketId }) => {
       seg(hint.keys, theme.styles.key),
       seg(` ${hint.does}`, theme.styles.dim),
     ]),
-    seg(" · ", theme.styles.dim),
+    separatorOf(theme),
     inner,
   )
   // The pane's whole height, however short the ticket: <markdown> lays out more lines than it has

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The ` · ` between a list's parts (the hint's keys, the totals' figures, the title line's, a box's choices, the panel's foot) is one constant, `src/ui/marks.ts`' `separator`, drawn faint by `src/ui/line.tsx`'s `joined`, which every such list is built with; `test/separator.test.ts` fails a `·` written elsewhere in `src/ui`, and nothing on screen changes.
 - The TUI's gaps and indents are named in one module, `src/ui/spacing.ts`, for what each separates (`fieldGap`, `labelIndent`, `buttonGap`, `markGap` and `cardIndent` among them), and Biome refuses a bare `seg("  ")` in `src/ui` (`test/lint/bare-spaces.grit`); nothing on screen changes.
 
 ## [0.7.0] - 2026-11-07

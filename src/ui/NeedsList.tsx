@@ -22,9 +22,9 @@ import type { TicketId } from "../services/Beads.ts"
 import { clickable } from "./click.ts"
 import { type Command, isOn, useCommands } from "./keyCommands.ts"
 import { Box, type NeedsAt, useInput } from "./keys.ts"
-import { boxed, cut, fit, Lines, type Segments, seg } from "./line.tsx"
+import { boxed, cut, fit, Lines, type Segments, seg, separatorOf } from "./line.tsx"
 import { Backdrop, choiceRows, Modal, modalMaxWidth } from "./Modal.tsx"
-import { arrowKeys, marks } from "./marks.ts"
+import { arrowKeys, marks, separator } from "./marks.ts"
 import { quietUuid } from "./QuestionsBox.tsx"
 import type { OpenQuestion } from "./questions.ts"
 import { clearsOf, nothingNeedsYou } from "./SidePanel.tsx"
@@ -289,7 +289,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
         ? [[seg(each.hint.keys, theme.styles.key), seg(` ${each.hint.does}`, theme.styles.dim)]]
         : [],
     ),
-    seg(" · ", theme.styles.dim),
+    separatorOf(theme),
     inner,
   )
   const drawn = commands.filter((each) => each.hint !== undefined && isOn(each))
@@ -307,7 +307,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   const label: Segments = [seg("Needs you", theme.styles.stop)]
   const counted =
     items.length > room
-      ? [seg(fit(` · ${index + 1} of ${items.length}`, inner), theme.styles.dim)]
+      ? [seg(fit(`${separator}${index + 1} of ${items.length}`, inner), theme.styles.dim)]
       : []
   const rows = boxed(
     [[...label, ...counted], [], ...lines, [], ...keys],

@@ -45,7 +45,7 @@ import {
   seg,
   widthOf,
 } from "./line.tsx"
-import { lookOf, marks, motionTones } from "./marks.ts"
+import { lookOf, marks, motionTones, separator } from "./marks.ts"
 import { cardIndent, fieldGap, labelIndent, markGap, spinnerGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useNow, useSpinner } from "./useRunView.ts"
@@ -349,7 +349,7 @@ export const idleText = (
   if (fullCheck === null) return "picking the next ticket…"
   const name = fullCheck.gate === true ? "checks gate" : "full check"
   const what = fullCheck.step === "setup" ? `setting up the ${name}` : name
-  return `${what}: ${fullCheck.command} · ${elapsed(now - fullCheck.began)}`
+  return `${what}: ${fullCheck.command}${separator}${elapsed(now - fullCheck.began)}`
 }
 
 /**

@@ -4,7 +4,7 @@
 import { Data, type Effect, Schema } from "effect"
 import { isSpecUrl, shownUrl } from "../run/specSource.ts"
 import type { QuestionOption, TicketId } from "../services/Beads.ts"
-import { ellipsis } from "./marks.ts"
+import { ellipsis, separator } from "./marks.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import type { Where } from "./specPath.ts"
 
@@ -226,7 +226,7 @@ export const choicesOf = (question: OpenQuestion, talk = false): ReadonlyArray<C
 
 /** An open question's line above its title: `Open question 1 of 2 · tutti-9x`, and who alone answers it. */
 export const questionHeading = (question: OpenQuestion, at: QuestionAt): string =>
-  `Open question ${at.index + 1} of ${at.of} · ${question.id}${question.maintainerOnly ? " · only you can answer it" : ""}`
+  `Open question ${at.index + 1} of ${at.of}${separator}${question.id}${question.maintainerOnly ? `${separator}only you can answer it` : ""}`
 
 /** Under an open question in the renderer: what an answer does. */
 export const questionDescription =
