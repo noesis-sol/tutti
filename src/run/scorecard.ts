@@ -118,7 +118,8 @@ export const sizeWords = (files: number | undefined): string =>
 const with1 = (list: ReadonlyArray<string>, item: string): ReadonlyArray<string> =>
   list.includes(item) ? list : [...list, item]
 
-const tallyOf = (scoring: Scoring, ticket: string): Tally => scoring.tallies.get(ticket) ?? noTally
+export const tallyOf = (scoring: Scoring, ticket: string): Tally =>
+  scoring.tallies.get(ticket) ?? noTally
 
 const update = (scoring: Scoring, ticket: string, change: (t: Tally) => Tally): Scoring => ({
   ...scoring,
@@ -294,6 +295,15 @@ const medianOf = (
   }
 }
 
+/** A scorecard's verifier rounds, from a ticket's tally. */
+export const verifierOf = (t: Tally): Score["verifier"] => ({
+  rounds: t.rounds,
+  passed: t.passed,
+  failed: t.failed,
+  ...(t.last === undefined ? {} : { last: t.last }),
+  ...(t.rounds === 0 ? {} : { last_fix_verified: !t.unverified }),
+})
+
 /** The scorecard of the ticket `end` ends, from `scoring`, which has every record before `end`. */
 export const scoreOf = (scoring: Scoring, end: TicketEnd): Score => {
   const t = tallyOf(scoring, end.ticket)
@@ -304,13 +314,7 @@ export const scoreOf = (scoring: Scoring, end: TicketEnd): Score => {
     outcome: end.outcome,
     phase: end.phase,
     ...(end.why === undefined ? {} : { why: end.why }),
-    verifier: {
-      rounds: t.rounds,
-      passed: t.passed,
-      failed: t.failed,
-      ...(t.last === undefined ? {} : { last: t.last }),
-      ...(t.rounds === 0 ? {} : { last_fix_verified: !t.unverified }),
-    },
+    verifier: verifierOf(t),
     hand_backs: end.hand_backs ?? { resolve: 0, fix: 0 },
     resolving: end.phases?.resolving ?? 0,
     fixing: end.phases?.fixing ?? 0,

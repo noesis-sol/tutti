@@ -260,7 +260,15 @@ An Asked row says the question its ticket waits on, rather than the ticket's tit
 Where there is no panel, the totals' **Needs you** takes its place among [the panels](#keys), over
 the table, drawn highlighted while the focus is on it. A click on a row selects it, going into
 Tickets, and `Enter` on a `? for you` row opens `Shift+A`'s box at its question, on a blocked row a
-box saying what clears it, and on any other a box with what the panel would say of it.
+box saying what clears it, and on any other its box, as large as the pane allows, which scrolls:
+what the panel says of it, the whole ticket (description, design, acceptance criteria, notes, links,
+labels, read again from bd as it opens) and its stats. Those are its scorecard, or for a ticket
+still going what the run knows so far: its outcome, when it was dispatched, merged (with the commit)
+or set aside and why, its verifier rounds, its hand-backs and the time resolving and fixing, failed
+or timed-out merge checks, FLAKY tests, denied calls, questions, its working time, turns, tokens and
+cost beside the run's median for its size, and any follow-ups or reverts filed against it. `↑`/`↓`,
+`PgUp`/`PgDn` and the wheel scroll it, `↓ N more lines` in its bottom border while there is more;
+`Enter` opens its worker view while it has one, and `Esc` closes it.
 
 Where there is no panel, `Enter` on **Needs you**, or a click on it, opens a list of what needs you,
 a line each: `? <question> <title>` for each question an Asked
@@ -495,7 +503,7 @@ on its card, opens a worker too.
 | `↑`, `↓` | at the top, move between the panels; inside, select a row, an option or a card | move between items |
 | `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
 | `1`–`9` | answer **Needs you**'s question at once, but a digit a highlighted card's question takes, with the focus on it in Current | |
-| `Enter`, a click | at the top, go into the panel, a click to what it clicked; inside, press the focused button, or open the card (in the one-line layout, open its request) or the row: a `? for you` row's question, what clears a blocked one, a worker's view, or for a row with none (done, set aside) a box with what the panel says of it; on the totals' Needs you, the list of what needs you | expand or collapse the item; press the focused button |
+| `Enter`, a click | at the top, go into the panel, a click to what it clicked; inside, press the focused button, or open the card (in the one-line layout, open its request) or the row: a `? for you` row's question, what clears a blocked one, a worker's view, or for a row with none (done, set aside) its box, the whole ticket and its stats, which scrolls; on the totals' Needs you, the list of what needs you | expand or collapse the item; press the focused button |
 | `g` | go to the oldest request's card, from any panel; where no buttons are drawn, open it in a box | |
 | `d` | deny the request (decline an MCP server's) | the same |
 | `Shift+D` | deny, with a reason you type for the worker | the same |

@@ -7,6 +7,7 @@ import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
 import { closing, Ending, printSummary, type Summary, summary } from "../src/print/summary.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { attentionOf, emptyView, type Row, RowDetail, rowStatus } from "../src/run/runView.ts"
+import { noStats } from "../src/run/ticketStats.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
@@ -39,6 +40,7 @@ const row = (ticket: TicketId, phase: TicketPhase, note: string): Row => ({
   since: 0,
   detail: RowDetail.Other(),
   hasWorker: false,
+  stats: noStats,
 })
 
 const ended = (rows: ReadonlyArray<Row>, totals: Partial<Summary["totals"]> = {}): Summary => ({

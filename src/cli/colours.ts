@@ -16,6 +16,7 @@ import {
   rowStatus,
   shownRequest,
 } from "../run/runView.ts"
+import { noStats } from "../run/ticketStats.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Tty } from "../services/Tty.ts"
 import { attentionLines } from "../ui/AttentionCard.tsx"
@@ -170,6 +171,7 @@ const rows: ReadonlyArray<Row> = [
     since: 0,
     detail: RowDetail.Other(),
     hasWorker: false,
+    stats: noStats,
   },
   {
     ticket: "tut-12" as TicketId,
@@ -182,6 +184,7 @@ const rows: ReadonlyArray<Row> = [
     since: 0,
     detail: RowDetail.Other(),
     hasWorker: false,
+    stats: noStats,
   },
   {
     ticket: "tut-13" as TicketId,
@@ -194,6 +197,7 @@ const rows: ReadonlyArray<Row> = [
     since: 0,
     detail: RowDetail.Other(),
     hasWorker: false,
+    stats: noStats,
   },
   {
     ticket: "tut-14" as TicketId,
@@ -206,6 +210,7 @@ const rows: ReadonlyArray<Row> = [
     since: 0,
     detail: RowDetail.Other(),
     hasWorker: false,
+    stats: noStats,
   },
 ]
 

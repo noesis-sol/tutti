@@ -25,7 +25,8 @@
 // goes into the focused panel, as a click does to what it clicked, and `Esc` comes out, an open box
 // closing first. Inside Tickets `↑↓` select a row, a click on one too, and `Enter` opens it: an
 // Asked row's question in the questions box, a Blocked row's box saying what clears it, another's
-// worker view, or in a pane with no panel its box. The panel beside the table is the selected row's
+// worker view, or with no worker view to go to or in a pane with no panel its box, the whole ticket
+// and its stats (RowBox.tsx). The panel beside the table is the selected row's
 // detail (tutti-149z.3): with nothing chosen, the first Blocked or Asked row, by itself; a row you
 // choose stays chosen by its ticket until you `Esc` out of the table or it stops needing you, and
 // the panel says Up next, under `Nothing needs you`, with neither. Inside Needs you `↑↓` move through its options and `Enter` picks one. Inside Current
@@ -1002,7 +1003,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   })
   // Enter on a row: an Asked row's question, what clears a Blocked row, or its worker's view; with
   // no panel to read it in, or no worker view to open (a ticket done or set aside, whose open the
-  // run would drop), what the panel would say of it.
+  // run would drop), its box, the whole ticket and its stats.
   const openRow = () => {
     const ticket = rowNow()
     if (ticket === null) return

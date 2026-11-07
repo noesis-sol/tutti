@@ -135,6 +135,7 @@ export const notifying: Layer.Layer<EventStream, never, EventStream | Notifier> 
     return EventStream.of({
       emit: (event) => Effect.andThen(stream.emit(event), send(event)),
       figures: stream.figures,
+      scorings: stream.scorings,
     })
   }),
 )

@@ -559,7 +559,8 @@ describe("a pane too narrow for the panel", () => {
       expect(has(box, `Merged as 0c1a9e7 into batch at ${clock(began)}.`)).toBe(true)
       expect(has(box, "Esc close")).toBe(true)
       expect(has(box, "open its worker view")).toBe(false)
-      // With no worker, Enter does nothing.
+      // It opens reading the ticket again; with no worker, Enter does nothing.
+      expect(taken(commands)).toEqual([UiCommand.ReadTicket({ ticket: "d-1" as TicketId })])
       await press(rendered, "enter")
       expect(taken(commands)).toEqual([])
       await press(rendered, "escape")
@@ -578,7 +579,10 @@ describe("a pane too narrow for the panel", () => {
         expect(has(box, "The next run resumes it.")).toBe(true)
         expect(has(box, "open its worker view")).toBe(true)
         await press(rendered, "enter")
-        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-1" as TicketId })])
+        expect(taken(commands)).toEqual([
+          UiCommand.ReadTicket({ ticket: "t-1" as TicketId }),
+          UiCommand.OpenWorker({ ticket: "t-1" as TicketId }),
+        ])
       },
     )
   })

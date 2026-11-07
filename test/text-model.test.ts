@@ -9,6 +9,7 @@ import { initSummary } from "../src/print/initSummary.ts"
 import { type Summary, summary } from "../src/print/summary.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { attentionOf, emptyView, type Row, RowDetail, rowStatus } from "../src/run/runView.ts"
+import { noStats } from "../src/run/ticketStats.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { boxed, paint, type Segments, seg, wrap } from "../src/ui/line.tsx"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
@@ -122,6 +123,7 @@ const row = (ticket: TicketId, phase: TicketPhase, note: string): Row => ({
   since: 0,
   detail: RowDetail.Other(),
   hasWorker: false,
+  stats: noStats,
 })
 
 const ended = (rows: ReadonlyArray<Row>): Summary => ({

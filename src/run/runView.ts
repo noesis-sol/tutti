@@ -56,7 +56,9 @@ import {
 } from "./phase.ts"
 import { noSums, type Resources, resourcesOf } from "./resources.ts"
 import { keep, keepAll, same } from "./same.ts"
+import { noScoring, type Scoring } from "./scorecard.ts"
 import type { Sums } from "./spending.ts"
+import { type Peer, peersOf, statsOf, type TicketStats } from "./ticketStats.ts"
 
 /** A hold on the run, for its banner: `BLOCKED`, `USAGE_LIMIT` with its reset, … */
 export interface RunHold {
@@ -126,6 +128,8 @@ export interface Status {
   readonly subscription: boolean
   /** What each ticket's workers' turns and all of them spent so far (spending.ts). */
   readonly spending: Sums
+  /** What the run's records say of each ticket so far, its scorecard once it has one. */
+  readonly scoring: Scoring
   /** How full each worker's context window is, by ticket, as its session last said. */
   readonly contexts: ReadonlyMap<string, ContextUsage>
   /** Something stopped the run, and the running tickets are finishing. */
@@ -203,6 +207,7 @@ export const emptyStatus: Status = {
   rise: null,
   subscription: false,
   spending: noSums,
+  scoring: noScoring,
   contexts: new Map(),
   stopping: false,
   mergesStopped: false,
@@ -329,6 +334,10 @@ export interface Row extends Shown {
   readonly detail: RowDetail
   /** Its worker view opens: it has a worker. A Blocked ticket's opens without, by its need. */
   readonly hasWorker: boolean
+  /** Its issue, for the row's box (§ 7.2), sanitised; absent until the run has read it. */
+  readonly issue?: TicketText
+  /** How it went so far, for the row's box (§ 7.2). */
+  readonly stats: TicketStats
 }
 
 /**
@@ -607,6 +616,8 @@ export interface RunView {
   readonly load: LoadView | null
   readonly totals: Totals
   readonly rows: ReadonlyArray<Row>
+  /** Each ticket scored, which a row's box sets its figures against the median of (§ 7.2). */
+  readonly peers: ReadonlyArray<Peer>
   /** The tickets waiting in the queue, ready ones first, then those held back or waiting. */
   readonly queue: ReadonlyArray<QueueRow>
   /** What needs you: the open questions of Asked tickets, then the Blocked, in the run's order. */
@@ -658,6 +669,7 @@ export const emptyView: RunView = {
     queueHeld: false,
   },
   rows: [],
+  peers: [],
   queue: [],
   needs: [],
   cards: [],
@@ -1246,6 +1258,8 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           since: entry.since,
           detail: detailOf(entry, branch, slotOnly ? resumes : null),
           hasWorker: entry.worker !== null,
+          ...(entry.issue === undefined ? {} : { issue: ticketText(entry.issue) }),
+          stats: statsOf(entry, status.scoring, status.spending, status.subscription),
         },
       })
     }
@@ -1363,6 +1377,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       rows.sort((a, b) => a.at - b.at).map(({ row }) => row),
       (row) => row.ticket,
     ),
+    peers: keepAll(previous.peers, peersOf(status.scoring, status.spending), (each) => each.ticket),
     queue: keepAll(previous.queue, [...answered, ...ready, ...held], (each) => each.ticket),
     needs: keepAll(previous.needs, [...asked, ...blocked], (each) => each.ticket),
     cards: keepAll(previous.cards, cards, (card) => card.ticket),

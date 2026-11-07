@@ -73,7 +73,7 @@ export type Box = Data.TaggedEnum<{
   Needs: NeedsAt
   /** The panel's click on a Blocked ticket's cut text: all of what clears it (NeedsList.tsx). */
   Blocked: { readonly ticket: TicketId }
-  /** Enter's on a row with no need, in a pane with no panel: what the panel would say of it. */
+  /** Enter's on a row with no worker view, or no panel beside it: the whole ticket and its stats. */
   Row: { readonly ticket: TicketId }
   /** Ctrl+X's in a worker view: whether to interrupt the turn of the ticket's worker (§ 7.5). */
   Interrupt: { readonly ticket: TicketId }

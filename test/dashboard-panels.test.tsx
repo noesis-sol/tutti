@@ -693,11 +693,12 @@ describe("inside Tickets", () => {
       expect(pointed(before, "d-2")).toBe(true)
       expect(has(before, "Esc close")).toBe(false)
       await press(rendered, "enter")
-      // Its box, saying what the panel does of it; no open the run would drop.
+      // Its box, saying what the panel does of it, reading the ticket again; no open the run would
+      // drop.
       const opened = await rendered.capture()
       expect(has(opened, "Esc close")).toBe(true)
       expect(has(opened, "Merged as ffd6ce4")).toBe(true)
-      expect(taken(commands)).toEqual([])
+      expect(taken(commands)).toEqual([UiCommand.ReadTicket({ ticket: "d-2" as TicketId })])
       await press(rendered, "escape")
       const closed = await rendered.capture()
       expect(has(closed, "Esc close")).toBe(false)

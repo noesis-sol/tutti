@@ -2,7 +2,7 @@
 // writeWith), the line first, so the log and events.jsonl give them in one order.
 
 import { describe, expect, test } from "bun:test"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import { dropNothingDone } from "../src/run/aside.ts"
 import { EventStream } from "../src/run/eventstream.ts"
 import { noFigures } from "../src/run/figures.ts"
@@ -49,6 +49,7 @@ describe("dropNothingDone's CLEANUP_FAILED", () => {
               }),
             ),
           figures: Effect.succeed(noFigures),
+          scorings: Stream.empty,
         })
       }),
     )

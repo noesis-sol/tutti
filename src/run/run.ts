@@ -1015,6 +1015,8 @@ const runFrom = (
         )
       }
       yield* watch(Stream.runForEach(host.contexts, showOn(status, "contexts", Object.is)))
+      // What the run's records say of each ticket so far, for its row's box (§ 7.2).
+      yield* watch(Stream.runForEach(events.scorings, showOn(status, "scoring", Object.is)))
     }
     // The machine's load (load.ts), with the dashboard or plain output: the pressure cap's readings,
     // the load line and each worker's memory in Current. A reading that fails stops the reading,

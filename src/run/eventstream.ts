@@ -8,14 +8,16 @@
 // fails too, ahead of the next record, so only the cut record is lost, not the one after it. A file
 // an earlier run left so cut, its last byte not a newline, is ended the same way, ahead of the
 // first record of this run. Each record is added to the run's figures as it is written (figures.ts),
-// and a ticket's `ticket_end` is followed by its scorecard, a `score` record (scorecard.ts).
+// and a ticket's `ticket_end` is followed by its scorecard, a `score` record (scorecard.ts). The
+// run's scoring is published as it changes, for the row box's stats (§ 7.2).
 import { fstatSync, readSync, writeSync } from "node:fs"
-import { Clock, Context, Effect, Layer, Result } from "effect"
+import { Clock, Context, Effect, Layer, Result, type Stream, SubscriptionRef } from "effect"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { runFolder } from "../services/Worktrees.ts"
 import { type Event, type EventRecord, encodeLine, version } from "./events.ts"
 import { addRecord, type Figures, noFigures, scoreAfter } from "./figures.ts"
 import { timestamp } from "./localTime.ts"
+import { noScoring, type Scoring } from "./scorecard.ts"
 
 /** The event stream's file, relative to the main checkout's top level (§ 9.1). */
 export const eventsFile = ".tutti/run/events.jsonl"
@@ -53,6 +55,8 @@ export class EventStream extends Context.Service<
     emit(event: Event): Effect.Effect<void>
     /** What the run's records add up to so far (figures.ts), those not written included. */
     readonly figures: Effect.Effect<Figures>
+    /** The run's scoring (scorecard.ts) now, then each change. */
+    readonly scorings: Stream.Stream<Scoring>
   }
 >()("tutti/run/EventStream") {
   /**
@@ -127,6 +131,7 @@ export class EventStream extends Context.Service<
           })
 
         let figures = noFigures
+        const scorings = yield* SubscriptionRef.make(noScoring)
         const record = (event: Event): Effect.Effect<void> =>
           Effect.flatMap(Clock.currentTimeMillis, (now) => {
             const line = encodeLine(stamp(event, options.run, now))
@@ -138,10 +143,17 @@ export class EventStream extends Context.Service<
             figures = addRecord(figures, event, now)
             // A ticket's scorecard follows its ticket_end, from the records before it.
             const score = scoreAfter(figures, event)
-            const written = write(`${line.success}\n`)
+            const written = Effect.andThen(
+              write(`${line.success}\n`),
+              SubscriptionRef.set(scorings, figures.scoring),
+            )
             return score === undefined ? written : Effect.andThen(written, record(score))
           })
-        return EventStream.of({ emit: record, figures: Effect.sync(() => figures) })
+        return EventStream.of({
+          emit: record,
+          figures: Effect.sync(() => figures),
+          scorings: SubscriptionRef.changes(scorings),
+        })
       }),
     )
 }
