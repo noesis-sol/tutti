@@ -476,7 +476,8 @@ panels, **Tickets** top left, **Needs you** top right, **Current** below, and th
 is drawn bright (the table's lines between its columns with it). Its label is lit with it, at the top
 level or inside the panel, and the others' are dim; Needs you's count stays red while anything needs
 you, wherever the focus is. `Enter`, or a click, goes into a
-panel, where the keys select in it (the table's row selected has a `▸` before it), and `Esc` comes
+panel, where the keys select in it (the table's row selected has a `▸` before it, its state and ID
+bold in their colours and its note a step brighter, bold), and `Esc` comes
 out, an open box closing first. A request's `d` and `a` work from any panel at the top level.
 
 `Tab` starts the box selection: from the top level it goes into **Current** on its first card, and

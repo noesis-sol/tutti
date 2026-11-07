@@ -167,6 +167,24 @@ export const copiedCell = (width: number): string => {
   return Bun.stringWidth(said) <= width ? said : marks.done
 }
 
+/**
+ * A row's last column: its verdict in `organ` bold, its note faint or plain. The row selected lifts
+ * it to the pointer's look, what `bold` alone can't do for a faint note, which stays dim, or for a
+ * verdict, already bold; a verdict's mark keeps `organ`, so that it still reads as one.
+ */
+const aboutCell = (row: Row, theme: Theme, width: number, selected: boolean): Segments => {
+  const { styles } = theme
+  if (row.verdict === null) {
+    const note = fit(row.note, width)
+    return [seg(note, selected ? styles.key : row.faint ? styles.dim : null)]
+  }
+  const verdict = fit(`${marks.verdict} ${row.verdict}`, width)
+  if (!selected) return [seg(verdict, styles.organ)]
+  return verdict.startsWith(marks.verdict)
+    ? [seg(marks.verdict, styles.organ), seg(verdict.slice(marks.verdict.length), styles.key)]
+    : [seg(verdict, styles.key)]
+}
+
 /** The table's lines with its label, `width` wide, as tall as `size` says. */
 export const ticketsLines = (
   rows: ReadonlyArray<Row>,
@@ -196,13 +214,11 @@ export const ticketsLines = (
   const cells: Array<ReadonlyArray<Segments>> = []
   for (const row of shown) {
     const style = lookOf(row.tone, theme)
-    const about =
-      row.verdict !== null
-        ? seg(fit(`${marks.verdict} ${row.verdict}`, aboutWidth), styles.organ)
-        : seg(fit(row.note, aboutWidth), row.faint ? styles.dim : null)
-    // The highlighted row has the pointer in its gutter, and its text goes bold in its own colours:
-    // no fill hides them, and neither is colour alone (§ 7.11).
+    // The highlighted row has the pointer in its gutter, its state and ID go bold in their own
+    // colours, and its note lifts to the pointer's look: no fill hides them, and neither is colour
+    // alone (§ 7.11).
     const selected = reach?.highlighted === row.ticket
+    const about = aboutCell(row, theme, aboutWidth, selected)
     const pointer =
       gutter === 0
         ? []
@@ -214,7 +230,7 @@ export const ticketsLines = (
           ? seg(copiedCell(idWidth), styles.closed)
           : seg(fit(row.label, idWidth), style),
       ],
-      [about],
+      about,
     ]
     const bold = (cell: Segments): Segments =>
       cell.map((each) => ({ ...each, look: each.look?.bold() ?? theme.look(null, "bold") }))

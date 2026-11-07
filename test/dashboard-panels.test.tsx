@@ -611,6 +611,11 @@ describe("inside Tickets", () => {
   })
 
   test("the row selected has the pointer and goes bold, with no fill; the lines between the columns go bright with the frame", async () => {
+    /** A row's state and ID: its text before the last column, the note drawn in a look of its own. */
+    const beforeNote = (row: ReturnType<typeof tableRow>) =>
+      row
+        .slice(0, row.flatMap((each, i) => (each.char === "│" ? [i] : []))[2])
+        .filter((each) => each.char.trim() !== "" && each.char !== "│")
     await scene(viewOf(0), narrow, async ({ rendered }) => {
       await press(rendered, "enter")
       const frame = await rendered.capture()
@@ -618,7 +623,8 @@ describe("inside Tickets", () => {
       // The pointer is in its gutter inside the frame's left side, in the key's look.
       expect(selected[2]?.char).toBe(marks.selected)
       expect(selected[2]?.fg).toEqual(theme.styles.key.fg?.toInts())
-      // Its text is bold in its own colours, on no fill: the row unselected is drawn in the same.
+      // Its text is bold on no fill, its state and ID in their own colours: the row unselected is
+      // drawn in the same.
       const text = selected.filter((each) => each.char.trim() !== "" && each.char !== "│")
       expect(text.slice(1).every((each) => each.bold)).toBe(true)
       const fill = theme.form.focusedButton.bg?.toInts()
@@ -626,10 +632,11 @@ describe("inside Tickets", () => {
       await press(rendered, "down")
       const after = await rendered.capture()
       expect(tableRow(after, "b-1")[2]?.char).toBe(" ")
-      const plain = tableRow(after, "b-1").filter(
-        (each) => each.char.trim() !== "" && each.char !== "│",
+      expect(beforeNote(tableRow(after, "b-1")).map((each) => each.fg)).toEqual(
+        beforeNote(selected)
+          .slice(1)
+          .map((each) => each.fg),
       )
-      expect(plain.map((each) => each.fg)).toEqual(text.slice(1).map((each) => each.fg))
       // Another row's lines between the columns go bright with its sides and the frame's top, and so
       // do their joins with the top and bottom, so that no column line has a bright stub at an end.
       const bright = tableFrameColour(frame)
