@@ -31,16 +31,15 @@ import {
   boxed,
   cut,
   fit,
-  joined,
-  labelLook,
   padded,
   type Segment,
   type Segments,
+  sectionLabel,
   seg,
   wrap,
 } from "./line.tsx"
 import { arrowKeys, ellipsis, lookOf, marks, separator } from "./marks.ts"
-import { fieldGap, labelIndent, unpointed } from "./spacing.ts"
+import { fieldGap, unpointed } from "./spacing.ts"
 import { queueDivider } from "./Totals.tsx"
 import type { Style, Theme } from "./theme.ts"
 
@@ -100,9 +99,8 @@ export const upNextLines = (
   const { styles } = theme
   const held = totals.heldBack
   const label: Segments = [
-    seg(labelIndent),
     // Up next is no panel the focus goes to, so its label is never lit.
-    seg("Up next", labelLook(theme, false)),
+    ...sectionLabel("Up next", theme, { lit: false }),
     ...(held > 0 ? [seg(`${separator}${held} held back`, styles.heldBack)] : []),
   ]
   const inner = Math.max(width - 4, 1)
@@ -434,16 +432,10 @@ export const needsLines = (
 ): ReadonlyArray<Segments> => {
   const { styles } = theme
   const need = detail !== undefined && "_tag" in detail ? detail : undefined
-  const label: Segments = [
-    seg(labelIndent),
-    ...joined(
-      [
-        [seg("Needs you", labelLook(theme, at.focused))],
-        [seg(`${count}`, count === 0 ? styles.dim : styles.stop)],
-      ],
-      theme,
-    ),
-  ]
+  const label = sectionLabel("Needs you", theme, {
+    lit: at.focused,
+    count: seg(`${count}`, count === 0 ? styles.dim : styles.stop),
+  })
   const inner = Math.max(width - 4, 1)
   const room = Math.max(lines - 3, 1)
   const dim = (text: string, target?: number) => seg(text, styles.dim, target)

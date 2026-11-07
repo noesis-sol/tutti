@@ -39,14 +39,14 @@ import {
   Line,
   Lines,
   type Look,
-  labelLook,
   type Segment,
   type Segments,
+  sectionLabel,
   seg,
   widthOf,
 } from "./line.tsx"
 import { lookOf, marks, motionTones, separator } from "./marks.ts"
-import { cardIndent, fieldGap, labelIndent, markGap, spinnerGap } from "./spacing.ts"
+import { cardIndent, fieldGap, markGap, spinnerGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useNow, useSpinner } from "./useRunView.ts"
 
@@ -632,7 +632,7 @@ export const Cards = ({
   /** Presses an attention card's button: the same function from one drawing to the next. */
   readonly press: (request: ShownRequest | undefined, index: number) => void
 }) => {
-  const label = <Lines lines={[[seg(labelIndent), seg("Current", labelLook(theme, labelLit))]]} />
+  const label = <Lines lines={[sectionLabel("Current", theme, { lit: labelLit })]} />
   const border: Border = focused ? "heavy" : "rounded"
   switch (layout._tag) {
     case "Idle":

@@ -22,7 +22,7 @@ import type { TicketId } from "../services/Beads.ts"
 import { clickable } from "./click.ts"
 import { type Command, isOn, useCommands } from "./keyCommands.ts"
 import { Box, type NeedsAt, useInput } from "./keys.ts"
-import { boxed, cut, fit, Lines, type Segments, seg, separatorOf } from "./line.tsx"
+import { boxed, cut, fit, Lines, type Segments, sectionLabel, seg, separatorOf } from "./line.tsx"
 import { Backdrop, choiceRows, Modal, modalMaxWidth } from "./Modal.tsx"
 import { arrowKeys, marks, separator } from "./marks.ts"
 import { quietUuid } from "./QuestionsBox.tsx"
@@ -304,16 +304,21 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   )
   if (read === undefined) lines.push([seg(`  ${listReadingText}`, theme.styles.dim)])
   if (empty) lines.push([seg(`  ${nothingNeedsYou}`, theme.styles.dim)])
-  const label: Segments = [seg("Needs you", theme.styles.stop)]
-  const counted =
-    items.length > room
-      ? [seg(fit(`${separator}${index + 1} of ${items.length}`, inner), theme.styles.dim)]
-      : []
-  const rows = boxed(
-    [[...label, ...counted], [], ...lines, [], ...keys],
-    outer,
-    theme.look("needsYou"),
-  )
+  // In the stop style whatever has the focus, as the list is all it has; its box's side sets it in.
+  const label = sectionLabel("Needs you", theme, {
+    lit: true,
+    look: theme.styles.stop,
+    indented: false,
+    ...(items.length > room
+      ? {
+          count: seg(
+            fit(`${index + 1} of ${items.length}`, inner - Bun.stringWidth(separator)),
+            theme.styles.dim,
+          ),
+        }
+      : {}),
+  })
+  const rows = boxed([label, [], ...lines, [], ...keys], outer, theme.look("needsYou"))
   const press = (target: number) =>
     target >= itemTarget ? open(target - itemTarget) : drawn[target]?.run()
   return (

@@ -23,7 +23,7 @@ import { attentionLines } from "../ui/AttentionCard.tsx"
 import { defaultFocus } from "../ui/attentionKeys.ts"
 import { cardLines, contentOf } from "../ui/Card.tsx"
 import { hintSegments } from "../ui/Hint.tsx"
-import { labelLook, paint, type Segments, seg } from "../ui/line.tsx"
+import { paint, type Segments, sectionLabel } from "../ui/line.tsx"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { ticketsLines } from "../ui/TicketsTable.tsx"
 import {
@@ -229,7 +229,7 @@ const mockLines = (theme: Theme, width: number, now: number): ReadonlyArray<stri
   const waiting = attentionCard(now)
   const lines: ReadonlyArray<Segments> = [
     // As on the dashboard with the focus where it starts, on the table below.
-    [seg("  "), seg("Current", labelLook(theme, false))],
+    sectionLabel("Current", theme, { lit: false }),
     ...cardLines(working, theme, { now, spin, width, inside: 3, highlighted: false }),
     ...attentionLines(waiting, theme, contentOf(waiting, theme, now, spin).slice(0, 2), {
       width,

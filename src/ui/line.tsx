@@ -7,7 +7,7 @@ import { clickable } from "./click.ts"
 import { ellipsis, separator } from "./marks.ts"
 import { oneLine } from "./oneLine.ts"
 import { sanitizeLine } from "./sanitize.ts"
-import { boxPad } from "./spacing.ts"
+import { boxPad, labelIndent } from "./spacing.ts"
 import { orchestra, rgbaOf, type Style, type Theme } from "./theme.ts"
 
 /**
@@ -26,8 +26,34 @@ export type Segments = ReadonlyArray<Segment>
  * level or inside it, else quiet, which the light variant's dim `frame` is too pale to write in, so
  * that the label says where the keys are as its frame does (§ 7.3).
  */
-export const labelLook = (theme: Theme, focused: boolean): Look =>
+const labelLook = (theme: Theme, focused: boolean): Look =>
   focused ? theme.styles.tickets : theme.styles.quiet
+
+/**
+ * A section's label, `  Tickets`, `  Needs you · 2`: past labelIndent, in its panel's labelLook
+ * as the focus `lit` it or in `look` where it has a look of its own, then its `count` after the
+ * separator where it has one. `indented: false` leaves out the indent, for a label a box's side
+ * sets in already. Every label the dashboard draws, and colours' sample of it, is drawn here.
+ */
+export const sectionLabel = (
+  text: string,
+  theme: Theme,
+  options: {
+    readonly lit: boolean
+    readonly look?: Look
+    readonly count?: Segment
+    readonly indented?: boolean
+  },
+): Segments => [
+  ...(options.indented === false ? [] : [seg(labelIndent)]),
+  ...joined(
+    [
+      [seg(text, options.look ?? labelLook(theme, options.lit))],
+      options.count === undefined ? [] : [options.count],
+    ],
+    theme,
+  ),
+]
 
 /** `text` in `look`, a click on it pressing `target` where it has one (Line's `press`). */
 export const seg = (text: string, look: Look | null = null, target?: number): Segment =>
