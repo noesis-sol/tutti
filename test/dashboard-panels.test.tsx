@@ -26,12 +26,13 @@ import {
   panelTowards,
 } from "../src/ui/panelFocus.ts"
 import { needsLines, upNextLines } from "../src/ui/SidePanel.tsx"
+import { boxPad } from "../src/ui/spacing.ts"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
-import { hintFrom, hintOf } from "./screen.ts"
+import { hintFrom, hintOf, pointedAt } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -292,20 +293,8 @@ const tableRow = (frame: Frame, text: string) => {
   return chars.slice(bars[0], (bars[3] ?? chars.length) + 1)
 }
 
-/** Whether the table's pointer, `│ ▸`, is on a row of `frame` whose cells hold `text`. */
-const pointed = (frame: Frame, text: string): boolean =>
-  linesOf(frame).some((line) => {
-    const at = line.indexOf(`│ ${marks.selected}`)
-    return (
-      at !== -1 &&
-      line
-        .slice(at + 1)
-        .split("│")
-        .slice(0, 3)
-        .join("│")
-        .includes(text)
-    )
-  })
+/** A table row's gutter, where its pointer goes: the first column inside its frame's padding. */
+const gutterOf = (row: ReturnType<typeof tableRow>) => row[1 + boxPad.length]
 
 /** Whether a card's heavy frame is drawn round `ticket`. */
 const heavyOn = (frame: Frame, ticket: string) =>
@@ -598,17 +587,17 @@ describe("inside Tickets", () => {
   test("↑↓ move through the rows, round; Esc comes out and the row is no longer pointed at", async () => {
     await scene(viewOf(0), narrow, async ({ rendered }) => {
       await press(rendered, "enter")
-      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointedAt(await rendered.capture(), "b-1")).toBe(true)
       await press(rendered, "down")
       const second = await rendered.capture()
-      expect(pointed(second, "b-1")).toBe(false)
-      expect(pointed(second, "d-")).toBe(true)
+      expect(pointedAt(second, "b-1")).toBe(false)
+      expect(pointedAt(second, "d-")).toBe(true)
       await press(rendered, "up", "up")
-      expect(pointed(await rendered.capture(), "d-1")).toBe(true)
+      expect(pointedAt(await rendered.capture(), "d-1")).toBe(true)
       await press(rendered, "escape")
       const out = await rendered.capture()
-      expect(pointed(out, "d-")).toBe(false)
-      expect(pointed(out, "b-1")).toBe(false)
+      expect(pointedAt(out, "d-")).toBe(false)
+      expect(pointedAt(out, "b-1")).toBe(false)
     })
   })
 
@@ -623,8 +612,8 @@ describe("inside Tickets", () => {
       const frame = await rendered.capture()
       const selected = tableRow(frame, "b-1")
       // The pointer is in its gutter inside the frame's left side, in the key's look.
-      expect(selected[2]?.char).toBe(marks.selected)
-      expect(selected[2]?.fg).toEqual(theme.styles.key.fg?.toInts())
+      expect(gutterOf(selected)?.char).toBe(marks.selected)
+      expect(gutterOf(selected)?.fg).toEqual(theme.styles.key.fg?.toInts())
       // Its text is bold on no fill, its state and ID in their own colours: the row unselected is
       // drawn in the same.
       const text = selected.filter((each) => each.char.trim() !== "" && each.char !== "│")
@@ -633,7 +622,7 @@ describe("inside Tickets", () => {
       expect(selected.some((each) => Bun.deepEquals(each.bg, fill))).toBe(false)
       await press(rendered, "down")
       const after = await rendered.capture()
-      expect(tableRow(after, "b-1")[2]?.char).toBe(" ")
+      expect(gutterOf(tableRow(after, "b-1"))?.char).toBe(" ")
       expect(beforeNote(tableRow(after, "b-1")).map((each) => each.fg)).toEqual(
         beforeNote(selected)
           .slice(1)
@@ -665,10 +654,10 @@ describe("inside Tickets", () => {
   test("← → do nothing inside; Esc, then →, moves on", async () => {
     await scene(viewOf(1), narrow, async ({ rendered }) => {
       await press(rendered, "enter", "left", "right")
-      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointedAt(await rendered.capture(), "b-1")).toBe(true)
       await press(rendered, "escape", "right")
       const frame = await rendered.capture()
-      expect(pointed(frame, "b-1")).toBe(false)
+      expect(pointedAt(frame, "b-1")).toBe(false)
       expect(lit(frame, "Needs you")).toBe(true)
       expect(hintOf(frame)).toContain("arrows panels")
     })
@@ -681,9 +670,9 @@ describe("inside Tickets", () => {
       await press(rendered, "escape")
       const closed = await rendered.capture()
       expect(has(closed, "Leave the main checkout clean")).toBe(false)
-      expect(pointed(closed, "b-1")).toBe(true)
+      expect(pointedAt(closed, "b-1")).toBe(true)
       await press(rendered, "escape")
-      expect(pointed(await rendered.capture(), "b-1")).toBe(false)
+      expect(pointedAt(await rendered.capture(), "b-1")).toBe(false)
     })
   })
 
@@ -692,7 +681,7 @@ describe("inside Tickets", () => {
       // Going in selects b-1; ↓ a merged row, whose worker is gone (w-1's is on its card).
       await press(rendered, "enter", "down")
       const before = await rendered.capture()
-      expect(pointed(before, "d-2")).toBe(true)
+      expect(pointedAt(before, "d-2")).toBe(true)
       expect(has(before, "Esc close")).toBe(false)
       await press(rendered, "enter")
       // Its box, saying what the panel does of it, reading the ticket again; no open the run would
@@ -704,7 +693,7 @@ describe("inside Tickets", () => {
       await press(rendered, "escape")
       const closed = await rendered.capture()
       expect(has(closed, "Esc close")).toBe(false)
-      expect(pointed(closed, "d-2")).toBe(true)
+      expect(pointedAt(closed, "d-2")).toBe(true)
     })
   })
 
@@ -712,7 +701,7 @@ describe("inside Tickets", () => {
     await scene(viewOf(0), narrow, async ({ view, rendered }) => {
       await press(rendered, "enter", "down")
       const selected = await rendered.capture()
-      const name = ["d-1", "d-2"].find((each) => pointed(selected, each)) ?? ""
+      const name = ["d-1", "d-2"].find((each) => pointedAt(selected, each)) ?? ""
       expect(name).not.toBe("")
       // Another ticket blocks, and goes above it.
       await rendered.input(() =>
@@ -724,7 +713,7 @@ describe("inside Tickets", () => {
           ]),
         ),
       )
-      expect(pointed(await rendered.capture(), name)).toBe(true)
+      expect(pointedAt(await rendered.capture(), name)).toBe(true)
     })
   })
 })
@@ -820,7 +809,7 @@ describe("a click goes straight in", () => {
       const { x, y } = where(frame, "Title of b-1")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
       const after = await rendered.capture()
-      expect(pointed(after, "b-1")).toBe(true)
+      expect(pointedAt(after, "b-1")).toBe(true)
       expect(hintOf(after)).toContain("arrows select")
       expect(taken(commands)).toEqual([])
     })
@@ -863,11 +852,11 @@ describe("a click goes straight in", () => {
       expect(heavyOn(inCurrent, "w-1")).toBe(true)
       const tickets = where(inCurrent, "Tickets")
       await rendered.input((setup) => setup.mockMouse.click(tickets.x + 1, tickets.y))
-      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointedAt(await rendered.capture(), "b-1")).toBe(true)
       const panel = where(await rendered.capture(), "Needs you ·")
       await rendered.input((setup) => setup.mockMouse.click(panel.x + 1, panel.y))
       expect(has(await rendered.capture(), "┏")).toBe(true)
-      expect(pointed(await rendered.capture(), "b-1")).toBe(false)
+      expect(pointedAt(await rendered.capture(), "b-1")).toBe(false)
     })
   })
 })
@@ -887,7 +876,7 @@ describe("a resize", () => {
   test("that drops the table moves the focus off it, inside it or not", async () => {
     await scene(viewOf(1), { width: 80, height: 40 }, async ({ rendered }) => {
       await press(rendered, "enter")
-      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointedAt(await rendered.capture(), "b-1")).toBe(true)
       await rendered.input((setup) => setup.resize(80, 16))
       const frame = await rendered.capture()
       expect(has(frame, "Tickets")).toBe(false)

@@ -21,6 +21,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptState } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, withRender } from "./render.ts"
+import { boxWith } from "./screen.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
@@ -177,13 +178,12 @@ describe("the answer form", () => {
     await withRender(root, { width: 80, height: 40 }, async (rendered) => {
       now += settle
       await rendered.input((setup) => setup.mockInput.pressEnter())
-      const lines = linesOf(await rendered.capture())
-      const top = lines.findIndex((line) => line.includes("│ t-1 asks")) - 1
-      const left = (lines[top + 1] ?? "").indexOf("│ t-1 asks")
-      expect(lines[top]?.[left]).toBe("╭")
-      const right = (lines[top] ?? "").indexOf("╮", left)
-      const bottom = lines.findIndex((line, i) => i > top && line[left] === "╰")
-      expect(lines[bottom]?.[right]).toBe("╯")
+      const frame = await rendered.capture()
+      const lines = linesOf(frame)
+      const box = boxWith(frame, "t-1 asks")
+      const { top, left, right } = box
+      const bottom = box.bottom ?? -1
+      expect(bottom).toBeGreaterThan(top)
       // Each row between has the frame's sides, the body's rows too.
       for (const line of lines.slice(top + 1, bottom)) {
         expect(line[left]).toBe("│")

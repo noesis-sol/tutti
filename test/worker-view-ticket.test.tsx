@@ -34,7 +34,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { transcriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
-import { hintOf } from "./screen.ts"
+import { boxWith, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -201,6 +201,12 @@ const pageDown = "\x1b[6~"
 const boxTop = 3
 const boxBottom = 6
 
+/** The Ticket box's line on the screen's line `at`, its sides and padding left out. */
+const ticketLine = (frame: Frame, at: number): string | undefined => {
+  const box = boxWith(frame, "Ticket")
+  return box.lines[at - box.top - 1]
+}
+
 describe("the ticket's description in the head", () => {
   test("at 80x24, two lines in the box, cut with …, ▾ whole ticket  t in its bottom border", async () => {
     await scene(issueOf({ description }), { width: 80, height: 24 }, async ({ rendered }) => {
@@ -240,7 +246,7 @@ describe("the ticket's description in the head", () => {
       { width: 80, height: 24 },
       async ({ rendered }) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        expect(linesOf(frame)[boxTop + 1]).toStartWith("│ Read the second file too.")
+        expect(ticketLine(frame, boxTop + 1)).toStartWith("Read the second file too.")
         expect(linesOf(frame)[boxTop + 2]).toMatch(/^╰─+╯$/)
         expect(frame.chars).not.toContain("whole ticket")
       },
@@ -253,7 +259,7 @@ describe("the ticket's description in the head", () => {
       { width: 80, height: 24 },
       async ({ rendered }) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        expect(linesOf(frame)[boxTop + 1]).toStartWith("│ Read the second file too.")
+        expect(ticketLine(frame, boxTop + 1)).toStartWith("Read the second file too.")
         expect(linesOf(frame)[boxTop + 2]).toMatch(/^╰─+ ▾ whole ticket {2}t ─╯$/)
       },
     )
@@ -282,7 +288,7 @@ describe("the ticket's description in the head", () => {
   test("no description: No description., faint, with the control only when there is more", async () => {
     await scene(issueOf(), { width: 80, height: 24 }, async ({ rendered }) => {
       const frame = await until(rendered, has("Reading the scripts."))
-      expect(linesOf(frame)[boxTop + 1]).toStartWith("│ No description.")
+      expect(ticketLine(frame, boxTop + 1)).toStartWith("No description.")
       const span = frame.spans.lines[boxTop + 1]?.spans.find((each) =>
         each.text.includes("No description"),
       )
@@ -294,7 +300,7 @@ describe("the ticket's description in the head", () => {
       { width: 80, height: 24 },
       async ({ rendered }) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        expect(linesOf(frame)[boxTop + 1]).toStartWith("│ No description.")
+        expect(ticketLine(frame, boxTop + 1)).toStartWith("No description.")
         expect(linesOf(frame)[boxTop + 2]).toMatch(/▾ whole ticket {2}t ─╯$/)
       },
     )
@@ -305,7 +311,7 @@ describe("the ticket's description in the head", () => {
       const frame = await until(rendered, has("Reading the scripts."))
       expect(linesOf(frame)[1]).toEndWith("t-1  done  1m07s  $0.00")
       expect(linesOf(frame)[2]).toMatch(/^╭─ Ticket ─+ bug · P2 ─╮$/)
-      expect(linesOf(frame)[3]).toStartWith("│ Read Chrome's AccountBookmarks")
+      expect(ticketLine(frame, 3)).toStartWith("Read Chrome's AccountBookmarks")
       const span = frame.spans.lines[3]?.spans.find((each) => each.text.includes("Read Chrome"))
       expect((span?.attributes ?? 0) & 1).toBe(1)
     })
@@ -342,9 +348,9 @@ describe("the whole ticket", () => {
         // The box grown from where it was, its top border as it was, the title and the blank line
         // under it kept, its control in its bottom border.
         expect(lines[3]).toMatch(/^╭─ Ticket ─+ bug · P2 ─╮$/)
-        expect(lines[4]).toStartWith("│ Read Chrome's AccountBookmarks")
-        expect(lines[5]).toMatch(/^│ +│$/)
-        expect(lines[6]).toStartWith("│ Chromium keeps")
+        expect(ticketLine(open, 4)).toStartWith("Read Chrome's AccountBookmarks")
+        expect(ticketLine(open, 5)).toBe("")
+        expect(ticketLine(open, 6)).toStartWith("Chromium keeps")
         expect(lines.find((line) => line.startsWith("╰"))).toMatch(/▴ less {2}t · Esc ─╯$/)
         expect(open.chars).toContain("Acceptance")
         expect(open.chars).toContain("☐ Account bookmarks are indexed under their own label")

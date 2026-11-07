@@ -23,6 +23,7 @@ import { Root } from "../src/ui/App.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { withRender } from "./render.ts"
+import { boxWith } from "./screen.ts"
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const t1 = "t-1" as TicketId
@@ -125,14 +126,9 @@ describe("a Deferred row bd couldn't defer", () => {
   })
 
   test("so does its box in a pane with no panel", async () => {
-    // The pane's whole height: only the box's own columns, the dashboard's frames beside it left out.
+    // Only the box's own lines, the dashboard's frames around it left out.
     const pane = await said(viewOf(await setAside(false)), 100, 2)
-    const box = unwrapped(
-      pane
-        .split("\n")
-        .map((line) => line.slice(14, 86))
-        .join("\n"),
-    )
+    const box = unwrapped(boxWith(pane, "t-1").lines.join("\n"))
     expect(box).toContain(saysFailed)
     expect(box).not.toContain("bd undefer")
   })

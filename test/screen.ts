@@ -1,12 +1,13 @@
 // The drawn screen read back into its parts, so that a test says what it checks (a card's mark and
 // ticket, the hint's keys, a table row's state) and not the spacing the TUI draws them with: that
-// lives in src/ui's constants (spacing.ts' markGap, cardIndent and hintIndent, marks.ts'
+// lives in src/ui's constants (spacing.ts' markGap, cardIndent, hintIndent and boxPad, marks.ts'
 // separator), which these helpers read the screen with, and the builders at the end write it with
-// for the rare test that wants the exact text. A test that checks a spacing on purpose does it once, through them.
+// for the rare test that wants the exact text; a box is cut out of the screen by its corners, not by
+// columns. A test that checks a spacing on purpose does it once, through them.
 import { TextAttributes } from "@opentui/core"
 import type { Segments } from "../src/ui/line.tsx"
 import { marks, separator } from "../src/ui/marks.ts"
-import { cardIndent, hintIndent, markGap } from "../src/ui/spacing.ts"
+import { boxPad, cardIndent, hintIndent, markGap } from "../src/ui/spacing.ts"
 import { spinnerFrames } from "../src/ui/useRunView.ts"
 import type { Frame } from "./render.ts"
 
@@ -31,15 +32,15 @@ const sides = new Set(["│", "┃"])
 const tops = new Set(["╭", "┏"])
 const bottoms = new Set(["╰", "┗"])
 
+/** `text` without the padding a frame's side leaves before it, where it has it. */
+const unpadded = (text: string): string =>
+  text.startsWith(boxPad) ? text.slice(boxPad.length) : text
+
 /** A box's inside on `line`, from its side at `column` to the next side, its padding left out. */
 const insideAt = (line: ReadonlyArray<string>, column: number): string | null => {
   if (!sides.has(line[column] ?? "")) return null
   const end = line.findIndex((char, i) => i > column && sides.has(char))
-  return line
-    .slice(column + 1, end === -1 ? undefined : end)
-    .join("")
-    .replace(/^ /, "")
-    .trimEnd()
+  return unpadded(line.slice(column + 1, end === -1 ? undefined : end).join("")).trimEnd()
 }
 
 // ── Cards ────────────────────────────────────────────────────────────────────────────────────────
@@ -232,10 +233,111 @@ export const hintFrom = (screen: Screen, key: string, count: number): ReadonlyAr
   return at === -1 ? [] : hint.slice(at, at + count)
 }
 
+// ── Boxes, cut out of the screen by their corners ────────────────────────────────────────────────
+
+/** A box as drawn: boxed's, a card's, the key help's, a framed table's or the totals strip. */
+export interface BoxShown {
+  /** The screen lines of its top and bottom borders; the bottom null where the screen cuts it. */
+  readonly top: number
+  readonly bottom: number | null
+  /** The columns of its left and right sides. */
+  readonly left: number
+  readonly right: number
+  /** What its top and bottom borders say, each run of text between their lines: `Ticket`. */
+  readonly head: ReadonlyArray<string>
+  readonly foot: ReadonlyArray<string>
+  /** The lines inside it, its sides and padding left out; a table's keep the bars between cells. */
+  readonly lines: ReadonlyArray<string>
+  /** Drawn heavy, as the highlighted card is. */
+  readonly heavy: boolean
+}
+
+const topRights = new Set(["╮", "┓"])
+const bottomRights = new Set(["╯", "┛"])
+
+/** What a border between its corners says: the runs of text between its lines and joins. */
+const borderText = (border: ReadonlyArray<string>): ReadonlyArray<string> =>
+  border
+    .join("")
+    .split(/[─━┬┴]+/)
+    .map((each) => each.trim())
+    .filter((each) => each !== "")
+
+/** The boxes on the screen, top to bottom, left to right, a box inside another as well. */
+export const boxesIn = (screen: Screen): ReadonlyArray<BoxShown> => {
+  const lines = screenLines(screen).map((line) => Array.from(line))
+  const boxes: Array<BoxShown> = []
+  lines.forEach((line, top) => {
+    line.forEach((char, left) => {
+      if (!tops.has(char)) return
+      const right = line.findIndex((each, i) => i > left && topRights.has(each))
+      if (right === -1) return
+      const inside: Array<string> = []
+      let bottom: number | null = null
+      for (let at = top + 1; at < lines.length; at++) {
+        const each = lines[at] ?? []
+        if (bottoms.has(each[left] ?? "") && bottomRights.has(each[right] ?? "")) {
+          bottom = at
+          break
+        }
+        if (!sides.has(each[left] ?? "") || !sides.has(each[right] ?? "")) break
+        inside.push(unpadded(each.slice(left + 1, right).join("")).trimEnd())
+      }
+      boxes.push({
+        top,
+        bottom,
+        left,
+        right,
+        head: borderText(line.slice(left + 1, right)),
+        foot: bottom === null ? [] : borderText((lines[bottom] ?? []).slice(left + 1, right)),
+        lines: inside,
+        heavy: char === "┏",
+      })
+    })
+  })
+  return boxes
+}
+
+/**
+ * The innermost box whose borders or lines say `text`: the worker view's `Ticket` box by its title,
+ * the key help by its `Keys`; throws where there is none.
+ */
+export const boxWith = (screen: Screen, text: string): BoxShown => {
+  const says = (box: BoxShown) =>
+    [...box.head, ...box.foot, ...box.lines].some((each) => each.includes(text))
+  const area = (box: BoxShown) =>
+    ((box.bottom ?? box.top + box.lines.length) - box.top) * (box.right - box.left)
+  const box = boxesIn(screen)
+    .filter(says)
+    .sort((a, b) => area(a) - area(b))[0]
+  if (box === undefined) {
+    throw new Error(`no box says ${text} on the screen:\n${screenLines(screen).join("\n")}`)
+  }
+  return box
+}
+
+/** The cells of a framed table's line inside its box, `✓ 2 Completed  │ 0 Set aside`, trimmed. */
+export const tableCells = (inside: string): ReadonlyArray<string> =>
+  inside.split(/[│┃]/).map((cell) => cell.trim())
+
+/** The totals strip's cells, `✓ 20 Completed` to the queue's; none where it isn't drawn framed. */
+export const totalsIn = (screen: Screen): ReadonlyArray<string> => {
+  const strip = boxesIn(screen).find(
+    (box) => box.lines.length === 1 && /Completed.*│/.test(box.lines[0] ?? ""),
+  )
+  return strip === undefined ? [] : tableCells(strip.lines[0] ?? "")
+}
+
 // ── Boxes under a label: the tickets table, Needs you, Up next ───────────────────────────────────
 
-/** The lines inside the box under the section label `label`, its frame and padding left out. */
-const boxUnder = (screen: Screen, label: string): ReadonlyArray<ReadonlyArray<string>> => {
+/**
+ * The lines inside the box under the section label `label`, from its left side on, each with the
+ * screen line it is on.
+ */
+const boxUnder = (
+  screen: Screen,
+  label: string,
+): ReadonlyArray<{ readonly at: number; readonly chars: ReadonlyArray<string> }> => {
   const lines = screenLines(screen).map((line) => Array.from(line))
   for (const [labelAt, line] of lines.entries()) {
     const text = line.join("")
@@ -245,11 +347,11 @@ const boxUnder = (screen: Screen, label: string): ReadonlyArray<ReadonlyArray<st
     let column = Array.from(text.split(label)[0] ?? "").length
     while (column >= 0 && !tops.has(top[column] ?? "")) column--
     if (column < 0) continue
-    const inside: Array<ReadonlyArray<string>> = []
+    const inside: Array<{ readonly at: number; readonly chars: ReadonlyArray<string> }> = []
     for (let at = labelAt + 2; at < lines.length; at++) {
       const each = lines[at] ?? []
       if (!sides.has(each[column] ?? "")) break
-      inside.push(each.slice(column))
+      inside.push({ at, chars: each.slice(column) })
     }
     return inside
   }
@@ -265,24 +367,37 @@ export interface RowShown {
   readonly note: string
   /** Selected: the pointer `▸` in its gutter. */
   readonly selected: boolean
+  /** The screen line it is on. */
+  readonly line: number
 }
 
 /** The rows of the tickets table under its `Tickets` label, blank ones included. */
 export const rowsIn = (screen: Screen): ReadonlyArray<RowShown> =>
-  boxUnder(screen, "  Tickets").map((line) => {
-    const [, state = "", ticket = "", note = ""] = line.join("").split(/[│┃]/)
+  boxUnder(screen, "  Tickets").map(({ at, chars }) => {
+    const [, state = "", ticket = "", note = ""] = chars.join("").split(/[│┃]/)
     const selected = state.trim().startsWith(marks.selected)
     return {
       state: (selected ? state.trim().slice(marks.selected.length) : state).trim(),
       ticket: ticket.trim(),
       note: note.trim(),
       selected,
+      line: at,
     }
   })
 
+/** The tickets table's selected row, the pointer `▸` in its gutter; none where no row is. */
+export const selectedRow = (screen: Screen): RowShown | undefined =>
+  rowsIn(screen).find((row) => row.selected)
+
+/** Whether the tickets table's selected row says `text` in one of its cells. */
+export const pointedAt = (screen: Screen, text: string): boolean => {
+  const row = selectedRow(screen)
+  return row !== undefined && [row.state, row.ticket, row.note].some((cell) => cell.includes(text))
+}
+
 /** The lines inside the panel under `label` (`Needs you`, `Up next`), its frame left out. */
 export const panelOf = (screen: Screen, label = "Needs you"): ReadonlyArray<string> =>
-  boxUnder(screen, label).map((line) => insideAt(line, 0) ?? "")
+  boxUnder(screen, label).map(({ chars }) => insideAt(chars, 0) ?? "")
 
 /** A box's line on its own, `│ text   │`, its sides and padding left out. */
 export const insideOf = (line: string): string => insideAt(Array.from(line), 0) ?? line
@@ -291,7 +406,10 @@ export const insideOf = (line: string): string => insideAt(Array.from(line), 0) 
 
 /** A card's head up to its ticket, `⣾  t-1`; with `side`, its frame's side before it: `│ ⣾  t-1`. */
 export const cardHead = (mark: string, ticket: string, side?: string): string =>
-  `${side === undefined ? "" : `${side} `}${mark}${markGap}${ticket}`
+  `${side === undefined ? "" : `${side}${boxPad}`}${mark}${markGap}${ticket}`
+
+/** A box's line from its left side, up to `text`: `│ text`. */
+export const boxLine = (text: string, side = "│"): string => `${side}${boxPad}${text}`
 
 /** A line under a card's head, in line with its ticket. */
 export const cardLine = (text: string): string => `${cardIndent}${text}`

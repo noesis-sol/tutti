@@ -15,13 +15,12 @@ import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
-import { marks } from "../src/ui/marks.ts"
 import { type TabStop, tabStop } from "../src/ui/panelFocus.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
-import { hintFrom, hintOf } from "./screen.ts"
+import { hintFrom, hintOf, pointedAt, selectedRow } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -194,10 +193,6 @@ const linesOf = (frame: Frame) => frame.chars.split("\n")
 const heavyOn = (frame: Frame, ticket: string) =>
   linesOf(frame).some((line) => line.includes("┃") && line.includes(ticket))
 
-/** Whether the table's pointer is on a row of `frame` holding `text`. */
-const pointed = (frame: Frame, text: string) =>
-  linesOf(frame).some((line) => line.includes(`│ ${marks.selected}`) && line.includes(text))
-
 /** Whether a span of `text` on `frame` has the focus's fill. */
 const lit = (frame: Frame, text: string) =>
   frame.spans.lines.some((line) =>
@@ -301,7 +296,7 @@ describe("Tab at the top level", () => {
       await press(rendered, "tab")
       const frame = await rendered.capture()
       expect(heavyOn(frame, "w-1")).toBe(true)
-      expect(pointed(frame, "b-1")).toBe(false)
+      expect(pointedAt(frame, "b-1")).toBe(false)
     })
   })
 
@@ -316,7 +311,7 @@ describe("Tab at the top level", () => {
       await press(rendered, "tab")
       const frame = await rendered.capture()
       expect(heavyOn(frame, "w-1")).toBe(true)
-      expect(pointed(frame, "b-1")).toBe(false)
+      expect(pointedAt(frame, "b-1")).toBe(false)
     })
   })
 
@@ -388,19 +383,19 @@ describe("Tab past the last card", () => {
       const onPanel = await rendered.capture()
       expect(onPanel.chars).toContain("┏")
       expect(heavyOn(onPanel, "w-2")).toBe(false)
-      expect(pointed(onPanel, "b-1")).toBe(false)
+      expect(pointedAt(onPanel, "b-1")).toBe(false)
       expect(hintOf(onPanel)).toContain("Esc back")
       await press(rendered, "tab")
       const firstRow = await rendered.capture()
-      expect(pointed(firstRow, "b-1")).toBe(true)
+      expect(pointedAt(firstRow, "b-1")).toBe(true)
       expect(firstRow.chars).toContain("b-1 blocked: DIRTY_TREE")
       await press(rendered, "tab")
       const secondRow = await rendered.capture()
-      expect(pointed(secondRow, "a-1")).toBe(true)
+      expect(pointedAt(secondRow, "a-1")).toBe(true)
       expect(secondRow.chars).toContain("Which flag name?")
       await press(rendered, "tab")
       const round = await rendered.capture()
-      expect(pointed(round, "a-1")).toBe(false)
+      expect(pointedAt(round, "a-1")).toBe(false)
       expect(heavyOn(round, "w-1")).toBe(true)
     })
   })
@@ -415,13 +410,13 @@ describe("Tab past the last card", () => {
   test("Shift+Tab goes the other way, from the first card to the last row", async () => {
     await scene(wanting(2), wide, async ({ rendered }) => {
       await press(rendered, "tab", "shift+tab")
-      expect(pointed(await rendered.capture(), "a-1")).toBe(true)
+      expect(pointedAt(await rendered.capture(), "a-1")).toBe(true)
       await press(rendered, "shift+tab")
-      expect(pointed(await rendered.capture(), "b-1")).toBe(true)
+      expect(pointedAt(await rendered.capture(), "b-1")).toBe(true)
       await press(rendered, "shift+tab")
       const onPanel = await rendered.capture()
       expect(onPanel.chars).toContain("┏")
-      expect(pointed(onPanel, "b-1")).toBe(false)
+      expect(pointedAt(onPanel, "b-1")).toBe(false)
       await press(rendered, "shift+tab")
       expect(heavyOn(await rendered.capture(), "w-2")).toBe(true)
     })
@@ -443,7 +438,7 @@ describe("Tab past the last card", () => {
       await press(rendered, "tab")
       const row = await rendered.capture()
       expect(lit(row, "Needs you")).toBe(false)
-      expect(pointed(row, "b-1")).toBe(true)
+      expect(pointedAt(row, "b-1")).toBe(true)
     })
   })
 
@@ -470,7 +465,7 @@ describe("Tab past the last card", () => {
       expect(taken(commands)).toMatchObject([{ question: "q-1", answer: "Use --flag" }])
       await press(rendered, "tab", "tab")
       const frame = await rendered.capture()
-      expect(pointed(frame, "a-1")).toBe(false)
+      expect(pointedAt(frame, "a-1")).toBe(false)
       expect(heavyOn(frame, "w-1")).toBe(true)
     })
   })
@@ -485,7 +480,7 @@ describe("Tab past the last card", () => {
       )
       expect(drawn.length).toBeLessThan(30)
       await press(rendered, "shift+tab")
-      expect(pointed(await rendered.capture(), `${drawn.at(-1)} `)).toBe(true)
+      expect(selectedRow(await rendered.capture())?.ticket).toBe(drawn.at(-1))
     })
   })
 })
@@ -512,7 +507,7 @@ describe("Tab with no cards", () => {
       wide,
       async ({ rendered }) => {
         await press(rendered, "tab")
-        expect(pointed(await rendered.capture(), "s-")).toBe(true)
+        expect(pointedAt(await rendered.capture(), "s-")).toBe(true)
       },
     )
   })

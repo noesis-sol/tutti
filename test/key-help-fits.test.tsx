@@ -17,6 +17,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { workerViewCommands } from "../src/ui/WorkerView.tsx"
 import { type Frame, withRender } from "./render.ts"
+import { boxWith } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -66,16 +67,17 @@ describe("the key help's height", () => {
   test("is the natural one where the pane has room for it", () => {
     const lines = textOf(keyHelpLines(theme, 100, dashboardKeys, 40))
     expect(lines).toHaveLength(dashboardKeys.length + 6)
-    expect(lines[2]).toMatch(/^│ +│$/)
+    expect(boxWith(lines, "Keys").lines[1]).toBe("")
   })
 
   test("leaves out the blank lines at the smallest size, then shows the dashboard's keys a window at a time", () => {
     const lines = textOf(keyHelpLines(theme, 60, dashboardKeys, 16))
     expect(lines).toHaveLength(16)
-    expect(lines[1]).toMatch(/^│ Keys {2}1–12 of 17 +│$/)
+    const box = boxWith(lines, "Keys")
+    expect(box.lines[0]).toMatch(/^Keys {2}1–12 of 17$/)
     expect(lines[2]).toContain("Tab, Shift+Tab")
     expect(lines.at(-3)).toContain("answer the open questions")
-    expect(lines.at(-2)).toMatch(/^│ Esc close · ↑↓ PgUp PgDn scroll +│$/)
+    expect(box.lines.at(-1)).toBe("Esc close · ↑↓ PgUp PgDn scroll")
   })
 
   test("shows the worker view's keys a window at a time, saying which", () => {

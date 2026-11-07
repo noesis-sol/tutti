@@ -23,7 +23,7 @@ import { type Appearance, makeTheme, orchestra, type StyleName } from "../src/ui
 import { external, type Settable, type ShellValue, tick } from "../src/ui/useRunView.ts"
 import { workersDoing } from "./activity.ts"
 import { type Frame, renderFrame, type Size, withRender } from "./render.ts"
-import { hintAt, hintFrom, hintRows, rowsIn } from "./screen.ts"
+import { hintAt, hintFrom, hintRows, rowsIn, totalsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -383,8 +383,8 @@ describe("the totals strip", () => {
       width: 80,
       height: 24,
     })
-    expect(empty.text).toContain("│ 0 Completed ")
-    expect(empty.text).toContain("│ 0 In queue · held ")
+    expect(totalsIn(empty.text)).toContain("0 Completed")
+    expect(totalsIn(empty.text)).toContain("0 In queue · held")
     looksLike(empty.frame, "0 Completed", "dim")
     looksLike(empty.frame, "0 Needs you", "dim")
     looksLike(empty.frame, "0 of 3", "dim")
@@ -404,8 +404,8 @@ describe("the tickets table", () => {
           )
         : viewOf([entry("tut-1" as TicketId, "The ticket's title", phase, 0)], status)
     const { frame, text } = await draw(view, { width: 80, height: 24 })
-    const line = text.split("\n").find((each) => each.includes("tut-1")) ?? ""
-    return { frame, line }
+    const row = rowsIn(text).find((each) => each.ticket === "tut-1")
+    return { frame, row }
   }
 
   test.each<readonly [string, TicketPhase | Activity, string, StyleName]>([
@@ -447,9 +447,8 @@ describe("the tickets table", () => {
     ["■ blocked", TicketPhase.Blocked({ why: "MERGE_CONFLICT" }), "The ticket's title", "stop"],
     ["■ stopped", TicketPhase.Stopped({ why: "PAUSED" }), "The ticket's title", "stop"],
   ])("%s", async (word, phase, note, style) => {
-    const { frame, line } = await rowOf(phase)
-    const literal = (text: string) => text.replace(/[?]/g, "\\?")
-    expect(line).toMatch(new RegExp(`^│   ${literal(word)} +│ tut-1 +│ ${note} +│$`))
+    const { frame, row } = await rowOf(phase)
+    expect(row).toMatchObject({ state: word, ticket: "tut-1", note, selected: false })
     looksLike(frame, word, style)
     looksLike(frame, "tut-1", style)
   })
@@ -472,11 +471,11 @@ describe("the tickets table", () => {
       TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
       TicketPhase.Review({ why: "OFF_BRANCH" }),
     ]) {
-      const { frame, line } = await rowOf(phase, { verdicts })
-      expect(line).toContain("│ ◆ environment · high")
+      const { frame, row } = await rowOf(phase, { verdicts })
+      expect(row?.note).toStartWith("◆ environment · high")
       looksLike(frame, "◆ environment", "organ")
     }
-    expect((await rowOf("editing", { verdicts })).line).toContain("The ticket's title")
+    expect((await rowOf("editing", { verdicts })).row?.note).toBe("The ticket's title")
   })
 
   test("rows keep their place as phases change", async () => {
@@ -490,9 +489,9 @@ describe("the tickets table", () => {
     // Rows of a group, newest first, and at the same moment here.
     await withRender(<Root value={value(view)} />, { width: 80, height: 24 }, async (rendered) => {
       const rows = async () =>
-        linesOf(await rendered.capture())
-          .filter((line) => line.includes("tut-"))
-          .map((line) => line.split("│")[2]?.trim())
+        rowsIn(await rendered.capture())
+          .filter((row) => row.ticket.startsWith("tut-"))
+          .map((row) => row.ticket)
       expect(await rows()).toEqual(["tut-3", "tut-2", "tut-1"])
       await rendered.input(() =>
         view.set(
@@ -503,11 +502,12 @@ describe("the tickets table", () => {
           ]),
         ),
       )
-      const frame = linesOf(await rendered.capture())
       expect(await rows()).toEqual(["tut-3", "tut-2", "tut-1"])
       expect(
-        frame.filter((line) => line.includes("tut-")).map((l) => l.slice(0, 15).trimEnd()),
-      ).toEqual(["│   ◷ waiting", "│   ✓ done", "│   ◆ merging"])
+        rowsIn(await rendered.capture())
+          .filter((row) => row.ticket.startsWith("tut-"))
+          .map((row) => row.state),
+      ).toEqual(["◷ waiting", "✓ done", "◆ merging"])
     })
   })
 
@@ -527,7 +527,7 @@ describe("the tickets table", () => {
     const lines = text.split("\n")
     const top = lines.findIndex((line) => line === "  Tickets") + 1
     // 10 lines in all: the label, the frame, and 7 rows.
-    expect(lines[top]).toStartWith("╭───────────────┬")
+    expect(lines[top]).toMatch(/^╭─+┬/)
     const rows = rowsIn(text)
     expect(rows.map((row) => row.ticket)).toEqual([
       "tut-9",
@@ -543,6 +543,7 @@ describe("the tickets table", () => {
       ticket: "+3",
       note: "earlier tickets, see the log",
       selected: false,
+      line: top + 7,
     })
     expect(lines[top + 8]).toStartWith("╰")
     const few = await draw(viewOf([entry("tut-1" as TicketId, "One", TicketPhase.Working(), 0)]), {

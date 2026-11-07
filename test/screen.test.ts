@@ -16,6 +16,7 @@ import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { windDownSegments } from "../src/ui/WindDown.tsx"
 import {
+  boxLine,
   cardHead,
   cardLine,
   cardOn,
@@ -27,8 +28,10 @@ import {
   hintRows,
   insideOf,
   panelOf,
+  pointedAt,
   rowsIn,
   screenLines,
+  selectedRow,
 } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
@@ -135,9 +138,9 @@ describe("cardsIn", () => {
   test("reads steered, the memory, and the pointer before an attention card's title", () => {
     const screen = [
       "╭──────────────────────────────────────────────╮",
-      `┃ ${cardHead("•", "t-3")}  done  steered  1m07s  1.2 GB`,
-      `┃ ${marks.selected}${cardLine("Title of t-3").slice(1)}`,
-      `┃ ${cardLine("[ Deny ]  [ Allow ]")}`,
+      boxLine(`${cardHead("•", "t-3")}  done  steered  1m07s  1.2 GB`, "┃"),
+      boxLine(`${marks.selected}${cardLine("Title of t-3").slice(1)}`, "┃"),
+      boxLine(cardLine("[ Deny ]  [ Allow ]"), "┃"),
       "╰──────────────────────────────────────────────╯",
     ]
     expect(cardOn(screen, "t-3")).toMatchObject({
@@ -222,6 +225,12 @@ describe("the boxes under a label", () => {
       expect.objectContaining({ ticket: "t-2", selected: true, note: "Title of t-2" }),
     ])
     expect(rowsIn(table)[0]?.state).toStartWith(marks.working)
+    // The label and the table's top border above the first row.
+    expect(rowsIn(table).map((row) => row.line)).toEqual([2, 3])
+    expect(selectedRow(table)?.ticket).toBe("t-2")
+    expect(pointedAt(table, "Title of t-2")).toBe(true)
+    expect(pointedAt(table, "t-1")).toBe(false)
+    expect(selectedRow(ticketsLines(view.rows, theme, 80, { fill: false }))).toBeUndefined()
   })
 
   test("panelOf reads the lines inside a panel, insideOf a box's line", () => {
@@ -229,6 +238,6 @@ describe("the boxes under a label", () => {
     const panel = upNextLines(view.queue, view.totals, theme, 50, 7)
     expect(panelOf(panel, "Up next")[0]).toBe("Nothing needs you")
     expect(panelOf(panel, "Up next")[1]?.split(/ {2,}/)).toEqual(["t-1", "ready"])
-    expect(insideOf("│ t-1  ready   │")).toBe("t-1  ready")
+    expect(insideOf(`${boxLine("t-1  ready")}   │`)).toBe("t-1  ready")
   })
 })

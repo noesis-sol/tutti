@@ -40,7 +40,7 @@ import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue, spinnerAt, spinnerFrames } from "../src/ui/useRunView.ts"
 import { windDownSegments } from "../src/ui/WindDown.tsx"
 import { type Frame, pressEscape, renderFrame, type Size, withRender } from "./render.ts"
-import { cardOn, cardsIn, hintAt, hintLine, hintOf } from "./screen.ts"
+import { boxLine, cardOn, cardsIn, hintAt, hintLine, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -339,7 +339,7 @@ describe("a card for each status", () => {
       "
     `)
     const stopping = idleBox(idleText(true, null, 0), theme, spin, 40)
-    expect(textOf(stopping)).toContain("│ ⣾ stopping…")
+    expect(textOf(stopping)).toContain(boxLine("⣾ stopping…"))
     sameLook(lookOf(stopping, "stopping…"), theme.styles.dim)
     sameLook(lookOf(stopping, "⣾"), theme.look("live"))
   })
@@ -566,11 +566,11 @@ describe("the Current section", () => {
 
   test("with no worker, the box says the run is picking the next ticket, or stopping", async () => {
     expect(currentOf(await draw(viewOf([]), { width: 80, height: 24 }))).toContain(
-      `│ ${turned} picking the next ticket…`,
+      boxLine(`${turned} picking the next ticket…`),
     )
     expect(
       currentOf(await draw(viewOf([], { stopping: true }), { width: 80, height: 24 })),
-    ).toContain(`│ ${turned} stopping…`)
+    ).toContain(boxLine(`${turned} stopping…`))
   })
 })
 

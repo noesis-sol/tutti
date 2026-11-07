@@ -35,7 +35,7 @@ import { external } from "../src/ui/useRunView.ts"
 import { fullHeadFrom, headExtras } from "../src/ui/WorkerView.tsx"
 import { aboveLines, lineOneSegments } from "../src/ui/worker/Head.tsx"
 import { type Frame, type Rendered, withRender } from "./render.ts"
-import { cardHead } from "./screen.ts"
+import { boxesIn, boxWith, cardHead } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -408,12 +408,14 @@ describe("the ticket's box", () => {
       expect(top.find((each) => each.text === "feature")?.fg.toInts()).toEqual(
         theme.rgba("typeFeature", "fg").toInts(),
       )
-      expect(lines[4]).toBe(`│ ${title}${" ".repeat(120 - 4 - title.length)} │`)
+      const box = boxWith(frame, "Ticket")
+      expect([box.top, box.bottom, box.left, box.right]).toEqual([3, 11, 0, 119])
+      expect(box.lines[0]).toBe(title)
       const span = frame.spans.lines[4]?.spans.find((each) => each.text.includes("Question"))
       expect((span?.attributes ?? 0) & 1).toBe(1)
-      expect(lines[5]).toMatch(/^│ +│$/)
-      for (const row of lines.slice(6, 11)) expect(row).toMatch(/^│ \S.*│$/)
-      expect(lines[10]).toContain("…")
+      expect(box.lines[1]).toBe("")
+      for (const row of box.lines.slice(2)) expect(row).toMatch(/^\S/)
+      expect(box.lines.at(-1)).toContain("…")
       expect(lines[11]).toMatch(/^╰─+ ▾ whole ticket {2}t ─╯$/)
       expect(lines[12]).toMatch(/^── Output ─+$/)
       const control = frame.spans.lines[11]?.spans.find((each) => each.text.includes("▾"))
@@ -426,13 +428,15 @@ describe("the ticket's box", () => {
   test("a long title on 2 lines in the box, cut with …", async () => {
     const long = Array.from({ length: 14 }, () => "a long title").join(" ")
     await scene(viewOf({ title: long }), { width: 80, height: 40 }, async (rendered) => {
-      const lines = linesOf(await until(rendered, has("Reading the scripts.")))
+      const frame = await until(rendered, has("Reading the scripts."))
+      const lines = linesOf(frame)
       expect(lines[3]).toMatch(/^╭─ Ticket ─+ feature · P2 ─╮$/)
-      expect(lines[4]).toStartWith("│ a long title")
-      expect(lines[5]).toMatch(/^│ .*… +│$/)
+      const box = boxWith(frame, "Ticket")
+      expect(box.lines[0]).toStartWith("a long title")
+      expect(box.lines[1]).toEndWith("…")
       expect(Bun.stringWidth(lines[5] ?? "")).toBe(80)
-      expect(lines[6]).toMatch(/^│ +│$/)
-      expect(lines[7]).toStartWith("│ Question tickets carry")
+      expect(box.lines[2]).toBe("")
+      expect(box.lines[3]).toStartWith("Question tickets carry")
     })
   })
 
@@ -449,9 +453,10 @@ describe("the ticket's box", () => {
         const lines = linesOf(open)
         // The box starts where it did, its top border as it was.
         expect(lines[3]).toMatch(/^╭─ Ticket ─+ feature · P2 ─╮$/)
-        expect(lines[4]).toStartWith(`│ ${title}`)
-        expect(lines[5]).toMatch(/^│ +│$/)
-        expect(lines[6]).toStartWith("│ Question tickets carry")
+        const box = boxWith(open, "Ticket")
+        expect(box.lines[0]).toStartWith(title)
+        expect(box.lines[1]).toBe("")
+        expect(box.lines[2]).toStartWith("Question tickets carry")
         const bottom = lines.findIndex((line) => line.startsWith("╰"))
         expect(bottom).toBeGreaterThan(11)
         // Up to 60% of the pane, its frame and title included.
@@ -467,8 +472,7 @@ describe("the ticket's box", () => {
           rendered,
           (frame) => !frame.chars.includes("Question tickets carry"),
         )
-        expect(linesOf(scrolled)[4]).toStartWith(`│ ${title}`)
-        expect(linesOf(scrolled)[5]).toMatch(/^│ +│$/)
+        expect(boxWith(scrolled, "Ticket").lines.slice(0, 2)).toEqual([title, ""])
         // Only ▴ less closes it.
         const less = find(scrolled, "▴ less")
         await rendered.input((setup) => setup.mockMouse.click(less.x, less.y))
@@ -483,14 +487,12 @@ describe("the ticket's box", () => {
       viewOf({ issue: issueOf({ description: "Read the second file too." }) }),
       { width: 80, height: 40 },
       async (rendered) => {
-        const lines = linesOf(await until(rendered, has("Reading the scripts.")))
-        expect(lines.slice(4, 8)).toEqual([
-          `│ ${title}${" ".repeat(76 - title.length)} │`,
-          `│${" ".repeat(78)}│`,
-          `│ Read the second file too.${" ".repeat(52)}│`,
-          `╰${"─".repeat(78)}╯`,
-        ])
-        expect(lines[8]).toMatch(/^── Output ─+$/)
+        const frame = await until(rendered, has("Reading the scripts."))
+        const box = boxWith(frame, "Ticket")
+        expect(box.lines).toEqual([title, "", "Read the second file too."])
+        expect([box.top, box.bottom, box.left, box.right]).toEqual([3, 7, 0, 79])
+        expect(box.foot).toEqual([])
+        expect(linesOf(frame)[8]).toMatch(/^── Output ─+$/)
       },
     )
   })
@@ -501,7 +503,7 @@ describe("the ticket's box", () => {
       { width: 80, height: 40 },
       async (rendered) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        expect(linesOf(frame)[6]).toStartWith("│ No description.")
+        expect(boxWith(frame, "Ticket").lines[2]).toStartWith("No description.")
         const span = frame.spans.lines[6]?.spans.find((each) =>
           each.text.includes("No description"),
         )
@@ -534,15 +536,16 @@ describe("a shorter pane", () => {
   const headAt = async (height: number) => {
     let shape = { described: 0, above: false, inBox: false, title: "", lineOne: "" }
     await scene(viewOf(), { width: 120, height }, async (rendered) => {
-      const lines = linesOf(await until(rendered, has("Reading the scripts.")))
+      const frame = await until(rendered, has("Reading the scripts."))
+      const lines = linesOf(frame)
       const rule = lines.findIndex((line) => /^─+$/.test(line))
       const head = lines.slice(2, rule)
-      const sides = head.filter((line) => line.startsWith("│"))
+      const inside = boxesIn(frame).find((box) => box.head[0] === "Ticket")?.lines ?? []
       shape = {
-        described: sides.filter((line) => /^│ (?!Question tickets give)\S/.test(line)).length,
+        described: inside.filter((line) => /^(?!Question tickets give)\S/.test(line)).length,
         above: head[0] === "",
-        inBox: sides.some((line) => /^│ +│$/.test(line)),
-        title: sides.some((line) => line.startsWith(`│ ${title}`))
+        inBox: inside.includes(""),
+        title: inside.some((line) => line.startsWith(title))
           ? "box"
           : head.some((line) => line === `  ${title}`)
             ? "alone"

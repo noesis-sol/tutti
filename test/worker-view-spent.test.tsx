@@ -22,6 +22,7 @@ import {
 } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
+import { boxWith } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -164,12 +165,7 @@ const until = async (rendered: Rendered, ok: (frame: Frame) => boolean): Promise
 const has = (text: string) => (frame: Frame) => frame.chars.includes(text)
 
 /** The panel's lines inside its frame. */
-const inside = (frame: Frame): ReadonlyArray<string> => {
-  const lines = linesOf(frame)
-  const bottom = lines.findIndex((line) => line.startsWith("╰") && line.includes("▴ less"))
-  const top = lines.findLastIndex((line, i) => i < bottom && line.startsWith("╭"))
-  return top < 0 || bottom < 0 ? [] : lines.slice(top + 1, bottom)
-}
+const inside = (frame: Frame): ReadonlyArray<string> => boxWith(frame, "▴ less").lines
 
 /** Clicks line 1's `text`, among its figures. */
 const clickOn = (rendered: Rendered, frame: Frame, text: RegExp) => {
@@ -217,8 +213,8 @@ describe("Spent gone from the worker view", () => {
         })
       }
       const end = await until(rendered, (each) => !each.chars.includes("more line"))
-      const lines = inside(end).filter((line) => !/^│ +│$/.test(line))
-      expect(lines.at(-1)).toMatch(/^│ (\*\*)?Labels(\*\*)? {2}bookmarks +│$/)
+      const lines = inside(end).filter((line) => line !== "")
+      expect(lines.at(-1)).toMatch(/^(\*\*)?Labels(\*\*)? {2}bookmarks$/)
       for (const text of spending) expect(end.chars).not.toContain(text)
     })
   })

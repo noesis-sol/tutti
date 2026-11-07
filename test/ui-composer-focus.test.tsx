@@ -211,12 +211,14 @@ const type = (rendered: Rendered, text: string) =>
     await Bun.sleep(30)
   })
 
-/** Clicks the first line that holds `text`, a few columns into it. */
+/** Clicks `text` on the first line that holds it. */
 const clickOn = async (rendered: Rendered, text: string) => {
-  const y = linesOf(await rendered.capture()).findIndex((line) => line.includes(text))
+  const lines = linesOf(await rendered.capture())
+  const y = lines.findIndex((line) => line.includes(text))
   expect(y).toBeGreaterThan(0)
+  const x = (lines[y] ?? "").indexOf(text)
   await rendered.input(async (setup) => {
-    await setup.mockMouse.click(6, y)
+    await setup.mockMouse.click(x, y)
     await Bun.sleep(30)
   })
 }

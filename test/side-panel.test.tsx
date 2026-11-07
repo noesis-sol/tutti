@@ -17,7 +17,7 @@ import { panelWidth, upNextLines } from "../src/ui/SidePanel.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, withRender } from "./render.ts"
-import { insideOf } from "./screen.ts"
+import { insideOf, panelOf, totalsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -165,9 +165,8 @@ const needingView = (): RunView =>
     actions: new Map(),
   })
 
-/** The panel's lines of a frame: what is right of the table. */
-const panelOf = (frame: Frame, from: number): ReadonlyArray<string> =>
-  frame.chars.split("\n").map((line) => line.slice(from).trimEnd())
+/** The lines inside the panel's Up next box, its frame and padding left out. */
+const upNextOf = (frame: Frame): ReadonlyArray<string> => panelOf(frame, "Up next")
 
 describe("the panel beside the tickets table", () => {
   test("is drawn from 130 columns, not at 129", async () => {
@@ -183,18 +182,15 @@ describe("the panel beside the tickets table", () => {
     const frame = await drawn(155, 36)
     // The strip's In queue cell is over the panel, its bar before In queue over the gap left of the
     // panel (tutti-ebra, tutti-nsw2).
-    expect(panelOf(frame, 155 - 62)).toContain(
-      "│ 2 In queue · 3 held back                                   │",
-    )
-    const panel = panelOf(frame, 155 - 61).filter((line) => line.startsWith("│"))
-    expect(panel.slice(0, 7)).toEqual([
-      "│ Nothing needs you                                         │",
-      "│ tutti-gr4z.11  ready                                      │",
-      "│ tutti-h2o9     ready                                      │",
-      "│ tutti-gr4z.9   › after tutti-gr4z.7: both touch           │",
-      "│                  scripts/check.sh                         │",
-      "│ tutti-07nj     › after tutti-h2o9 merges                  │",
-      "│ tutti-fdv1     › after tutti-kkb.28 (solo)                │",
+    expect(totalsIn(frame).at(-1)).toBe("2 In queue · 3 held back")
+    expect(upNextOf(frame).slice(0, 7)).toEqual([
+      "Nothing needs you",
+      "tutti-gr4z.11  ready",
+      "tutti-h2o9     ready",
+      "tutti-gr4z.9   › after tutti-gr4z.7: both touch",
+      "                 scripts/check.sh",
+      "tutti-07nj     › after tutti-h2o9 merges",
+      "tutti-fdv1     › after tutti-kkb.28 (solo)",
     ])
   })
 

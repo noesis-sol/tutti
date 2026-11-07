@@ -14,6 +14,7 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { boxed, paint, type Segments, seg, wrap } from "../src/ui/line.tsx"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { makeTheme, orchestra, roles } from "../src/ui/theme.ts"
+import { boxWith } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 const noColour = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
@@ -183,14 +184,9 @@ describe("init's Next box", () => {
       .slice(1, -1)
 
   test("is a pill-framed box, its commands on their own lines", () => {
-    expect(box(30)).toEqual([
-      "╭────────────────────────────╮",
-      "│ Next                       │",
-      "│ 1. Install bd              │",
-      "│    brew install beads      │",
-      "│ 2. Then run it             │",
-      "╰────────────────────────────╯",
-    ])
+    const next = boxWith(box(30), "Next")
+    expect([next.top, next.bottom, next.left, next.right]).toEqual([0, 5, 0, 29])
+    expect(next.lines).toEqual(["Next", "1. Install bd", "   brew install beads", "2. Then run it"])
   })
 
   test("frames in pill, its title organ bold, its commands emphasis bold", () => {

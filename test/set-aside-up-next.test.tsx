@@ -12,12 +12,12 @@ import { emptyStatus, type Need, project, type RunView, type Status } from "../s
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
-import { marks } from "../src/ui/marks.ts"
 import { selectedTicket } from "../src/ui/SidePanel.tsx"
 import { byAttention } from "../src/ui/TicketsTable.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { pointedAt } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 
@@ -130,10 +130,6 @@ const panelOf = (frame: Frame): string =>
 
 const linesOf = (frame: Frame) => frame.chars.split("\n")
 
-/** Whether the table's pointer is on a row of `frame` holding `text`. */
-const pointed = (frame: Frame, text: string) =>
-  linesOf(frame).some((line) => line.includes(`│ ${marks.selected}`) && line.includes(text))
-
 /** Whether a span of `text` on `frame` has the focus's fill. */
 const lit = (frame: Frame, text: string) =>
   frame.spans.lines.some((line) =>
@@ -238,7 +234,7 @@ describe("a set-aside row you choose", () => {
       // Newest first: t-1, r-1, s-1. Going in lands on the first.
       await press(rendered, "enter")
       const first = await rendered.capture()
-      expect(pointed(first, "t-1")).toBe(true)
+      expect(pointedAt(first, "t-1")).toBe(true)
       expect(panelOf(first)).toContain("The next run resumes it.")
       await press(rendered, "down")
       const second = panelOf(await rendered.capture())
@@ -273,7 +269,7 @@ describe("a set-aside row you choose", () => {
     await scene(projected(aside), wide, async ({ rendered }) => {
       await press(rendered, "tab")
       const frame = await rendered.capture()
-      expect(pointed(frame, "t-1")).toBe(true)
+      expect(pointedAt(frame, "t-1")).toBe(true)
       expect(panelOf(frame)).toContain("The next run resumes it.")
       await press(rendered, "escape")
       expect(panelOf(await rendered.capture())).toContain("Up next")
@@ -322,7 +318,7 @@ describe("what doesn't change", () => {
   test("in a narrow pane, Tab goes to a set-aside row, and Enter opens its box", async () => {
     await scene(projected(aside), narrow, async ({ rendered }) => {
       await press(rendered, "tab")
-      expect(pointed(await rendered.capture(), "t-1")).toBe(true)
+      expect(pointedAt(await rendered.capture(), "t-1")).toBe(true)
       await press(rendered, "enter")
       expect((await rendered.capture()).chars).toContain("The next run resumes it.")
     })

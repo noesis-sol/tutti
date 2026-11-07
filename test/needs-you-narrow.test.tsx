@@ -28,6 +28,7 @@ import type { Timer } from "../src/ui/Toasts.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { pointedAt } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -204,21 +205,6 @@ const pointedIn = (lines: ReadonlyArray<Segments>, text: string): boolean =>
       line.some((each) => each.text.includes(text)),
   )
 
-/** Whether the table's pointer, `│ ▸`, is on a row of `frame` whose cells hold `text`. */
-const pointed = (frame: Frame, text: string): boolean =>
-  frame.chars.split("\n").some((line) => {
-    const at = line.indexOf(`│ ${marks.selected}`)
-    return (
-      at !== -1 &&
-      line
-        .slice(at + 1)
-        .split("│")
-        .slice(0, 3)
-        .join("│")
-        .includes(text)
-    )
-  })
-
 /** Whether `text` is drawn in `frame` on the focus's fill, as the highlight draws it. */
 const lit = (frame: Frame, text: string): boolean =>
   frame.spans.lines.some((line) =>
@@ -277,7 +263,7 @@ describe("an Asked row", () => {
         const table = await until(rendered, has("Which flag name?"))
         const { x, y } = placeOf(table, "Which flag name?")
         await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
-        expect(pointed(await rendered.capture(), "Which flag name?")).toBe(true)
+        expect(pointedAt(await rendered.capture(), "Which flag name?")).toBe(true)
         await press(rendered, "enter")
         const uuid = await readUuid(rendered, commands)
         expect(uuid).not.toBe("")
@@ -303,7 +289,7 @@ describe("a click on Needs you, or on an Asked row", () => {
       await press(rendered, "escape")
       const after = await until(rendered, (now) => !now.chars.includes(listReadingText))
       expect(lit(after, "Needs you")).toBe(true)
-      expect(pointed(after, "Which flag name?")).toBe(false)
+      expect(pointedAt(after, "Which flag name?")).toBe(false)
     })
   })
 
@@ -316,7 +302,7 @@ describe("a click on Needs you, or on an Asked row", () => {
       const { x, y } = placeOf(onNeeds, "Which flag name?")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, y))
       const after = await rendered.capture()
-      expect(pointed(after, "Which flag name?")).toBe(true)
+      expect(pointedAt(after, "Which flag name?")).toBe(true)
       expect(lit(after, "Needs you")).toBe(false)
     })
   })

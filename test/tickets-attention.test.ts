@@ -14,6 +14,7 @@ import { paint, widthOf } from "../src/ui/line.tsx"
 import { byAttention, shownRows, ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { workersDoing } from "./activity.ts"
+import { rowsIn } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 
@@ -177,7 +178,11 @@ describe("folding", () => {
     const lines = drawn(view.rows, 6)
     expect(lines[2]).toContain("fab-mgi")
     expect(lines[3]).toContain("d-54")
-    expect(lines[4]).toMatch(/^│ +│ \+54 +│ earlier tickets, see the log +│$/)
+    expect(rowsIn(lines)[2]).toMatchObject({
+      state: "",
+      ticket: "+54",
+      note: "earlier tickets, see the log",
+    })
   })
 
   test("all the rows that fit show, and no folded row", () => {
@@ -200,7 +205,11 @@ describe("folding", () => {
     const lines = drawn(view.rows, 6)
     expect(lines[2]).toContain("b-1")
     expect(lines[3]).toContain("b-2")
-    expect(lines[4]).toMatch(/^│ +│ \+4 +│ more: 1 blocked, 1 asked, 2 set aside, \+2 earlier +│$/)
+    expect(rowsIn(lines)[2]).toMatchObject({
+      state: "",
+      ticket: "+4",
+      note: "more: 1 blocked, 1 asked, 2 set aside, +2 earlier",
+    })
   })
 
   test("rows that want you and just fill the table keep every line, the rest unsaid", () => {
@@ -220,7 +229,8 @@ describe("folding", () => {
     ])
     const lines = ticketsLines(view.rows, theme, 80, { lines: 5 })
     const text = lines.map((line) => line.map((each) => each.text).join(""))
-    expect(text[3]).toMatch(/\+2 +│ more: 1 blocked, 1 set aside/)
+    expect(rowsIn(text)[1]?.ticket).toBe("+2")
+    expect(rowsIn(text)[1]?.note).toStartWith("more: 1 blocked, 1 set aside")
     expect(paint(lines[3] ?? [])).toContain(theme.styles.stop.paint("+2"))
     const set = viewOf([
       ["b-1", blocked, 1],

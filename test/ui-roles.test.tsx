@@ -51,7 +51,7 @@ import {
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { workersDoing } from "./activity.ts"
 import { type Frame, type Rendered, type Size, withRender } from "./render.ts"
-import { cardHead, cardLine } from "./screen.ts"
+import { boxLine, cardHead, cardLine } from "./screen.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
 /** § 7.11's tables: each role's colour in the `orchestra` scheme, light and dark. */
@@ -335,8 +335,8 @@ interface Scene {
   readonly children?: (theme: Theme) => ReactNode
   /** Keys pressed once it is drawn. */
   readonly keys?: ReadonlyArray<string>
-  /** A drag with the mouse once it is drawn, from x, y to x, y: a selection. */
-  readonly drag?: readonly [number, number, number, number]
+  /** A drag with the mouse across this text once it is drawn, its first column to its last. */
+  readonly drag?: string
   /** What the frame holds once drawn: text, or a test of it (Markdown is highlighted later). */
   readonly ready: string | ((frame: Frame) => boolean)
   /** Its Markdown highlighted by the real tree-sitter, for its styles (test/render.ts). */
@@ -484,7 +484,12 @@ const draw = (
     async (rendered) => {
       if (scene.keys !== undefined) await press(rendered, scene.keys)
       const drag = scene.drag
-      if (drag !== undefined) await rendered.input((setup) => setup.mockMouse.drag(...drag))
+      if (drag !== undefined) {
+        const lines = (await rendered.capture()).chars.split("\n")
+        const y = lines.findIndex((line) => line.includes(drag))
+        const x = (lines[y] ?? "").indexOf(drag)
+        await rendered.input((setup) => setup.mockMouse.drag(x, y, x + drag.length, y))
+      }
       const ready = scene.ready
       const deadline = Date.now() + readyWait
       for (;;) {
@@ -633,7 +638,7 @@ const scenes: ReadonlyArray<Scene> = [
       [{ text: "┃", on: cardHead("•", "tut-9a1", "┃") }, look("needsYou", "bold")],
       ["permission — waiting for you", look("needsYou", "bold")],
       ["Bash: Remove the build cache", look("text")],
-      [{ text: "rm -rf build", on: `┃ ${cardLine("rm -rf")}` }, look("text", "faint")],
+      [{ text: "rm -rf build", on: boxLine(cardLine("rm -rf"), "┃") }, look("text", "faint")],
       ["outside the working directories", look("text", "faint")],
       ["[ Deny ]", look("formAccentText", { bg: "formAccent" })],
       ["[ Allow ]", look("formText", { bg: "formButton" })],
@@ -672,7 +677,7 @@ const scenes: ReadonlyArray<Scene> = [
       ["⟳ resolving", look("notice")],
       ["tut-9", look("toMerge")],
       // The box with no worker.
-      [{ text: "│", on: "│ ⣾ picking" }, look("frame")],
+      [{ text: "│", on: boxLine("⣾ picking") }, look("frame")],
       [{ text: "⣾", on: "⣾ picking" }, look("live")],
       ["picking the next ticket…", look("text", "faint")],
     ],
@@ -873,7 +878,7 @@ const scenes: ReadonlyArray<Scene> = [
     ),
     ready: "Everything else is done",
     checks: [
-      [{ text: "│", on: "│ Everything else" }, look("needsYou")],
+      [{ text: "│", on: boxLine("Everything else") }, look("needsYou")],
       ["Everything else is done.", look("text")],
       [{ text: "q", on: "q end the run" }, look("emphasis", "bold")],
     ],
@@ -933,7 +938,7 @@ const scenes: ReadonlyArray<Scene> = [
     name: "selected text",
     size: { width: 80, height: 24 },
     view: rowsOf(["editing"]),
-    drag: [28, 9, 42, 9],
+    drag: "Title of tut-1",
     ready: "Title of tut-1",
     checks: [["Title of tut-1", look("selectionText", { bg: "selection" })]],
   },

@@ -19,6 +19,7 @@ import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { type Appearance, makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
+import { rowsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -81,7 +82,7 @@ const scene = (appearance: Appearance, body: (rendered: Rendered) => Promise<voi
 
 /** The span of `frame`'s table saying `text`, on the row of `ticket`. */
 const spanOf = (frame: Frame, ticket: string, text: string) => {
-  const y = frame.chars.split("\n").findIndex((line) => line.includes(`│ ${ticket}`))
+  const y = rowsIn(frame).find((row) => row.ticket === ticket)?.line ?? -1
   const span = frame.spans.lines[y]?.spans.find((each) => each.text.includes(text))
   if (span === undefined) throw new Error(`no span says ${text} on the row of ${ticket}`)
   return span

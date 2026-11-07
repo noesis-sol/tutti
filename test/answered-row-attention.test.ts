@@ -10,6 +10,7 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
 import { byAttention, shownRows, ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { rowsIn } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 
@@ -113,7 +114,11 @@ describe("an answered row in the tickets table", () => {
     const lines = ticketsLines(view.rows, theme, 80, { lines: 6 }).map((line) =>
       line.map((each) => each.text).join(""),
     )
-    expect(lines[4]).toMatch(/^│ +│ \+2 +│ earlier tickets, see the log +│$/)
+    expect(rowsIn(lines)[2]).toMatchObject({
+      state: "",
+      ticket: "+2",
+      note: "earlier tickets, see the log",
+    })
   })
 
   test("doesn't count among the rows that say how many more want you", () => {

@@ -142,9 +142,10 @@ describe("a FrameRow", () => {
       { width: 16, height: 5 },
       async (rendered) => {
         const rows = (await rendered.capture()).chars.split("\n")
-        const drawn = lines.map((each) => each.map((piece) => piece.text).join(""))
+        // As boxed draws the field's text in its place.
+        const drawn = boxed([[seg("above")], [seg("field")], [seg("below")]], 16, frame)
         expect(rows.slice(0, 5)).toEqual(
-          drawn.map((each, i) => (i === 2 ? `│ ${"field".padEnd(12)} │` : each)),
+          drawn.map((each) => each.map((piece) => piece.text).join("")),
         )
       },
     )

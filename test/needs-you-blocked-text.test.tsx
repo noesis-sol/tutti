@@ -16,6 +16,7 @@ import { clearsOf, needsLines, panelTargets } from "../src/ui/SidePanel.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, withRender } from "./render.ts"
+import { panelOf } from "./screen.ts"
 
 type Rendered = Parameters<Parameters<typeof withRender>[2]>[0]
 
@@ -163,7 +164,10 @@ describe("the panel's lines", () => {
 
   test("tall enough: all of it, then the foot", () => {
     const lines = texts(needsLines(needOf(), 1, at, theme, 60, 20)).join("\n")
-    expect(lines).toContain("loop.ts, cli.test.ts")
+    // The panel's lines read as one text, wherever they wrap.
+    expect(panelOf(texts(needsLines(needOf(), 1, at, theme, 60, 20))).join(" ")).toContain(
+      "loop.ts, cli.test.ts",
+    )
     expect(lines).toContain("next run checks")
     expect(lines).toContain("Enter opens its worker view")
     expect(lines).not.toContain("click to read it all")

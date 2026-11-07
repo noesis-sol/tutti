@@ -4,8 +4,10 @@
 import { describe, expect, test } from "bun:test"
 import { emptyView, type Totals } from "../src/run/runView.ts"
 import type { Segments } from "../src/ui/line.tsx"
+import { boxPad } from "../src/ui/spacing.ts"
 import { totalsLines, totalsStrip } from "../src/ui/Totals.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { totalsIn } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 
@@ -21,7 +23,7 @@ const cellWidths = (t: Totals, width: number) =>
   (strip(t, width)?.[1] ?? "")
     .split("│")
     .slice(1, -1)
-    .map((cell) => Bun.stringWidth(cell) - 2)
+    .map((cell) => Bun.stringWidth(cell) - 2 * boxPad.length)
 
 // `✓ 20 Completed`, 14 columns, and `0 of 9 In queue · 8 held back`, 29.
 const typical = totals({ completed: 20, unclosed: 9, heldBack: 8 })
@@ -30,11 +32,17 @@ const tight = totals({ completed: 20, deferred: 1, needsYou: 1, queued: 10, uncl
 
 describe("the totals strip", () => {
   test("puts each count beside its label, on one line between the frame's", () => {
-    expect(strip(typical, 100)).toEqual([
-      "╭───────────────────┬───────────────────┬───────────────────┬──────────────────────────────────────╮",
-      "│ ✓ 20 Completed    │ 0 Set aside       │ 0 Needs you       │ 0 of 9 In queue · 8 held back        │",
-      "╰───────────────────┴───────────────────┴───────────────────┴──────────────────────────────────────╯",
+    const lines = strip(typical, 100) ?? []
+    expect(totalsIn(lines)).toEqual([
+      "✓ 20 Completed",
+      "0 Set aside",
+      "0 Needs you",
+      "0 of 9 In queue · 8 held back",
     ])
+    expect(lines).toHaveLength(3)
+    expect(lines[0]).toMatch(/^╭(─+┬){3}─+╮$/)
+    expect(lines[2]).toMatch(/^╰(─+┴){3}─+╯$/)
+    expect(lines.every((line) => Bun.stringWidth(line) === 100)).toBe(true)
   })
 
   test("a fifth of a wide strip for each of the first three, the rest for the queue", () => {
@@ -81,9 +89,9 @@ describe("the totals strip", () => {
       setupFailed: 1,
       queueHeld: true,
     })
-    const line = strip(t, 140)?.[1] ?? ""
-    expect(line).toContain("│ ↷ 3 Set aside · ◆ 2 triaged ")
-    expect(line).toContain("│ 4 of 9 In queue · 1 held back · 1 setup failed · held ")
+    const cells = totalsIn(strip(t, 140) ?? [])
+    expect(cells).toContain("↷ 3 Set aside · ◆ 2 triaged")
+    expect(cells).toContain("4 of 9 In queue · 1 held back · 1 setup failed · held")
   })
 
   test("each count in its style, its label faint, a zero faint whole", () => {

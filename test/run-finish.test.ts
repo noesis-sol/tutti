@@ -18,6 +18,7 @@ import { Captured } from "../src/testing/EventStream.ts"
 import { type Answers, layer as cannedLayer } from "../src/testing/Organs.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { backlog, type Ran, scenario, type World } from "./harness.ts"
+import { rowsIn } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
 
@@ -136,7 +137,9 @@ describe("when a run leaves its end to finish", () => {
     expect(printed).toContain(" Tutti  0.1.0-test")
     expect(printed).toContain("Completed")
     expect(printed).toContain("Tickets")
-    expect(printed).toMatch(/│ ↷ deferred +│ t-1 +│/)
+    expect(rowsIn(printed)).toContainEqual(
+      expect.objectContaining({ state: "↷ deferred", ticket: "t-1" }),
+    )
     expect(printed).toContain("♪ Completed the Run  1 ticket")
     // Without organs there is no report.
     expect(printed).not.toContain("◆")

@@ -471,8 +471,8 @@ export const Section = ({
   )
 
 /**
- * A rounded frame around `rows`, each of cells in columns `widths` wide (a space each side besides),
- * its lines in `frame`: one line a row, and the top and bottom borders.
+ * A rounded frame around `rows`, each of cells in columns `widths` wide (boxPad each side
+ * besides), its lines in `frame`: one line a row, and the top and bottom borders.
  */
 export const framed = (
   rows: ReadonlyArray<ReadonlyArray<Segments>>,
@@ -480,7 +480,7 @@ export const framed = (
   frame: Look,
 ): ReadonlyArray<Segments> => {
   const edge = (left: string, join: string, right: string): Segments => [
-    seg(left + widths.map((w) => "─".repeat(w + 2)).join(join) + right, frame),
+    seg(left + widths.map((w) => "─".repeat(w + 2 * boxPad.length)).join(join) + right, frame),
   ]
   const bar = seg("│", frame)
   return [
@@ -546,7 +546,7 @@ export const frameEdge = (
   return [seg(`${left}${c.h.repeat(fill)} `, look), ...shown, seg(` ${c.h}${right}`, look)]
 }
 
-/** The left and right of boxed's frame, a space inside each: `│ ` and ` │`. */
+/** The left and right of boxed's frame, boxPad inside each: `│ ` and ` │`. */
 export const frameSides = (frame: Look, border: Border = "rounded") => {
   const side = seg(corners[border].v, borderLook(frame, border))
   return { left: [side, seg(boxPad)] as Segments, right: [seg(boxPad), side] as Segments }

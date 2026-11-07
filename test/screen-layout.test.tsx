@@ -38,6 +38,7 @@ import {
 import { external, spinnerFrames } from "../src/ui/useRunView.ts"
 import { transcriptRows, type ViewChrome, viewLayout } from "../src/ui/WorkerView.tsx"
 import { type Frame, renderFrame } from "./render.ts"
+import { boxesIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -382,11 +383,12 @@ describe("drawn", () => {
     const lines = linesOf(frame)
     expect(lines[0]).toContain("← Dashboard")
     const rule = lines.findLastIndex((line) => line.startsWith("────"))
-    expect(lines.slice(rule - 4, rule).map((line) => line.slice(0, 10))).toEqual([
-      "┏━━━━━━━━━",
-      "┃ Bash: Ru",
-      "┃ [ Deny ]",
-      "┃ echo r1 ",
+    const panel = boxesIn(frame).find((box) => box.heavy)
+    expect(panel?.top).toBe(rule - 4)
+    expect(panel?.lines.map((line) => line.slice(0, 8))).toEqual([
+      "Bash: Ru",
+      "[ Deny ]",
+      "echo r1 ",
     ])
     expect(lines[rule + 1]).toContain("i to write to the worker")
     expect(lines.slice(rule + 2).join(" ")).toContain("Esc dashboard")

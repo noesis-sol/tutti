@@ -30,6 +30,7 @@ import { rowsBesideCurrent } from "../src/ui/TicketsTable.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, renderFrame } from "./render.ts"
+import { rowsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -109,13 +110,11 @@ const draw = (view: RunView): Promise<Frame> =>
 /** How many times `text` is in the frame. */
 const countIn = (frame: Frame, text: string): number => frame.chars.split(text).length - 1
 
-/** The table's rows in the frame, its blank ones left out: from the `Tickets` label to its foot. */
-const tableOf = (frame: Frame): ReadonlyArray<string> => {
-  const lines = frame.chars.split("\n").map((line) => line.trimEnd())
-  const from = lines.findIndex((line) => line.trim() === "Tickets")
-  const to = lines.findIndex((line, i) => i > from && line.startsWith("╰"))
-  return lines.slice(from + 2, to).filter((line) => /[a-z]/.test(line))
-}
+/** The table's rows in the frame, each its state and ID, its blank ones left out. */
+const tableOf = (frame: Frame): ReadonlyArray<readonly [string, string]> =>
+  rowsIn(frame)
+    .filter((row) => row.ticket !== "")
+    .map((row) => [row.state, row.ticket] as const)
 
 const permission = (id: string, ticket: TicketId): AttentionRequest => ({
   id,
@@ -175,10 +174,10 @@ describe("the tickets table beside Current", () => {
     const last = views.at(-1)
     if (last === undefined) throw new Error("no view")
     expect(tableOf(await draw(last))).toEqual([
-      expect.stringContaining("■ blocked   │ tut-c3"),
-      expect.stringContaining("! review    │ tut-d4"),
-      expect.stringContaining("↷ deferred  │ tut-b2"),
-      expect.stringContaining("✓ done      │ tut-a1"),
+      ["■ blocked", "tut-c3"],
+      ["! review", "tut-d4"],
+      ["↷ deferred", "tut-b2"],
+      ["✓ done", "tut-a1"],
     ])
   })
 
@@ -273,13 +272,13 @@ describe("the tickets table beside Current", () => {
     )
     const requests = [permission("r1", "tut-a1" as TicketId)]
     const beside = await draw(viewOf(ledger, { requests }))
-    expect(tableOf(beside)).toEqual([expect.stringContaining("tut-b2")])
+    expect(tableOf(beside).map(([, ticket]) => ticket)).toEqual(["tut-b2"])
     const ending = await draw(
       viewOf(ledger, { requests, status: { endOfRun: ["tut-a1" as TicketId] } }),
     )
     expect(tableOf(ending)).toEqual([
-      expect.stringContaining("■ allow?    │ tut-a1"),
-      expect.stringContaining("↷ deferred  │ tut-b2"),
+      ["■ allow?", "tut-a1"],
+      ["↷ deferred", "tut-b2"],
     ])
   })
 })

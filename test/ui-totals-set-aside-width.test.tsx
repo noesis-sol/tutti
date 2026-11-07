@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { emptyView, type Totals } from "../src/run/runView.ts"
 import type { Segments } from "../src/ui/line.tsx"
+import { boxPad } from "../src/ui/spacing.ts"
 import { totalsStrip } from "../src/ui/Totals.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 
@@ -16,7 +17,7 @@ const cellWidths = (t: Totals, width: number) =>
   textOf(totalsStrip(t, theme, width)?.[1] ?? [])
     .split("│")
     .slice(1, -1)
-    .map((cell) => Bun.stringWidth(cell) - 2)
+    .map((cell) => Bun.stringWidth(cell) - 2 * boxPad.length)
 
 // The spec's illustrated state: `✓ 2 Completed` 13, `↷ 1 Set aside · ◆ 1 triaged` 27, `1 Needs
 // you` 11 and `9 of 16 In queue · 2 held back` 30, with 13 for the frame and the padding.
