@@ -5,6 +5,7 @@
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { type Look, type Segments, seg, wrap } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
+import { wordSpace } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { lineDiff } from "./transcriptItems.ts"
 
@@ -72,7 +73,7 @@ const fieldLines = (
     const text = textOf(value)
     const lines = linesOf(text)
     return lines.length === 1
-      ? wrap([seg(name, theme.styles.dim), seg(" "), seg(lines[0] ?? "")], width, {
+      ? wrap([seg(name, theme.styles.dim), seg(wordSpace), seg(lines[0] ?? "")], width, {
           indent: continued,
         })
       : [[seg(name, theme.styles.dim)], ...block(text, null, width, " ".repeat(continued))]

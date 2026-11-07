@@ -13,14 +13,9 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { fitParts } from "../src/ui/fit.ts"
 import { workerMemory } from "../src/ui/LoadLine.tsx"
 import { type Segments, seg } from "../src/ui/line.tsx"
+import { fieldGap } from "../src/ui/spacing.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
-import {
-  contextLook,
-  type FigureInputs,
-  figureParts,
-  gap,
-  shareText,
-} from "../src/ui/worker/figures.ts"
+import { contextLook, type FigureInputs, figureParts, shareText } from "../src/ui/worker/figures.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -75,7 +70,7 @@ const segmentsOf = (
   r: Resources | undefined,
   over: Partial<FigureInputs> = {},
   appearance = theme,
-): Segments => fitParts(figureParts(r, inputs(over), appearance), 300, [seg(gap)])
+): Segments => fitParts(figureParts(r, inputs(over), appearance), 300, [seg(fieldGap)])
 
 const lineOf = (r: Resources, over: Partial<FigureInputs> = {}) => segmentsOf(r, over)
 

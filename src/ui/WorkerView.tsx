@@ -65,6 +65,7 @@ import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.t
 import { useInput } from "./keys.ts"
 import { Line, Lines, Section, type Segments, seg, widthOf } from "./line.tsx"
 import { arrowKeys, marks } from "./marks.ts"
+import { boxIndent, namePad } from "./spacing.ts"
 import {
   badgesOf,
   descriptionLeast,
@@ -157,7 +158,7 @@ export const transcriptName = "Output"
  */
 export const transcriptRule = (theme: Theme, width: number): Segments => {
   const frame = theme.look("frame")
-  const name = [seg("── ", frame), seg(transcriptName, theme.styles.tickets), seg(" ", frame)]
+  const name = [seg("── ", frame), seg(transcriptName, theme.styles.tickets), seg(namePad, frame)]
   return widthOf(name) < width
     ? [...name, seg("─".repeat(width - widthOf(name)), frame)]
     : [seg("─".repeat(width), frame)]
@@ -483,12 +484,15 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
     () => (cardTitle === undefined ? [] : titleLines(cardTitle, theme, textWidth)),
     [cardTitle, theme, textWidth],
   )
-  // The title alone, two columns in, where the box isn't drawn.
+  // The title alone, where the box's lines start, where the box isn't drawn.
   const aloneTitle = useMemo(
     () =>
       cardTitle === undefined
         ? []
-        : titleLines(cardTitle, theme, inner - 2).map((line) => [seg("  "), ...line]),
+        : titleLines(cardTitle, theme, inner - boxIndent.length).map((line) => [
+            seg(boxIndent),
+            ...line,
+          ]),
     [cardTitle, theme, inner],
   )
   // The title and the blank line under it at the top of the whole ticket, which stay.

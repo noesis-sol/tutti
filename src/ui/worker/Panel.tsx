@@ -11,6 +11,7 @@ import { buttonsOf, picksOptions, requestText } from "../attentionKeys.ts"
 import { boxed, boxSides, Line, Lines, type Press, type Segments, seg, wrap } from "../line.tsx"
 import { requestInputLines } from "../requestInput.ts"
 import { sanitize, sanitizeLine } from "../sanitize.ts"
+import { buttonGap } from "../spacing.ts"
 import type { Theme } from "../theme.ts"
 import { type Panel, requestKey, type Selection } from "../transcriptView.ts"
 import { useTheme } from "../useRunView.ts"
@@ -87,7 +88,7 @@ export const panelParts = (
   const buttons = buttonsOf(request).map((each, i) => button(each.label, i))
   const rows: ReadonlyArray<Segments> = picksOptions(request)
     ? buttons.map((each) => [each])
-    : [buttons.flatMap((each, i) => (i === 0 ? [each] : [seg("  "), each]))]
+    : [buttons.flatMap((each, i) => (i === 0 ? [each] : [seg(buttonGap), each]))]
   const above = [
     ...wrap([seg(text.line)], inner, { indent: 2 }),
     ...faint(url),

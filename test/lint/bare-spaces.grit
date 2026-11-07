@@ -1,0 +1,14 @@
+// A bare run of spaces as a segment in src/ui (biome.json), `seg("  ")`: name the gap for what it
+// separates in src/ui/spacing.ts and draw that, so that a gap is chosen in one place and two that
+// mean different things can change apart (tutti-6bwa.2). A width worked out as the line is laid,
+// `seg(" ".repeat(short))`, is padding and passes, as do spaces with words, `seg(" · ")`.
+language js
+
+`seg($text, $...)` where {
+  $text <: or {
+    r"\" +\"",
+    r"' +'",
+    r"` +`"
+  },
+  register_diagnostic(span=$text, message="A bare run of spaces as a segment: name the gap for what it separates in src/ui/spacing.ts (see test/lint/bare-spaces.grit).")
+}

@@ -40,6 +40,7 @@ import {
 } from "./line.tsx"
 import { ellipsis, marks } from "./marks.ts"
 import { escapeMarkdown, sanitizeLine } from "./sanitize.ts"
+import { keyGap, namePad } from "./spacing.ts"
 import type { Role, Theme } from "./theme.ts"
 import { useCommand, useTheme } from "./useRunView.ts"
 import type { Looks } from "./worker/Looks.tsx"
@@ -121,7 +122,7 @@ const borderRoom = 3
  */
 export const ticketEdge = (theme: Theme, width: number, badges: Badges): Segments => {
   const frame = theme.look("frame")
-  const name = [seg("╭─ ", frame), seg(boxName, theme.styles.tickets), seg(" ", frame)]
+  const name = [seg("╭─ ", frame), seg(boxName, theme.styles.tickets), seg(namePad, frame)]
   const forms = [badgeLabel(badges, theme), badges.type, []]
   const label =
     forms.find(
@@ -220,7 +221,7 @@ export const hasMore = (issue: TicketText): boolean =>
 /** `▾ whole ticket  t`, in the link colour and its key's, a click on it pressing target 0. */
 export const moreControl = (theme: Theme): Segments => [
   seg(`${marks.expand} whole ticket`, theme.look("link"), 0),
-  seg("  ", null, 0),
+  seg(keyGap, null, 0),
   seg("t", theme.styles.key, 0),
 ]
 
@@ -410,7 +411,7 @@ export const panelLines = (
 /** `▴ less  t · Esc`, in the link colour and its keys', a click on it pressing target 0. */
 export const lessControl = (theme: Theme): Segments => [
   seg(`${marks.collapse} less`, theme.look("link"), 0),
-  seg("  ", null, 0),
+  seg(keyGap, null, 0),
   seg("t", theme.styles.key, 0),
   seg(" · ", theme.styles.dim, 0),
   seg("Esc", theme.styles.key, 0),

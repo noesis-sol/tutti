@@ -39,6 +39,7 @@ import {
   wrap,
 } from "./line.tsx"
 import { arrowKeys, ellipsis, lookOf, marks } from "./marks.ts"
+import { fieldGap, labelIndent, unpointed } from "./spacing.ts"
 import { queueDivider } from "./Totals.tsx"
 import type { Style, Theme } from "./theme.ts"
 
@@ -98,7 +99,7 @@ export const upNextLines = (
   const { styles } = theme
   const held = totals.heldBack
   const label: Segments = [
-    seg("  "),
+    seg(labelIndent),
     // Up next is no panel the focus goes to, so its label is never lit.
     seg("Up next", labelLook(theme, false)),
     ...(held > 0 ? [seg(` · ${held} held back`, styles.heldBack)] : []),
@@ -121,7 +122,7 @@ export const upNextLines = (
     )
     if (each.held === null) {
       const word = each.answered === undefined ? readyWord : `answered · ${each.answered}`
-      return [[...id, seg("  "), seg(word, styles.quiet)]]
+      return [[...id, seg(fieldGap), seg(word, styles.quiet)]]
     }
     const reason = afterParts(each.held).map((part) =>
       seg(part.text, part.id ? waitedFor : styles.quiet),
@@ -129,8 +130,8 @@ export const upNextLines = (
     const why = wrap(reason, whyWidth)
     return why.map((part, i) => [
       ...(i === 0
-        ? [...id, seg("  "), seg(lead, styles.quiet)]
-        : [seg(" ".repeat(idWidth + 2 + lead.length))]),
+        ? [...id, seg(fieldGap), seg(lead, styles.quiet)]
+        : [seg(" ".repeat(idWidth + fieldGap.length + lead.length))]),
       ...(part as Segments),
     ])
   })
@@ -433,7 +434,7 @@ export const needsLines = (
   const { styles } = theme
   const need = detail !== undefined && "_tag" in detail ? detail : undefined
   const label: Segments = [
-    seg("  "),
+    seg(labelIndent),
     seg("Needs you", labelLook(theme, at.focused)),
     seg(" · ", styles.dim),
     seg(`${count}`, count === 0 ? styles.dim : styles.stop),
@@ -454,7 +455,7 @@ export const needsLines = (
       const options = question.options ?? []
       const choice = (i: number, text: Segments, target: number): Segments => {
         const focused = at.inside && at.choice === i
-        return [seg(focused ? "> " : "  ", styles.key, target), ...text]
+        return [seg(focused ? "> " : unpointed, styles.key, target), ...text]
       }
       const choices = [
         ...options.map((option, i) =>

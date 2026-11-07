@@ -16,6 +16,7 @@ import type { LoadView, Totals } from "../run/runView.ts"
 import { type FitPart, fitParts } from "./fit.ts"
 import { cut, type Look, type Segments, seg } from "./line.tsx"
 import { marks } from "./marks.ts"
+import { edgeIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
 /** A level's look: green `done`, amber `notice` (`windingDown` is for winding down only), red `stop`. */
@@ -102,7 +103,7 @@ export const loadSegments = (
   width: number,
 ): Segments => {
   const workers = workersPart(totals, theme)
-  if (load === null) return cut([seg(" "), ...workers], width)
+  if (load === null) return cut([seg(edgeIndent), ...workers], width)
   const { levels } = load
   /** A part of the line that is always there, but for one that says nothing. */
   const kept = (text: string, look: Look | null): FitPart => ({
@@ -111,7 +112,7 @@ export const loadSegments = (
   })
   return fitParts(
     [
-      { forms: [[seg(" "), ...workers]], rank: 0 },
+      { forms: [[seg(edgeIndent), ...workers]], rank: 0 },
       {
         forms: [[seg(memoryPart(load, true))], [seg(memoryPart(load, false))], []],
         rank: 0,

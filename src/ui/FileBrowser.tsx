@@ -26,6 +26,7 @@ import {
 } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
 import { sanitizeLine } from "./sanitize.ts"
+import { unpointed } from "./spacing.ts"
 import { browserRows, type Entry, folderLabel, inFolder, parentOf, type Row } from "./specPath.ts"
 import type { Theme } from "./theme.ts"
 
@@ -221,7 +222,7 @@ export const browserLines = (
             seg("> ", form.selector),
             seg(text, row._tag === "File" && !row.spec ? look : form.selected),
           ]
-        : [seg("  "), seg(text, look)]
+        : [seg(unpointed), seg(text, look)]
     return targeting(padded(cut(line, inner), inner), index)
   })
   const empty = browsing.rows.length === 0 ? [[seg("  (no files here)", form.faint)]] : []

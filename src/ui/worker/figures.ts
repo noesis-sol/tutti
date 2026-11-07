@@ -22,9 +22,6 @@ import { marks } from "../marks.ts"
 import { sanitizeLine } from "../sanitize.ts"
 import type { Theme } from "../theme.ts"
 
-/** The gap between two parts. */
-export const gap = "  "
-
 /** From this full the context's figure is yellow, and from `nearCompaction` red. */
 export const contextNotice = 0.7
 export const nearCompaction = 0.9

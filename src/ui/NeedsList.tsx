@@ -28,6 +28,7 @@ import { arrowKeys, marks } from "./marks.ts"
 import { quietUuid } from "./QuestionsBox.tsx"
 import type { OpenQuestion } from "./questions.ts"
 import { clearsOf, nothingNeedsYou } from "./SidePanel.tsx"
+import { unpointed } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { useCommand, useQuestionNews, useRunViewPart, useTheme } from "./useRunView.ts"
@@ -79,7 +80,7 @@ export const itemLine = (
   width: number,
 ): Segments => {
   const { styles } = theme
-  const mark = seg(chosen ? "> " : "  ", styles.key)
+  const mark = seg(chosen ? "> " : unpointed, styles.key)
   if (item._tag === "Open") {
     const { id, title } = item.question
     return cut([mark, seg(`? ${id} ${title}`, styles.dim)], width)

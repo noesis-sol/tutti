@@ -4,6 +4,7 @@
 import { homedir } from "node:os"
 import { type Segments, seg } from "./line.tsx"
 import { sanitizeLine } from "./sanitize.ts"
+import { badgeGap, fieldGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
 /** `path` with the home folder as `~`. */
@@ -17,9 +18,9 @@ export const initTitle = (theme: Theme, repo: string, command = "init"): Segment
   const { title, organ } = theme.styles
   return [
     seg(" Tutti ", title),
-    seg(" "),
+    seg(badgeGap),
     seg(command, organ),
-    seg("  "),
+    seg(fieldGap),
     seg(sanitizeLine(tildify(repo)), theme.form.faint),
   ]
 }

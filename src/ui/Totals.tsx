@@ -13,6 +13,7 @@ import type { Totals as TotalsView } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
 import { cut, framed, type Look, type Segments, seg, targeting, widthOf } from "./line.tsx"
 import { marks } from "./marks.ts"
+import { edgeIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
 /** How much of Set aside's triage note the strip says: ` · ◆ n triaged`, ` · ◆ n`, or none. */
@@ -109,7 +110,10 @@ export const totalsLine = (
       : []),
     [seg("queue ", styles.dim), ...queueCount(t, theme), ...queueNotes(t, theme, " ")],
   ]
-  return cut([seg(" "), ...parts.flatMap((part, i) => (i === 0 ? part : [dot, ...part]))], width)
+  return cut(
+    [seg(edgeIndent), ...parts.flatMap((part, i) => (i === 0 ? part : [dot, ...part]))],
+    width,
+  )
 }
 
 /**

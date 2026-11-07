@@ -29,6 +29,7 @@ import { Modal } from "./Modal.tsx"
 import { ellipsis, marks } from "./marks.ts"
 import { descriptionKeys } from "./StartQuestion.tsx"
 import { sanitizeLine } from "./sanitize.ts"
+import { asideGap, buttonGap, composerIndent, keyGap, promptPad } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
 /** The most lines the composer grows to; longer messages scroll inside it. */
@@ -80,16 +81,18 @@ export const finishedLine = (
   const words = finishedWords(ticket)
   // Its key, Ctrl+T, is the hint's: beside the button, it would cut the words in 80 columns.
   const buttons: Segments = [
-    ...(asked ? [seg(answerButton, theme.form.button, finishedTargets.answer), seg("  ")] : []),
+    ...(asked
+      ? [seg(answerButton, theme.form.button, finishedTargets.answer), seg(buttonGap)]
+      : []),
     seg(fileWords.button, theme.form.button, finishedTargets.file),
   ]
-  const room = Math.max(width - widthOf(buttons) - 2, 0)
+  const room = Math.max(width - widthOf(buttons) - asideGap.length, 0)
   const said: Segments = [
-    seg("  "),
+    seg(composerIndent),
     seg(words.finished, theme.styles.key),
     seg(words.line, theme.styles.dim),
   ]
-  return [...padded(cut(said, room), room), seg("  "), ...buttons]
+  return [...padded(cut(said, room), room), seg(asideGap), ...buttons]
 }
 
 /** The finished line, its File as ticket button, and Answer where `answer` is given, pressed by a click. */
@@ -127,7 +130,7 @@ export const heldLine = (
 ): Segments => {
   const words = heldWords(ticket, merging)
   return cut(
-    [seg("  "), seg(words.phase, theme.styles.key), seg(words.line, theme.styles.dim)],
+    [seg(composerIndent), seg(words.phase, theme.styles.key), seg(words.line, theme.styles.dim)],
     width,
   )
 }
@@ -217,14 +220,14 @@ export const useSends = (
 export const queuedLine = (send: Send, theme: Theme, width: number, word = "queued"): Segments => {
   const lines = send.text.split("\n").filter((line) => line.trim() !== "")
   const mark: Segments = [seg(word, theme.styles.dim)]
-  const room = Math.max(width - widthOf(mark) - 2, 0)
+  const room = Math.max(width - widthOf(mark) - asideGap.length, 0)
   const head: Segments = [
-    seg("  "),
+    seg(composerIndent),
     seg(`${marks.said} `, theme.styles.dim),
     seg(sanitizeLine(lines[0] ?? "")),
     ...(lines.length > 1 ? [seg(` ${ellipsis}`, theme.styles.dim)] : []),
   ]
-  return [...padded(cut(head, room), room), seg("  "), ...mark]
+  return [...padded(cut(head, room), room), seg(asideGap), ...mark]
 }
 
 /** The queued messages' lines, at most `queuedShown`, and a count of the rest, each `mark`ed. */
@@ -247,14 +250,14 @@ export const queuedLines = (
 /** The steered line, `width` wide: what steering means, and the Release button (§ 4.3). */
 export const steeredLine = (theme: Theme, width: number): Segments => {
   const button = seg("[ Release ]", theme.form.button, 0)
-  const keys: Segments = [seg("  "), seg("Ctrl+R", theme.styles.key)]
-  const room = Math.max(width - widthOf([button, ...keys]) - 2, 0)
+  const keys: Segments = [seg(keyGap), seg("Ctrl+R", theme.styles.key)]
+  const room = Math.max(width - widthOf([button, ...keys]) - asideGap.length, 0)
   const words: Segments = [
-    seg("  "),
+    seg(composerIndent),
     seg("steered", theme.styles.key),
     seg(": tutti sends it nothing until you release it", theme.styles.dim),
   ]
-  return [...padded(cut(words, room), room), seg("  "), button, ...keys]
+  return [...padded(cut(words, room), room), seg(asideGap), button, ...keys]
 }
 
 /** The steered line, its Release button pressed by a click. */
@@ -347,7 +350,7 @@ export const Composer = ({
         focus()
       }}
     >
-      <Line segments={[seg(" "), seg(">", form.selector), seg(" ")]} />
+      <Line segments={[seg(promptPad), seg(">", form.selector), seg(promptPad)]} />
       <textarea
         ref={field}
         focused={focused}

@@ -10,6 +10,7 @@ import { globalHelp, type HelpRow } from "./keyCommands.ts"
 import { useLayer } from "./keys.ts"
 import { boxed, cut, Lines, padded, type Segments, seg, widthOf } from "./line.tsx"
 import { arrowKeys } from "./marks.ts"
+import { fieldGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
 /** How the overlay of `count` keys fits `height` rows: with its blank lines, and how many keys show. */
@@ -53,7 +54,7 @@ export const keyHelpLines = (
         .slice(from, from + shown)
         .map(([each, does]) =>
           cut(
-            [...padded([seg(each, styles.key)], keyWidth), seg("  "), seg(does, styles.dim)],
+            [...padded([seg(each, styles.key)], keyWidth), seg(fieldGap), seg(does, styles.dim)],
             inner,
           ),
         ),

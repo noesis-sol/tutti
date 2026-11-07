@@ -13,6 +13,7 @@ import { clickable } from "../click.ts"
 import { cut, Line, padded, type Segments, seg, widthOf, wrap } from "../line.tsx"
 import { ellipsis, marks } from "../marks.ts"
 import { sanitize } from "../sanitize.ts"
+import { asideGap, fieldGap, unpointed, wordSpace } from "../spacing.ts"
 import type { Role, Theme } from "../theme.ts"
 import {
   type Entry,
@@ -40,7 +41,7 @@ const markSegments = (mark: Mark, theme: Theme, room: number): Segments => {
     case "Edit":
       return [
         seg(`+${mark.added}`, theme.look("added")),
-        seg(" "),
+        seg(wordSpace),
         seg(`${marks.linesRemoved}${mark.removed}`, theme.look("removed")),
       ]
   }
@@ -48,7 +49,7 @@ const markSegments = (mark: Mark, theme: Theme, room: number): Segments => {
 
 /** What goes before an item's line: `▸ ` when it is selected. */
 const gutter = (selected: boolean, theme: Theme): Segments => [
-  seg(selected ? `${marks.selected} ` : "  ", theme.styles.key),
+  seg(selected ? `${marks.selected} ` : unpointed, theme.styles.key),
 ]
 
 /** The most lines a collapsed tool call or message takes; the last is cut with `…` (§ 7.5). */
@@ -69,7 +70,7 @@ export const toolLines = (
   const head: Segments = [
     ...gutter(selected, theme),
     seg(tool.name, theme.styles.key),
-    ...(tool.summary === "" ? [] : [seg("  "), seg(tool.summary)]),
+    ...(tool.summary === "" ? [] : [seg(fieldGap), seg(tool.summary)]),
     ...(tool.live ? [seg(`  ${ellipsis}`, theme.styles.dim)] : []),
   ]
   // Under the summary, or under the name when that's more than half the line.
@@ -78,12 +79,12 @@ export const toolLines = (
   const lines = wrap(head, width, { indent, limit: itemLines })
   const mark = markSegments(markOf(tool), theme, Math.floor(width / 2))
   if (mark.length === 0) return lines
-  const room = Math.max(width - widthOf(mark) - 2, 0)
+  const room = Math.max(width - widthOf(mark) - asideGap.length, 0)
   const withMark = (lines: ReadonlyArray<Segments>): ReadonlyArray<Segments> => {
     const last = lines.at(-1) ?? []
     return widthOf(last) <= room
-      ? [...lines.slice(0, -1), [...padded(last, room), seg("  "), ...mark]]
-      : [...lines, [...padded([], room), seg("  "), ...mark]]
+      ? [...lines.slice(0, -1), [...padded(last, room), seg(asideGap), ...mark]]
+      : [...lines, [...padded([], room), seg(asideGap), ...mark]]
   }
   const marked = withMark(lines)
   // A mark on a line of its own takes the last of `itemLines` from the summary.
@@ -351,7 +352,7 @@ export const EntryView = memo(({ entry, open, ...props }: EntryProps) => {
                 [
                   ...gutter(isSelected, theme),
                   seg("Agent", theme.styles.key),
-                  seg("  "),
+                  seg(fieldGap),
                   seg("subagent work of an earlier call", theme.styles.dim),
                 ],
                 width,

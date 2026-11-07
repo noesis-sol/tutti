@@ -13,12 +13,13 @@ import { clickable } from "../click.ts"
 import { minHeight, minWidth } from "../Dashboard.tsx"
 import { type FitPart, fitParts } from "../fit.ts"
 import { cut, Line, Lines, type Press, type Segments, seg, styled, wrap } from "../line.tsx"
-import { ellipsis, markGap, marks } from "../marks.ts"
+import { ellipsis, marks } from "../marks.ts"
 import { sanitizeLine } from "../sanitize.ts"
+import { backGap, fieldGap, markGap } from "../spacing.ts"
 import { badgeLabel, badgesOf, titleSegment } from "../TicketHead.tsx"
 import type { Theme } from "../theme.ts"
 import { useNow, useRunViewPart, useSpinner, useTheme } from "../useRunView.ts"
-import { type FigureInputs, figureParts, fromTheEnd, gap } from "./figures.ts"
+import { type FigureInputs, figureParts, fromTheEnd } from "./figures.ts"
 
 /**
  * The blank lines above a transcript view's head in a pane `width` by `height`: one, as the
@@ -57,7 +58,7 @@ export const ViewHead = ({
   const theme = useTheme()
   const now = useNow()
   const spin = useSpinner(spinning)
-  const lines = wrap([seg("   "), ...head(now, spin)], width, {
+  const lines = wrap([seg(backGap), ...head(now, spin)], width, {
     indent: 4,
     long: "line",
     start: Bun.stringWidth(link),
@@ -113,9 +114,9 @@ export const lineOneSegments = (
         cardMark(card, theme, inputs.spin),
         seg(markGap),
         seg(card.label, theme.styles.picked),
-        seg(gap),
+        seg(fieldGap),
         ...inputs.status,
-        ...(card.steered ? [seg(gap), seg("steered", theme.look("emphasis"))] : []),
+        ...(card.steered ? [seg(fieldGap), seg("steered", theme.look("emphasis"))] : []),
       ],
     ],
     rank: 0,
@@ -131,7 +132,7 @@ export const lineOneSegments = (
   )
   const type: ReadonlyArray<FitPart> =
     badges.length === 0 ? [] : [{ forms: [badges, []], rank: fromTheEnd }]
-  return fitParts([lead, ...figures, ...type], width, [seg(gap)])
+  return fitParts([lead, ...figures, ...type], width, [seg(fieldGap)])
 }
 
 /**

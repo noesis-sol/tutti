@@ -12,6 +12,7 @@ import { type Banner, countdown, type TitleView, type UsageWindow } from "../run
 import { firstFitting } from "./fit.ts"
 import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
 import { marks } from "./marks.ts"
+import { badgeGap, fieldGap, whereGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useNow, useRunViewPart, useTheme } from "./useRunView.ts"
 
@@ -116,7 +117,7 @@ const windowSegments = (
       ? [
           seg(`${windowLabel(first.name)} `, quiet),
           seg(gauge(first.utilization), quiet),
-          seg("  "),
+          seg(fieldGap),
           seg(percent(first), quiet),
         ]
       : [seg(figure(first), quiet)]
@@ -194,10 +195,10 @@ function* titleForms(
 ): Generator<Segments | null> {
   const { styles } = theme
   const left: Array<Segment> = [seg(" Tutti ", styles.title)]
-  if (title.version !== "") left.push(seg(" "), seg(title.version, styles.dim))
-  if (badges?.keepAwake === true) left.push(seg(" "), seg(" keep awake ", styles.keepAwake))
+  if (title.version !== "") left.push(seg(badgeGap), seg(title.version, styles.dim))
+  if (badges?.keepAwake === true) left.push(seg(badgeGap), seg(" keep awake ", styles.keepAwake))
   if (badges !== null && badges.autoAnswer !== null) {
-    left.push(seg(" "), seg(` ${badges.autoAnswer} `, styles.autoAnswer))
+    left.push(seg(badgeGap), seg(` ${badges.autoAnswer} `, styles.autoAnswer))
   }
   if (title.quitting !== null) left.push(seg(`  · ${title.quitting}`, styles.stop))
   else if (title.stopping) left.push(seg("  · stopping", styles.stop))
@@ -236,7 +237,7 @@ function* titleForms(
       ...holds.map((banner) => bannerSegments(banner, theme, now, holdForm)),
     ]
       .filter((segments) => segments.length > 0)
-      .flatMap((segments, i) => (i === 0 ? segments : [seg("  "), ...segments]))
+      .flatMap((segments, i) => (i === 0 ? segments : [seg(fieldGap), ...segments]))
   // With banners on the right the line ends a column short of the pane's edge, as the load line
   // under it starts a column in from its left (tutti-3j79).
   const inner = width - 1
@@ -244,18 +245,21 @@ function* titleForms(
   const laid = (head: Segments, side: Segments): Segments | null => {
     if (side.length === 0) return widthOf(head) <= width ? head : null
     const gap = inner - widthOf(head) - widthOf(side)
-    return gap >= 2 ? [...head, seg(" ".repeat(gap)), ...side] : null
+    return gap >= fieldGap.length ? [...head, seg(" ".repeat(gap)), ...side] : null
   }
   const full = right("full", "full")
-  const room = (full.length === 0 ? width : inner - widthOf(full) - 2) - widthOf(left) - 3
+  const room =
+    (full.length === 0 ? width : inner - widthOf(full) - fieldGap.length) -
+    widthOf(left) -
+    whereGap.length
   if (badges !== null) {
     yield room >= widthOf([seg(where)])
-      ? laid([...left, seg("   "), seg(where, styles.dim)], full)
+      ? laid([...left, seg(whereGap), seg(where, styles.dim)], full)
       : null
     return
   }
   if (room >= minWhere)
-    yield laid([...left, seg("   "), ...cut([seg(where, styles.dim)], room)], full)
+    yield laid([...left, seg(whereGap), ...cut([seg(where, styles.dim)], room)], full)
   for (const usageForm of ["full", "reset", "short", null] as const) {
     yield laid(left, right(usageForm, "full"))
   }
@@ -265,13 +269,13 @@ function* titleForms(
   }
   for (const holdForm of ["full", "word"] as const) {
     const side = right(null, holdForm)
-    const states = inner - widthOf(side) - 2
+    const states = inner - widthOf(side) - fieldGap.length
     if (states >= widthOf(left.slice(0, 1))) {
       yield laid(cut(left, states), side) ?? []
       return
     }
   }
-  yield cut([...left.slice(0, 1), seg("  "), ...right(null, "word")], inner)
+  yield cut([...left.slice(0, 1), seg(fieldGap), ...right(null, "word")], inner)
 }
 
 /** The title line, a blank line above it. */

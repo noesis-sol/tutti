@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The TUI's gaps and indents are named in one module, `src/ui/spacing.ts`, for what each separates (`fieldGap`, `labelIndent`, `buttonGap`, `markGap` and `cardIndent` among them), and Biome refuses a bare `seg("  ")` in `src/ui` (`test/lint/bare-spaces.grit`); nothing on screen changes.
+
 ## [0.7.0] - 2026-11-07
 
 - The spec moved from `.orchestra/specs/tutti-spec.md` to `docs/spec/tutti-spec.md`, and orchestra's leftover `.orchestra/` folder is gone: its settings and worker prompt, which nothing read since tutti's own `.tutti/`, and its last run's files. Its one setting still meant, the duckdb requirement, is in `.tutti/settings.json`'s `requires`, so the README's section on what to install is tutti's (`tutti requires --readme`). CLAUDE.md, the verifier and the check scripts name `.tutti/settings.json`'s `checks` in place of orchestra's keys. tutti's import from another project's `.orchestra/` is unchanged.

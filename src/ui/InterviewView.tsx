@@ -35,6 +35,7 @@ import { Line, Section, type Segments, seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { arrowKeys, marks } from "./marks.ts"
 import { sanitizeLine } from "./sanitize.ts"
+import { fieldGap, markGap, titleGap } from "./spacing.ts"
 import {
   inertTranscript,
   type TranscriptActions,
@@ -288,13 +289,13 @@ export const InterviewView = () => {
       ? [seg(name, styles.picked)]
       : [
           cardMark(card, theme, spin),
-          seg("  "),
+          seg(markGap),
           seg(name, styles.picked),
-          seg("  "),
+          seg(fieldGap),
           seg(card.status, statusLook(card, theme)),
-          seg("  "),
+          seg(fieldGap),
           seg(elapsed(now - card.since), styles.dim),
-          seg("   "),
+          seg(titleGap),
           seg(sanitizeLine(card.title)),
         ]
   const question = panel.requests.some((request) => request.kind._tag === "Question")

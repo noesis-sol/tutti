@@ -30,6 +30,10 @@
   "plugins": ["./test/lint/raw-controls.grit"],
   "overrides": [
     {
+      "includes": ["src/ui/**"],
+      "plugins": ["./test/lint/bare-spaces.grit"]
+    },
+    {
       "includes": ["test/**", "!test/env.ts", "!test/contract/**", "!test/fixtures/**"],
       "linter": {
         "rules": {

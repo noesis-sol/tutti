@@ -8,6 +8,7 @@ import type { WindDownView } from "../run/runView.ts"
 import { firstFit } from "./fit.ts"
 import { type Look, type Segments, seg } from "./line.tsx"
 import { marks } from "./marks.ts"
+import { fieldGap, squareGap, windDownIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
 const markLook = (mark: WindDownMark, theme: Theme): Look => {
@@ -34,8 +35,8 @@ export const windDownSegments = (view: WindDownView, theme: Theme, width: number
       ? [seg(marks.windingDown, theme.styles.windDown)]
       : view.marks.map((each) => seg(marks.windingDown, markLook(each.mark, theme)))
   const spaced = (count: number): Segments =>
-    squares.slice(0, count).flatMap((each, i) => (i === 0 ? [each] : [seg(" "), each]))
-  const lead = [seg("  "), ...spaced(squares.length), seg("  ")]
+    squares.slice(0, count).flatMap((each, i) => (i === 0 ? [each] : [seg(squareGap), each]))
+  const lead = [seg(windDownIndent), ...spaced(squares.length), seg(fieldGap)]
   const words = seg("Winding down", theme.look("windingDown", "bold"))
   const rests =
     view.running === 0
@@ -46,7 +47,7 @@ export const windDownSegments = (view: WindDownView, theme: Theme, width: number
   const forms = function* () {
     for (const rest of rests) yield [...lead, words, seg(` · ${rest}`, theme.styles.dim)]
     yield [...lead, words]
-    yield fit <= 0 ? [] : [seg("  "), ...spaced(fit)]
+    yield fit <= 0 ? [] : [seg(windDownIndent), ...spaced(fit)]
   }
   return firstFit(width, forms())
 }

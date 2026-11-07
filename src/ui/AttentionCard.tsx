@@ -37,7 +37,7 @@ import {
   seg,
 } from "./line.tsx"
 import { Backdrop, modalMaxWidth } from "./Modal.tsx"
-import { cardIndent } from "./marks.ts"
+import { answerIndent, buttonGap, cardIndent, fieldGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useLatestRunView, useRunViewPart, useTheme } from "./useRunView.ts"
 
@@ -51,7 +51,12 @@ const requestLines = (card: Card, theme: Theme, focus: number | null): ReadonlyA
   const buttons = buttonsOf(request).map((each, i) => button(each.label, i))
   const rows: Array<Segments> = picksOptions(request)
     ? buttons.map((each) => [seg(cardIndent), each])
-    : [[seg(cardIndent), ...buttons.flatMap((each, i) => (i === 0 ? [each] : [seg("  "), each]))]]
+    : [
+        [
+          seg(cardIndent),
+          ...buttons.flatMap((each, i) => (i === 0 ? [each] : [seg(buttonGap), each])),
+        ],
+      ]
   const more = card.requests.length - 1
   const last = rows.length - 1
   if (more > 0) rows[last] = [...(rows[last] ?? []), seg(`  +${more} more`, theme.styles.dim)]
@@ -171,12 +176,12 @@ export const AnswerBox = () => {
   const outer = Math.max(Math.min(width - 4, answerBoxWidth), 8)
   const head: ReadonlyArray<Segments> = [
     [
-      seg("  "),
+      seg(answerIndent),
       seg(card.label, theme.styles.picked),
-      seg("  "),
+      seg(fieldGap),
       seg(card.status, theme.styles.stop),
     ],
-    [seg("  "), seg(card.title)],
+    [seg(answerIndent), seg(card.title)],
   ]
   const lines = attentionLines(card, theme, head, {
     width: outer,

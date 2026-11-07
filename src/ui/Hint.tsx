@@ -3,10 +3,8 @@
 // as many lines as it takes (hintLines), or cut to one (hintSegments).
 import type { Key } from "../run/runView.ts"
 import { cut, type Segments, seg, widthOf, wrap } from "./line.tsx"
+import { hintIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
-
-/** What the hint has before its first key on each line. */
-export const hintIndent = "  "
 
 /** What the hint has between two keys on a line, faint. */
 export const hintSeparator = " · "

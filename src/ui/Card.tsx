@@ -45,7 +45,8 @@ import {
   seg,
   widthOf,
 } from "./line.tsx"
-import { cardIndent, lookOf, markGap, marks, motionTones } from "./marks.ts"
+import { lookOf, marks, motionTones } from "./marks.ts"
+import { cardIndent, fieldGap, labelIndent, markGap, spinnerGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useNow, useSpinner } from "./useRunView.ts"
 
@@ -115,7 +116,7 @@ const frameOf = (card: Card, theme: Theme): Look =>
 
 /** `steered` beside a status, `emphasis`, when you steered the card's worker. */
 const steeredOf = (card: Card, theme: Theme): Segments =>
-  card.steered ? [seg("  "), seg("steered", theme.look("emphasis"))] : []
+  card.steered ? [seg(fieldGap), seg("steered", theme.look("emphasis"))] : []
 
 /** The cells of a card's first line but its mark: its ticket, status, elapsed time and memory. */
 interface HeadCells {
@@ -166,15 +167,15 @@ const headLine = (cells: HeadCells, mark: Segment, cols: HeadColumns): Segments 
   seg(markGap),
   ...cells.ticket,
   ...padding(cells.ticket, cols.ticket),
-  seg("  "),
+  seg(fieldGap),
   ...cells.status,
   ...padding(cells.status, cols.status),
-  seg("  "),
+  seg(fieldGap),
   ...padding(cells.time, cols.time),
   ...cells.time,
   ...(cells.memory.length === 0 && cols.memory === 0
     ? []
-    : [seg("  "), ...padding(cells.memory, cols.memory), ...cells.memory]),
+    : [seg(fieldGap), ...padding(cells.memory, cols.memory), ...cells.memory]),
 ]
 
 /** The card's first line: its mark, ticket, status, elapsed time and memory. */
@@ -254,7 +255,7 @@ const compactLine = (
     cardMark(card, theme, spin),
     cols,
   ),
-  seg("  "),
+  seg(fieldGap),
   seg(card.title, theme.styles.dim),
 ]
 
@@ -365,7 +366,7 @@ export const idleBox = (
   border: Border = "rounded",
 ): ReadonlyArray<Segments> => {
   const content: Array<Segments> = [
-    [seg(spin, theme.look("live")), seg(" "), seg(text, theme.styles.dim)],
+    [seg(spin, theme.look("live")), seg(spinnerGap), seg(text, theme.styles.dim)],
   ]
   while (content.length < Math.min(lines, idleLines) - 2) content.push([])
   return boxed(content, width, theme.look("frame"), border)
@@ -556,7 +557,9 @@ const CardBox = memo(
     const lines = useMemo(() => {
       const [now, spin] = [card.since, ""]
       const [head = [], title = []] = contentOf(card, theme, now, spin)
-      const pointer = pointed ? [seg(`${marks.selected}  `, theme.styles.key)] : title.slice(0, 1)
+      const pointer = pointed
+        ? [seg(`${marks.selected}${cardIndent.slice(marks.selected.length)}`, theme.styles.key)]
+        : title.slice(0, 1)
       return grows(card)
         ? attentionLines(card, theme, [head, [...pointer, ...title.slice(1)]], {
             width,
@@ -629,7 +632,7 @@ export const Cards = ({
   /** Presses an attention card's button: the same function from one drawing to the next. */
   readonly press: (request: ShownRequest | undefined, index: number) => void
 }) => {
-  const label = <Lines lines={[[seg("  "), seg("Current", labelLook(theme, labelLit))]]} />
+  const label = <Lines lines={[[seg(labelIndent), seg("Current", labelLook(theme, labelLit))]]} />
   const border: Border = focused ? "heavy" : "rounded"
   switch (layout._tag) {
     case "Idle":

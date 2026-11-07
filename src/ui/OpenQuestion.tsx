@@ -32,6 +32,7 @@ import {
   talkChoice,
 } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
+import { unpointed } from "./spacing.ts"
 import type { Appearance, Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 
@@ -218,7 +219,7 @@ export const OpenQuestionForm = ({
     const look = on ? form.selected : form.option
     return [
       [
-        seg(on ? "> " : "  ", on ? form.selector : form.option),
+        seg(on ? "> " : unpointed, on ? form.selector : form.option),
         ...choiceSegments(choice, look, theme),
       ],
     ]

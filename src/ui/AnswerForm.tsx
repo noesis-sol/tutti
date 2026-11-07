@@ -51,6 +51,7 @@ import {
 } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
 import { arrowKeys, marks } from "./marks.ts"
+import { buttonGap, fieldGap, unpointed } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { useRunViewPart, useTheme } from "./useRunView.ts"
@@ -79,7 +80,7 @@ const titleLines = (field: Field, theme: Theme): ReadonlyArray<Segments> => {
   return [
     [
       ...(field._tag === "Choice" && field.header !== undefined
-        ? [seg(field.header, form.description), seg("  ")]
+        ? [seg(field.header, form.description), seg(fieldGap)]
         : []),
       seg(field.title, form.fieldTitle),
       ...required,
@@ -255,7 +256,7 @@ const FormBody = ({
     ...boxSides(
       [
         [],
-        [button(sendLabel, rows.length), seg("  "), button(refuseLabel, rows.length + 1)],
+        [button(sendLabel, rows.length), seg(buttonGap), button(refuseLabel, rows.length + 1)],
         missing === null
           ? hintSegments(hint, theme, inner + 2).slice(1)
           : [seg(missing, looks.error)],
@@ -312,7 +313,7 @@ const FormBody = ({
                       const typing = typesAt(form, row)
                       const before = cut(
                         [
-                          seg(focused ? "> " : "  ", looks.selector),
+                          seg(focused ? "> " : unpointed, looks.selector),
                           ...rowText(field, value, row.option, theme),
                         ],
                         inner,

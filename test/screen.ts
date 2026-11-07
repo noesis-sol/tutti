@@ -1,12 +1,13 @@
 // The drawn screen read back into its parts, so that a test says what it checks (a card's mark and
 // ticket, the hint's keys, a table row's state) and not the spacing the TUI draws them with: that
-// lives in src/ui's constants (markGap, cardIndent, the hint's indent and separator), which these
-// helpers read the screen with, and the builders at the end write it with for the rare test that
-// wants the exact text. A test that checks a spacing on purpose does it once, through them.
+// lives in src/ui's constants (spacing.ts' markGap, cardIndent and hintIndent, the hint's
+// separator), which these helpers read the screen with, and the builders at the end write it with
+// for the rare test that wants the exact text. A test that checks a spacing on purpose does it once, through them.
 import { TextAttributes } from "@opentui/core"
-import { hintIndent, hintSeparator } from "../src/ui/Hint.tsx"
+import { hintSeparator } from "../src/ui/Hint.tsx"
 import type { Segments } from "../src/ui/line.tsx"
-import { cardIndent, markGap, marks } from "../src/ui/marks.ts"
+import { marks } from "../src/ui/marks.ts"
+import { cardIndent, hintIndent, markGap } from "../src/ui/spacing.ts"
 import { spinnerFrames } from "../src/ui/useRunView.ts"
 import type { Frame } from "./render.ts"
 

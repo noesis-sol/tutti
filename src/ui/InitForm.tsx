@@ -48,6 +48,7 @@ import { Line, Lines, type Segments, seg, styled, wrap } from "./line.tsx"
 import { arrowKeys, marks } from "./marks.ts"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
+import { confirmGap, fieldGap, fieldIndent, spinnerGap, unpointed } from "./spacing.ts"
 import type { Appearance, Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { external, type Settable, spinnerAt, spinnerTick } from "./useRunView.ts"
@@ -264,7 +265,7 @@ const ConfirmView = ({
         <Line
           segments={[
             seg("  Yes  ", yes ? form.focusedButton : form.button, 0),
-            seg(" "),
+            seg(confirmGap),
             seg("  No  ", yes ? form.button : form.focusedButton, 1),
           ]}
           press={(target) => asking.answer(target === 0)}
@@ -415,7 +416,7 @@ const ChecklistView = ({
   const heading = headingLines(theme, asking.field.title, asking.field.description, room)
   const choices = targetLines(
     options.map((option, index) => [
-      seg(index === at ? "> " : "  ", form.selector),
+      seg(index === at ? "> " : unpointed, form.selector),
       ...(ticked.has(index)
         ? [seg(`${marks.ticked} `, form.selectedMark), seg(option, form.selected)]
         : [seg(`${marks.unticked} `, form.description), seg(option, form.option)]),
@@ -453,7 +454,7 @@ const ScoutView = ({
     ...wrap(
       [
         seg(spinnerAt(now), styles.picked),
-        seg(" "),
+        seg(spinnerGap),
         seg("Looking for the project's suites", form.fieldTitle),
         seg(` ${scoutClock(now - asking.since)} (up to 5 minutes)`, form.faint),
       ],
@@ -501,7 +502,7 @@ export const stepperParts = (
 const doneSegments = (theme: Theme, done: Done): Segments =>
   done._tag === "Note"
     ? [seg(done.text, theme.form.description)]
-    : [seg(done.title, theme.form.description), seg("  "), seg(done.answer, theme.form.option)]
+    : [seg(done.title, theme.form.description), seg(fieldGap), seg(done.answer, theme.form.option)]
 
 /**
  * The lines above a field, given `left` lines: `head` (the title, init's words and the stepper),
@@ -597,7 +598,7 @@ export const InitView = ({
   ]
   const done = screen.done.flatMap((each) =>
     wrap(doneSegments(theme, each), Math.max(width - fieldInset, 1)).map((line) => [
-      seg("  "),
+      seg(fieldIndent),
       ...line,
     ]),
   )

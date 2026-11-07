@@ -21,6 +21,7 @@ import type { Attention, Card, Row } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { fit, framed, labelLook, padded, type Segments, seg, targeting } from "./line.tsx"
 import { lookOf, marks } from "./marks.ts"
+import { labelIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 
 /** The lines a section takes besides its rows: its label, and its frame's top and bottom. */
@@ -253,7 +254,10 @@ export const ticketsLines = (
   // the frame too, so that no column line starts and ends in a bright stub. Its label goes with them;
   // printed, where nothing has the focus, it stays lit over the dim frame.
   return [
-    [seg("  "), seg("Tickets", labelLook(theme, reach === undefined || reach.focused === true))],
+    [
+      seg(labelIndent),
+      seg("Tickets", labelLook(theme, reach === undefined || reach.focused === true)),
+    ],
     ...framed(
       cells,
       [stateColumn, idWidth, aboutWidth],
