@@ -1,6 +1,6 @@
 # Parity with orchestra
 
-The audit against the spec's parity matrix (`.orchestra/specs/tutti-spec.md`, Appendix A), which
+The audit against the spec's parity matrix (`docs/spec/tutti-spec.md`, Appendix A), which
 1.0 needs (§ 14, § 1.1 Goal 1): for each row of the matrix, what tutti does, the modules that do it
 and the tests that show it. *Kept* means as orchestra v0.7.7 has it; the other dispositions point to
 the spec's section. Back to the [README](../README.md).

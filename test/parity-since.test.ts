@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-const spec = readFileSync(join(import.meta.dir, "..", ".orchestra/specs/tutti-spec.md"), "utf8")
+const spec = readFileSync(join(import.meta.dir, "..", "docs/spec/tutti-spec.md"), "utf8")
 
 /** The cells of each row of the first table after `heading` in `text`, header and rule left out. */
 const tableRows = (text: string, heading: string): ReadonlyArray<ReadonlyArray<string>> => {

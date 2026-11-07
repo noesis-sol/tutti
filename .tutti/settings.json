@@ -19,8 +19,16 @@
     }
   },
   "queue": {
-    "shared_files": [".orchestra/specs/tutti-spec.md", "docs/*.md"]
+    "shared_files": ["docs/spec/tutti-spec.md", "docs/*.md"]
   },
+  "requires": [
+    {
+      "name": "duckdb",
+      "check": "command -v duckdb",
+      "install": "brew install duckdb",
+      "platforms": ["darwin"]
+    }
+  ],
   "workers": {
     "mcp_servers": [],
     "effort": "high"

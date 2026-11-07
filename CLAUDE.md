@@ -60,7 +60,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-tutti runs on Bun (>= 1.3.14). The spec is `.orchestra/specs/tutti-spec.md`.
+tutti runs on Bun (>= 1.3.14). The spec is `docs/spec/tutti-spec.md`.
 
 ```bash
 bun install                 # dependencies, pinned exactly in package.json; bun.lock is committed
@@ -73,10 +73,10 @@ scripts/check-own.sh           # check.sh's steps on what the branch changed, an
 TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent SDK
 ```
 
-- `scripts/check-fast.sh` (orchestra's merge check) runs `scripts/check.sh`; `scripts/check-full.sh`
-  runs it with `TUTTI_SLOW=1`.
-- `scripts/check-own.sh` is `check_own` in `.orchestra/settings.json`, the check orchestra's workers
-  run on their own change: tsc, biome and shellcheck on the files changed since main, and the tests
+- `scripts/check-fast.sh` (tutti's merge check, `checks.fast` in `.tutti/settings.json`) runs
+  `scripts/check.sh`; `scripts/check-full.sh` runs it with `TUTTI_SLOW=1`.
+- `scripts/check-own.sh` is `checks.own` in `.tutti/settings.json`, the check tutti's workers run
+  on their own change: tsc, biome and shellcheck on the files changed since main, and the tests
   that changed, import a changed module or name a changed file outside their imports
   (`scripts/check-own.ts`; an `import type` or `export type … from` doesn't count, as Bun erases it
   and tsc checks the types); a change to the project's setup runs `scripts/check.sh` whole.

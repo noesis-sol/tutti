@@ -262,13 +262,13 @@ describe("labels and metadata", () => {
 })
 
 describe("the check's own files and the ticket's spec", () => {
-  const tracked = [...trackedHere, "scripts/check-fast.sh", ".orchestra/specs/tutti-spec.md"]
+  const tracked = [...trackedHere, "scripts/check-fast.sh", "docs/spec/tutti-spec.md"]
 
   test("are left out of the text's files and the predicted ones, but not the files metadata", () => {
     const text = {
-      description: "Say hello in src/ui/run.ts, as .orchestra/specs/tutti-spec.md § 7 has it.",
+      description: "Say hello in src/ui/run.ts, as docs/spec/tutti-spec.md § 7 has it.",
       acceptance: "scripts/check-fast.sh passes.",
-      metadata: { spec: ".orchestra/specs/tutti-spec.md" },
+      metadata: { spec: "docs/spec/tutti-spec.md" },
     }
     for (const check of [
       "scripts/check-fast.sh",
@@ -286,7 +286,7 @@ describe("the check's own files and the ticket's spec", () => {
     expect(
       footprintOf({ description: text.description }, repoFiles(tracked, ["scripts/check-fast.sh"]))
         .files,
-    ).toEqual([".orchestra/specs/tutti-spec.md", "src/ui/run.ts"])
+    ).toEqual(["docs/spec/tutti-spec.md", "src/ui/run.ts"])
 
     const repo = repoFiles(tracked, ["scripts/check-fast.sh", "scripts/check-full.sh"])
     const only = { title: "Say hello", acceptance: "`scripts/check-fast.sh` passes" }

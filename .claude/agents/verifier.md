@@ -53,8 +53,8 @@ and try to show that it is not done.
   and for running the checks.
 - Give a check its time: Bash waits on a command for the default timeout its description gives (2
   minutes unless raised), then moves it to the background. Where that default is as long as a check
-  may take, as in an orchestra worker, whose settings raise it to the merge check's limit
-  (`check_fast_timeout` in `.orchestra/settings.json`, 30m when unset), pass Bash no
+  may take, as in a tutti worker, whose settings raise it to the merge check's limit
+  (`checks.fast.timeout` in `.tutti/settings.json`, 30m when unset), pass Bash no
   timeout: one of your own shortens it. Elsewhere, pass Bash `timeout: 600000`, its maximum (10
   minutes), for every check, and run one that can take longer, as the merge check may, in the
   background with its output and exit status in a file of your scratchpad

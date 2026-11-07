@@ -1,4 +1,4 @@
-// scripts/check-own.sh, a worker's check of its own change (check_own in .orchestra/settings.json),
+// scripts/check-own.sh, a worker's check of its own change (checks.own in .tutti/settings.json),
 // and scripts/check-own.ts, which picks the test files the change touches. The script runs in a
 // real git repository of its own in a temp folder, its steps stubbed: bunx on PATH (tsc, biome),
 // scripts/test.sh, scripts/check.sh and scripts/fetch-shellcheck.sh, each printing what it was given.
@@ -283,10 +283,10 @@ describe("scripts/check-own.sh", () => {
     expect(code).toBe(3)
   })
 
-  test("is the check_own orchestra's workers run on their own change", () => {
+  test("is the checks.own tutti's workers run on their own change", () => {
     const settings = JSON.parse(
-      readFileSync(resolve(import.meta.dir, "../.orchestra/settings.json"), "utf8"),
+      readFileSync(resolve(import.meta.dir, "../.tutti/settings.json"), "utf8"),
     )
-    expect(settings.check_own).toBe("scripts/check-own.sh")
+    expect(settings.checks.own.command).toBe("scripts/check-own.sh")
   })
 })

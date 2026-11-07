@@ -20,13 +20,9 @@ const testsAsked =
 
 describe("the prompt for a rebase stopped on conflicts", () => {
   test("on documents only, asks for the resolution and the rebase, not the tests", () => {
-    const prompt = resolvePrompt(
-      stopOn([".orchestra/specs/tutti-spec.md", "notes.txt"]),
-      "main",
-      check,
-    )
+    const prompt = resolvePrompt(stopOn(["docs/spec/tutti-spec.md", "notes.txt"]), "main", check)
     expect(prompt).toStartWith(
-      "tutti: main moved on while you worked; rebasing tutti/a onto it stopped on conflicts in .orchestra/specs/tutti-spec.md, notes.txt. ",
+      "tutti: main moved on while you worked; rebasing tutti/a onto it stopped on conflicts in docs/spec/tutti-spec.md, notes.txt. ",
     )
     expect(prompt).toContain("GIT_EDITOR=true git rebase --continue")
     expect(prompt).not.toContain(testsAsked)

@@ -1,5 +1,5 @@
 #!/bin/sh
-# scripts/check-full.sh: every check in one pass, the slow suites included. tutti and orchestra run it
+# scripts/check-full.sh: every check in one pass, the slow suites included. tutti runs it
 # once at the end of a run. It doesn't run scripts/check-fast.sh first: scripts/check.sh with
 # TUTTI_SLOW=1 already runs everything check-fast does, so that would run the tests twice.
 # It is the project's to edit. Each suite is one command, run from the

@@ -195,13 +195,13 @@ then ask the agent to "run tutti". See
 - [Changelog](CHANGELOG.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-<!-- orchestra:requires -->
-<!-- Generated from "requires" in .orchestra/settings.json: change the list, then run orchestra requires --readme. -->
+<!-- tutti:requires -->
+<!-- Generated from "requires" in .tutti/settings.json: change the list, then run tutti requires --readme. -->
 ## What to install
 
-What this project needs of the machine, from `"requires"` in `.orchestra/settings.json`. `orchestra requires` checks each one and installs what it can.
+What this project needs of the machine, from `"requires"` in `.tutti/settings.json`. `tutti requires` checks each one and installs what it can.
 
 - **duckdb** (only on macOS)
   - check: `command -v duckdb`
   - install: `brew install duckdb`
-<!-- /orchestra:requires -->
+<!-- /tutti:requires -->

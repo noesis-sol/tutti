@@ -25,7 +25,7 @@ const tableRows = (text: string, heading: string): ReadonlyArray<ReadonlyArray<s
   )
 }
 
-const matrix = tableRows(read(".orchestra/specs/tutti-spec.md"), "## Appendix A: Parity matrix")
+const matrix = tableRows(read("docs/spec/tutti-spec.md"), "## Appendix A: Parity matrix")
 const audit = tableRows(read("docs/parity.md"), "## The matrix")
 
 const statuses = ["Kept", "Changed as specified", "Dropped as specified", "Missing", "Differs"]

@@ -1,5 +1,5 @@
 #!/bin/sh
-# scripts/check-own.sh: a worker's check of its own change, check_own in .orchestra/settings.json.
+# scripts/check-own.sh: a worker's check of its own change, checks.own in .tutti/settings.json.
 # It runs scripts/check.sh's steps on what the branch changed since it left main (its commits and
 # what isn't committed yet, new files included), each step printing a SUITE: line:
 #   tsc:        bunx tsc --noEmit, on the whole project (tsc has no partial check), when a TypeScript
@@ -12,7 +12,7 @@
 #   lint:       shellcheck on the changed shell scripts (and bin/tutti, which has no .sh)
 # A change to the project's setup (package.json, bun.lock, tsconfig.json, bunfig.toml, biome.json,
 # scripts/check.sh) runs scripts/check.sh whole instead, and so does a branch without main to start
-# from. TUTTI_OWN_BASE names another commit to start from. orchestra's merge check,
+# from. TUTTI_OWN_BASE names another commit to start from. tutti's merge check,
 # scripts/check-fast.sh, still runs the whole check on each ticket before it merges it.
 # A pass is kept under the worktree's own git dir (git rev-parse --git-dir), never tracked: the tree
 # it ran on (HEAD's with what isn't committed yet, untracked files included), its mode and the test
