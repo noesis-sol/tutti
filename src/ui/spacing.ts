@@ -43,6 +43,9 @@ export const composerIndent = "  "
 /** Either side of the composer's `>`. */
 export const promptPad = " "
 
+/** Where a question's options start in a request's lines, under the question: `  1 Yes`. */
+export const optionIndent = "  "
+
 /** Where the Answer box's head and title start, with no mark before them. */
 export const answerIndent = "  "
 

@@ -5,7 +5,7 @@
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { type Look, type Segments, seg, wrap } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
-import { wordSpace } from "./spacing.ts"
+import { optionIndent, wordSpace } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { lineDiff } from "./transcriptItems.ts"
 
@@ -174,7 +174,7 @@ export const requestInputLines = (
         ...question.options.flatMap((option, i) =>
           faint(
             `${i + 1} ${sanitizeLine(option.label)}${option.description ? ` — ${sanitizeLine(option.description)}` : ""}`,
-            "  ",
+            optionIndent,
           ),
         ),
       ])

@@ -257,7 +257,8 @@ export const wrap = <L,>(
   for (const token of tokensOf(segments, Math.max(width, 1))) {
     switch (token._tag) {
       case "End":
-        // The last line, with lines after it, ends ` …`, or is cut with `…` when that doesn't fit.
+        // The last line, with lines after it, ends ` …`, or is cut with `…` when that doesn't fit:
+        // two spaces past the room left, no gap but a stand-in, make cut end it in `…`.
         if (!next([{ text: used + 2 <= room() ? ` ${ellipsis}` : "  ", look: null }], false))
           return lines
         break
