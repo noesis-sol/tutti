@@ -20,17 +20,32 @@ const all = Object.entries(marks) as ReadonlyArray<readonly [Mark, string]>
  * (tutti-1l30) are box-drawing lines, as every box's border is, so they risk nothing the borders
  * don't.
  */
-const ambiguous: ReadonlyArray<string> = ["▶", "■", "◆", "•", "●", "○", "♪", "━", "─"]
+const ambiguous: ReadonlyArray<string> = [
+  "▶",
+  "■",
+  "◆",
+  "•",
+  "●",
+  "○",
+  "♪",
+  "━",
+  "─",
+  "↓",
+  "←",
+  "≈",
+]
 
 /** Extended_Pictographic: an emoji with a variation selector after it, and in some fonts. */
-const pictographic: ReadonlyArray<string> = ["▶", "◼"]
+const pictographic: ReadonlyArray<string> = ["▶", "◼", "☑", "⚠"]
 
 /** The meanings that share a glyph today. */
 const shared: ReadonlyArray<ReadonlyArray<Mark>> = [
   ["waitsForYou", "stopped", "windingDown"],
   ["merging", "verdict", "organ"],
   ["review", "caution"],
-  ["idle", "kept"],
+  ["idle", "kept", "unticked", "picked"],
+  ["done", "ticked"],
+  ["answered", "compacted"],
   ["latest", "selected"],
   ["said", "waitsFor"],
 ]

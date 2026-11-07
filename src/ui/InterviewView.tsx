@@ -33,6 +33,7 @@ import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.t
 import { Box, useInput } from "./keys.ts"
 import { Line, Section, type Segments, seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
+import { arrowKeys, marks } from "./marks.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import {
   inertTranscript,
@@ -67,7 +68,7 @@ export interface InterviewValue {
 export const InterviewContext = createContext<InterviewValue | null>(null)
 
 /** The link back, at the head of the view: leaving the interview. */
-export const backLink = " ← Back"
+export const backLink = ` ${marks.back} Back`
 
 /** What leaving asks while nothing has been filed (§ 4.10). */
 export const leaveQuestion = "End the interview?"
@@ -115,7 +116,7 @@ export const interviewCommands = (
     {
       ...keys.escape,
       hint: { keys: "Esc", does: at.composing ? "leave the composer" : "back" },
-      help: ["Esc, ← Back", "leave the composer; end the interview (asks first)"],
+      help: [`Esc, ${marks.back} Back`, "leave the composer; end the interview (asks first)"],
     },
     { ...keys.write, hint: named(viewing, "i", "answer"), help: writeRow },
     ...keys.picks.map((pick, i) => ({
@@ -123,7 +124,7 @@ export const interviewCommands = (
       hint: named(i === 0 && viewing && at.question, "1–4", "pick"),
       help: pickRow,
     })),
-    { ...keys.down, hint: named(viewing, "↑↓", "select"), help: moveRow },
+    { ...keys.down, hint: named(viewing, arrowKeys.upDown, "select"), help: moveRow },
     { ...keys.up, help: moveRow },
     { ...keys.next, help: moveRow },
     { ...keys.previous, help: moveRow },
@@ -142,7 +143,10 @@ export const interviewCommands = (
     {
       keys: [],
       run: nothing,
-      help: ["Answer in view", "the answer form: ↑↓ move, Space picks, Enter presses"],
+      help: [
+        "Answer in view",
+        `the answer form: ${arrowKeys.upDown} move, Space picks, Enter presses`,
+      ],
     },
     { ...keys.top, help: jumpRow },
     { ...keys.end, help: jumpRow },

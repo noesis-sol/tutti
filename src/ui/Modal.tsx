@@ -20,6 +20,7 @@ import {
   widthOf,
   wrap,
 } from "./line.tsx"
+import { ellipsis } from "./marks.ts"
 import { useTheme } from "./useRunView.ts"
 
 /**
@@ -113,7 +114,10 @@ export const Modal = ({
   const shown =
     lines.length <= room
       ? lines
-      : [...lines.slice(0, room - 1), [seg("… no room here for the rest", theme.styles.dim)]]
+      : [
+          ...lines.slice(0, room - 1),
+          [seg(`${ellipsis} no room here for the rest`, theme.styles.dim)],
+        ]
   const rows = boxed([...shown, [], ...keys], outer, frame)
   return (
     <>

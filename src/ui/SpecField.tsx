@@ -16,6 +16,7 @@ import { clickable } from "./click.ts"
 import { type Browsing, enterRow, moveBy, openBrowser, scrollBy, upFolder } from "./FileBrowser.tsx"
 import type { Command } from "./keyCommands.ts"
 import { Lines, type Segments, seg, styled, targeting } from "./line.tsx"
+import { arrowKeys, ellipsis } from "./marks.ts"
 import { fetchingLine, noSpecPath, type SpecAsk } from "./questions.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import { exists, fileProblem, isFolderPath, readFolder } from "./specFiles.ts"
@@ -318,14 +319,14 @@ export const specFieldCommands = (
       keys: ["up", "k"],
       run: () => act.browser.move(-1),
       when: browsing,
-      hint: { keys: "↑↓", does: "move" },
+      hint: { keys: arrowKeys.upDown, does: "move" },
     },
     { keys: ["down", "j"], run: () => act.browser.move(1), when: browsing },
     {
       keys: ["left", "h", "backspace"],
       run: act.browser.up,
       when: browsing,
-      hint: { keys: "←", does: "up a folder" },
+      hint: { keys: arrowKeys.left, does: "up a folder" },
     },
     {
       keys: ["return", "kpenter", "right"],
@@ -351,7 +352,7 @@ export const specFieldCommands = (
       keys: ["down", "ctrl+n"],
       run: () => act.step(1),
       when: completes,
-      hint: { keys: "↓↑", does: "completions" },
+      hint: { keys: arrowKeys.downUp, does: "completions" },
     },
     { keys: ["up", "ctrl+p"], run: () => act.step(-1), when: completes },
     { keys: ["ctrl+o"], run: act.browse, when: typing, hint: { keys: "Ctrl+O", does: "browse" } },
@@ -438,7 +439,7 @@ export const SpecInput = ({
           focused={focused}
           flexGrow={1}
           onInput={field.changed}
-          placeholder="docs/spec.md, ~/specs/app.md or https://…"
+          placeholder={`docs/spec.md, ~/specs/app.md or https://${ellipsis}`}
           {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
           {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
           {...(form.placeholder.fg === undefined ? {} : { placeholderColor: form.placeholder.fg })}

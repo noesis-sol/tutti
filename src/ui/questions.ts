@@ -4,6 +4,7 @@
 import { Data, type Effect, Schema } from "effect"
 import { isSpecUrl, shownUrl } from "../run/specSource.ts"
 import type { QuestionOption, TicketId } from "../services/Beads.ts"
+import { ellipsis } from "./marks.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import type { Where } from "./specPath.ts"
 
@@ -92,7 +93,7 @@ export const noSpecPath = (browse: boolean): string =>
 /** The spinner's words while the spec at a URL is fetched. */
 export const fetchingLine = (url: string): string => {
   const host = URL.canParse(url) ? new URL(url).host : url
-  return `Fetching ${sanitizeLine(host)}…`
+  return `Fetching ${sanitizeLine(host)}${ellipsis}`
 }
 
 export const refineTitle = "Refine it with Claude first?"

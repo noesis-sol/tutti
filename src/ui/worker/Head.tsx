@@ -13,7 +13,7 @@ import { clickable } from "../click.ts"
 import { minHeight, minWidth } from "../Dashboard.tsx"
 import { type FitPart, fitParts } from "../fit.ts"
 import { cut, Line, Lines, type Press, type Segments, seg, styled, wrap } from "../line.tsx"
-import { markGap } from "../marks.ts"
+import { ellipsis, markGap, marks } from "../marks.ts"
 import { sanitizeLine } from "../sanitize.ts"
 import { badgeLabel, badgesOf, titleSegment } from "../TicketHead.tsx"
 import type { Theme } from "../theme.ts"
@@ -79,7 +79,7 @@ export const ViewHead = ({
 }
 
 /** The worker view's link back to the dashboard. */
-const workerLink = " ← Dashboard"
+const workerLink = ` ${marks.back} Dashboard`
 
 /** What line 1 shows of a worker, beside its card. */
 export interface LineOneInputs {
@@ -215,6 +215,6 @@ export const titleLines = (title: string, theme: Theme, width: number): Readonly
   const shown = wrapped.slice(0, titleMost)
   const last = shown.at(-1) ?? []
   return wrapped.length > titleMost
-    ? [...shown.slice(0, -1), cut([...last, titleSegment("…", theme)], room)]
+    ? [...shown.slice(0, -1), cut([...last, titleSegment(ellipsis, theme)], room)]
     : shown
 }

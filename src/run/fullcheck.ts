@@ -27,6 +27,7 @@ import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts
 import { type CheckError, type CheckPassed, Checks, setupLogName } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
+import { ellipsis } from "../ui/marks.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import { flakyWarnings, howFailed, outputTo, recorded, saidOf } from "./check.ts"
 import type { fullCheckOutcomes } from "./events.ts"
@@ -171,7 +172,7 @@ export const fullCheckDue = (
 export const fullCheckTitle = (suite: string): string => {
   const title = `${fullCheckPrefix}${suite}`
   const chars = Array.from(title)
-  return chars.length > titleWidth ? `${chars.slice(0, titleWidth - 1).join("")}…` : title
+  return chars.length > titleWidth ? `${chars.slice(0, titleWidth - 1).join("")}${ellipsis}` : title
 }
 
 /** What a filed ticket's description and notes say of its suite, which tells a cut title's apart. */

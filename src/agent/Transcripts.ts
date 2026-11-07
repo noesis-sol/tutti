@@ -31,6 +31,7 @@ import { terminalSafe } from "../run/events.ts"
 import { timestamp } from "../run/localTime.ts"
 import { denier, unknownDenier } from "../run/log.ts"
 import { runFolder, ticketIdProblem } from "../services/Worktrees.ts"
+import { ellipsis } from "../ui/marks.ts"
 import { aboutOf } from "./tools.ts"
 import { asRecord, asString } from "./untrusted.ts"
 
@@ -175,7 +176,7 @@ const lineBreak = /\r\n|[\n\r\u2028\u2029]/
 
 const cut = (text: string, limit: number): string => {
   const chars = Array.from(text)
-  return chars.length <= limit ? text : `${chars.slice(0, limit - 1).join("")}…`
+  return chars.length <= limit ? text : `${chars.slice(0, limit - 1).join("")}${ellipsis}`
 }
 
 /** The last line of `text` with anything on it, trimmed; undefined when it has none. */
@@ -192,7 +193,7 @@ const firstLine = (text: string): string => {
     .map((line) => line.trim())
     .filter((line) => line !== "")
   const first = lines[0] ?? ""
-  return lines.length > 1 ? `${first} …` : first
+  return lines.length > 1 ? `${first} ${ellipsis}` : first
 }
 
 /**

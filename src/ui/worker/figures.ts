@@ -18,6 +18,7 @@ import { elapsed } from "../Card.tsx"
 import type { FitPart } from "../fit.ts"
 import { workerMemory } from "../LoadLine.tsx"
 import { type Look, type Segments, seg } from "../line.tsx"
+import { marks } from "../marks.ts"
 import { sanitizeLine } from "../sanitize.ts"
 import type { Theme } from "../theme.ts"
 
@@ -42,7 +43,7 @@ export const contextLook = (full: number, theme: Theme): Look | null =>
 /** A share of the window to the whole point: `≈1%`, or `< 1%` for one under half a point. */
 export const shareText = (share: number): string => {
   const points = share * 100
-  return points > 0 && points < 0.5 ? "< 1%" : `≈${Math.round(points)}%`
+  return points > 0 && points < 0.5 ? "< 1%" : `${marks.estimate}${Math.round(points)}%`
 }
 
 /** A usage limit's name as the warning says it: `5h window` for the five-hour limit. */
@@ -117,7 +118,12 @@ export const figureParts = (
   }
   if (r !== undefined && r.compactions > 0) {
     const word = r.compactions === 1 ? "compaction" : "compactions"
-    parts.push(droppable([seg(`↻ ${r.compactions}`), seg(` ${word}`, styles.dim)], dropCompactions))
+    parts.push(
+      droppable(
+        [seg(`${marks.compacted} ${r.compactions}`), seg(` ${word}`, styles.dim)],
+        dropCompactions,
+      ),
+    )
   }
   if (inputs.memory !== undefined) {
     parts.push(droppable([seg(workerMemory(inputs.memory), styles.dim)], dropMemory))
@@ -125,7 +131,7 @@ export const figureParts = (
   const usage = inputs.usage
   if (usage !== null) {
     const look = usage.utilization >= 1 ? styles.testing : styles.deferred
-    const figure = `⚠ ${limitLabel(usage.limit)} ${Math.round(usage.utilization * 100)}%`
+    const figure = `${marks.nearLimit} ${limitLabel(usage.limit)} ${Math.round(usage.utilization * 100)}%`
     const resets =
       usage.resetsAt === null ? "" : ` · resets ${resetLabel(usage.resetsAt, inputs.now)}`
     parts.push({

@@ -17,6 +17,7 @@ import type { Key } from "../run/runView.ts"
 import { type Answers, ask, Field, formHintSegments, targetLines } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { Line, Lines, type Look, type Segments, seg, wrap } from "./line.tsx"
+import { arrowKeys } from "./marks.ts"
 import {
   type Choice,
   choicesOf,
@@ -65,7 +66,7 @@ export const openQuestionCommands = (
   act: OpenQuestionActions,
   does: string = beforeRun.does,
 ): ReadonlyArray<Command> => [
-  { keys: ["up"], run: () => act.move(-1), hint: { keys: "↑↓", does: "choose" } },
+  { keys: ["up"], run: () => act.move(-1), hint: { keys: arrowKeys.upDown, does: "choose" } },
   { keys: ["down"], run: () => act.move(1) },
   { keys: ["return", "kpenter"], run: act.choose, hint: { keys: "Enter", does: "confirm" } },
   { keys: ["pageup"], run: () => act.scroll(-1), hint: { keys: "PgUp/PgDn", does: "scroll" } },

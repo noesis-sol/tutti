@@ -15,6 +15,7 @@ import { FileBrowser, rowsShown } from "./FileBrowser.tsx"
 import { type Answers, ask, Field, formHintSegments, targetLines } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { Lines, type Look, type Segments, seg, wrap } from "./line.tsx"
+import { arrowKeys } from "./marks.ts"
 import {
   describeDescription,
   describeTitle,
@@ -93,7 +94,7 @@ export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
       keys: ["up", "k"],
       run: () => act.move(-1),
       when: choosing,
-      hint: { keys: "↑↓", does: "choose" },
+      hint: { keys: arrowKeys.upDown, does: "choose" },
     },
     { keys: ["down", "j"], run: () => act.move(1), when: choosing },
     // The Enter that chooses isn't the description's: it would submit it empty.
@@ -108,7 +109,7 @@ export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
       keys: ["up", "k"],
       run: () => act.moveRefine(-1),
       when: refining,
-      hint: { keys: "↑↓", does: "choose" },
+      hint: { keys: arrowKeys.upDown, does: "choose" },
     },
     { keys: ["down", "j"], run: () => act.moveRefine(1), when: refining },
     {

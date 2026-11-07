@@ -15,6 +15,7 @@ import {
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { formatDuration } from "../project/configFile.ts"
+import { ellipsis } from "../ui/marks.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import {
   type Command,
@@ -338,7 +339,7 @@ const fromBd = (bd: Schema.Schema.Type<typeof BdIssue>): Issue => ({
 
 /** At most `max` characters of text, for an error. */
 const clip = (value: string, max: number): string =>
-  value.length > max ? `${value.slice(0, max)}…` : value
+  value.length > max ? `${value.slice(0, max)}${ellipsis}` : value
 
 /** The payload of bd's output: the JSON, out of its envelope when it has one. */
 export const bdPayload = (stdout: string): Result.Result<unknown, string> =>

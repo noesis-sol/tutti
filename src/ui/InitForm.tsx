@@ -45,7 +45,7 @@ import { type FormHeading, initHeading, initTitle, scoutClock } from "./initTitl
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { InputGuards } from "./keys.ts"
 import { Line, Lines, type Segments, seg, styled, wrap } from "./line.tsx"
-import { marks } from "./marks.ts"
+import { arrowKeys, marks } from "./marks.ts"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -143,7 +143,7 @@ export const confirmCommands = (
   {
     keys: ["left", "right", "h", "l", "tab"],
     run: act.toggle,
-    hint: { keys: "←→", does: "choose" },
+    hint: { keys: arrowKeys.leftRight, does: "choose" },
   },
   { keys: ["y"], run: () => asking.answer(true), hint: { keys: "y", does: "yes" } },
   { keys: ["n"], run: () => asking.answer(false), hint: { keys: "n", does: "no" } },
@@ -156,7 +156,7 @@ export const selectCommands = (
   asking: Extract<Asking, { _tag: "Select" }>,
   act: { readonly move: (by: number) => void; readonly confirm: () => void },
 ): ReadonlyArray<Command> => [
-  { keys: ["up", "k"], run: () => act.move(-1), hint: { keys: "↑↓", does: "choose" } },
+  { keys: ["up", "k"], run: () => act.move(-1), hint: { keys: arrowKeys.upDown, does: "choose" } },
   { keys: ["down", "j"], run: () => act.move(1) },
   { keys: enterKeys, run: act.confirm, hint: { keys: "Enter", does: "confirm" } },
   cancelCommand(asking.cancel),
@@ -177,7 +177,7 @@ export const checklistCommands = (
     readonly confirm: () => void
   },
 ): ReadonlyArray<Command> => [
-  { keys: ["up", "k"], run: () => act.move(-1), hint: { keys: "↑↓", does: "move" } },
+  { keys: ["up", "k"], run: () => act.move(-1), hint: { keys: arrowKeys.upDown, does: "move" } },
   { keys: ["down", "j"], run: () => act.move(1) },
   { keys: ["space", "x"], run: act.tick, hint: { keys: "Space", does: "tick" } },
   { keys: enterKeys, run: act.confirm, hint: { keys: "Enter", does: "confirm" } },
@@ -417,8 +417,8 @@ const ChecklistView = ({
     options.map((option, index) => [
       seg(index === at ? "> " : "  ", form.selector),
       ...(ticked.has(index)
-        ? [seg("✓ ", form.selectedMark), seg(option, form.selected)]
-        : [seg("• ", form.description), seg(option, form.option)]),
+        ? [seg(`${marks.ticked} `, form.selectedMark), seg(option, form.selected)]
+        : [seg(`${marks.unticked} `, form.description), seg(option, form.option)]),
     ]),
     room,
   )

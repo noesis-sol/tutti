@@ -50,6 +50,7 @@ import {
   targeting,
 } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
+import { arrowKeys, marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { useRunViewPart, useTheme } from "./useRunView.ts"
@@ -62,7 +63,13 @@ const rowId = (index: number): string => `form-row-${index}`
 
 /** An option row's mark: `(•)` picked of one, `[x]` of several. */
 const markOf = (field: Field, picked: boolean): string =>
-  field._tag === "Choice" && !field.multi ? (picked ? "(•)" : "( )") : picked ? "[x]" : "[ ]"
+  field._tag === "Choice" && !field.multi
+    ? picked
+      ? `(${marks.picked})`
+      : "( )"
+    : picked
+      ? "[x]"
+      : "[ ]"
 
 /** A field's lines above its rows: its title (a question's header before it), its description. */
 const titleLines = (field: Field, theme: Theme): ReadonlyArray<Segments> => {
@@ -192,7 +199,7 @@ const FormBody = ({
       {
         keys: ["down", "tab"],
         run: () => setFocus(at() + 1),
-        hint: { keys: "↑↓", does: "move" },
+        hint: { keys: arrowKeys.upDown, does: "move" },
       },
       { keys: ["up", "shift+tab"], run: () => setFocus(at() - 1) },
       {

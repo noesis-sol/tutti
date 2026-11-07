@@ -11,7 +11,7 @@ import { RGBA } from "@opentui/core"
 import { memo, type ReactNode } from "react"
 import { clickable } from "../click.ts"
 import { cut, Line, padded, type Segments, seg, widthOf, wrap } from "../line.tsx"
-import { marks } from "../marks.ts"
+import { ellipsis, marks } from "../marks.ts"
 import { sanitize } from "../sanitize.ts"
 import type { Role, Theme } from "../theme.ts"
 import {
@@ -41,7 +41,7 @@ const markSegments = (mark: Mark, theme: Theme, room: number): Segments => {
       return [
         seg(`+${mark.added}`, theme.look("added")),
         seg(" "),
-        seg(`−${mark.removed}`, theme.look("removed")),
+        seg(`${marks.linesRemoved}${mark.removed}`, theme.look("removed")),
       ]
   }
 }
@@ -70,7 +70,7 @@ export const toolLines = (
     ...gutter(selected, theme),
     seg(tool.name, theme.styles.key),
     ...(tool.summary === "" ? [] : [seg("  "), seg(tool.summary)]),
-    ...(tool.live ? [seg("  …", theme.styles.dim)] : []),
+    ...(tool.live ? [seg(`  ${ellipsis}`, theme.styles.dim)] : []),
   ]
   // Under the summary, or under the name when that's more than half the line.
   const indent =
@@ -281,7 +281,7 @@ const Expanded = ({ tool, ...props }: ListProps & { readonly tool: ToolEntry }) 
             {...looks.highlighter}
           />
           {shown.more > 0 ? (
-            <Line segments={[seg(`… ${shown.more} more lines`, theme.styles.dim)]} />
+            <Line segments={[seg(`${ellipsis} ${shown.more} more lines`, theme.styles.dim)]} />
           ) : null}
         </box>
       )

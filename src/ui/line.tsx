@@ -4,6 +4,7 @@
 import { RGBA } from "@opentui/core"
 import { createContext, memo, type ReactNode, useContext } from "react"
 import { clickable } from "./click.ts"
+import { ellipsis } from "./marks.ts"
 import { oneLine } from "./oneLine.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import { orchestra, rgbaOf, type Style, type Theme } from "./theme.ts"
@@ -113,7 +114,7 @@ export const cut = <L,>(
       text += segment
       room -= g
     }
-    kept.push({ ...each, text: `${text}…` })
+    kept.push({ ...each, text: `${text}${ellipsis}` })
     break
   }
   return kept
@@ -256,7 +257,8 @@ export const wrap = <L,>(
     switch (token._tag) {
       case "End":
         // The last line, with lines after it, ends ` …`, or is cut with `…` when that doesn't fit.
-        if (!next([{ text: used + 2 <= room() ? " …" : "  ", look: null }], false)) return lines
+        if (!next([{ text: used + 2 <= room() ? ` ${ellipsis}` : "  ", look: null }], false))
+          return lines
         break
       case "Space":
         // A space that doesn't fit the line goes, as the wrap would take it.

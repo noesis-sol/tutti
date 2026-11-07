@@ -39,6 +39,7 @@ import {
   wrap,
 } from "./line.tsx"
 import { Backdrop, choiceRows } from "./Modal.tsx"
+import { arrowKeys, marks } from "./marks.ts"
 import { rowParagraphs } from "./SidePanel.tsx"
 import { badgesOf, ticketEdge, wholeTicket } from "./TicketHead.tsx"
 import type { Theme } from "./theme.ts"
@@ -122,7 +123,7 @@ export const statsLines = (
   const median = peerMedian(peers, row.ticket, stats.size)
   const going = (phase: "working" | "resolving" | "fixing") =>
     stats[phase] + (stats.counting === phase ? Math.max(now - row.since, 0) / 1000 : 0)
-  const estimate = stats.estimated ? "≈" : ""
+  const estimate = stats.estimated ? marks.estimate : ""
   const dollars = (usd: number) => `${estimate}${dollarsText(usd)}`
   const ended = endedLine(row)
   const figures: ReadonlyArray<readonly [string, string]> = [
@@ -224,7 +225,7 @@ export const RowBox = ({ ticket }: { readonly ticket: TicketId }) => {
     {
       keys: ["pagedown"],
       run: () => page(1),
-      hint: { keys: "↑↓ PgUp/PgDn", does: "scroll" },
+      hint: { keys: `${arrowKeys.upDown} PgUp/PgDn`, does: "scroll" },
     },
     { keys: ["pageup"], run: () => page(-1) },
     { keys: ["escape"], run: () => box.set(null), hint: { keys: "Esc", does: "close" } },
@@ -258,7 +259,9 @@ export const RowBox = ({ ticket }: { readonly ticket: TicketId }) => {
     const more =
       shown === null ? 0 : Math.max(shown.scrollHeight - shown.scrollTop - shown.viewport.height, 0)
     const label =
-      more <= 0 ? [] : [seg(`↓ ${counted(more, "more line", "more lines")}`, theme.styles.dim)]
+      more <= 0
+        ? []
+        : [seg(`${marks.moreBelow} ${counted(more, "more line", "more lines")}`, theme.styles.dim)]
     let x = this.x
     for (const each of frameEdge("bottom", outer, frame, "rounded", label)) {
       const look = each.look

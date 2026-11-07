@@ -65,6 +65,7 @@ import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { sleepAwake } from "../services/Wake.ts"
+import { ellipsis } from "../ui/marks.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { AnswerWord } from "./attentionFiles.ts"
 import type { SessionFibers } from "./callbacks.ts"
@@ -430,7 +431,9 @@ export const summaryLength = 120
 
 const clip = (text: string): string => {
   const chars = [...text]
-  return chars.length <= summaryLength ? text : `${chars.slice(0, summaryLength - 1).join("")}…`
+  return chars.length <= summaryLength
+    ? text
+    : `${chars.slice(0, summaryLength - 1).join("")}${ellipsis}`
 }
 
 /**

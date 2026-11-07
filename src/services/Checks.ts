@@ -21,6 +21,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import type { Settings } from "../project/settings.ts"
 import { detail, Log } from "../run/log.ts"
 import { Shares, shareFileOf } from "../run/share.ts"
+import { ellipsis } from "../ui/marks.ts"
 import { exec } from "./exec.ts"
 import { processCount, Strays } from "./Strays.ts"
 
@@ -137,7 +138,7 @@ export const boundLines = (lines: ReadonlyArray<string>, n: number): Array<strin
   return kept.map((line) => {
     const chars = Array.from(line)
     return chars.length > OutputBounds.saidWidth
-      ? `${chars.slice(0, OutputBounds.saidWidth - 1).join("")}…`
+      ? `${chars.slice(0, OutputBounds.saidWidth - 1).join("")}${ellipsis}`
       : line
   })
 }

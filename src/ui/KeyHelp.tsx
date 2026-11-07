@@ -9,6 +9,7 @@ import { useState } from "react"
 import { globalHelp, type HelpRow } from "./keyCommands.ts"
 import { useLayer } from "./keys.ts"
 import { boxed, cut, Lines, padded, type Segments, seg, widthOf } from "./line.tsx"
+import { arrowKeys } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
 /** How the overlay of `count` keys fits `height` rows: with its blank lines, and how many keys show. */
@@ -62,7 +63,11 @@ export const keyHelpLines = (
           seg("Esc", styles.key),
           seg(" close", styles.dim),
           ...(scrolls
-            ? [seg(" · ", styles.dim), seg("↑↓ PgUp PgDn", styles.key), seg(" scroll", styles.dim)]
+            ? [
+                seg(" · ", styles.dim),
+                seg(`${arrowKeys.upDown} PgUp PgDn`, styles.key),
+                seg(" scroll", styles.dim),
+              ]
             : []),
         ],
         inner,

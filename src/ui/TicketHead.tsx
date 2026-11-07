@@ -38,6 +38,7 @@ import {
   wrap,
   wrapText,
 } from "./line.tsx"
+import { ellipsis, marks } from "./marks.ts"
 import { escapeMarkdown, sanitizeLine } from "./sanitize.ts"
 import type { Role, Theme } from "./theme.ts"
 import { useCommand, useTheme } from "./useRunView.ts"
@@ -218,7 +219,7 @@ export const hasMore = (issue: TicketText): boolean =>
 
 /** `▾ whole ticket  t`, in the link colour and its key's, a click on it pressing target 0. */
 export const moreControl = (theme: Theme): Segments => [
-  seg("▾ whole ticket", theme.look("link"), 0),
+  seg(`${marks.expand} whole ticket`, theme.look("link"), 0),
   seg("  ", null, 0),
   seg("t", theme.styles.key, 0),
 ]
@@ -251,7 +252,7 @@ export const descriptionLines = (
   const shown = wrapped.slice(0, limit)
   if (!cutShort) return { lines: shown, more: hasMore(issue) }
   const last = shown.at(-1) ?? []
-  return { lines: [...shown.slice(0, -1), cut([...last, seg("…")], width)], more: true }
+  return { lines: [...shown.slice(0, -1), cut([...last, seg(ellipsis)], width)], more: true }
 }
 
 /**
@@ -288,10 +289,10 @@ export const checklist = (text: string): string => {
     if (line.trim() === "") continue
     const box = checked.exec(line)
     const item = bulleted.exec(line)
-    if (box !== null) items.push(`${box[1]?.trim() ? "☑" : "☐"} ${box[2] ?? ""}`)
-    else if (item !== null) items.push(`☐ ${item[1] ?? ""}`)
+    if (box !== null) items.push(`${box[1]?.trim() ? marks.boxTicked : marks.box} ${box[2] ?? ""}`)
+    else if (item !== null) items.push(`${marks.box} ${item[1] ?? ""}`)
     else if (/^\s/.test(line) && items.length > 0) items[items.length - 1] += ` ${line.trim()}`
-    else items.push(`☐ ${line.trim()}`)
+    else items.push(`${marks.box} ${line.trim()}`)
   }
   return items.join("  \n")
 }
@@ -408,7 +409,7 @@ export const panelLines = (
 
 /** `▴ less  t · Esc`, in the link colour and its keys', a click on it pressing target 0. */
 export const lessControl = (theme: Theme): Segments => [
-  seg("▴ less", theme.look("link"), 0),
+  seg(`${marks.collapse} less`, theme.look("link"), 0),
   seg("  ", null, 0),
   seg("t", theme.styles.key, 0),
   seg(" · ", theme.styles.dim, 0),
@@ -424,7 +425,7 @@ export const bottomLine = (theme: Theme, width: number, more: number): Segments 
     ...(more <= 0
       ? []
       : [
-          seg(`↓ ${more} more ${more === 1 ? "line" : "lines"}`, theme.styles.dim),
+          seg(`${marks.moreBelow} ${more} more ${more === 1 ? "line" : "lines"}`, theme.styles.dim),
           seg(" ── ", theme.look("frame")),
         ]),
     ...lessControl(theme),

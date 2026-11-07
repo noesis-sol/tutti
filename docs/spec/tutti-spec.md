@@ -1744,6 +1744,7 @@ Carried over too, and not part of any scheme:
 - the spinner, Bubbles' `Dot`: frames `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷`, ten a second; on the dashboard, in init's form, on the organ lines, and on the line a run draws while it gets ready (§7.1 "Getting ready")
 - the state glyphs `▶ ✓ ↷ ! ■ ? ↻ ◷ ◼ ◆ ⟳ •`, and `○ ♪`
 - tutti's latest-action glyph, `▸`
+- each named in `src/ui/marks.ts` by what it marks, and src/ui writes none of them inline (tutti-6bwa.4): the state glyphs, `▸`, the more-below `↓`, the links' `▾ ▴ ←`, the arrow keys of the hints; and `ellipsis`, the `…` that `cut`, `fit` and every other cutter end a text in, a word still going (`Reading the ticket…`) being prose
 
 ---
 

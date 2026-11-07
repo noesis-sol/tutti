@@ -1,5 +1,6 @@
 // Text cut to one line of a given width, one way everywhere: a notice, the summary's cells, and
 // what the reviewer and the triage organ read.
+import { ellipsis } from "./marks.ts"
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" })
 
@@ -33,5 +34,5 @@ export const oneLine = (text: string, width: number): string => {
     columns += w
     chars += n
   }
-  return `${kept.trimEnd()}…`
+  return `${kept.trimEnd()}${ellipsis}`
 }

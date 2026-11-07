@@ -11,6 +11,7 @@
 // with the new ticket's ID, never the text, as a MESSAGE line has only its length.
 import { Data, Effect, SubscriptionRef } from "effect"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
+import { ellipsis } from "../ui/marks.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import * as log from "./log.ts"
 import { Log } from "./log.ts"
@@ -45,7 +46,7 @@ export const titleOf = (text: string): string => {
   const chars = [...first]
   if (chars.length <= titleLimit) return first
   const cutTo = chars.slice(0, titleLimit - 1).join("")
-  return `${cutTo.trimEnd()}…`
+  return `${cutTo.trimEnd()}${ellipsis}`
 }
 
 /** A filed ticket's description: the whole `text`, and where it was written. */

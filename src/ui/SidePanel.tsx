@@ -38,7 +38,7 @@ import {
   seg,
   wrap,
 } from "./line.tsx"
-import { lookOf, marks } from "./marks.ts"
+import { arrowKeys, ellipsis, lookOf, marks } from "./marks.ts"
 import { queueDivider } from "./Totals.tsx"
 import type { Style, Theme } from "./theme.ts"
 
@@ -265,7 +265,7 @@ const briefly = (reason: string): string => {
   const chars = [...reason]
   return chars.length <= reasonLimit
     ? reason
-    : `${chars.slice(0, reasonLimit).join("")}… (the log has it all)`
+    : `${chars.slice(0, reasonLimit).join("")}${ellipsis} (the log has it all)`
 }
 
 /** What the panel's foot says of `h`, by what it does for `need`. */
@@ -486,7 +486,7 @@ export const needsLines = (
       const keys = at.inside
         ? options.length === 0
           ? "Enter answer"
-          : `↑↓ 1–${options.length} · Enter answer`
+          : `${arrowKeys.upDown} 1–${options.length} · Enter answer`
         : at.focused
           ? [digits, "Enter goes in"].filter((each) => each !== "").join(" · ")
           : digits !== ""
@@ -505,7 +505,7 @@ export const needsLines = (
             ? []
             : [
                 ...description.slice(0, space - 1),
-                [dim("… click to read it all", panelTargets.read)],
+                [dim(`${ellipsis} click to read it all`, panelTargets.read)],
               ]
       body.push(...title, about, ...shown, ...choices, foot)
     }
@@ -527,10 +527,10 @@ export const needsLines = (
         ? andH("Enter opens its worker view")
         : reach
       : at.inside
-        ? andH("… click or Enter reads it all")
-        : `… click reads it all · ${reach}`
+        ? andH(`${ellipsis} click or Enter reads it all`)
+        : `${ellipsis} click reads it all · ${reach}`
     body.push(
-      [seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)],
+      [seg(`${marks.waitsForYou} ${need.label} blocked: ${need.why}`, styles.stop)],
       ...titled,
       ...(short ? clears.slice(0, Math.max(spare - titled.length, 0)) : clears),
       [short ? dim(keys, panelTargets.read) : dim(keys)],

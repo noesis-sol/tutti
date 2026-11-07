@@ -28,6 +28,7 @@ import {
   type Status,
   type TicketId,
 } from "../services/Beads.ts"
+import { ellipsis } from "../ui/marks.ts"
 import { specKey } from "./start.ts"
 
 /** The types an issue of the tree can have: an epic, or a ticket's. */
@@ -130,7 +131,7 @@ const field = (fields: Fields, key: string): unknown =>
 
 const shown = (value: unknown): string =>
   typeof value === "string"
-    ? JSON.stringify(value.length > 80 ? `${value.slice(0, 80)}…` : value)
+    ? JSON.stringify(value.length > 80 ? `${value.slice(0, 80)}${ellipsis}` : value)
     : typeof value === "number"
       ? String(value)
       : value === null

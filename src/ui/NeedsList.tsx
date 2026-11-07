@@ -24,6 +24,7 @@ import { type Command, isOn, useCommands } from "./keyCommands.ts"
 import { Box, type NeedsAt, useInput } from "./keys.ts"
 import { boxed, cut, fit, Lines, type Segments, seg } from "./line.tsx"
 import { Backdrop, choiceRows, Modal, modalMaxWidth } from "./Modal.tsx"
+import { arrowKeys, marks } from "./marks.ts"
 import { quietUuid } from "./QuestionsBox.tsx"
 import type { OpenQuestion } from "./questions.ts"
 import { clearsOf, nothingNeedsYou } from "./SidePanel.tsx"
@@ -85,7 +86,10 @@ export const itemLine = (
   }
   const { need } = item
   if (need._tag === "Blocked") {
-    return cut([mark, seg(`■ ${need.label} blocked: ${need.why}`, styles.stop)], width)
+    return cut(
+      [mark, seg(`${marks.waitsForYou} ${need.label} blocked: ${need.why}`, styles.stop)],
+      width,
+    )
   }
   const title = need.question?.title ?? `${need.label} waits on it`
   return cut(
@@ -104,7 +108,7 @@ const itemTarget = 1000
 
 /** What a box says of a Blocked ticket: why it is blocked, its title, and what clears it. */
 const blockedParagraphs = (need: Extract<Need, { _tag: "Blocked" }>, { styles }: Theme) => [
-  seg(`■ ${need.label} blocked: ${need.why}`, styles.stop),
+  seg(`${marks.waitsForYou} ${need.label} blocked: ${need.why}`, styles.stop),
   seg(need.title, styles.key),
   ...clearsOf(need).map((text) => seg(text, styles.dim)),
 ]
@@ -255,7 +259,7 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
             {
               keys: ["up", "shift+tab"],
               run: () => move(-1),
-              hint: { keys: "↑↓", does: "choose" },
+              hint: { keys: arrowKeys.upDown, does: "choose" },
             },
             {
               keys: ["return", "enter"],

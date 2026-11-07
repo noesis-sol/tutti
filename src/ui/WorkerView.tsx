@@ -64,6 +64,7 @@ import { KeyHelp } from "./KeyHelp.tsx"
 import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
 import { Line, Lines, Section, type Segments, seg, widthOf } from "./line.tsx"
+import { arrowKeys, marks } from "./marks.ts"
 import {
   badgesOf,
   descriptionLeast,
@@ -337,7 +338,7 @@ export const workerViewCommands = (
           ? { keys: "t/Esc", does: "less" }
           : { keys: "Esc", does: "dashboard" },
       help: [
-        "Esc, ← Dashboard",
+        `Esc, ${marks.back} Dashboard`,
         "leave the composer; close the whole ticket; back to the dashboard",
       ],
     },
@@ -352,7 +353,10 @@ export const workerViewCommands = (
       keys: ["t"],
       run: act.ticket,
       hint: named(viewing && at.ticketOpen !== true, "t", "ticket"),
-      help: ["t, ▾ whole ticket", "the whole ticket; t, ▴ less or Esc closes it"],
+      help: [
+        `t, ${marks.expand} whole ticket`,
+        `the whole ticket; t, ${marks.collapse} less or Esc closes it`,
+      ],
     },
     {
       keys: ["h"],
@@ -393,7 +397,7 @@ export const workerViewCommands = (
       hint: named(viewing && at.asked === true, "A", "answer"),
       help: ["A, Answer", "answer the question an Asked ticket waits on"],
     },
-    { ...keys.down, hint: named(viewing, "↑↓", "select"), help: moveRow },
+    { ...keys.down, hint: named(viewing, arrowKeys.upDown, "select"), help: moveRow },
     { ...keys.up, help: moveRow },
     { ...keys.next, help: moveRow },
     { ...keys.previous, help: moveRow },
@@ -411,7 +415,10 @@ export const workerViewCommands = (
     {
       keys: [],
       run: nothing,
-      help: ["Answer in view", "the answer form: ↑↓ move, Space picks, Enter presses"],
+      help: [
+        "Answer in view",
+        `the answer form: ${arrowKeys.upDown} move, Space picks, Enter presses`,
+      ],
     },
   ]
 }

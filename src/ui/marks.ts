@@ -34,6 +34,12 @@ export const marks = {
   reworking: "⟳",
   /** Done: a ticket closed, a tool call that succeeded, a step of init done. */
   done: "✓",
+  /** An option ticked in init's form, of several it may take. */
+  ticked: "✓",
+  /** An option not ticked in init's form. */
+  unticked: "•",
+  /** The option picked of an answer form's choice of one: `(•)`. */
+  picked: "•",
   /** Its worker filed a question for you. */
   asked: "?",
   /** Its question is answered, and it waits for a free slot to come back. */
@@ -48,6 +54,26 @@ export const marks = {
   verdict: "◆",
   /** An organ's line on the printer. */
   organ: "◆",
+  /** Before how many lines a box has under the ones it shows: `↓ 3 more lines`. */
+  moreBelow: "↓",
+  /** A link that opens what is cut short: `▾ whole ticket`. */
+  expand: "▾",
+  /** A link that closes it again: `▴ less`. */
+  collapse: "▴",
+  /** A link back to the view before: `← Dashboard`. */
+  back: "←",
+  /** Before an item of a ticket's checklist. */
+  box: "☐",
+  /** Before an item of a ticket's checklist that is ticked. */
+  boxTicked: "☑",
+  /** Before a figure that is an estimate: `≈1%`, `≈$0.12`. */
+  estimate: "≈",
+  /** Before how many times a worker's context was compacted: `↻ 2 compactions`. */
+  compacted: "↻",
+  /** Before a usage window that is near or at its limit: `⚠ 5h 92%`. */
+  nearLimit: "⚠",
+  /** Before the lines an edit removed: `+3 −1`. */
+  linesRemoved: "−",
   /** Before a worker's latest action, on its card. */
   latest: "▸",
   /** Before the selected item of a worker's transcript. */
@@ -80,6 +106,22 @@ export const marks = {
 } as const
 
 export type Mark = keyof typeof marks
+
+/**
+ * What a text cut short ends in, and what a line with more after it says so with: the one spelling
+ * of it, for `cut` and `fit` (line.tsx) and every other cutter, so that a text cut anywhere ends the
+ * same way. A word still going, `Reading the ticket…`, is prose and writes it in the word.
+ */
+export const ellipsis = "…"
+
+/** The arrow keys, as the hints and the key table name them. */
+export const arrowKeys = {
+  upDown: "↑↓",
+  /** The way round the completions' hint has them. */
+  downUp: "↓↑",
+  leftRight: "←→",
+  left: "←",
+} as const
 
 /**
  * The look a status is drawn in: one of the styles, or `failed`, the `needsYou` role not bold, for
