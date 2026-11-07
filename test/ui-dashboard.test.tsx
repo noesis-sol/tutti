@@ -23,7 +23,7 @@ import { type Appearance, makeTheme, orchestra, type StyleName } from "../src/ui
 import { external, type Settable, type ShellValue, tick } from "../src/ui/useRunView.ts"
 import { workersDoing } from "./activity.ts"
 import { type Frame, renderFrame, type Size, withRender } from "./render.ts"
-import { hintAt, hintFrom, hintRows, rowsIn, totalsIn } from "./screen.ts"
+import { boxesIn, hintAt, hintFrom, hintRows, rowsIn, totalsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -567,7 +567,13 @@ describe("the tickets table", () => {
   test("Tickets is emphasis bold, the frames in the frame role", async () => {
     const { frame } = await draw(illustrated, { width: 80, height: 24 })
     looksLike(frame, "Tickets", "tickets")
-    expect(spanOf(frame, "╭───").fg).toEqual(theme.rgba("frame").toInts().slice(0, 3))
+    // The totals strip's frame, in a pane wide enough for the strip.
+    const wide = await draw(illustrated, { width: 120, height: 30 })
+    const strip = boxesIn(wide.frame).find((box) => box.lines[0]?.includes("Completed"))
+    const corner = wide.frame.spans.lines[strip?.top ?? -1]?.spans.find((each) =>
+      each.text.startsWith("╭"),
+    )
+    expect(corner?.fg.toInts().slice(0, 3)).toEqual(theme.rgba("frame").toInts().slice(0, 3))
   })
 })
 
