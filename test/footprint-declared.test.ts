@@ -48,8 +48,10 @@ const sources: Record<string, string> = {
 }
 
 // What readDeclared reads: the source files, not the document.
-const declared = new Set(
-  Object.entries(sources).flatMap(([path, text]) => (path.endsWith(".ts") ? declaredIn(text) : [])),
+const declared = new Map(
+  Object.entries(sources).flatMap(([path, text]) =>
+    path.endsWith(".ts") ? declaredIn(text).map((name) => [name, [path]] as const) : [],
+  ),
 )
 const repo = repoFiles(Object.keys(sources), [], [], [], declared)
 
@@ -224,8 +226,8 @@ describe("readDeclared", () => {
   test("reads the source files' declarations, not a document's", async () => {
     const dir = checkout(sources)
     const names = await readIn(dir, Object.keys(sources))
-    expect(names?.has("refreshBranch")).toBe(true)
-    expect(names?.has("waitSettled")).toBe(true)
+    expect(names?.get("refreshBranch")).toEqual(["src/run/loop.ts"])
+    expect(names?.get("waitSettled")).toEqual(["src/run/other.ts"])
     expect(names?.has("stringify")).toBe(false)
   })
 

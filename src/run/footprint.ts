@@ -11,10 +11,11 @@
 // conflict, git keeps both. So are vendored paths (vendored.ts), copies of other projects' files: a
 // ticket naming one, or the predictor answering one, makes only false overlaps. A ticket with
 // commits on its branch (reopened, carried over) is footprinted from what its branch changes, its
-// files metadata and its area labels (`branchFootprint`). A running ticket's footprint also grows
-// with the files its worktree has changed (§ 5). Two tickets whose footprints share an area or a
-// function don't run side by side (`holdsApart`); two sharing only a file do, the second warned
-// LIKELY_CONFLICT as it starts. A file both name counts only when one of them is to change it
+// files metadata, the functions its text names that the files its branch changes declare, and its
+// area labels (`branchFootprint`). A running ticket's footprint also grows with the files its
+// worktree has changed (§ 5). Two tickets whose footprints share an area or a function don't run
+// side by side (`holdsApart`); two sharing only a file do, the second warned LIKELY_CONFLICT as it
+// starts. A file both name counts only when one of them is to change it
 // (`sharedFile`), and never when the settings' `queue.shared_files` name it (`RepoFiles.shared`),
 // though it stays in their footprints: their worktrees both changing it still warns
 // LIKELY_CONFLICT, and a rebase conflict in it is handed back.
@@ -177,6 +178,11 @@ const pathsIn = (
   return { files, funcs }
 }
 
+/** The text a footprint is read from: the title, description, design and acceptance criteria. */
+const textOf = (
+  ticket: Pick<FootprintTicket, "title" | "description" | "design" | "acceptance">,
+): string => [ticket.title, ticket.description, ticket.design, ticket.acceptance].join("\n")
+
 /** The ticket's area:<name> labels, sorted. */
 const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string> =>
   sorted(ticket.labels.filter((l) => l.startsWith(AreaPrefix) && l.length > AreaPrefix.length))
@@ -209,7 +215,7 @@ const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string>
  *   cites, unless the files metadata lists them.
  */
 export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footprint => {
-  const text = [ticket.title, ticket.description, ticket.design, ticket.acceptance].join("\n")
+  const text = textOf(ticket)
   const spec = specFiles(ticket, repo)
   const inPassing = (f: string) => repo.checks(f) || spec.has(f)
   const { files, funcs } = pathsIn(text, repo, inPassing)
@@ -248,27 +254,38 @@ export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footp
 /**
  * The footprint of a ticket whose branch changes `changed` on top of the base (reopened, or
  * carried over): it has done its work there, and its text names what it read and was told as
- * well. Those files and the ones its files metadata lists, all to be changed, and its area labels;
- * not what its text names. The files git merges by union are left out, as are the vendored paths
- * its metadata lists; those the check commands name and its spec are kept, as are the vendored
- * files it changes: the branch changes them.
+ * well. Those files and the ones its files metadata lists, all to be changed, the functions its
+ * text names that a file its branch changes declares (`RepoFiles.declaresIn`), and its area labels;
+ * not the files its text names, nor the functions it names elsewhere. The files git merges by union
+ * are left out, as are the vendored paths its metadata lists; those the check commands name and its
+ * spec are kept, as are the vendored files it changes: the branch changes them.
  */
 export const branchFootprint = (
-  ticket: Pick<FootprintTicket, "files" | "labels">,
+  ticket: Pick<
+    FootprintTicket,
+    "title" | "description" | "design" | "acceptance" | "files" | "labels"
+  >,
   changed: ReadonlyArray<string>,
   repo: RepoFiles,
 ): Footprint => {
-  const files = new Set(changed.filter(repoPath).map((f) => repo.file(f)))
+  const branch = changed.filter(repoPath).map((f) => repo.file(f))
+  const files = new Set(branch)
   const globs = new Set<string>()
   for (const name of ticket.files) {
     const entry = repo.listed(name)
     for (const f of entry.files) if (!repo.vendored(f)) files.add(f)
     for (const g of entry.globs) if (!repo.vendored(g)) globs.add(g)
   }
+  // Its text's files say what it read, so none is taken: a name that is one is no function.
+  const text = textOf(ticket)
+  const { funcs } = pathsIn(text, repo, () => true)
+  for (const f of callsIn(text)) funcs.add(f)
+  for (const f of codeSpansIn(text)) funcs.add(f)
   return {
     ...emptyFootprint,
     files: sorted([...files].filter((f) => !repo.unioned(f))),
     globs: sorted(globs),
+    funcs: sorted([...funcs].filter((f) => repo.declares(f) && repo.declaresIn(f, branch))),
     areas: areasOf(ticket),
     listed: true,
     branch: true,

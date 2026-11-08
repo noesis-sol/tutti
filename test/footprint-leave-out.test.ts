@@ -1,6 +1,7 @@
 // What footprints leave out since orchestra 0.9.0 (tutti-kkb.16): a ticket's notes, the files git
 // merges by union, a file two tickets share that neither is to change, a reopened or carried-over
-// ticket's text (its branch says where it works), and nothing of a path's brackets or its +.
+// ticket's text (its branch says where it works) but the functions it names that its branch's
+// files declare (tutti-v2ac), and nothing of a path's brackets or its +.
 import { describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs"
@@ -20,7 +21,7 @@ import {
   ticketFootprint,
   withChanges,
 } from "../src/run/footprint.ts"
-import { overlaps, shared } from "../src/run/overlap.ts"
+import { holdsApart, overlaps, shared } from "../src/run/overlap.ts"
 import { footprintOf } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, footprintsOf, make } from "../src/run/schedule.ts"
@@ -335,8 +336,20 @@ describe("a ticket with commits on its branch", () => {
     metadata: { files: ["src/ui/"] },
   })
 
+  // Loop.merge declared in src/run/loop.ts.
+  const declaring = repoFiles(
+    tracked,
+    [],
+    ["CHANGELOG.md"],
+    [],
+    new Map([
+      ["Loop", ["src/run/loop.ts"]],
+      ["merge", ["src/run/loop.ts"]],
+    ]),
+  )
+
   test("is footprinted from what its branch changes, its files metadata and its areas", () => {
-    const fp = branchFootprint(reopened, ["src/run/merge.ts", "CHANGELOG.md"], union)
+    const fp = branchFootprint(reopened, ["src/run/merge.ts", "CHANGELOG.md"], declaring)
     expect(fp.files).toEqual(["src/run/merge.ts", "src/ui/", "src/ui/view.ts"])
     expect(fp.funcs).toEqual([])
     expect(fp.areas).toEqual(["area:run"])
@@ -347,6 +360,24 @@ describe("a ticket with commits on its branch", () => {
     // Not over what only its text names.
     expect(overlaps(fp, footprint({ description: "Fix src/run/loop.ts." }))).toBe(false)
     expect(shared(fp, footprint({ description: "Fix src/run/merge.ts." }))).toBe("src/run/merge.ts")
+  })
+
+  test("keeps the functions its text names that a file its branch changes declares", () => {
+    const fp = branchFootprint(reopened, ["src/run/loop.ts"], declaring)
+    expect(fp.funcs).toEqual(["Loop.merge"])
+    expect(fp.files).toEqual(["src/run/loop.ts", "src/ui/", "src/ui/view.ts"])
+    expect(showFootprint(fp)).toBe(
+      "Loop.merge, src/run/loop.ts, src/ui/, src/ui/view.ts, area:run (from its branch)",
+    )
+    // It holds apart a ticket naming the function, as it would starting afresh.
+    const fresh = footprint({ description: "Rename `Loop.merge`." }, declaring)
+    expect(holdsApart(fp, fresh)).toBe("Loop.merge")
+    expect(holdsApart(fresh, fp)).toBe("Loop.merge")
+    // The declarations unknown, every function it names is.
+    expect(branchFootprint(reopened, ["src/run/merge.ts"], union).funcs).toEqual(["Loop.merge"])
+    // Not a function the repository doesn't declare, nor a path its text names.
+    const named = ticket({ description: "Call JSON.stringify() in Loop.merge, see run/loop.ts." })
+    expect(branchFootprint(named, ["src/run/loop.ts"], declaring).funcs).toEqual(["Loop.merge"])
   })
 
   test("footprintOf takes the branch's files over its text", () => {
@@ -421,13 +452,17 @@ describe("the scheduler", () => {
   const repository = repoFiles(["src/a.ts", "src/b.ts", "CHANGELOG.md"], [], ["CHANGELOG.md"])
 
   /** Runs two fills of a 2-slot scheduler: the tickets started, and the log. */
-  const twoFills = (seeds: ReadonlyArray<Seed>, branches: Record<string, ReadonlyArray<string>>) =>
+  const twoFills = (
+    seeds: ReadonlyArray<Seed>,
+    branches: Record<string, ReadonlyArray<string>>,
+    files = repository,
+  ) =>
     Effect.runPromise(
       Effect.gen(function* () {
         const gate = yield* Deferred.make<void>()
         const started = yield* Ref.make<ReadonlyArray<string>>([])
         const footprints: Footprints = {
-          repo: Effect.succeed(repository),
+          repo: Effect.succeed(files),
           changed: () => Effect.succeed([]),
           branch: (ticket) => Effect.succeed(branches[ticket] ?? []),
           mentions: () => Effect.succeed(() => false),
@@ -475,6 +510,33 @@ describe("the scheduler", () => {
     expect(warnedLines).toContain(
       "  LIKELY_CONFLICT: t-2 starts beside t-1, both working on src/a.ts; the second to merge may conflict",
     )
+  })
+
+  test("holds back a ticket naming a function a reopened ticket's branch changes", async () => {
+    // Loop.merge declared in src/a.ts.
+    const declaring = repoFiles(
+      ["src/a.ts", "src/b.ts", "CHANGELOG.md"],
+      [],
+      ["CHANGELOG.md"],
+      [],
+      new Map([
+        ["Loop", ["src/a.ts"]],
+        ["merge", ["src/a.ts"]],
+      ]),
+    )
+    const seeds: ReadonlyArray<Seed> = [
+      { id: "t-1", priority: 0, description: "Reopened: `Loop.merge` drops the rebase." },
+      { id: "t-2", priority: 1, description: "Log what `Loop.merge` merged." },
+    ]
+    const [held, heldLines] = await twoFills(seeds, { "t-1": ["src/a.ts"] }, declaring)
+    expect(heldLines).toContain("  t-1 footprint: Loop.merge, src/a.ts (from its branch)")
+    expect(heldLines).toContain("  skipping t-2: after t-1: both touch Loop.merge")
+    expect(held).toEqual(["t-1"])
+
+    // Its branch changing no file that declares it, the function is one it only read.
+    const [free, freeLines] = await twoFills(seeds, { "t-1": ["src/b.ts"] }, declaring)
+    expect(freeLines).toContain("  t-1 footprint: src/b.ts (from its branch)")
+    expect(free).toEqual(["t-1", "t-2"])
   })
 
   test("runs two tickets adding to a changelog merged by union side by side", async () => {

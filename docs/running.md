@@ -925,7 +925,9 @@ Tickets that touch the same code don't run side by side. Each ticket has a **foo
 
 A ticket with commits on its branch (`tutti/<id>`: reopened, or carried over) is footprinted from the
 files its branch changes on top of the base, its `files` metadata and its area labels instead, not
-from its text, which names what it read and was told as well.
+from its text, which names what it read and was told as well; of the functions its text names, it
+keeps those a file its branch changes declares (`Loop.merge`, its branch changing the file that
+declares `merge`), so that it holds back a ticket naming one as it would starting afresh.
 
 The files the checks' commands name are left out, unless the `files` metadata lists them: nearly every
 ticket says "`scripts/check-fast.sh` passes" without changing it. So are the files the merge check's

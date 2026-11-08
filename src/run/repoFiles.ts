@@ -116,14 +116,20 @@ export interface RepoFiles {
    * when one declares the type and one the method. Every function, the declarations unknown.
    */
   declares(fn: string): boolean
+  /**
+   * Whether one of `files` declares the function, by its name, a method's (merge of Loop.merge):
+   * where a ticket's branch changes it (`branchFootprint`). Every function, the declarations
+   * unknown.
+   */
+  declaresIn(fn: string, files: ReadonlyArray<string>): boolean
 }
 
 /**
  * Indexes the files git tracks (undefined when git couldn't list them) and finds those the check
  * commands (`scripts/check-fast.sh`, `bun test && sh scripts/lint.sh`) name among them. `union`
  * holds the files git merges by union (`Git.mergedByUnion`), as git lists them; `sharedFiles` the
- * settings' `queue.shared_files`, paths and globs; `declared` the names their source files declare
- * (`readDeclared`), undefined when unknown; `vendored` the tracked files that are vendored and
+ * settings' `queue.shared_files`, paths and globs; `declared` the names their source files declare,
+ * each with the files declaring it (`readDeclared`), undefined when unknown; `vendored` the tracked files that are vendored and
  * the settings' globs (`readVendored`).
  */
 export const repoFiles = (
@@ -131,7 +137,7 @@ export const repoFiles = (
   checkCommands: ReadonlyArray<string> = [],
   union: Iterable<string> = [],
   sharedFiles: ReadonlyArray<string> = [],
-  declared?: ReadonlySet<string>,
+  declared?: ReadonlyMap<string, ReadonlyArray<string>>,
   vendored: Vendored = noneVendored,
 ): RepoFiles => {
   // The files as git lists them, by their NFC form: two whose names differ only in form are both meant.
@@ -275,5 +281,8 @@ export const repoFiles = (
       !f.endsWith("/") && sharedFiles.some((glob) => settingsGlobMatch(nfc(glob), nfc(f))),
     vendored: vendoredTest(names, vendored),
     declares: (fn) => declared === undefined || fn.split(".").every((part) => declared.has(part)),
+    declaresIn: (fn, inFiles) =>
+      declared === undefined ||
+      (declared.get(fn.slice(fn.lastIndexOf(".") + 1)) ?? []).some((f) => inFiles.includes(f)),
   }
 }

@@ -60,17 +60,22 @@ const readsAtOnce = 16
 
 /**
  * The names declared in the source files (codeExtensions) among `files`, the files git tracks, in
- * the checkout at repo, up to `maxSource` bytes of each and never a file that resolves outside
- * repo: undefined, every name counting, when none of them could be read.
+ * the checkout at repo, each with the files declaring it, up to `maxSource` bytes of each and never
+ * a file that resolves outside repo: undefined, every name counting, when none of them could be
+ * read.
  */
 export const readDeclared = (
   repo: string,
   files: ReadonlyArray<string>,
-): Effect.Effect<ReadonlySet<string> | undefined, never, FileSystem.FileSystem> =>
+): Effect.Effect<
+  ReadonlyMap<string, ReadonlyArray<string>> | undefined,
+  never,
+  FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const code = files.filter((f) => repoPath(f) && codeExtensions.has(extensionOf(f)))
-    const declared = new Set<string>()
+    const declared = new Map<string, Array<string>>()
     if (code.length === 0) return declared
     const root = yield* realRoot(fs, repo)
     let read = 0
@@ -80,7 +85,11 @@ export const readDeclared = (
         Effect.map(readSource(fs, root, repo, file), (text) => {
           if (text === undefined) return
           read++
-          for (const name of declaredIn(text)) declared.add(name)
+          for (const name of declaredIn(text)) {
+            const where = declared.get(name)
+            if (where === undefined) declared.set(name, [file])
+            else where.push(file)
+          }
         }),
       { concurrency: readsAtOnce, discard: true },
     )
