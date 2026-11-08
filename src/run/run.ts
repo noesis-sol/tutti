@@ -99,6 +99,7 @@ import { type Ending, printSummary, type Summary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { checkCommands, scriptedChecks } from "../project/settings.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
+import { checksNow } from "../services/Checks.ts"
 import { Git, gitWhy } from "../services/Git.ts"
 import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
@@ -691,7 +692,7 @@ const runFrom = (
           if (!(yield* setUps.requiresDue)) return
           const missing = yield* runRequires(yield* setUps.requires, {
             repo: config.repo,
-            installLimit: config.settings.checks.fast.timeout,
+            installLimit: (yield* checksNow).fast.timeout,
           })
           if (missing !== "") yield* stopped(stopFor("REQUIREMENTS_MISSING", missing))
         }),
@@ -707,7 +708,6 @@ const runFrom = (
             slot: screen.form,
             base,
             version: options.version,
-            setUps,
             scout: Option.isSome(organs)
               ? (repo: string) =>
                   scoutSearch(repo).pipe(Effect.provideService(Organs, organs.value))
@@ -719,7 +719,7 @@ const runFrom = (
     // run. The dashboard shows it as the full check's phase.
     const checksGate = yield* makeChecksGate({
       base,
-      setup: Effect.map(setUps.now, (setup) => setup.command),
+      setUps,
       stopped: (stop) => stopped(stop),
       show: showOn(status, "fullCheck"),
       takesWork: Effect.map(gate, takesBack),

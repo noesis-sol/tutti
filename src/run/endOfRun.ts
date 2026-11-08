@@ -21,6 +21,7 @@ import {
 } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
+import { Checks } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
@@ -213,6 +214,7 @@ export const make = (options: {
     const git = yield* Git
     const store = yield* Store
     const host = yield* AgentHost
+    const checks = yield* Checks
     const ledger = yield* Ledger
     const logs = yield* Log
     const events = yield* EventStream
@@ -399,7 +401,7 @@ export const make = (options: {
 
     const checkFull: EndOfRun["fullCheck"] = (phases, stopped, quit) =>
       Effect.gen(function* () {
-        const command = config.settings.checks.full.command
+        const command = (yield* checks.now).full.command
         if (fullCheckDue(command, stopped, phases)) {
           const checked = yield* Effect.raceFirst(
             Effect.map(

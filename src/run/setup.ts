@@ -32,18 +32,18 @@
 // its ticket aside instead (start.ts): those commits may be what breaks it. Setups failing ticket
 // after ticket hold the run for the environment, as workers failing at once do (environment.ts),
 // each ticket once in a row, and the run's end names the tickets still waiting
-// on one (SETUP_WAITS). A merge that changes checks.setup in .tutti/settings.json has the run use it
-// from then on (takeSettings), and one that changes its requires list has the run check the new
+// on one (SETUP_WAITS). A merge that changes checks.setup, checks.fast or checks.full in
+// .tutti/settings.json has the run use them from then on (takeSettings), and one that changes its requires list has the run check the new
 // list before the next ticket starts (requires.ts).
 import { unlinkSync } from "node:fs"
 import { join } from "node:path"
-import { Data, Effect, Option, Ref, Result } from "effect"
+import { Data, Duration, Effect, Option, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { decodeConfig, parseConfigJson } from "../project/configFile.ts"
+import { decodeConfig, formatDuration, parseConfigJson } from "../project/configFile.ts"
 import { type Requirement, Settings, settingsFile } from "../project/settings.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
-import { Checks, setupLogName } from "../services/Checks.ts"
+import { Checks, type RunChecks, setupLogName } from "../services/Checks.ts"
 import { Git, type Sha, type StatusEntry } from "../services/Git.ts"
 import { Store, ticketsIn } from "../services/Store.ts"
 import {
@@ -662,6 +662,10 @@ export const setupNote = (command: string | null): string =>
 /** The setup command for a line: quoted, or `none`. */
 const setupSaid = (command: string | null): string => (command === null ? "none" : `'${command}'`)
 
+/** Whether `a` and `b` run the same command within the same time limit. */
+const sameCheck = (a: RunChecks["fast"], b: RunChecks["fast"]): boolean =>
+  a.command === b.command && Duration.equals(a.timeout, b.timeout)
+
 /** The settings in .tutti/settings.json at commit `at` of `repo`, or why they can't be read. */
 export const settingsAt = (
   repo: string,
@@ -686,7 +690,9 @@ export const settingsAt = (
  * base, when the merge, from `before` to `merged`, the commit it put the base at, changed that file
  * (the base read when not given): a setup set during the run counts
  * from then on, as the environment ticket a spec's breakdown files first sets it for the tickets
- * after it. Its requires list too, which the run checks before the next ticket starts (requires.ts),
+ * after it. checks.fast and checks.full too, each where the merge changed its command or time
+ * limit (Checks' take), so that the merge checks and the full check after it run them. Its
+ * requires list too, which the run checks before the next ticket starts (requires.ts),
  * and names to the workers started or resumed from then on (AgentHost's takeRequires). One git
  * can't read, or that doesn't parse, is warned of (SETTINGS_UNREAD), and the setup and the
  * requires list stay as they were.
@@ -697,7 +703,7 @@ export const takeSettings = (
   setUps: SetUps,
   before: Sha,
   merged?: Sha,
-): Effect.Effect<void, never, AgentHost | Git | Log | EventStream> =>
+): Effect.Effect<void, never, AgentHost | Checks | Git | Log | EventStream> =>
   Effect.gen(function* () {
     const git = yield* Git
     const logs = yield* Log
@@ -713,11 +719,30 @@ export const takeSettings = (
     if (Result.isFailure(read)) {
       const text = ticketLine(
         Tag.settingsUnread,
-      )`${id}'s merge changed ${settingsFile} on ${base}, but it could not be read: ${read.failure}; the setup stays ${setupSaid(was.command)}, and the requirements as they were`
+      )`${id}'s merge changed ${settingsFile} on ${base}, but it could not be read: ${read.failure}; the setup stays ${setupSaid(was.command)}, and the checks and the requirements as they were`
       yield* warn(text, id)
       return
     }
     const taken = read.success
+    // The merge check and the full check the commit changed, each as it has them, the others as the
+    // run has them, so that a time limit a flag gave stays; both where the settings before it can't
+    // be read.
+    const checks = yield* Checks
+    const had = yield* checks.now
+    const earlier = yield* settingsAt(repo, before)
+    const runs: { fast: RunChecks["fast"]; full: RunChecks["full"] } = { ...had }
+    for (const check of ["fast", "full"] as const) {
+      const entry = taken.checks[check]
+      const old = Result.isSuccess(earlier) ? earlier.success.checks[check] : undefined
+      if ((old !== undefined && sameCheck(old, entry)) || sameCheck(had[check], entry)) continue
+      runs[check] = entry
+      yield* logs.write(
+        ticketLine(
+          Tag.setup,
+        )`${id}'s merge changed ${settingsFile} on ${base}: checks.${check} is ${setupSaid(entry.command)}, time limit ${formatDuration(entry.timeout)}, from now on`,
+      )
+    }
+    if (runs.fast !== had.fast || runs.full !== had.full) yield* checks.take(runs)
     if (!sameRequires(taken.requires, yield* setUps.requires)) {
       yield* setUps.takeRequires(taken.requires)
       yield* (yield* AgentHost).takeRequires(taken.requires.map((r) => r.name))

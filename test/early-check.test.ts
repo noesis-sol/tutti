@@ -770,7 +770,7 @@ describe("the checks gate", () => {
         yield* ledger.transition(id, Move.FastForwarded({ commit: at }))
         const gate = yield* makeChecksGate({
           base: "main",
-          setup: Effect.succeed(null),
+          setUps: yield* makeSetUps,
           stopped: () => Effect.void,
           early: recording,
         })

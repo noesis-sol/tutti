@@ -41,7 +41,7 @@ import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
-import type { CheckError } from "../services/Checks.ts"
+import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
 import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { attemptAt, leftAt, restoreBranch } from "./branch.ts"
 import { type CheckFailure, failedHow, outputKept } from "./check.ts"
@@ -394,9 +394,9 @@ export const committed = (left: Left): string => (left._tag === "Fixed" ? left.c
 export const fixPassed = (
   ticket: FinishedTicket,
   left: Left,
-): Effect.Effect<void, never, AppConfig | Log> =>
+): Effect.Effect<void, never, Checks | Log> =>
   Effect.gen(function* () {
-    const check = (yield* AppConfig).settings.checks.fast.command ?? ""
+    const check = (yield* checksNow).fast.command ?? ""
     const { branch } = ticket
     yield* (yield* Log).write(
       left._tag === "Unchanged"
@@ -464,7 +464,7 @@ export const fixCheck = (
     const config = yield* AppConfig
     const git = yield* Git
     const { id } = first.ticket
-    const check = config.settings.checks.fast.command ?? ""
+    const check = (yield* checksNow).fast.command ?? ""
     const limit = config.settings.merge.resolve_timeout
     let tries: ReadonlyArray<string> = first.tried ?? []
     let stop = first

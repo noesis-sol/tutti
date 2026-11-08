@@ -45,6 +45,7 @@ import {
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { Checks } from "../services/Checks.ts"
 import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store, ticketsIn } from "../services/Store.ts"
@@ -344,6 +345,7 @@ export const make = (
   Effect.gen(function* () {
     const context = yield* Effect.context<MergeEnv>()
     const config = yield* AppConfig
+    const checks = yield* Checks
     const git = yield* Git
     const log = yield* Log
     const { repo, base } = options
@@ -563,7 +565,7 @@ export const make = (
     const start: Effect.Effect<void> = lock.withPermit(
       Effect.gen(function* () {
         const { stopped, checking } = yield* Ref.get(trains)
-        if (stopped || size <= 0 || config.settings.checks.fast.command === null) return
+        if (stopped || size <= 0 || (yield* checks.now).fast.command === null) return
         // Nothing is rebased onto a commit git couldn't say.
         if (checking?.at === undefined || (yield* machineFull)) return
         let { branch: behind, at: onto } = checking

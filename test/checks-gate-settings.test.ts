@@ -1,7 +1,8 @@
 // The checks gate runs the checks the form set (§ 4.14, src/run/checksGate.ts): the run read
 // .tutti/settings.json as it started, so once the form commits new settings on the base, the gate
-// takes the commands and time limits they changed before it checks again, rather than hold on the
-// settings it started with and file a question about checks already set (tutti-fnvd.4).
+// has the run take the commands and time limits they changed (setup.ts's takeSettings) before it
+// checks again, rather than hold on the settings it started with and file a question about checks
+// already set (tutti-fnvd.4).
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -148,7 +149,7 @@ describe("the checks gate, once the form set the checks", () => {
     expect(gateRecords(ran)).toMatchObject([{ detail: "passed", changed: true }])
     expect(ran.issues.some((each) => each.title === gateQuestionTitle)).toBe(false)
     expectLog(ran, [
-      /^CHECKS_GATE: checks\.fast from \.tutti\/settings\.json on main at \w+: 'scripts\/check-fast\.sh', time limit 7m$/,
+      "  SETUP: the checks gate's merge changed .tutti/settings.json on main: checks.fast is 'scripts/check-fast.sh', time limit 7m, from now on",
       /^CHECKS_GATE: running scripts\/check-fast\.sh run 2 of 3 .*\(time limit 7m\)$/,
     ])
     const runs = gateRuns(ran)
@@ -172,7 +173,7 @@ describe("the checks gate, once the form set the checks", () => {
     expect(held).toHaveLength(2)
     expect(gateRuns(ran)).toEqual([])
     expectLog(ran, [
-      /^CHECKS_GATE: \.tutti\/settings\.json on main at \w+ could not be read \(it isn't valid JSON: .*\); the checks stay as they were$/,
+      /^ {2}SETTINGS_UNREAD: the checks gate's merge changed \.tutti\/settings\.json on main, but it could not be read: it isn't valid JSON: .*; the setup stays none, and the checks and the requirements as they were$/,
       /^CHECKS_HELD: the checks gate held the spec's tree: checks\.fast\.command is null/,
     ])
   })

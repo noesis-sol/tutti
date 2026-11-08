@@ -56,7 +56,7 @@ import { Data, Effect, Result } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
-import type { CheckError, Checks } from "../services/Checks.ts"
+import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
 import {
   Git,
   type GitError,
@@ -715,7 +715,7 @@ const locate = (turn: Turn, { carried, checked, afterCheck }: StepOf<"Locate">):
       if (kept !== undefined) return kept
     }
     const unchecked = yield* uncheckedMark(id)
-    const command = config.settings.checks.fast.command
+    const command = (yield* checksNow).fast.command
     // The check runs in its worktree, but only its commits merge: changes left uncommitted there
     // would be checked with them and never reach the base.
     const dirty = (files: ReadonlyArray<string>) =>
@@ -831,7 +831,7 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
         ))
           ? Result.fail({
               ...takenUpByYou,
-              off: whyHandBacksOff(yield* AppConfig) !== undefined,
+              off: (yield* whyHandBacksOff) !== undefined,
             })
           : yield* toHandBack(stop, options, memory.handBacks, turn.waived)
         if (Result.isSuccess(handed)) return Prepared.HandBack({ stop: handed.success })
@@ -1156,7 +1156,7 @@ export const keptChanging = (
       ticket,
       Tag.mergeConflict,
     )`${what} while its checks ran (commits made by hand?); worktree ${ticket.worktree} left for review`
-    const off = whyHandBacksOff(yield* AppConfig) !== undefined
+    const off = (yield* whyHandBacksOff) !== undefined
     const record: Said = {
       kind: "warn",
       ticket: ticket.id,

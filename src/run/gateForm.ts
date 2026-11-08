@@ -5,8 +5,8 @@
 // tutti checks' step. That step (src/init/setChecks.ts) works in a worktree of the base's head of
 // its own, on no branch, under the run's lock, which the run holds already; what it changed there
 // is committed (`tutti: set the checks`) and the base fast-forwarded to it, so the main checkout
-// stays clean, the run taking the settings it changed (setup.ts's takeSettings), and the gate checks
-// the checks again from the start. A form cancelled, or a step that changed nothing, keeps the
+// stays clean, and the gate has the run take the settings it changed (setup.ts's takeSettings) and
+// checks the checks again from the start. A form cancelled, or a step that changed nothing, keeps the
 // checks as they are: a hold then files its question as without a terminal.
 import { Effect, type FileSystem, Layer, Result, SubscriptionRef } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
@@ -14,7 +14,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { setChecks } from "../init/setChecks.ts"
 import { type Machine, stepLine } from "../init/steps.ts"
 import type { Scouting } from "../organs/scout.ts"
-import type { Beads, TicketId } from "../services/Beads.ts"
+import type { Beads } from "../services/Beads.ts"
 import { Git, gitWhy, shortHash } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { Worktrees } from "../services/Worktrees.ts"
@@ -25,7 +25,6 @@ import { type GateAsk, gateFolderPrefix, type RunnerShown } from "./checksGate.t
 import type { EventStream } from "./eventstream.ts"
 import { leftWarning, worktreeWhy } from "./fullcheck.ts"
 import { detail, Log, Tag, tagged } from "./log.ts"
-import { type SetUps, takeSettings } from "./setup.ts"
 
 /** The message of the commit a change made in the gate's form is committed with. */
 export const setChecksMessage = "tutti: set the checks"
@@ -66,7 +65,6 @@ export const makeGateAsk = <R>(options: {
   readonly slot: SubscriptionRef.SubscriptionRef<FormShown | null>
   readonly base: string
   readonly version: string
-  readonly setUps: SetUps
   readonly scout: (repo: string) => Effect.Effect<Scouting, string, R>
   readonly machine: Machine
   readonly clock?: () => number
@@ -182,13 +180,6 @@ export const makeGateAsk = <R>(options: {
           }
           yield* logs.write(
             gateLine`set the checks in tutti checks' form: committed on ${base} as ${shortHash(committed.success)} (${paths.length} ${paths.length === 1 ? "file" : "files"}); checking them again`,
-          )
-          yield* takeSettings(
-            "the checks gate" as TicketId,
-            { repo: config.repo, base },
-            options.setUps,
-            head.success,
-            committed.success,
           )
           return "set" as const
         })

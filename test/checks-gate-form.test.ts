@@ -8,7 +8,6 @@ import { Effect, Fiber, Layer, SubscriptionRef } from "effect"
 import { fastScript, fullScript } from "../src/init/runners.ts"
 import { type GateAsk, gateFolderPrefix } from "../src/run/checksGate.ts"
 import { keepQuestion, makeGateAsk, noScout, setChecksMessage } from "../src/run/gateForm.ts"
-import { makeSetUps } from "../src/run/setup.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { layer as agentHostLayer } from "../src/testing/AgentHost.ts"
@@ -81,7 +80,6 @@ const throughForm = <A>(
         slot,
         base: "main",
         version: "0.1.0-test",
-        setUps: yield* makeSetUps,
         scout: noScout,
         machine: {
           run: () => Effect.fail("no commands here"),

@@ -28,8 +28,9 @@
 // Each is measured in early_check records, with a line in the log: started, cancelled (why), not run
 // (why), passed, failed, and at its ticket's turn hit (and how long the turn waited for it) or miss
 // (why). The figures' Checks line and the run report count the hits, the misses, the check-seconds
-// the hits saved and those spent on early checks thrown away. merge.early_check false runs none, and
-// none starts while the machine's memory is pressed (pressureGate.ts).
+// the hits saved and those spent on early checks thrown away. merge.early_check false runs none, as
+// does a run with no merge check (Checks' now, which a merge may change), and none starts while the
+// machine's memory is pressed (pressureGate.ts).
 import {
   Clock,
   Data,
@@ -48,7 +49,13 @@ import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { type CheckError, Checks, checkLogName, setupLogName } from "../services/Checks.ts"
+import {
+  type CheckError,
+  Checks,
+  checkLogName,
+  checksNow,
+  setupLogName,
+} from "../services/Checks.ts"
 import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
@@ -123,6 +130,8 @@ interface Early {
   readonly head: Sha
   /** The base's commit it rebases onto. */
   readonly onto: Sha
+  /** The merge check it runs, as the run had it as it started (Checks' now). */
+  readonly command: string
   /** When it started, in epoch milliseconds. */
   readonly began: number
   /** Its rebased tree, once it is rebased; undefined when it never was. */
@@ -166,7 +175,7 @@ export interface EarlyChecks {
   stop(why: string): Effect.Effect<void>
 }
 
-/** A run with no early checks: merge.early_check false, or no check command. */
+/** A run with no early checks: merge.early_check false. */
 export const noEarlyChecks: EarlyChecks = {
   called: () => Effect.void,
   claim: (_what, work) => work,
@@ -216,15 +225,14 @@ type Env =
   | RunFibers
 
 /**
- * The run's early checks: none with merge.early_check false or no check command. It removes the
- * early checks' worktrees a killed run left, starts one on each call to the verifier that may have
- * one, and cancels those whose tickets leave Working, or all of them as the run winds down.
+ * The run's early checks: none with merge.early_check false. It removes the early checks'
+ * worktrees a killed run left, starts one on each call to the verifier that may have one, while
+ * the run has a merge check (Checks' now: a merge may set one, or take it away), and cancels those whose tickets leave Working, or all of them as the run winds down.
  */
 export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, Env | Scope.Scope> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
-    const command = config.settings.checks.fast.command
-    if (!config.settings.merge.early_check || command === null) return noEarlyChecks
+    if (!config.settings.merge.early_check) return noEarlyChecks
     const held = options.held ?? Effect.succeed(false)
     yield* removeLeftWorktrees(earlyFolderPrefix, whose)
     const context = yield* Effect.context<Env>()
@@ -334,7 +342,12 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
               recordedKeeping(
                 "early",
                 id,
-                checks.fast({ cwd: path, ...to, ...loadedOf(options.loaded) }),
+                checks.fast({
+                  cwd: path,
+                  ...to,
+                  command: early.command,
+                  ...loadedOf(options.loaded),
+                }),
                 {
                   keep: { worktree: path, name: checkLogName },
                 },
@@ -364,14 +377,17 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
             seconds: ended.seconds,
             text: earlyLine(
               id,
-              line`'${command}' passes on ${early.branch} rebased onto ${base}, but ${why}; dropped, its merge check decides`,
+              line`'${early.command}' passes on ${early.branch} rebased onto ${base}, but ${why}; dropped, its merge check decides`,
             ),
           })
           return ended
         }
         const result = checked.ran.success
         if (result._tag === "CheckPassed") {
-          for (const warning of flakyWarnings(line`${id}'s early check '${command}'`, result)) {
+          for (const warning of flakyWarnings(
+            line`${id}'s early check '${early.command}'`,
+            result,
+          )) {
             yield* warn(warning, id)
           }
         }
@@ -385,7 +401,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
           seconds: ended.seconds,
           text: earlyLine(
             id,
-            line`'${command}' passes on ${early.branch} rebased onto ${base} (${took(ended.seconds)}): its turn merges it with no second check if neither moves on`,
+            line`'${early.command}' passes on ${early.branch} rebased onto ${base} (${took(ended.seconds)}): its turn merges it with no second check if neither moves on`,
           ),
         })
         return ended
@@ -524,7 +540,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
       )
 
     // Starts the ticket's early check of `head` on `onto` where the slot is free; false where not.
-    const start = (id: TicketId, branch: string, head: Sha, onto: Sha) =>
+    const start = (id: TicketId, branch: string, head: Sha, onto: Sha, command: string) =>
       lock.withPermit(
         Effect.gen(function* () {
           const now = yield* Ref.get(slot)
@@ -535,6 +551,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
             branch,
             head,
             onto,
+            command,
             began: yield* Clock.currentTimeMillis,
             tree: yield* Deferred.make<Sha | undefined>(),
             ended: yield* Deferred.make<Ended>(),
@@ -563,6 +580,8 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
       Effect.gen(function* () {
         const ticket = (yield* ledger.current).tickets.get(id)
         if (ticket?.phase._tag !== "Working" || (yield* Ref.get(slot)).stopped) return
+        const command = (yield* checksNow).fast.command
+        if (command === null) return
         // Its next round: the one under way checks what the worker may be changing.
         yield* lock.withPermit(
           Effect.gen(function* () {
@@ -597,7 +616,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
         if (yield* held) {
           return yield* Effect.logDebug(`${id}: no early check: the machine's memory is pressed`)
         }
-        const started = yield* start(id, branch, head, onto)
+        const started = yield* start(id, branch, head, onto, command)
         if (!started) yield* Effect.logDebug(`${id}: no early check: the check slot is taken`)
       }).pipe(Effect.provideContext(context))
 

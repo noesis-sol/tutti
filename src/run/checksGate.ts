@@ -16,7 +16,8 @@
 // on, and stops the run with CHECKS_HELD (exit 2). In a terminal tutti checks' form opens first, and
 // a change there is committed on the base, `tutti: set the checks`, and checked from step 1 again,
 // with the commands and time limits it changed in .tutti/settings.json: the run read the settings as
-// it started, and the gate runs its checks with those it has taken since.
+// it started, and the gate has it take those the commit changed, as a merge's (setup.ts's
+// takeSettings), and runs its checks with the run's.
 //
 // It runs once per spec: once it passes, the root epic's `checks_gate` metadata records the runners
 // it passed (their fingerprint), so that a run carried on, or a spec update whose environment ticket
@@ -27,10 +28,10 @@
 // record (§ 10), and the run's summary says how it went.
 import { createHash } from "node:crypto"
 import { Clock, Duration, Effect, Option, Ref, Result, Semaphore } from "effect"
+import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { fastRunner, fullRunner, isRunner, runnerCommands, runsNothing } from "../init/runners.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { type Settings, settingsFile } from "../project/settings.ts"
 import {
   Beads,
   beadsWhy,
@@ -39,7 +40,13 @@ import {
   MetadataKey,
   type TicketId,
 } from "../services/Beads.ts"
-import { type CheckError, type CheckResult, Checks, setupLogName } from "../services/Checks.ts"
+import {
+  type CheckError,
+  type CheckResult,
+  Checks,
+  type RunChecks,
+  setupLogName,
+} from "../services/Checks.ts"
 import { Git, type Sha, shortHash } from "../services/Git.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { flakyWarnings, howFailed, outputTo, recorded } from "./check.ts"
@@ -58,7 +65,7 @@ import { Ledger } from "./ledger.ts"
 import { type Line, Log, line, Tag, tagged } from "./log.ts"
 import { warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
-import { settingsAt } from "./setup.ts"
+import { type SetUps, takeSettings } from "./setup.ts"
 import { SpecMetadata } from "./spec.ts"
 
 /** The root epic's metadata key recording the runners the gate passed: their fingerprint. */
@@ -72,6 +79,9 @@ export const gateFolderPrefix = "checks-gate-"
 
 /** Whose worktrees and output they are, for a line. */
 const whose = "the checks gate's"
+
+/** Whose commit of the form's settings the run takes, as a ticket's merge's (takeSettings). */
+const gateWhose = "the checks gate" as TicketId
 
 /** The title of the question a hold files. */
 export const gateQuestionTitle = "Set the checks the spec's tree is checked with"
@@ -87,9 +97,6 @@ export interface RunnerRead {
   /** The runner's script on the base; null where the command isn't a runner, or it is missing. */
   readonly script: string | null
 }
-
-/** The fast and full checks' settings, as the gate runs them. */
-export type GateChecks = Pick<Settings["checks"], "fast" | "full">
 
 /** What `runner` runs, a line each, for the gate's lines and its form: the runner's commands. */
 export const runsOf = (runner: RunnerRead): ReadonlyArray<string> =>
@@ -165,7 +172,8 @@ export interface RunnerShown {
 export interface GateAsk {
   /**
    * The tree is held, `why`: tutti checks' form opens. `set` once the checks it set are committed
-   * on the base; `left` where it was left without setting them.
+   * on the base, which the gate then has the run take (takeSettings); `left` where it was left
+   * without setting them.
    */
   readonly held: (why: string) => Effect.Effect<"set" | "left">
   /**
@@ -179,8 +187,11 @@ export interface GateAsk {
 export interface ChecksGateOptions {
   /** The branch the run merges into. */
   readonly base: string
-  /** The setup command as the run has it now, a merge's settings taken (setup.ts). */
-  readonly setup: Effect.Effect<string | null>
+  /**
+   * The run's setups (setup.ts): the setup command as the run has it now, a merge's settings taken,
+   * and the run's taking the settings the form committed (takeSettings).
+   */
+  readonly setUps: SetUps
   /** Stops the run (§ 5 item 10): a hold, CHECKS_HELD. */
   readonly stopped: (stop: StopReason) => Effect.Effect<void>
   /** Says what it runs as each check starts, for the dashboard; null once it is over. */
@@ -211,7 +222,7 @@ export interface ChecksGate {
 /** The gate of a run that isn't a spec run: never due. */
 export const noGate: ChecksGate = { before: Effect.void, said: Effect.succeed(null) }
 
-type GateEnv = AppConfig | Beads | Checks | Git | Worktrees | Ledger | Log | EventStream
+type GateEnv = AppConfig | AgentHost | Beads | Checks | Git | Worktrees | Ledger | Log | EventStream
 
 /** How a check of the gate's went. */
 type CheckRan =
@@ -236,6 +247,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
     yield* removeLeftWorktrees(gateFolderPrefix, whose)
     const context = yield* Effect.context<GateEnv>()
     const beads = yield* Beads
+    const checks = yield* Checks
     const git = yield* Git
     const ledger = yield* Ledger
     const logs = yield* Log
@@ -282,7 +294,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
       })
 
     /** The runners on the base at `at`, as `checks` name them. */
-    const readRunners = (at: Sha, checks: GateChecks) =>
+    const readRunners = (at: Sha, checks: RunChecks) =>
       Effect.forEach(
         [
           { check: "fast" as const, runner: fastRunner },
@@ -299,41 +311,6 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             return { check, command, path, script } satisfies RunnerRead
           }),
       )
-
-    /**
-     * The checks as the gate runs them once the form committed new settings on the base, `from` to
-     * `to`: fast and full each taken from .tutti/settings.json at `to` where its command or time
-     * limit changed there, else as `was` has them, so that a time limit a flag gave stays. Both
-     * where the settings at `from` can't be read; `was` where those at `to` can't.
-     */
-    const takeChecks = (was: GateChecks, from: Sha, to: Sha) =>
-      Effect.gen(function* () {
-        const now = yield* settingsAt(config.repo, to)
-        if (Result.isFailure(now)) {
-          yield* logs.write(
-            gateLine`${settingsFile} on ${base} at ${shortHash(to)} could not be read (${now.failure}); the checks stay as they were`,
-          )
-          return was
-        }
-        const before = yield* settingsAt(config.repo, from)
-        const taken: { fast: GateChecks["fast"]; full: GateChecks["full"] } = { ...was }
-        for (const check of ["fast", "full"] as const) {
-          const entry = now.success.checks[check]
-          const old = Result.isSuccess(before) ? before.success.checks[check] : undefined
-          if (
-            old !== undefined &&
-            old.command === entry.command &&
-            Duration.equals(old.timeout, entry.timeout)
-          ) {
-            continue
-          }
-          taken[check] = entry
-          yield* logs.write(
-            gateLine`checks.${check} from ${settingsFile} on ${base} at ${shortHash(to)}: ${entry.command === null ? "no command" : line`'${entry.command}'`}, time limit ${formatDuration(entry.timeout)}`,
-          )
-        }
-        return taken
-      })
 
     const gate = (env: Issue) =>
       Effect.gen(function* () {
@@ -402,8 +379,8 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
         // The gate questions still open for the spec, as the last look at them found them: a hold
         // notes the first; a pass closes them all, as the tree's tickets wait on each.
         let stillOpen: ReadonlyArray<Issue> = []
-        // The checks the gate runs: the run's, then those the form set (takeChecks).
-        let checksNow: GateChecks = config.settings.checks
+        // The checks the gate runs: the run's, those the form set taken (takeSettings).
+        let checksNow: RunChecks = yield* checks.now
         // The base's head the form's checks were set on, to take them from once they are committed.
         let setOn: Sha | null = null
 
@@ -417,7 +394,8 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             }
             const at = head.success
             if (setOn !== null) {
-              checksNow = yield* takeChecks(checksNow, setOn, at)
+              yield* takeSettings(gateWhose, { repo: config.repo, base }, options.setUps, setOn, at)
+              checksNow = yield* checks.now
               setOn = null
             }
             const runners = yield* readRunners(at, checksNow)
@@ -559,8 +537,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             "the checks gate",
             Effect.gen(function* () {
               const worktrees = yield* Worktrees
-              const checks = yield* Checks
-              const setup = yield* options.setup
+              const setup = (yield* options.setUps.now).command
               const settings = checksNow[check]
               const command = settings.command ?? ""
               yield* show(
@@ -847,7 +824,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             const passed = Result.isSuccess(meta) ? meta.success[gateKey] : undefined
             if (
               passed !== undefined &&
-              passed === fingerprint(yield* readRunners(head.success, config.settings.checks))
+              passed === fingerprint(yield* readRunners(head.success, yield* checks.now))
             ) {
               yield* logs.write(
                 gateLine`the checks on ${base} passed it for ${path} already; not run again`,

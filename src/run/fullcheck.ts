@@ -24,7 +24,13 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
-import { type CheckError, type CheckPassed, Checks, setupLogName } from "../services/Checks.ts"
+import {
+  type CheckError,
+  type CheckPassed,
+  Checks,
+  checksNow,
+  setupLogName,
+} from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { ellipsis } from "../ui/marks.ts"
@@ -285,7 +291,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
     const worktrees = yield* Worktrees
     const logs = yield* Log
     const { base } = options
-    const { full } = config.settings.checks
+    const { full } = yield* checksNow
     const setup = {
       command: options.setup === undefined ? config.settings.checks.setup.command : options.setup,
     }
@@ -448,11 +454,10 @@ const failed = (
   name: string,
 ): Effect.Effect<FullChecked, never, Env> =>
   Effect.gen(function* () {
-    const config = yield* AppConfig
     const logs = yield* Log
     const events = yield* EventStream
     const { base } = options
-    const command = config.settings.checks.full.command ?? ""
+    const command = (yield* checksNow).full.command ?? ""
     const how = howFailed(error)
     if (error._tag === "CheckNotRun") {
       // A command that couldn't start, or whose output couldn't be kept, failed in the machine, not
@@ -533,10 +538,9 @@ const file = (f: {
   readonly said: ReadonlyArray<string>
 }): Effect.Effect<{ readonly ticket?: TicketId; readonly filed: string }, never, Env> =>
   Effect.gen(function* () {
-    const config = yield* AppConfig
     const beads = yield* Beads
     const logs = yield* Log
-    const command = config.settings.checks.full.command ?? ""
+    const command = (yield* checksNow).full.command ?? ""
     const run = dateClock(f.started)
     const where = `on ${f.base} at ${shortHash(f.at)}, ${suiteSaid(f.suite)} of ${run}`
     // A second ticket is easier to close than a failure nobody hears of.

@@ -61,7 +61,7 @@ import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
-import type { CheckError } from "../services/Checks.ts"
+import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, givenHash, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
@@ -311,13 +311,18 @@ export interface NotHandedBack {
   readonly off?: boolean
 }
 
-/** Why the settings turn conflicts' hand-backs off; undefined where they don't. */
-export const whyHandBacksOff = ({ settings }: Pick<AppConfig["Service"], "settings">) =>
-  !settings.merge.resolve_conflicts
-    ? "resolving conflicts is turned off"
-    : settings.checks.fast.command === null
+/**
+ * Why the settings turn conflicts' hand-backs off, the merge check as the run has it now (Checks'
+ * now); undefined where they don't.
+ */
+export const whyHandBacksOff: Effect.Effect<string | undefined, never, AppConfig | Checks> =
+  Effect.gen(function* () {
+    const { settings } = yield* AppConfig
+    if (!settings.merge.resolve_conflicts) return "resolving conflicts is turned off"
+    return (yield* checksNow).fast.command === null
       ? "there is no check command in .tutti/settings.json to check a resolution with"
       : undefined
+  })
 
 /** Why a ticket you fixed by hand isn't handed back (HandBacks' takeUp). */
 export const takenUpByYou: NotHandedBack = {
@@ -352,14 +357,13 @@ export const toHandBack = (
 ): Effect.Effect<
   Result.Result<HandedRebase, NotHandedBack>,
   never,
-  AppConfig | AgentHost | Git | Ledger | Store
+  AppConfig | AgentHost | Checks | Git | Ledger | Store
 > =>
   Effect.gen(function* () {
-    const config = yield* AppConfig
     const ledger = yield* Ledger
     const { id } = stop.ticket
     const not = (why: string, waits = false) => Result.fail({ why, waits })
-    const off = whyHandBacksOff(config)
+    const off = yield* whyHandBacksOff
     if (off !== undefined) return Result.fail({ why: off, waits: false, off: true })
     const handedBack = yield* handBacks.count(id)
     const used = (why: string) =>
@@ -700,7 +704,7 @@ export const handBackOver = (handBack: HandBack, limit: string, attempt: Sha | u
   overAs(handBack, lateEnding(handBack.ticket.id, limit), attempt)
 
 /** What give needs: the host, what a resume records (sessions.ts), and git to end a hand-back. */
-export type GiveEnv = AgentHost | AppConfig | EventStream | Git | Ledger | Log | Store
+export type GiveEnv = AgentHost | AppConfig | Checks | EventStream | Git | Ledger | Log | Store
 
 /**
  * Where a hand-back due to a worker at the account's usage limit waits for the limit to lift: the
@@ -954,7 +958,6 @@ const endEarly = (
   why: string,
 ): Effect.Effect<string | undefined, never, GiveEnv> =>
   Effect.gen(function* () {
-    const config = yield* AppConfig
     const git = yield* Git
     const logs = yield* Log
     const { id, branch, worktree } = handBack.ticket
@@ -963,7 +966,7 @@ const endEarly = (
       yield* logs.write(
         detail`${ending.still}, but ${doneWords(handBack.mode)}: ${branch} is taken as it is`,
       )
-      const check = config.settings.checks.fast.command ?? ""
+      const check = (yield* checksNow).fast.command ?? ""
       yield* interruptWith(
         id,
         takenAs(handBack, ending, Result.isSuccess(at) ? at.success : undefined, check),
@@ -1409,7 +1412,7 @@ export const resolve = (
     const logs = yield* Log
     const { id } = stop.ticket
     const { base } = options
-    const check = config.settings.checks.fast.command ?? ""
+    const check = (yield* checksNow).fast.command ?? ""
     const limit = config.settings.merge.resolve_timeout
     const what = line`${id}'s conflicts with ${base} are handed back to its worker`
     const setup = (yield* setupToResolve(stop, options, memory.setUps)).prompt

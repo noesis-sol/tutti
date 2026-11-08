@@ -1,5 +1,6 @@
 // Checks (§ 3.3): runs the project's setup command, check_fast and check_full in a folder, each
-// through exec (a process group of its own) within its time limit from AppConfig, the time the
+// through exec (a process group of its own) within its time limit from AppConfig, or from the
+// settings a merge committed since the run started (`take`), the time the
 // machine is loaded left out of it, up to the limit again, where the caller says (`loaded`), so
 // that a check on a loaded machine isn't cut short at the limit it has unloaded. The whole output
 // goes to a file the caller names (check.log or setup.log in a worktree's .tutti/run/, § 9.1), or to
@@ -14,7 +15,17 @@
 // What a check that failed, timed out or was interrupted left running in its folder outside that
 // group (setsid, nohup, a double fork), a server on a fixed port that would fail every check after
 // it, is stopped as it ends, where the run has Strays (stoppingStrays).
-import { Context, Duration, Effect, Exit, type FileSystem, Layer, Option, Schema } from "effect"
+import {
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  type FileSystem,
+  Layer,
+  Option,
+  Ref,
+  Schema,
+} from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { BranchEnv, type CheckShare, checkShareEnv } from "../agent/env.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -517,13 +528,17 @@ export type RunCommand = (
   options: RunOptions | SetupOptions,
 ) => Effect.Effect<CheckResult, CheckError>
 
+/** The merge check's and the full check's settings, as the run has them now. */
+export type RunChecks = Pick<Settings["checks"], "fast" | "full">
+
 /**
  * The Checks service of the settings' `checks`: each kind's command (a setup's own, when given) run
  * through `run` within its time limit, a setup within that of the check it comes before; a null
- * command runs nothing and gives NoCheckCommand.
+ * command runs nothing and gives NoCheckCommand. The merge check's and the full check's command and
+ * time limit are read as each check starts, from the run's (`now`), which `take` changes.
  */
 export const checksOf = (checks: Settings["checks"], run: RunCommand): Checks["Service"] => {
-  const limit = { fast: checks.fast.timeout, full: checks.full.timeout }
+  const current = Ref.makeUnsafe<RunChecks>({ fast: checks.fast, full: checks.full })
   const start = (
     check: CheckKind,
     command: string | null,
@@ -533,28 +548,29 @@ export const checksOf = (checks: Settings["checks"], run: RunCommand): Checks["S
     command === null
       ? Effect.succeed({ _tag: "NoCheckCommand", check })
       : run(check, command, timeLimit, options)
+  const checked = (check: "fast" | "full", options: CheckOptions) =>
+    Effect.flatMap(Ref.get(current), (now) =>
+      start(
+        check,
+        options.command === undefined ? now[check].command : options.command,
+        options.timeLimit ?? now[check].timeout,
+        options,
+      ),
+    )
   return {
+    now: Ref.get(current),
+    take: (taken) => Ref.set(current, taken),
     setup: (options) =>
-      start(
-        "setup",
-        options.command === undefined ? checks.setup.command : options.command,
-        options.timeLimit ?? limit[options.before],
-        options,
+      Effect.flatMap(Ref.get(current), (now) =>
+        start(
+          "setup",
+          options.command === undefined ? checks.setup.command : options.command,
+          options.timeLimit ?? now[options.before].timeout,
+          options,
+        ),
       ),
-    fast: (options) =>
-      start(
-        "fast",
-        options.command === undefined ? checks.fast.command : options.command,
-        options.timeLimit ?? limit.fast,
-        options,
-      ),
-    full: (options) =>
-      start(
-        "full",
-        options.command === undefined ? checks.full.command : options.command,
-        options.timeLimit ?? limit.full,
-        options,
-      ),
+    fast: (options) => checked("fast", options),
+    full: (options) => checked("full", options),
   }
 }
 
@@ -597,11 +613,18 @@ export const stoppingStrays = <A, E, R>(
 export class Checks extends Context.Service<
   Checks,
   {
+    /**
+     * The merge check's and the full check's settings as the run has them now: the settings',
+     * unless a merge committed others (setup.ts's takeSettings).
+     */
+    readonly now: Effect.Effect<RunChecks>
+    /** The run has `checks` as its merge check's and full check's settings from now on. */
+    take(checks: RunChecks): Effect.Effect<void>
     /** The setup command (checks.setup.command), within the limit of the check it comes before. */
     setup(options: SetupOptions): Effect.Effect<CheckResult, CheckError>
-    /** The merge check (checks.fast.command), within checks.fast.timeout. */
+    /** The merge check (checks.fast.command, as `now` has it), within checks.fast.timeout. */
     fast(options: CheckOptions): Effect.Effect<CheckResult, CheckError>
-    /** The full check (checks.full.command), within checks.full.timeout. */
+    /** The full check (checks.full.command, as `now` has it), within checks.full.timeout. */
     full(options: CheckOptions): Effect.Effect<CheckResult, CheckError>
   }
 >()("tutti/services/Checks") {
@@ -644,3 +667,8 @@ export class Checks extends Context.Service<
     }),
   )
 }
+
+/** The merge check's and the full check's settings as the run has them now (Checks' `now`). */
+export const checksNow: Effect.Effect<RunChecks, never, Checks> = Effect.gen(function* () {
+  return yield* (yield* Checks).now
+})
