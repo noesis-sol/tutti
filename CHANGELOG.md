@@ -10,6 +10,7 @@
 - A ticket set aside for a failed check whose recheck is turned down, as it was reopened, its worktree or branch touched or its worker steered since, has its worker ended as the log says `<id> is not checked again: …; it stays set aside`, rather than keep its Claude Code and transcript until the run ends, as it won't be checked again (§ 4.8; `src/run/recheck.ts`' `recheckDue`; `test/recheck-turned-down-session.test.ts`; tutti-fnvd.12).
 - Quitting as a ticket's worktree is removed no longer strands it: the removal and the ledger's move after it go together, so a ticket closed with no change ends Done, not stopped with its worktree gone and left for review as WORKER_GONE in the next run, and one waiting for a blocker ends Waiting or back in the queue (`test/remove-transition-interrupt.test.ts`; tutti-fnvd.13).
 - A ticket tutti sets aside is deferred even when bd can't add its note, rather than left in_progress for a later run to take for a worker's work under way; the log says `bd could not add <id>'s note: <why>` under its line (`src/run/aside.ts`' `putAside`; `test/aside-note-failed.test.ts`; tutti-fnvd.15).
+- A merged revert of a ticket whose ID's prefix has hyphens of its own, `Revert "… (my-app-a3f2)"`, goes on that ticket's scorecard: the revert's reader took only IDs with one hyphen, and now takes any hyphenated ID tutti can run as a ticket (`src/run/scorecard.ts`' `revertsIn`, with `ticketIdProblem`; `test/scorecard-revert-ids.test.ts`; tutti-fnvd.16).
 
 ## [0.7.1] - 2026-11-08
 

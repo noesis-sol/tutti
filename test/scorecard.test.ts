@@ -577,7 +577,7 @@ describe("reverts", () => {
             expect(subjects.some((s) => /^\s*Revert\b/.test(s) && s.includes(each.ticket))).toBe(
               true,
             )
-            expect(each.ticket).toMatch(/^[A-Za-z0-9_]+-[A-Za-z0-9_]+(\.[0-9]+)*$/)
+            expect(each.ticket).toMatch(/^[A-Za-z0-9_]+(-[A-Za-z0-9_]+)+(\.[0-9]+)*$/)
           }
         },
       ),

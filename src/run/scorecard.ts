@@ -30,6 +30,7 @@
 
 import { HumanLabel, type Issue } from "../services/Beads.ts"
 import type { Commit } from "../services/Git.ts"
+import { ticketIdProblem } from "../services/Worktrees.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import type { AuditItemName, Event, verdicts } from "./events.ts"
 import { timestamp } from "./localTime.ts"
@@ -381,10 +382,13 @@ const followsUp = (
 }
 
 // A revert's subject, as git revert writes it, `Revert "…"`, and the ticket IDs it names in
-// parentheses, as this project's commit subjects end: `(tutti-5fs7.1)`, `(tut-1, tut-2)`.
+// parentheses, as this project's commit subjects end: `(tutti-5fs7.1)`, `(tut-1, tut-2)`. An ID is
+// bd's, a prefix and a hash, the prefix hyphenated or not (`my-app-a3f2`), and one tutti can run.
 const revertSubject = /^\s*Revert\b/
 const parenthesised = /\(([^()]*)\)/g
-const ticketId = /^[A-Za-z0-9_]+-[A-Za-z0-9_]+(?:\.[0-9]+)*$/
+const ticketIdShape = /^[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+(?:\.[0-9]+)*$/
+const isTicketId = (text: string): boolean =>
+  ticketIdShape.test(text) && ticketIdProblem(text) === undefined
 
 /**
  * The tickets the commits `commits`, merged with ticket `by`, revert, and the commit reverting
@@ -401,7 +405,7 @@ export const revertsIn = (
       (match[1] ?? "")
         .split(",")
         .map((each) => each.trim())
-        .filter((each) => ticketId.test(each) && each !== by),
+        .filter((each) => isTicketId(each) && each !== by),
     )
     return [...new Set(named)].map((ticket) => ({ ticket, commit: commit.hash }))
   })
