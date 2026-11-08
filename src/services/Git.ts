@@ -433,11 +433,15 @@ export const gitOps = {
   // that points into the rebased range (a backup, orchestra's wt/<id>) along with this one, and
   // putting the branch back resets only this one. `replaying` is interactive, for its editor to
   // rewrite the todo (rebaseMergesScript): the todo's commands spelt out and none of the user's
-  // checks on it, its commits squashed by none of their autosquash, one made empty dropped.
+  // checks on it, its commits squashed by none of their autosquash, one made empty dropped. With
+  // the project's hooks off, as addWorktree: a post-checkout hook on the checkout of onto could
+  // outlast the write's time limit, the rebase then aborted as git's failure; the git commands of
+  // its exec lines inherit them off, as git hands its -c options on.
   rebase: {
     op: "rebase",
     kind: "write",
     args: (onto: string, how: RebaseHow = "linear"): ReadonlyArray<string> => [
+      ...noHooks,
       ...(how === "replaying"
         ? ["-c", "rebase.abbreviateCommands=false", "-c", "rebase.missingCommitsCheck=ignore"]
         : []),
@@ -471,7 +475,7 @@ export const gitOps = {
   abortRebase: {
     op: "rebase --abort",
     kind: "write",
-    args: (): ReadonlyArray<string> => ["rebase", "--abort"],
+    args: (): ReadonlyArray<string> => [...noHooks, "rebase", "--abort"],
   },
   /** Where git keeps each of these names, a line each, as `rebaseFolders`. */
   gitPaths: {
@@ -518,10 +522,14 @@ export const gitOps = {
       ...revisions([base, branch]),
     ],
   },
+  // With the project's hooks off, as addWorktree: post-merge runs once git has moved the branch,
+  // and one that outlasts the write's time limit (Beads' has 5 min of its own) would have the
+  // fast-forward fail with the base already moved, taken for the base moving on.
   fastForward: {
     op: "merge --ff-only",
     kind: "write",
     args: (branch: string): ReadonlyArray<string> => [
+      ...noHooks,
       "merge",
       "--ff-only",
       "--quiet",
@@ -540,11 +548,13 @@ export const gitOps = {
     ],
   },
   // --only: what the paths hold in the working tree, whatever else is staged; a message given
-  // with -F - would need input, so it goes as -m.
+  // with -F - would need input, so it goes as -m. With the project's hooks off, as fastForward:
+  // a pre-commit or post-commit hook could outlast the write's time limit, or refuse tutti's commit.
   commitPaths: {
     op: "commit",
     kind: "write",
     args: (message: string, paths: ReadonlyArray<string>): ReadonlyArray<string> => [
+      ...noHooks,
       "commit",
       "--quiet",
       "-m",

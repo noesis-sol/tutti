@@ -84,7 +84,11 @@ const calls: ReadonlyArray<{
       "git log --merges --no-show-signature '--format=%H %T %P' --end-of-options main..HEAD --",
     call: (git, dir) => git.rebase(dir, "main"),
   },
-  { op: "rebase --abort", command: "git rebase --abort", call: (git, dir) => git.abortRebase(dir) },
+  {
+    op: "rebase --abort",
+    command: "git -c core.hooksPath=/dev/null rebase --abort",
+    call: (git, dir) => git.abortRebase(dir),
+  },
   {
     op: "rev-parse --git-path",
     command: "git rev-parse --path-format=absolute --git-path rebase-merge --git-path rebase-apply",
@@ -118,7 +122,7 @@ const calls: ReadonlyArray<{
   },
   {
     op: "merge --ff-only",
-    command: "git merge --ff-only --quiet --end-of-options b",
+    command: "git -c core.hooksPath=/dev/null merge --ff-only --quiet --end-of-options b",
     call: (git, dir) => git.fastForward(dir, "b"),
   },
   {
@@ -129,7 +133,8 @@ const calls: ReadonlyArray<{
   },
   {
     op: "commit",
-    command: "git commit --quiet -m 'Bring them up' --only -- .tutti/worker-prompt.md",
+    command:
+      "git -c core.hooksPath=/dev/null commit --quiet -m 'Bring them up' --only -- .tutti/worker-prompt.md",
     call: (git, dir) => git.commitPaths(dir, "Bring them up", [".tutti/worker-prompt.md"]),
   },
   {

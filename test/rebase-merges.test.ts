@@ -95,6 +95,8 @@ describe("parseMerges", () => {
 describe("the rebase's arguments", () => {
   test("a branch in a line rebases as before; one with merges keeps them", () => {
     expect(gitCall(gitOps.rebase, "abc1234").args).toEqual([
+      "-c",
+      "core.hooksPath=/dev/null",
       "rebase",
       "--no-autostash",
       "--no-update-refs",
@@ -102,6 +104,8 @@ describe("the rebase's arguments", () => {
       "abc1234",
     ])
     expect(gitCall(gitOps.rebase, "abc1234", "merges").args).toEqual([
+      "-c",
+      "core.hooksPath=/dev/null",
       "rebase",
       "--rebase-merges",
       "--no-autostash",
@@ -110,6 +114,8 @@ describe("the rebase's arguments", () => {
       "abc1234",
     ])
     expect(gitCall(gitOps.rebase, "abc1234", "replaying").args).toEqual([
+      "-c",
+      "core.hooksPath=/dev/null",
       "-c",
       "rebase.abbreviateCommands=false",
       "-c",

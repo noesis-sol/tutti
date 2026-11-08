@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { chmodSync, existsSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Fiber, Layer, Option, Ref, Semaphore } from "effect"
 import fc from "fast-check"
@@ -17,7 +17,7 @@ import {
   splitNul,
 } from "../src/services/Git.ts"
 import { slow } from "./gates.ts"
-import { hooksDir, makeRepo, type Repo } from "./git.ts"
+import { makeRepo, type Repo } from "./git.ts"
 
 const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (Exit.isSuccess(exit)) throw new Error(`expected a failure, got ${JSON.stringify(exit.value)}`)
@@ -70,27 +70,37 @@ const diverged = (repo: Repo, conflict: boolean) => {
 }
 
 /**
- * A reference-transaction hook that, once the marker it returns is created, sleeps the first time
- * git updates a ref with a rebase under way: a rebase to interrupt or time out halfway.
+ * A smudge filter on every file that, once the marker it returns is created, sleeps the first time
+ * git writes a file with a rebase under way: a rebase to interrupt or time out halfway. A filter, as
+ * a hook would be: tutti's rebase runs with the project's hooks off.
  */
-const slowRebaseHook = (repo: Repo): string => {
-  const hooks = hooksDir(repo)
-  const marker = join(hooks, "slow")
-  const hook = join(hooks, "reference-transaction")
+const slowRebaseFilter = (repo: Repo): string => {
+  const folder = dirname(repo.dir)
+  const marker = join(folder, "slow")
+  const filter = join(folder, "slow-smudge")
   writeFileSync(
-    hook,
+    filter,
     [
       "#!/bin/sh",
-      "cat >/dev/null",
       `marker='${marker}'`,
       'if [ -f "$marker" ] && [ -d "$(git rev-parse --path-format=absolute --git-path rebase-merge)" ]; then',
       '  rm -f "$marker"',
       "  sleep 30",
       "fi",
+      "exec cat",
       "",
     ].join("\n"),
   )
-  chmodSync(hook, 0o755)
+  chmodSync(filter, 0o755)
+  repo.git(["config", "filter.slow.smudge", filter])
+  writeFileSync(
+    join(
+      repo.git(["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(),
+      "info",
+      "attributes",
+    ),
+    "* filter=slow\n",
+  )
   return marker
 }
 
@@ -384,7 +394,7 @@ slow.describe("Git against a real repository", () => {
   test("interrupting a rebase aborts it, leaving the branch as it was", async () => {
     const repo = makeRepo()
     const { worktree, before } = diverged(repo, false)
-    const marker = slowRebaseHook(repo)
+    const marker = slowRebaseFilter(repo)
     writeFileSync(marker, "")
     const after = await run(
       withGit((git) =>
@@ -413,9 +423,9 @@ slow.describe("Git against a real repository", () => {
   test("a rebase past its time limit fails with GitTimedOut and is aborted", async () => {
     const repo = makeRepo()
     const { worktree, before } = diverged(repo, false)
-    writeFileSync(slowRebaseHook(repo), "")
+    writeFileSync(slowRebaseFilter(repo), "")
     // The abort runs within the write limit too: 1 s cut it off on a loaded machine (2026-10-22),
-    // leaving the rebase in progress. 3 s is still far below the hook's 30 s.
+    // leaving the rebase in progress. 3 s is still far below the filter's 30 s.
     const limits = { read: Duration.seconds(30), write: Duration.seconds(3) }
     const exit = await run(Effect.exit(withGit((git) => git.rebase(worktree, "main"))), limits)
     const timedOut = failure(exit)
