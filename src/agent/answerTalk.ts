@@ -37,7 +37,13 @@ import {
   questionOptions,
   type TicketId,
 } from "../services/Beads.ts"
-import { type AgentGone, AgentHost, AgentStartFailed, type MessageUuid } from "./AgentHost.ts"
+import {
+  type AgentGone,
+  AgentHost,
+  AgentStartFailed,
+  type MessageUuid,
+  stoppedForSetup,
+} from "./AgentHost.ts"
 import {
   type SessionFibers,
   sessionFibers,
@@ -299,6 +305,7 @@ export const startAnswerTalk = (
         tools: tools.tools,
       }),
     })
+    yield* stoppedForSetup(interviewWorker)
     const first = yield* leadAndPasted(talkLead, text)
     yield* host
       .send(interviewWorker, { text: first, from: "clientComposed" })

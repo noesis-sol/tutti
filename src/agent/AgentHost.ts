@@ -170,6 +170,8 @@ export class AgentStartFailed extends Schema.TaggedError<AgentStartFailed>()("Ag
    * answer its initialize within startLimit, as on a machine short of memory.
    */
   transient: Schema.optionalKey(Schema.Boolean),
+  /** Whether a setup problem found as it started stopped it (§ 4.1): `reason` is the problem. */
+  setup: Schema.optionalKey(Schema.Boolean),
 }) {
   override get message(): string {
     return `${this.ticket}'s worker didn't start: ${this.reason}`
@@ -303,6 +305,22 @@ export class AgentHost extends Context.Service<
     readonly processes: Effect.Effect<ReadonlyMap<TicketId, number>>
   }
 >()("tutti/agent/AgentHost") {}
+
+/**
+ * Fails AgentStartFailed with `setup` when the ticket's worker, just started, is Gone over a setup
+ * problem found as it started: the start doesn't fail for one, and the session is sent nothing
+ * (§ 4.1), so a send would only say it has no open session.
+ */
+export const stoppedForSetup = (
+  ticket: TicketId,
+): Effect.Effect<void, AgentStartFailed, AgentHost> =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const now = yield* Effect.option(host.current(ticket))
+    if (Option.isSome(now) && now.value._tag === "Gone" && now.value.setup === true) {
+      return yield* new AgentStartFailed({ ticket, reason: now.value.why, setup: true })
+    }
+  })
 
 /** A worker the host knows: from its first start until it is ended. */
 export interface WorkerEntry {

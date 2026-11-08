@@ -84,8 +84,8 @@ export type InterviewOutcome = Data.TaggedEnum<{
   Left: { readonly state: BreakdownState; readonly quit: boolean }
   /** The session ended by itself, before the tree was filed. */
   Ended: { readonly why: string; readonly state: BreakdownState }
-  /** The session couldn't start. */
-  NotStarted: { readonly why: string }
+  /** The session couldn't start; `setup` when a setup problem, `why`, stopped it. */
+  NotStarted: { readonly why: string; readonly setup?: true }
 }>
 
 export const InterviewOutcome = Data.taggedEnum<InterviewOutcome>()
@@ -291,7 +291,8 @@ export const interview = (
   Effect.gen(function* () {
     const started = yield* Effect.result(startFeature({ description, effort: null }))
     if (started._tag === "Failure") {
-      return InterviewOutcome.NotStarted({ why: started.failure.reason })
+      const { reason, setup } = started.failure
+      return InterviewOutcome.NotStarted({ why: reason, ...(setup === true ? { setup } : {}) })
     }
     const breakdown = started.success
     // Whether it has filed something, for the view's leaving question.
@@ -438,7 +439,7 @@ export const interviewEnding = (outcome: NoRun): InterviewEnding => {
         error: [
           `tutti: the interview couldn't start: ${sanitizeLine(outcome.why)}; nothing was filed.`,
         ],
-        exitCode: exitCodes.tool,
+        exitCode: outcome.setup === true ? exitCodes.setup : exitCodes.tool,
       }
   }
 }

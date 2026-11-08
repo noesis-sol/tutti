@@ -54,7 +54,13 @@ import type { Beads, Issue, TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { runFolder, writeRunFile } from "../services/Worktrees.ts"
 import { loginRefusedText } from "./Account.ts"
-import { type AgentGone, AgentHost, AgentStartFailed, type MessageUuid } from "./AgentHost.ts"
+import {
+  type AgentGone,
+  AgentHost,
+  AgentStartFailed,
+  type MessageUuid,
+  stoppedForSetup,
+} from "./AgentHost.ts"
 import {
   type BreakdownState,
   type BreakdownTools,
@@ -400,6 +406,7 @@ const openBreakdown = (setup: {
         tools: tools.tools,
       }),
     })
+    yield* stoppedForSetup(worker)
     const send = (text: string) =>
       host
         .send(worker, { text, from: "clientComposed" })

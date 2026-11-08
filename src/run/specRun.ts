@@ -403,7 +403,8 @@ const breakDown = (
             }),
           )
           if (Result.isFailure(started)) {
-            return { _tag: "NotStarted", why: started.failure.reason } as const
+            const { reason, setup } = started.failure
+            return { _tag: "NotStarted", why: reason, setup: setup === true } as const
           }
           const breakdown = started.success
           opened = breakdown
@@ -515,6 +516,12 @@ const breakDown = (
       const took = duration((yield* Clock.currentTimeMillis) - began)
       if (ended._tag === "NotStarted") {
         const why = sanitizeLine(ended.why)
+        if (ended.setup) {
+          // A setup problem stopped its session as it started: the problem, and the setup's exit.
+          yield* io.error(`tutti couldn't break the spec down: ${why}`)
+          yield* log.write(specLine`claude session gave no result (a setup problem: ${why})`)
+          return stopped(exitCodes.setup)
+        }
         yield* io.error(`tutti couldn't break the spec down: its session couldn't start: ${why}`)
         yield* log.write(specLine`claude session gave no result (it couldn't start: ${why})`)
         return stopped(exitCodes.tool)
