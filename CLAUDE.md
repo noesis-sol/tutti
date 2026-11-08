@@ -106,9 +106,9 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   its file sets none, as the files running side by side load the machine.
 - The processes are no more than the run's share of the memory holds, either: the current share in
   `TUTTI_SHARE_FILE`, else `TUTTI_MEMORY_MB`, else, outside tutti, the memory free now less 2 GB;
-  at what one test process takes, learned from the runs' peaks in `.cache/test-memory.json` in the
-  main checkout (1.5 GB until there is one), less what the processes' tests start (a compile, a
-  tutti), kept once for the run and learned from runs of its kind, plain or `TUTTI_SLOW=1`. The
+  at what one test process takes, learned from the peaks in `.cache/test-memory.json` in the main
+  checkout of runs of its kind, plain or `TUTTI_SLOW=1` (1.5 GB until there is one), less what the
+  processes' tests start (a compile, a tutti), kept once for the run and learned the same way. The
   first line says the choice: `scripts/test.sh: 3 processes (cores 5, memory 4.6 GB at ~1.5 GB
   each)`, `… memory 4.6 GB less ~2.5 GB for what the tests start, at ~0.6 GB each)`. A run that
   met memory pressure at `warn` reruns its failures, and holds the next 10 minutes' runs, to one

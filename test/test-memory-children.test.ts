@@ -36,7 +36,7 @@ describe("what the tests start", () => {
     expect(childrenMark({ runs: [run(600, 300, false)] }, true)).toBe(300 * mebibyte)
     expect(childrenMark({ runs: [] }, false)).toBe(0)
     // A slow run's compile sets no process's size.
-    expect(highMark(record)).toBe(620 * mebibyte)
+    expect(highMark(record, false)).toBe(620 * mebibyte)
   })
 
   test("is kept with each run, and whether it was TUTTI_SLOW", () => {

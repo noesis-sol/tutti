@@ -49,8 +49,8 @@
 // apart, and counted once for the run, not once a process (tutti-q61i): a few slow files start big
 // short-lived processes, build-script.test.ts' bun build --compile 2.5 GB, tutti-skill.test.ts'
 // bun src/main.ts 1 GB, alone each 620 MB at most, and one run's sample catching the compile had
-// set every run's processes at 2.5 GB. A plain run counts what plain runs' tests started, a
-// TUTTI_SLOW run what slow runs' did.
+// set every run's processes at 2.5 GB. A plain run counts what plain runs' processes and their
+// tests took, a TUTTI_SLOW run what slow runs' did (tutti-k4if.2).
 //
 // The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or
@@ -711,20 +711,26 @@ export const parseMemoryRecord = (text: string): MemoryRecord => {
 
 /**
  * The memory one test process takes, as the record learned it, in bytes: the 90th percentile of
- * its runs' peaks (nearest rank), so that one odd run neither sets it nor is forgotten at once;
- * undefined without a run.
+ * the peaks (nearest rank) of its runs that were TUTTI_SLOW as this one is (`slow`), or of all its
+ * runs where none was, so that one odd run neither sets it nor is forgotten at once; undefined
+ * without a run. Plain runs' processes peaked at 150-240 MB, TUTTI_SLOW runs' at 577-841 MB
+ * (2026-11-08), and the slow ones had set a plain run's processes at 0.6 GB (tutti-k4if.2).
  */
-export const highMark = (record: MemoryRecord): number | undefined =>
-  percentile90(record.runs.map((run) => run.peak_mb))
+export const highMark = (record: MemoryRecord, slow: boolean): number | undefined =>
+  percentile90(alikeRuns(record, slow).map((run) => run.peak_mb))
 
 /**
  * The memory a run keeps for what its tests start, in bytes: the 90th percentile of the children_mb
  * of the record's runs that were TUTTI_SLOW as this one is (`slow`), or of all its runs where none
  * was; 0 without a run. Kept once for the run: few files start much, and seldom at once.
  */
-export const childrenMark = (record: MemoryRecord, slow: boolean): number => {
+export const childrenMark = (record: MemoryRecord, slow: boolean): number =>
+  percentile90(alikeRuns(record, slow).map((run) => run.children_mb)) ?? 0
+
+/** The record's runs that were TUTTI_SLOW as `slow` says, or all of them where none was. */
+const alikeRuns = (record: MemoryRecord, slow: boolean): ReadonlyArray<MemoryRun> => {
   const alike = record.runs.filter((run) => run.slow === slow)
-  return percentile90((alike.length > 0 ? alike : record.runs).map((run) => run.children_mb)) ?? 0
+  return alike.length > 0 ? alike : record.runs
 }
 
 /** The 90th percentile (nearest rank) of `values`, MiB, in bytes; undefined without one. */
@@ -1107,7 +1113,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   const slow = process.env.TUTTI_SLOW === "1"
   const sizing: Sizing = {
     memory: memoryShareOf(machine) ?? availableMemory(),
-    each: highMark(record) ?? defaultProcessMemory,
+    each: highMark(record, slow) ?? defaultProcessMemory,
     children: childrenMark(record, slow),
     held: heldProcesses(record, Date.now()),
   }

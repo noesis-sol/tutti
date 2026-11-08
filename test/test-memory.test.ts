@@ -187,11 +187,11 @@ const run = (peak: number, at = "2026-11-03T10:00:00.000Z") => ({
 
 describe("the memory record", () => {
   test("learns the 90th percentile of its runs' peaks, and nothing without one", () => {
-    expect(highMark({ runs: [] })).toBeUndefined()
-    expect(highMark({ runs: [run(1149)] })).toBe(1149 * mebibyte)
+    expect(highMark({ runs: [] }, false)).toBeUndefined()
+    expect(highMark({ runs: [run(1149)] }, false)).toBe(1149 * mebibyte)
     const ten = [900, 1000, 950, 1100, 1050, 980, 1020, 990, 1010, 3000].map((peak) => run(peak))
-    expect(highMark({ runs: ten })).toBe(1100 * mebibyte)
-    expect(highMark({ runs: [...ten, run(1200)] })).toBe(1200 * mebibyte)
+    expect(highMark({ runs: ten }, false)).toBe(1100 * mebibyte)
+    expect(highMark({ runs: [...ten, run(1200)] }, false)).toBe(1200 * mebibyte)
   })
 
   test("keeps a run's peak where it ran enough files, and its recent runs only", () => {
@@ -249,7 +249,7 @@ describe("the memory record", () => {
       fc.property(fc.string(), (text) => {
         const record = parseMemoryRecord(text)
         expect(record.runs.length).toBeLessThanOrEqual(recordedRuns)
-        const mark = highMark(record)
+        const mark = highMark(record, false)
         if (mark !== undefined) expect(mark).toBeGreaterThanOrEqual(mebibyte)
       }),
     )
