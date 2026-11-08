@@ -672,7 +672,6 @@ const enter = (turn: Turn): Next =>
 
 const locate = (turn: Turn, { carried, checked, afterCheck }: StepOf<"Locate">): Next =>
   Effect.gen(function* () {
-    const config = yield* AppConfig
     const git = yield* Git
     const log = yield* Log
     const { ticket, options, memory } = turn

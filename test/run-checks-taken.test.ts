@@ -133,9 +133,7 @@ describe("checks a merge changed in .tutti/settings.json", () => {
       ["a", 45],
       ["b", 45],
     ])
-    expect(ranOf(ran, "full")).toEqual([
-      expect.objectContaining({ command: full, minutes: 120 }),
-    ])
+    expect(ranOf(ran, "full")).toEqual([expect.objectContaining({ command: full, minutes: 120 })])
   })
 })
 
