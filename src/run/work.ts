@@ -119,7 +119,11 @@ export interface WorkOptions {
 /** Its blockers, as the log names them: `a`, or `a, b`. */
 const named = (blockers: ReadonlyArray<TicketId>): string => blockers.join(", ")
 
-/** Removes the ticket's worktree and branch: what the line saying so ends with. */
+/**
+ * Removes the ticket's worktree and branch: what the line saying so ends with. Its callers run it
+ * uninterruptible with the transition after it, as a quit between them would leave the ticket
+ * Working with its worktree gone, its resume failing in the next run (WORKER_GONE).
+ */
 const removeWorktree = (worker: StartedWorker, force: boolean) =>
   Effect.gen(function* () {
     const worktrees = yield* Worktrees
@@ -150,7 +154,7 @@ const noChange = (ticket: StartTicket, worker: StartedWorker, why: string, own: 
     })
     // Done, it has nothing left for a later run: its record in state.json goes.
     yield* Effect.ignore((yield* Store).remove(ticket.id))
-  })
+  }).pipe(Effect.uninterruptible)
 
 /**
  * Stopped with nothing done, having linked `blockers` that haven't merged: Waiting, back in the
@@ -182,13 +186,17 @@ const waitsForMerge = (
         appendNotes: `tutti: started before ${list} merged; back in the queue until ${does}.`,
       }),
     )
-    const left = yield* removeWorktree(worker, false)
-    const text = ticketLine(
-      Tag.waitsForMerge,
-    )`${id} waits for ${list} to merge; its worker stopped with nothing done, so it is back in the queue until ${does}; ${left}`
-    yield* ledger.transition(id, Move.WaitsForMerge({ blockers }), {
-      said: [{ kind: "waits", ticket: id, title: ticket.title, detail: list, text }],
-    })
+    yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const left = yield* removeWorktree(worker, false)
+        const text = ticketLine(
+          Tag.waitsForMerge,
+        )`${id} waits for ${list} to merge; its worker stopped with nothing done, so it is back in the queue until ${does}; ${left}`
+        yield* ledger.transition(id, Move.WaitsForMerge({ blockers }), {
+          said: [{ kind: "waits", ticket: id, title: ticket.title, detail: list, text }],
+        })
+      }),
+    )
   })
 
 /**
@@ -222,16 +230,21 @@ const mergedSinceCut = (
         appendNotes: `tutti: its worktree was cut from ${shortHash(cut)}, before ${list} merged; back in the queue to start again from the base's head.`,
       }),
     )
-    const left = yield* removeWorktree(worker, false)
-    const queued =
-      [...(yield* ledger.current).tickets.values()].filter((each) => each.phase._tag === "Queued")
-        .length + 1
-    yield* ledger.transition(id, Move.MergedSinceCut({ blockers }), {
-      beside: [{ kind: "queue", queued }],
-      lines: [
-        detail`${id} back in the queue: ${list} merged after its worktree was cut from ${shortHash(cut)}; ${left}`,
-      ],
-    })
+    yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const left = yield* removeWorktree(worker, false)
+        const queued =
+          [...(yield* ledger.current).tickets.values()].filter(
+            (each) => each.phase._tag === "Queued",
+          ).length + 1
+        yield* ledger.transition(id, Move.MergedSinceCut({ blockers }), {
+          beside: [{ kind: "queue", queued }],
+          lines: [
+            detail`${id} back in the queue: ${list} merged after its worktree was cut from ${shortHash(cut)}; ${left}`,
+          ],
+        })
+      }),
+    )
   })
 
 /** Still in progress after the nudges and the grace: Stopped, and the run holds with PAUSED. */
