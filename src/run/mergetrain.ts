@@ -435,7 +435,13 @@ export const make = (
           return notRebased(read)
         }
         const head = yield* Effect.result(git.revParse(repo, branch))
-        if (Result.isFailure(head)) return notRebased(read)
+        if (Result.isFailure(head)) {
+          // Rebased, but git can't say to what: put back, or its mark kept for its turn to catch it.
+          const why = notBack(worktree, yield* restoreBranch(read.ticket, read.orig, 1))
+          if (why === undefined) yield* clearAhead(id)
+          else yield* Effect.logDebug(`${id}: ${why}`)
+          return notRebased(read)
+        }
         yield* mark(read, head.success)
         const changed = yield* Effect.result(git.changedFiles(repo, read.onto, branch))
         if (Result.isSuccess(changed) && changed.success.length > 0) {
@@ -598,7 +604,8 @@ export const make = (
     // put back. The train rebased it only in a clean worktree, so what its setup and check changed
     // in tracked files is discarded with it. Dependencies set up on top of the branch ahead are set
     // up again before its next check. Its mark is cleared once its branch is back, or was not the
-    // train's to put back.
+    // train's to put back; it is kept, for its merge to catch it, where its train rebased it but git
+    // couldn't say to what and it isn't where its worker left it.
     const putBack = (run: Run, head: Sha) =>
       Effect.gen(function* () {
         if (setUpOf(run.step)) yield* memory.setUps.offBase(run.ticket.id, setUpOnTop(run.behind))
@@ -606,9 +613,10 @@ export const make = (
           run.orig === undefined || headOf(run.step) === undefined || head !== headOf(run.step)
             ? undefined
             : yield* restoreBranch(run.ticket, run.orig, 1, true)
-        if (restored === undefined || notBack(run.ticket.worktree, restored) === undefined) {
-          yield* clearAhead(run.ticket.id)
-        }
+        const unread = run.orig !== undefined && headOf(run.step) === undefined && head !== run.orig
+        const kept =
+          restored === undefined ? unread : notBack(run.ticket.worktree, restored) !== undefined
+        if (!kept) yield* clearAhead(run.ticket.id)
         return restored
       })
 

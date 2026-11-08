@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A branch the merge train rebased cleanly onto the branch ahead, git then unable to say what its commit is, is put back as its worker left it there and then; where git can't put it back either, its mark is kept, so its merge sets it aside as REBASE_FAILED, rather than merge the commits of the branch ahead with its own when that branch's check fails and it is set aside (`src/run/mergetrain.ts`' `rebaseAhead` and `putBack`; `test/train-head-unread.test.ts`; tutti-fnvd.1).
+
 ## [0.7.1] - 2026-11-08
 
 - The frames' arithmetic is named beside the frames in `src/ui/line.tsx`: `frameInner` for what a box's frame leaves inside (its `frameBorder` and `boxPad` each side, `frameChrome`), `boxWidth` for a box over the screen, `boxMargin` from each side, up to its max and never below its least, `labelChrome` for a label in a frame's edge, and `columnGap` and `framedWidth` for a framed table's columns, which the tickets table and the totals strip sum by; nothing on screen changes (`test/frame-arithmetic.test.ts`; tutti-6bwa.5).
