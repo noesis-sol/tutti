@@ -176,14 +176,15 @@ const handBackOnceMore = (
 ): Effect.Effect<boolean, never, Git | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const aside = yield* queue.handBacks.takeAside(ticket)
-    if (aside === undefined) {
-      yield* Effect.logDebug(`dropped HandBackNow: ${ticket} has no conflict set aside`)
-      return false
-    }
+    // Looked at before it is taken out of those set aside, so that one not blocked stays there.
     const phase = (yield* ledger.current).tickets.get(ticket)?.phase
     if (phase?._tag !== "Blocked" || phase.why !== Tag.mergeConflict) {
       yield* Effect.logDebug(`dropped HandBackNow: ${ticket} is not blocked on its conflict`)
+      return false
+    }
+    const aside = yield* queue.handBacks.takeAside(ticket)
+    if (aside === undefined) {
+      yield* Effect.logDebug(`dropped HandBackNow: ${ticket} has no conflict set aside`)
       return false
     }
     const worked = yield* stillWorkedIn(aside)
@@ -200,13 +201,17 @@ const handBackOnceMore = (
       detail`you handed ${ticket} back; ${aside.branch} is back in the merge queue, to be rebased onto ${options.base} if need be, its worker allowed one more hand-back should it conflict`,
       ticket,
     )
+    const limit = yield* queue.handBacks.limit(ticket)
+    const takenUp = yield* queue.handBacks.takenUp(ticket)
     yield* queue.handBacks.allowOneMore(ticket)
     yield* queue.handBacks.giveBack(ticket)
     yield* queue.handBacks.waive(ticket)
     const moved = yield* queue.offer(aside, (place) => Move.HandedOver({ place }), false)
     if (Result.isSuccess(moved)) return true
-    // The ledger refused (PHASE_BUG, logged): it stays set aside.
+    // The ledger refused (PHASE_BUG, logged): it stays set aside, as it was.
     yield* queue.handBacks.waived(ticket)
+    yield* queue.handBacks.limitTo(ticket, limit)
+    if (takenUp) yield* queue.handBacks.takeUp(ticket)
     yield* queue.handBacks.keepAside(aside)
     return false
   })

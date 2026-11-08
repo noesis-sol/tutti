@@ -205,6 +205,8 @@ export interface HandBacks extends Counts {
   limit(id: TicketId): Effect.Effect<number>
   /** Allows the ticket one more hand-back than it has had, as you asked for it (§ 4.3). */
   allowOneMore(id: TicketId): Effect.Effect<void>
+  /** Sets how many hand-backs the ticket may have: what `limit` said, as an allowance is undone. */
+  limitTo(id: TicketId, limit: number): Effect.Effect<void>
 }
 
 /** A run's hand-backs: none yet. */
@@ -264,6 +266,7 @@ export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
           return new Map([...all, [id, limit]])
         }),
       ),
+    limitTo: (id, limit) => Ref.update(limits, (all) => new Map([...all, [id, limit]])),
   } satisfies HandBacks
 })
 
