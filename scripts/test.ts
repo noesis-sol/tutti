@@ -68,6 +68,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs"
@@ -237,14 +238,16 @@ export const flakyLine = (test: TestCase): string => `FLAKY: ${test.file} ${test
 
 /**
  * The test files of the first run's report `cases` whose tests all passed, sorted: those with no
- * test in `failing`, the tests that failed and didn't pass on a rerun. A file that didn't load, or
- * failed outside its tests, isn't in the report, so isn't one.
+ * test in `failing`, the tests that failed and didn't pass on a rerun, and not in `erred`, the files
+ * that raised an error between tests (erredFiles). A file that didn't load isn't in the report, so
+ * isn't one.
  */
 export const passedFiles = (
   cases: ReadonlyArray<TestCase>,
   failing: ReadonlyArray<TestCase>,
+  erred: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> => {
-  const failed = new Set(failing.map((test) => test.file))
+  const failed = new Set([...failing.map((test) => test.file), ...erred])
   return [...new Set(cases.map((test) => test.file))].filter((file) => !failed.has(file)).sort()
 }
 
@@ -270,26 +273,43 @@ export const summaryCounts = (
 
 /**
  * The errors bun test printed as "# Unhandled error between tests", each the text from that heading
- * to the dashed line that closes it (Bun 1.4.3).
+ * to the dashed line that closes it, with the last line before it that reads "<file>:" for a file
+ * `isFile` takes: the test file bun ran it in, which it names so above its tests, and again above
+ * the error under --parallel (Bun 1.4.3). A test's own output may read so too, hence `isFile`.
  */
-export const betweenTestErrors = (output: string): ReadonlyArray<string> => {
-  const blocks: Array<string> = []
+const errorBlocks = (
+  output: string,
+  isFile: (file: string) => boolean,
+): ReadonlyArray<{ readonly file: string | undefined; readonly text: string }> => {
+  const blocks: Array<{ readonly file: string | undefined; readonly text: string }> = []
+  let file: string | undefined
   let block: Array<string> | undefined
   for (const line of plainText(output).split("\n")) {
     if (block === undefined) {
       if (line.trim() === "# Unhandled error between tests") block = []
+      else {
+        const heading = /^(\S.*):\s*$/.exec(line)?.[1]
+        if (heading !== undefined && isFile(heading)) file = heading
+      }
     } else if (/^-+\s*$/.test(line)) {
       if (block.length > 0) {
-        blocks.push(block.join("\n"))
+        blocks.push({ file, text: block.join("\n") })
         block = undefined
       }
     } else {
       block.push(line)
     }
   }
-  if (block !== undefined) blocks.push(block.join("\n"))
+  if (block !== undefined) blocks.push({ file, text: block.join("\n") })
   return blocks
 }
+
+/**
+ * The errors bun test printed as "# Unhandled error between tests", each the text from that heading
+ * to the dashed line that closes it (Bun 1.4.3).
+ */
+export const betweenTestErrors = (output: string): ReadonlyArray<string> =>
+  errorBlocks(output, () => false).map((block) => block.text)
 
 /** The files of a stack trace's frames: "at f (/a/b.ts:1:2)", "at /a/b.ts:1:2". */
 export const stackFiles = (text: string): ReadonlyArray<string> =>
@@ -303,6 +323,39 @@ const realPath = (path: string): string => {
   } catch {
     return path
   }
+}
+
+const isFile = (path: string): boolean => {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Those of the test `files` of bun's report, paths relative to `cwd`, that an error between tests
+ * names, though their tests may all have passed (tutti-fnvd.2): the file bun printed it under
+ * (errorBlocks) or one of its frames. Undefined where bun counted more `errors` than it printed, or
+ * one names no file, as no file can then be cleared of them. A file that didn't load raises one too,
+ * named but not in the report.
+ */
+export const erredFiles = (
+  output: string,
+  errors: number,
+  files: ReadonlyArray<string>,
+  cwd: string,
+): ReadonlyArray<string> | undefined => {
+  const path = (file: string): string => realPath(resolve(cwd, file))
+  const blocks = errorBlocks(output, (file) => isFile(path(file)))
+  if (blocks.length < errors) return undefined
+  const named = blocks.map((block) => [
+    ...(block.file === undefined ? [] : [block.file]),
+    ...stackFiles(block.text),
+  ])
+  if (named.some((names) => names.length === 0)) return undefined
+  const erred = new Set(named.flat().map(path))
+  return files.filter((file) => erred.has(path(file)))
 }
 
 /**
@@ -1084,11 +1137,17 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     const run = { ...watched, at: Date.now(), processes: workers, files, slow }
     writeMemoryRecord(recordPath, recordRun(readMemoryRecord(recordPath), run))
   }
+  const counts = summaryCounts(output)
   // The verdict, the files whose tests all passed written first where check-own.sh asked for them,
-  // which it keeps when the run fails (tutti-0vbd.2).
+  // which it keeps when the run fails (tutti-0vbd.2): none where an error between tests can't be
+  // placed in a file (erredFiles).
   const verdict = (code: number, failing: ReadonlyArray<TestCase>): number => {
     const out = process.env.TUTTI_CHECK_OWN_PASSED
-    if (out) writeFileSync(out, passedFiles(cases, failing).join("\n"))
+    if (out) {
+      const files = [...new Set(cases.map((test) => test.file))]
+      const erred = erredFiles(output, counts.error, files, process.cwd())
+      writeFileSync(out, erred === undefined ? "" : passedFiles(cases, failing, erred).join("\n"))
+    }
     return code
   }
   if (code === 0) return verdict(0, [])
@@ -1096,7 +1155,6 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   // A failure outside any test (a file that doesn't load, an error between tests) isn't in the
   // report and has no name to rerun: when bun counted one, the run fails as bun test did, but for
   // errors left over from tests that timed out, which their reruns stand for.
-  const counts = summaryCounts(output)
   if (failed.length === 0 || counts.fail !== failed.length) return verdict(code, failed)
   if (!timeoutLeftovers(output, counts.error, failed, process.cwd())) return verdict(code, failed)
   // A file's failed tests are rerun together, in one process, and the files side by side, as many at

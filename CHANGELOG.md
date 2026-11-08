@@ -3,6 +3,7 @@
 ## Unreleased
 
 - A branch the merge train rebased cleanly onto the branch ahead, git then unable to say what its commit is, is put back as its worker left it there and then; where git can't put it back either, its mark is kept, so its merge sets it aside as REBASE_FAILED, rather than merge the commits of the branch ahead with its own when that branch's check fails and it is set aside (`src/run/mergetrain.ts`' `rebaseAhead` and `putBack`; `test/train-head-unread.test.ts`; tutti-fnvd.1).
+- A worker's own check whose tests failed no longer keeps, as passed, a test file whose tests all passed but that raised an error between them (`scripts/test.ts`' `erredFiles` and `passedFiles`; tutti-fnvd.2): an error between tests isn't a test case in bun's JUnit report, so the file was written down as passed and the next run, nothing changed, left it out, passing where it should fail. Now the list leaves out each file an error between tests names, the file bun printed it under or one of its stack frames, and is empty where an error names no file or bun counted more than it printed. `test/check-own-erred.test.ts` covers it.
 
 ## [0.7.1] - 2026-11-08
 
