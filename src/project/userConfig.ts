@@ -88,7 +88,7 @@ export const currentHome: Effect.Effect<string> = Effect.map(
 /** `path` from `~` where it is below `home`, else as it is. */
 export const fromHome = (path: string, home: string): string => {
   const rel = relative(home, path)
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
     ? `~/${rel.split(sep).join("/")}`
     : path
 }

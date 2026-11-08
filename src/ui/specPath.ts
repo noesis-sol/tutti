@@ -168,14 +168,19 @@ export const browserRows = (entries: ReadonlyArray<Entry>, atRoot: boolean): Rea
   ]
 }
 
+/**
+ * Whether `rel`, a path from a folder, is below that folder: `..` alone or before a separator is
+ * above it, while a name such as `..spec.md` is a file in it.
+ */
+const below = (rel: string): boolean =>
+  rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
+
 /** The path `path` in the home folder `home` as from `~`; else as it is. */
 export const tildeOf = (path: string, home: string): string => {
   if (home === "") return path
   if (path === home) return "~"
   const rel = relative(home, path)
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)
-    ? `~/${rel.split(sep).join("/")}`
-    : path
+  return below(rel) ? `~/${rel.split(sep).join("/")}` : path
 }
 
 /**
@@ -184,7 +189,7 @@ export const tildeOf = (path: string, home: string): string => {
  */
 export const shownPath = (path: string, where: Where): string => {
   const rel = relative(where.repo, path)
-  if (rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)) return rel.split(sep).join("/")
+  if (below(rel)) return rel.split(sep).join("/")
   return tildeOf(path, where.home)
 }
 

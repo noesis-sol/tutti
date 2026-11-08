@@ -3,7 +3,7 @@
 // built-in template. TICKET_ID is its placeholder for the ticket's ID. With
 // workers.ask_user_question off (§ 15, Q3), the paragraphs that mention AskUserQuestion are dropped,
 // since the workers don't get the tool.
-import { isAbsolute, join, relative, resolve } from "node:path"
+import { isAbsolute, join, relative, resolve, sep } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
 import {
   coresVariable,
@@ -183,7 +183,7 @@ export const usageLimitNote =
 /** `file` as a problem names it: from the project's top when it is inside it. */
 const shown = (repo: string, file: string): string => {
   const rel = relative(repo, file)
-  return rel === "" || rel.startsWith("..") || isAbsolute(rel) ? file : rel
+  return rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) ? file : rel
 }
 
 /**
