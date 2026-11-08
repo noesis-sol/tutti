@@ -18,6 +18,7 @@
 - An early check still running at its ticket's turn, on a branch behind the base, is no longer cancelled by the turn's own rebase of the branch (`tutti/<id> moved on to …`): its watch accepts a move to the tree it checks on the same base, so the turn waits for it and merges with no second check, as it did only for a branch already on top of the base (tutti-fnvd.11)
 - `h` on a ticket set aside on its conflict but no longer Blocked on it leaves it set aside, and one the ledger refuses to put back in the merge queue (PHASE_BUG) keeps its hand-backs' limit and stays taken up from its worker, as it was before `h` (tutti-fnvd.21).
 - A spec run's checks gate that passes closes every gate question still open for the spec, not only the first it found: where bd couldn't list the first as a hold filed a second, the second stayed open and the tree's tickets waited on it with nothing saying why (§ 4.14; `src/run/checksGate.ts`; `test/checks-gate-questions.test.ts`; tutti-fnvd.14).
+- A question answered outside the dashboard, with `tutti answer` or `bd` by hand, leaves the Needs you list once the list's read of the open questions doesn't have it, though the run's look hasn't taken its ticket back yet; the questions box opened on it from a list read earlier says `<id> is already answered` and opens the list again, rather than flash `Reading…` and close with no word (§ 7.2; `src/ui/NeedsList.tsx`' `closedSince`, `src/ui/QuestionsBox.tsx`; `test/needs-answered-outside.test.tsx`; tutti-fnvd.9).
 
 ## [0.7.1] - 2026-11-08
 

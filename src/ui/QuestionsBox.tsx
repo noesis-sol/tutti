@@ -18,6 +18,8 @@
 // Opened from the Needs you list (NeedsList.tsx, tutti-fdv1), the box puts that question alone, and
 // once it is answered, left open or closed with Esc opens the list again at the next item. An answer
 // bd refuses leaves the list's answers (RefusedAnswers), which brings its question back to the list.
+// A question it finds no longer open was answered outside the dashboard: a toast says it is already
+// answered, as a talk's does, and the list opens again (tutti-fnvd.9).
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
@@ -53,6 +55,10 @@ const quietPrefix = "quiet-"
 /** A uuid for a read whose having no question open needs no toast (the Needs you list's). */
 export const quietUuid = (): string => `${quietPrefix}${crypto.randomUUID()}`
 
+/** The toast of a question found already answered. */
+export const alreadyAnsweredText = (question: string): string =>
+  sanitizeLine(`${question} is already answered`)
+
 /** The toast of a news item, or null for one that has none (the questions read). */
 export const newsToast = (
   news: QuestionNews,
@@ -67,7 +73,7 @@ export const newsToast = (
     case "Answered":
       return { text: sanitizeLine(`Answered ${news.question} (${news.title})`), failure: false }
     case "AlreadyAnswered":
-      return { text: sanitizeLine(`${news.question} is already answered`), failure: false }
+      return { text: alreadyAnsweredText(news.question), failure: false }
     case "NotAnswered":
       return {
         text: sanitizeLine(`couldn't record the answer to ${news.question}: ${news.why}`),
@@ -208,7 +214,7 @@ export const QuestionsBox = ({
 }) => {
   const theme = useTheme()
   const command = useCommand()
-  const { box } = useInput()
+  const { box, toasts } = useInput()
   const { width, height } = useTerminalDimensions()
   const [uuid] = useState(() => crypto.randomUUID())
   const [at, setAt] = useState(0)
@@ -231,11 +237,15 @@ export const QuestionsBox = ({
   useEffect(() => {
     if (startAt > 0) setAt(startAt)
   }, [startAt])
-  // None to put, or bd couldn't say: QuestionToasts says so, and the box closes.
+  // None to put, or bd couldn't say: QuestionToasts says so, and the box closes. From the list, its
+  // question not open any more was answered outside the dashboard, which the toast here says.
   const done = read !== undefined && (questions === undefined || at >= questions.length)
+  const closed = back !== undefined && questions?.length === 0 ? first : undefined
   // biome-ignore lint/correctness/useExhaustiveDependencies: close is the latest render's
   useEffect(() => {
-    if (done) close()
+    if (!done) return
+    if (closed !== undefined) toasts.show(alreadyAnsweredText(closed), { failure: false })
+    close()
   }, [done])
 
   if (read === undefined) {

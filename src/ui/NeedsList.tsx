@@ -11,7 +11,9 @@
 // A list with nothing in it once the questions are read says Nothing needs you for `emptyLife`, on
 // the toasts' timer, and closes by itself, unless a need comes in meanwhile; Esc, Enter or a click
 // anywhere closes it sooner. A read that failed has its own toast, and the empty list closes at
-// once. Esc closes it.
+// once. Esc closes it. A question it had as it opened that its read doesn't find open was answered
+// outside the dashboard (tutti answer, bd) before the look took its ticket back: it leaves the list
+// (tutti-fnvd.9).
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useState } from "react"
@@ -81,6 +83,23 @@ export const needsItems = (
     .filter((question) => !put.has(question.id) && !answered.has(question.id))
     .map((question): NeedsItem => ({ _tag: "Open", question }))
   return [...items, ...open]
+}
+
+/**
+ * The questions the needs `asked` put as the list opened that the open questions `read` since
+ * don't have: closed meanwhile, answered outside the dashboard. None until they are read; a need
+ * come in since the list opened isn't among `asked`, as the read may have been before it.
+ */
+export const closedSince = (
+  asked: ReadonlyArray<Need>,
+  read: ReadonlyArray<OpenQuestion> | undefined,
+): ReadonlyArray<string> => {
+  if (read === undefined) return []
+  const open = new Set<string>(read.map((question) => question.id))
+  return asked.flatMap((need) => {
+    const question = questionOf({ _tag: "Need", need })
+    return question === null || open.has(question) ? [] : [question]
+  })
 }
 
 /** An item's line, `width` wide: `> ` before the chosen one; an open question faint whole. */
@@ -209,19 +228,24 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   const needs = useRunViewPart((view) => view.needs)
   const news = useQuestionNews()
   const [uuid] = useState(quietUuid)
+  // The needs as it opens, before it offers its read.
+  const [asked] = useState(needs)
   useEffect(() => command(UiCommand.ReadQuestions({ uuid })), [command, uuid])
   const read = news.find(
     (each): each is Extract<QuestionNews, { _tag: "Read" | "NotRead" }> =>
       each.uuid === uuid && (each._tag === "Read" || each._tag === "NotRead"),
   )
-  // The questions answered from the list, or recorded since: left out until the look has them.
+  const questions = read?._tag === "Read" ? read.questions : undefined
+  // The questions answered from the list, recorded since, or closed outside the dashboard: left out
+  // until the look has them.
   const done = new Set([
     ...answered.map((each) => each.question),
+    ...closedSince(asked, questions),
     ...news.flatMap((each) =>
       each._tag === "Answered" || each._tag === "AlreadyAnswered" ? [each.question] : [],
     ),
   ])
-  const items = needsItems(needs, done, read?._tag === "Read" ? read.questions : undefined)
+  const items = needsItems(needs, done, questions)
   const [chosen, setChosen, chosenNow] = useKeyState(() => at)
   const [blocked, setBlocked] = useState<Extract<Need, { _tag: "Blocked" }> | null>(null)
   const index = Math.min(Math.max(chosen, 0), Math.max(items.length - 1, 0))
