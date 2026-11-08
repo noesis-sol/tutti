@@ -87,10 +87,10 @@ export const tildePath = (path: string, home: string = homedir()): string =>
     ? `~${path.slice(home.length)}`
     : path
 
-/** Whether `path` is `dir` or inside it. */
+/** Whether `path` is `dir` or inside it: a name such as `..spec.md` is inside. */
 const within = (path: string, dir: string): boolean => {
   const rel = relative(dir, path)
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
 /** Whether `bytes` read as text: UTF-8, with no NUL. */
