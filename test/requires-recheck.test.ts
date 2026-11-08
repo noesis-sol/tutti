@@ -287,7 +287,7 @@ describe("the requires list a merge changes", () => {
     expectExitCode(ran, 0)
     expectLog(ran, [
       /^ {2}a closed /,
-      /^ {2}SETTINGS_UNREAD: a's merge changed \.tutti\/settings\.json on main, but it could not be read: .*; the setup stays none, and the requirements as they were$/,
+      /^ {2}SETTINGS_UNREAD: a's merge changed \.tutti\/settings\.json on main, but it could not be read: .*; the setup stays none, and the checks and the requirements as they were$/,
       /^ {2}b closed /,
     ])
     expect(ran.log.some((text) => text.includes("REQUIRES"))).toBe(false)
