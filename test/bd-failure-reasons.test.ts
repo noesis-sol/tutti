@@ -70,10 +70,10 @@ const setAside = (op: string, fault: Fault) =>
   )
 
 describe("DEFER_FAILED", () => {
-  test("gives bd's first line of stderr when bd update fails", async () => {
+  test("gives bd's first line of stderr when bd defer fails", async () => {
     const text =
       "  DEFER_FAILED: t-1 set aside, and bd could not defer it: Error: database is locked; kept out of this run, look at it"
-    const left = await setAside("update", locked)
+    const left = await setAside("defer", locked)
     expect(left.deferred).toBe(false)
     expect(left.log).toContain(text)
     expect(left.warned).toEqual([expect.objectContaining({ ticket: "t-1", aside: true, text })])

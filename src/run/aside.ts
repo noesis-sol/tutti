@@ -1,7 +1,8 @@
 // Setting a ticket aside (§ 2, § 5.1), as orchestra does, either way with a note on the ticket:
 //
 // - deferred (Working → Deferred by tutti), as orchestra's putAside: the ticket's notes say what
-//   happened and how to bring it back, bd defers it, and its phase moves to Deferred with a
+//   happened and how to bring it back, bd defers it (a note bd can't add says so in the log, and
+//   doesn't keep it from being deferred), and its phase moves to Deferred with a
 //   `deferred` record and its log line. A ticket bd can't defer is still kept out of this run:
 //   DEFER_FAILED says so, in the log, in a `warn` record with `aside` and on its row, which has no
 //   `bd undefer` to offer (the ledger's `deferFailed`).
@@ -94,13 +95,14 @@ export const putAside = (
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
-    const deferred = yield* Effect.result(
-      Effect.andThen(
-        beads.update(ticket.id, { appendNotes: aside.note }),
-        beads.defer(ticket.id, { reason: aside.reason }),
-      ),
-    )
+    // A note bd can't add doesn't keep the ticket from being deferred: left in_progress, a later
+    // run would take it for a worker's work under way. Its line says the note is missing.
+    const noted = yield* Effect.result(beads.update(ticket.id, { appendNotes: aside.note }))
+    const deferred = yield* Effect.result(beads.defer(ticket.id, { reason: aside.reason }))
     const move = Move.Defer({ why: aside.detail })
+    const lines = Result.isSuccess(noted)
+      ? []
+      : [log.detail`bd could not add ${ticket.id}'s note: ${beadsWhy(noted.failure)}`]
     if (Result.isSuccess(deferred)) {
       yield* ledger.transition(ticket.id, move, {
         said: [
@@ -112,6 +114,7 @@ export const putAside = (
             text: aside.deferred,
           },
         ],
+        lines,
         ...(aside.checkLog === undefined ? {} : { checkLog: aside.checkLog }),
       })
       return true
@@ -122,6 +125,7 @@ export const putAside = (
     yield* ledger.transition(ticket.id, move, {
       said: [{ kind: "warn", ticket: ticket.id, aside: true, detail: aside.detail, text }],
       deferFailed: text.trimStart(),
+      lines,
       ...(aside.checkLog === undefined ? {} : { checkLog: aside.checkLog }),
     })
     return false
