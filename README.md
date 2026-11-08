@@ -173,6 +173,37 @@ folder to `~/.claude/skills/tutti/` (every project) or to `.claude/skills/tutti/
 then ask the agent to "run tutti". See
 [Running through an agent](docs/running.md#running-through-an-agent).
 
+## Built with Effect
+
+tutti is written in [Effect](https://effect.website/) throughout, Effect 4 (`effect` 4.0.x with
+`@effect/platform-bun` and `@effect/ai-anthropic`), not the v3 line much of the web describes. It is
+there because a run is many things at once, all of them talking to the outside:
+
+- **Every outside dependency is a service.** bd, git, the Agent SDK, the filesystem, the clock and
+  the terminal each sit behind a typed service with a test layer, so whole runs are tested
+  deterministically, on fakes and `TestClock`.
+- **Structured concurrency.** Workers, checks and the merge queue run side by side on fibers,
+  scopes, queues and semaphores, and quitting ends what each started.
+- **Typed errors.** A failure is a value in the type, not a thrown exception.
+
+How the code uses it:
+
+- Services are `Context.Service`s, each with its live layer next to it and its test layer in
+  `src/testing/`. Errors are `Schema.TaggedError`s.
+- Every external command runs through `effect/process` (`ChildProcess`); flags are parsed with
+  `effect/cli`.
+- The organs (triage, the predictor, the reviewer…) call `effect/ai`'s `LanguageModel` with Effect
+  `Schema`, through a layer over the Agent SDK (`src/organs/AgentSdkLanguageModel.ts`), or
+  `@effect/ai-anthropic` with an API key.
+- `src/main.ts` runs on `@effect/platform-bun`'s `BunServices`, with a `runMain` built as
+  `BunRuntime.runMain` is (`src/run/quit.ts`).
+- The dashboard is OpenTUI and React, not Effect. They meet in `src/ui/useRunView.ts`: React reads
+  the run's `SubscriptionRef` through `useSyncExternalStore`, and puts its commands in a queue
+  without running an Effect itself.
+
+Effect's guide and source for the installed version are in `node_modules/effect` (`AGENTS.md`,
+`ai-docs/`); read them rather than the web. [CLAUDE.md](CLAUDE.md) has the project's conventions.
+
 ## Documentation
 
 - [docs/setup.md](docs/setup.md): installing and updating, logging in and billing, `tutti init`, the
