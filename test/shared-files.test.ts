@@ -24,7 +24,7 @@ import { readSettings } from "../src/project/settings.ts"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import { type FootprintTicket, ticketFootprint } from "../src/run/footprint.ts"
 import { settingsGlobMatch } from "../src/run/glob.ts"
-import { overlapHold } from "../src/run/holds.ts"
+import { startsBeside } from "../src/run/holds.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
@@ -58,34 +58,34 @@ const ticket = (description: string): FootprintTicket => ({
   predictedFiles: [],
 })
 
-/** Whether a ticket described so is held back for one running described so, and why. */
+/** The file a ticket described so starts warned of beside one running described so, if any. */
 const heldFor = (shared: ReadonlyArray<string>, mine: string, running: string) => {
   const repo = repoFiles(tracked, [], [], shared)
-  return overlapHold(
+  return startsBeside(
     ticketFootprint(ticket(mine), repo),
     new Map([["t-1", ticketFootprint(ticket(running), repo)]]),
     undefined,
     (file) => !repo.shared(file),
-  )?.text
+  )[0]?.file
 }
 
 describe("a shared file", () => {
-  test("two tickets overlapping only in one aren't held apart", () => {
+  test("two tickets overlapping only in one start unwarned", () => {
     const mine = "Map the export in test/FEATURES.md and change src/a.ts."
     const running = "Map the import in test/FEATURES.md and change src/b.ts."
     expect(heldFor(["test/FEATURES.md"], mine, running)).toBeUndefined()
   })
 
-  test("by default none is shared: the same tickets are held apart", () => {
+  test("by default none is shared: the same tickets are warned of it", () => {
     const mine = "Map the export in test/FEATURES.md and change src/a.ts."
     const running = "Map the import in test/FEATURES.md and change src/b.ts."
-    expect(heldFor([], mine, running)).toBe("after t-1: both touch test/FEATURES.md")
+    expect(heldFor([], mine, running)).toBe("test/FEATURES.md")
   })
 
-  test("a ticket overlapping in a shared file and another file is held back over the other", () => {
+  test("a ticket overlapping in a shared file and another file is warned of the other", () => {
     const mine = "Map the export in test/FEATURES.md and change src/a.ts."
     const running = "Map the import in test/FEATURES.md and change src/a.ts."
-    expect(heldFor(["test/FEATURES.md"], mine, running)).toBe("after t-1: both touch src/a.ts")
+    expect(heldFor(["test/FEATURES.md"], mine, running)).toBe("src/a.ts")
   })
 
   test("stays in the footprint, for the log", () => {
@@ -101,8 +101,8 @@ describe("a shared file", () => {
     expect(heldFor(["docs/*.md"], docs, otherDocs)).toBeUndefined()
     expect(heldFor(["docs/**"], docs, otherDocs)).toBeUndefined()
     expect(heldFor(["guide.md"], docs, otherDocs)).toBeUndefined()
-    expect(heldFor(["/guide.md"], docs, otherDocs)).toBe("after t-1: both touch docs/guide.md")
-    expect(heldFor(["src/*.md"], docs, otherDocs)).toBe("after t-1: both touch docs/guide.md")
+    expect(heldFor(["/guide.md"], docs, otherDocs)).toBe("docs/guide.md")
+    expect(heldFor(["src/*.md"], docs, otherDocs)).toBe("docs/guide.md")
 
     const repo = repoFiles(tracked, [], [], ["docs/*.md", "FEATURES.md"])
     expect(repo.shared("docs/guide.md")).toBe(true)
@@ -113,16 +113,16 @@ describe("a shared file", () => {
     expect(settingsGlobMatch("docs/**/*.md", "docs/api/index.md")).toBe(true)
   })
 
-  test("a folder holding one still holds tickets apart over its other files", () => {
+  test("a folder holding one still warns of its other files", () => {
     const repo = repoFiles(tracked, [], [], ["test/FEATURES.md"])
     const folder = ticketFootprint({ ...ticket("Rework the tests."), files: ["test/"] }, repo)
     const map = ticketFootprint(ticket("Update test/FEATURES.md."), repo)
     const loop = ticketFootprint(ticket("Fix test/loop.test.ts."), repo)
     const apart = (file: string) => !repo.shared(file)
-    expect(overlapHold(map, new Map([["t-1", folder]]), undefined, apart)).toBeUndefined()
-    expect(overlapHold(loop, new Map([["t-1", folder]]), undefined, apart)?.text).toBe(
-      "after t-1: both touch test/loop.test.ts",
-    )
+    expect(startsBeside(map, new Map([["t-1", folder]]), undefined, apart)).toEqual([])
+    expect(startsBeside(loop, new Map([["t-1", folder]]), undefined, apart)).toEqual([
+      { other: "t-1", file: "test/loop.test.ts" },
+    ])
   })
 
   test("links nothing in tutti plan", () => {
@@ -207,12 +207,16 @@ describe("the scheduler", () => {
     expect(lines).toContain(
       "  LIKELY_CONFLICT: t-1 and t-2 both edit test/FEATURES.md; the second to merge may conflict",
     )
+    expect(lines.some((line) => line.includes("starts beside"))).toBe(false)
   })
 
-  test("holds the second back when the file isn't shared", async () => {
+  test("starts the second beside the first, warned, when the file isn't shared", async () => {
     const [started, lines] = await twoFills(seeds, [])
-    expect(started).toEqual(["t-1"])
-    expect(lines).toContain("  skipping t-2: after t-1: both touch test/FEATURES.md")
+    expect(started).toEqual(["t-1", "t-2"])
+    expect(lines.some((line) => line.includes("skipping t-2"))).toBe(false)
+    expect(lines).toContain(
+      "  LIKELY_CONFLICT: t-2 starts beside t-1, both working on test/FEATURES.md; the second to merge may conflict",
+    )
   })
 })
 

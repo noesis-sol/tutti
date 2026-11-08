@@ -7,7 +7,8 @@
 // A ready ticket waiting for something besides a slot is HeldBack (holds.ts), and Queued again once
 // what held it is gone: a parent until its subtickets are closed and merged, a ticket until its
 // blockers and the ticket it was filed from merge, and, with a slot free, one whose footprint
-// overlaps a running ticket's. A solo ticket runs alone: while it runs nothing starts beside it, and
+// shares an area or a function with a running ticket's. One sharing only a file with a running
+// ticket starts beside it, warned LIKELY_CONFLICT: a rebase conflict is handed back as any is. A solo ticket runs alone: while it runs nothing starts beside it, and
 // first in line it waits for the running tickets to finish, holding back those behind it so it
 // isn't starved. With every slot taken the tickets wait for a slot anyway, and none is held for an
 // overlap or a solo ticket.
@@ -58,6 +59,7 @@ import { RunFibers } from "./fibers.ts"
 import { type Footprint, showFootprint, withChanges, worktreeChanges } from "./footprint.ts"
 import {
   asksGit,
+  type Beside,
   type Gate,
   type Held,
   holds,
@@ -75,6 +77,8 @@ import {
   sharedChanges,
   skippingLine,
   soloLine,
+  startsBeside,
+  startsBesideLine,
   takesBack,
   takesNew,
   unmerged,
@@ -121,7 +125,10 @@ export interface Start {
   start(issue: Issue): Effect.Effect<void>
 }
 
-/** Where tickets work, read for each fill: what keeps overlapping tickets apart (§ 5 Footprints). */
+/**
+ * Where tickets work, read for each fill: what keeps tickets sharing a function apart, and warns of
+ * those sharing a file (§ 5 Footprints).
+ */
 export interface Footprints {
   /**
    * The repository's files (git ls-files), the files the check commands name and the names their
@@ -1213,8 +1220,10 @@ export const make = (
             return held
           })
 
-        // With a slot free, what overlaps the footprint of a ticket running or past its work, saying
-        // why once. A solo ticket waits for every one of them anyway, so it is never skipped for one.
+        // With a slot free, what shares an area or a function with the footprint of a ticket running
+        // or past its work, saying why once, and the files each other ticket shares with theirs
+        // (`beside`), warned as it starts. A solo ticket waits for every one of them anyway, so it is
+        // never skipped for one.
         const overlapping = (
           issues: ReadonlyArray<Issue>,
           s: Slots,
@@ -1222,6 +1231,7 @@ export const make = (
         ) =>
           Effect.gen(function* () {
             const skipped = new Map<TicketId, Held>()
+            const beside = new Map<TicketId, ReadonlyArray<Beside>>()
             const asked = issues.filter((issue) => !isSolo(issue))
             if (
               footprints === undefined ||
@@ -1229,7 +1239,7 @@ export const make = (
               s.running.size + past.length === 0 ||
               asked.length === 0
             ) {
-              return skipped
+              return { skipped, beside }
             }
             const { startBranch } = yield* Ref.get(memo)
             const running = new Map<TicketId, Footprint>()
@@ -1245,20 +1255,32 @@ export const make = (
               [...running.values()].map((other) => [fp, other] as const),
             )
             const mentions = yield* footprints.mentions(pairs, sources)
+            const apart = (file: string) => !repo.shared(file)
             for (const issue of asked) {
-              const held = overlapHold(
-                mine.get(issue.id) as Footprint,
-                running,
-                mentions,
-                (file) => !repo.shared(file),
-              )
+              const fp = mine.get(issue.id) as Footprint
+              const held = overlapHold(fp, running)
               if (yield* said("skipSaid", issue.id, held?.text ?? "")) {
                 yield* logs.write(skippingLine(issue.id, held?.text ?? ""))
               }
               if (held !== undefined) skipped.set(issue.id, held)
+              else beside.set(issue.id, startsBeside(fp, running, mentions, apart))
             }
-            return skipped
+            return { skipped, beside }
           })
+
+        // The LIKELY_CONFLICT lines of a ticket starting beside running tickets, each said once.
+        const warnBeside = (id: TicketId, all: ReadonlyArray<Beside>) =>
+          Effect.forEach(all, (each) =>
+            Effect.gen(function* () {
+              const key = `${id} beside ${each.other} ${each.file}`
+              const fresh = yield* Ref.modify(memo, (m): readonly [boolean, Memo] =>
+                m.warned.has(key)
+                  ? [false, m]
+                  : [true, { ...m, warned: new Set(m.warned).add(key) }],
+              )
+              if (fresh) yield* warn(startsBesideLine(id, each), id)
+            }),
+          )
 
         const dispatched: Array<TicketId> = []
         for (;;) {
@@ -1277,7 +1299,12 @@ export const make = (
             else holds.set(issue.id, held.why)
           }
           const s = slot ? yield* withIssues(was, past, showOnce) : was
-          const overlaps = slot ? yield* overlapping(notHeld, s, past) : new Map<TicketId, Held>()
+          const { skipped: overlaps, beside } = slot
+            ? yield* overlapping(notHeld, s, past)
+            : {
+                skipped: new Map<TicketId, Held>(),
+                beside: new Map<TicketId, ReadonlyArray<Beside>>(),
+              }
           for (const [id, held] of overlaps) holds.set(id, held.why)
           const free = notHeld.filter((issue) => !overlaps.has(issue.id))
           // The pick (`pick`), and its solo line said when it changed.
@@ -1312,6 +1339,7 @@ export const make = (
             repo === undefined ? undefined : footprintOf(start, repo, predicted, branch)
           if (!(yield* dispatch(start, ids, footprint))) break
           dispatched.push(start.id)
+          yield* warnBeside(start.id, beside.get(start.id) ?? [])
         }
         yield* showQueue
         const after = counts(yield* ledger.current, ids, null)

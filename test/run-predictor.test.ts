@@ -156,7 +156,7 @@ const value = <A>(ran: Ran<A>): A => {
 }
 
 describe("the run's predictor", () => {
-  test("guesses a ticket naming nothing, which then waits for a running ticket on those files", async () => {
+  test("guesses a ticket naming nothing, which then starts warned beside a running ticket on those files", async () => {
     const ran = await runs({
       seeds: backlog()
         .ticket("t-1", { priority: 0, ...touching("src/a.ts") })
@@ -165,7 +165,7 @@ describe("the run's predictor", () => {
       concurrent: 2,
       files: ["src/a.ts"],
       scripts: (world, root, logged) => ({
-        "t-1": [works(world, root, "t-1" as TicketId, until(logged, /skipping t-3/))],
+        "t-1": [works(world, root, "t-1" as TicketId, until(logged, /t-3 starts beside/))],
         "t-2": [works(world, root, "t-2" as TicketId, until(logged, /t-3 footprint predicted/))],
         "t-3": [works(world, root, "t-3" as TicketId)],
       }),
@@ -174,10 +174,11 @@ describe("the run's predictor", () => {
     expectPhases(ran, { "t-1": "Done", "t-2": "Done", "t-3": "Done" })
     expectLog(ran, [
       /^ {2}t-3 footprint predicted: src\/a\.ts$/,
-      /^ {2}skipping t-3: after t-1: both touch src\/a\.ts$/,
-      /^ {2}t-1 settled/,
       /t-3 dispatching/,
+      /^ {2}LIKELY_CONFLICT: t-3 starts beside t-1, both working on src\/a\.ts; the second to merge may conflict$/,
+      /^ {2}t-1 settled/,
     ])
+    expect(ran.log.some((text) => text.includes("skipping"))).toBe(false)
     const { calls, kept } = value(ran)
     expect(calls.map((call) => call.input.match(/ticket (t-\d) will change/)?.[1])).toEqual(["t-3"])
     expect(kept["t-3"]).toBe('["src/a.ts"]')

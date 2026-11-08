@@ -459,7 +459,7 @@ describe("the scheduler", () => {
       ),
     )
 
-  test("holds a reopened ticket back over what its branch changes, not over its text", async () => {
+  test("warns of a reopened ticket over what its branch changes, not over its text", async () => {
     const seeds: ReadonlyArray<Seed> = [
       { id: "t-1", priority: 0, description: "Fix src/a.ts." },
       { id: "t-2", priority: 1, description: "Reopened: src/a.ts was wrong." },
@@ -467,11 +467,14 @@ describe("the scheduler", () => {
     const [free, freeLines] = await twoFills(seeds, { "t-2": ["src/b.ts"] })
     expect(freeLines).toContain("  t-2 footprint: src/b.ts (from its branch)")
     expect(freeLines.some((line) => line.includes("skipping t-2"))).toBe(false)
+    expect(freeLines.some((line) => line.includes("starts beside"))).toBe(false)
     expect(free).toEqual(["t-1", "t-2"])
 
-    const [held, heldLines] = await twoFills(seeds, { "t-2": ["src/a.ts"] })
-    expect(held).toEqual(["t-1"])
-    expect(heldLines).toContain("  skipping t-2: after t-1: both touch src/a.ts")
+    const [warned, warnedLines] = await twoFills(seeds, { "t-2": ["src/a.ts"] })
+    expect(warned).toEqual(["t-1", "t-2"])
+    expect(warnedLines).toContain(
+      "  LIKELY_CONFLICT: t-2 starts beside t-1, both working on src/a.ts; the second to merge may conflict",
+    )
   })
 
   test("runs two tickets adding to a changelog merged by union side by side", async () => {
@@ -482,6 +485,7 @@ describe("the scheduler", () => {
     const [started, lines] = await twoFills(seeds, {})
     expect(started).toEqual(["t-1", "t-2"])
     expect(lines.some((line) => line.includes("skipping t-2"))).toBe(false)
+    expect(lines.some((line) => line.includes("LIKELY_CONFLICT"))).toBe(false)
     expect(lines).toContain("  t-1 footprint: src/a.ts")
   })
 })

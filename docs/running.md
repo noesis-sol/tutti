@@ -755,7 +755,7 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
   failed check, it takes a slot again while its worker is at work: the hand-back starts at once, and
   no ticket starts until the workers at work are under `concurrent` again. Until it merges
   it still holds back what it did while it ran: the tickets it blocks, its follow-ups, those
-  overlapping its footprint (`skipping <id>: after <other>: both touch src/a.ts`) and a solo
+  sharing a function with its footprint (`skipping <id>: after <other>: both touch Loop.merge`) and a solo
   ticket. Up to `concurrent` tickets merge or wait to merge without a slot; beyond that a finished
   ticket keeps its slot until a merge ends.
 - **Parents run last.** A ticket with subtickets not all closed and merged waits for them:
@@ -931,14 +931,14 @@ The files the checks' commands name are left out, unless the `files` metadata li
 ticket says "`scripts/check-fast.sh` passes" without changing it. So are the files the merge check's
 and the full check's scripts run, named on their lines that aren't comments (`scripts/check.sh`,
 which `scripts/check-fast.sh` runs), one level deep; not those the worker's own check's script runs
-(`scripts/check-own.ts`), which tickets change. A ticket that does change such a file isn't held
-back for it, but two running tickets changing it still warn `LIKELY_CONFLICT`. The files git merges by union
+(`scripts/check-own.ts`), which tickets change. A ticket that does change such a file warns of no
+other starting beside it, but two running tickets changing it still warn `LIKELY_CONFLICT`. The files git merges by union
 (`CHANGELOG.md merge=union` in `.gitattributes`) are always left out: git keeps both tickets' lines.
 A file nearly every ticket edits in place, whose conflicts are cheap to resolve, goes in the
 settings' `queue.shared_files` instead (`["test/FEATURES.md"]`, paths or globs, a name without a
-slash matching in any folder): it stays in the footprints, but holds no two tickets apart, so two
-that share only it run side by side, and the second to merge has its rebase's conflict there handed
-back to its worker (`merge.resolve_conflicts`). Union merging wouldn't fit such a file: it keeps both
+slash matching in any folder): it stays in the footprints, but no ticket starting beside another
+is warned of it, nor does `tutti plan` link two over it, and the second to merge has its rebase's
+conflict there handed back to its worker (`merge.resolve_conflicts`). Union merging wouldn't fit such a file: it keeps both
 the old and the new version of a line changed in place. `tutti init` lists the features map the
 create-check-suite skill writes as it files the test work.
 Vendored paths, a subtree of another project's files kept in the repository, are no ticket's: a path
@@ -948,20 +948,25 @@ answers it, so it makes no overlap, and the predictor doesn't list it. The START
 `vendored: repos/** (from .gitattributes)`.
 The log shows each ticket's footprint as it is dispatched: `<id> footprint: Loop.merge,
 src/run/merge.ts, area:run`, the predicted files marked `(predicted)`, a branch's `(from its
-branch)`, or `nothing named`. Two tickets overlap when they share an area label, a function or a file;
-in a file both name functions in, they are compared by function. A file both name holds them apart
-only when one of them is to change it: its `files` metadata lists it, or, without `files` metadata,
-its text names it, a document (`.md`, `.txt`) only in a sentence asking to change it ("Update
-docs/guide.md", not "per CLAUDE.md"); or its worktree has changed it.
-A ticket that overlaps a running one is skipped, not waited for:
-`skipping <id>: after <other>: both touch merge.ts`. When two running workers change the same
-file anyway, a shared file among them, the log warns: `LIKELY_CONFLICT: <a> and <b> both edit <file>; the second to merge may
-conflict`. `"queue": { "footprint": false }` in the settings turns all of this off.
+branch)`, or `nothing named`. Two tickets sharing an area label or a function don't run side by side: a ticket
+that shares one with a running ticket is skipped, not waited for:
+`skipping <id>: after <other>: both touch Loop.merge`. Two sharing only a file do run side by side:
+tickets in one file but different functions seldom conflict, and a conflict, handed back to the
+second to merge, costs minutes where a slot left idle for it cost hours. The log warns as the second
+starts: `LIKELY_CONFLICT: <id> starts beside <other>, both working on src/run/merge.ts; the second
+to merge may conflict`. In a file both name functions in, they are compared by function, and it
+warns of nothing. A file both name counts only when one of them is to change it: its `files`
+metadata lists it, or, without `files` metadata, its text names it, a document (`.md`, `.txt`) only
+in a sentence asking to change it ("Update docs/guide.md", not "per CLAUDE.md"); or its worktree has
+changed it. When two running workers change the same file, a shared file among them, the log warns
+too: `LIKELY_CONFLICT: <a> and <b> both edit <file>; the second to merge may conflict`.
+`"queue": { "footprint": false }` in the settings turns all of this off. Label tickets that must not
+run side by side with the same `area:<name>`.
 
 ### Ordering tickets ahead of time
 
-Footprints keep overlapping tickets apart, but in either order. `tutti plan` orders them ahead of a
-run: it reads the open tickets and proposes a `blocks` link between two that name the same function,
+Footprints keep tickets sharing a function apart, but in either order, and let tickets sharing a
+file run side by side. `tutti plan` orders them ahead of a run: it reads the open tickets and proposes a `blocks` link between two that name the same function,
 or work on the same small file (200 lines at most), the higher-priority one first:
 
 ```

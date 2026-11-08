@@ -39,10 +39,15 @@ const footprints: Footprints = {
 const shown = (p: TicketPhase | undefined): string =>
   p === undefined ? "none" : p._tag === "HeldBack" ? `HeldBack:${p.why}` : p._tag
 
-// r, closed and waiting to merge, touches src/a.ts; t-2, ready, touches it too.
+// r, closed and waiting to merge, changes Loop.merge in src/a.ts; t-2, ready, changes it too.
 const seeds: ReadonlyArray<Seed> = [
-  { id: "r", status: "closed", metadata: { files: ["src/a.ts"] } },
-  { id: "t-2", priority: 1, metadata: { files: ["src/a.ts"] } },
+  {
+    id: "r",
+    status: "closed",
+    description: "Change Loop.merge.",
+    metadata: { files: ["src/a.ts"] },
+  },
+  { id: "t-2", priority: 1, description: "Change Loop.merge.", metadata: { files: ["src/a.ts"] } },
 ]
 
 /** t-2's phase after a fill, with r past its work, checked once more in a slot or not. */
@@ -84,7 +89,7 @@ test("a ticket past its work without a slot holds back one overlapping it", asyn
     took: false,
     started: [],
     t2: "HeldBack:overlap",
-    skipping: ["  skipping t-2: after r: both touch src/a.ts"],
+    skipping: ["  skipping t-2: after r: both touch Loop.merge"],
   })
 })
 
@@ -93,6 +98,6 @@ test("a ticket checked once more in a slot holds back one overlapping it", async
     took: true,
     started: [],
     t2: "HeldBack:overlap",
-    skipping: ["  skipping t-2: after r: both touch src/a.ts"],
+    skipping: ["  skipping t-2: after r: both touch Loop.merge"],
   })
 })

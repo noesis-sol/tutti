@@ -126,7 +126,10 @@ export type Move = Data.TaggedEnum<{
   Ready: Empty
   /** bd ready no longer lists it: closed, deferred or blocked outside the run. */
   Unready: Empty
-  /** Its footprint overlaps a running ticket's, its subtickets or a blocker aren't merged, or solo. */
+  /**
+   * Its footprint shares a function or an area label with a running ticket's, its subtickets or a
+   * blocker aren't merged, or solo.
+   */
   Held: { readonly why: HoldBack }
   /** What held it back is gone. */
   Released: Empty

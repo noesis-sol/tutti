@@ -41,6 +41,12 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
 /** A ticket whose `files` metadata names `files`, which its footprint holds. */
 const touching = (...files: ReadonlyArray<string>) => ({ metadata: { files } })
 
+/** A ticket labelled `area:<area>`, which holds another labelled so apart, touching `files`. */
+const inArea = (area: string, ...files: ReadonlyArray<string>) => ({
+  labels: [`area:${area}`],
+  ...touching(...files),
+})
+
 /** Claims its ticket and, after `takes`, commits `files` and closes it, as a worker does. */
 const works = (
   world: World,
@@ -173,8 +179,8 @@ describe("slots taken", () => {
 describe("a ticket past its work", () => {
   test("holds back a ticket overlapping it until it merges, and past the cap a merge frees the slot", async () => {
     // Two slots. x merges at once, its check on top of main passing at once. b settles at 1m and
-    // its check takes 10m; a, touching src/a.ts, settles at 2m and waits for b, then its check takes
-    // 5m: it merges at 16m. o, touching src/a.ts too, waits for a to merge, though slots are free:
+    // its check takes 10m; a, in area:a, settles at 2m and waits for b, then its check takes
+    // 5m: it merges at 16m. o, in area:a too, waits for a to merge, though slots are free:
     // c takes b's slot at 1m, and d a's at 2m. c settles at 4m, the third ticket past its work: d
     // works, and e waits for a merge to end, b's at 11m. Every slot is taken or waits at the cap
     // whenever o is skipped, so it waits Queued, as for a slot, rather than HeldBack.
@@ -182,8 +188,8 @@ describe("a ticket past its work", () => {
       backlog: backlog()
         .ticket("x", { priority: 0 })
         .ticket("b", { priority: 1 })
-        .ticket("a", { priority: 2, ...touching("src/a.ts") })
-        .ticket("o", { priority: 3, ...touching("src/a.ts") })
+        .ticket("a", { priority: 2, ...inArea("a", "src/a.ts") })
+        .ticket("o", { priority: 3, ...inArea("a", "src/a.ts") })
         .ticket("c", { priority: 4, ...touching("src/c.ts") })
         .ticket("d", { priority: 5 })
         .ticket("e", { priority: 6 }),
@@ -222,13 +228,13 @@ describe("a ticket past its work", () => {
     })
     expect(dispatches(ran)).toEqual(["x 0m", "b 0m", "a 0m", "c 1m", "d 2m", "e 11m", "o 16m"])
     expect(ran.log.filter((text) => text.startsWith("  skipping"))).toEqual([
-      "  skipping o: after a: both touch src/a.ts",
+      "  skipping o: after a: both touch area:a",
     ])
     // x takes no slot as it merges, so a may dispatch before or after it closes.
     expectLog(ran, [closedLine("x"), closedLine("b")])
     expectLog(ran, [
       "[3] a dispatching: a",
-      "  skipping o: after a: both touch src/a.ts",
+      "  skipping o: after a: both touch area:a",
       "[4] c dispatching: c",
       "[5] d dispatching: d",
       closedLine("b"),
@@ -269,13 +275,13 @@ describe("a ticket past its work", () => {
   }, 30_000)
 
   test("carried over closed, holds back a ticket overlapping it until it merges", async () => {
-    // The last run left c closed and not merged, touching src/a.ts; main has moved on since, so its
-    // check, 10m, runs on the rebased branch. o, touching src/a.ts too, waits for c to merge; n
+    // The last run left c closed and not merged, in area:a; main has moved on since, so its
+    // check, 10m, runs on the rebased branch. o, in area:a too, waits for c to merge; n
     // takes the free slot at once.
     const ran = await runs({
       backlog: backlog()
-        .ticket("c", { status: "closed", ...touching("src/a.ts") })
-        .ticket("o", { priority: 1, ...touching("src/a.ts") })
+        .ticket("c", { status: "closed", ...inArea("a", "src/a.ts") })
+        .ticket("o", { priority: 1, ...inArea("a", "src/a.ts") })
         .ticket("n", { priority: 2 }),
       checks: { fast: [slowCheck("10 minutes")] },
       saved: (root) => ({
@@ -307,7 +313,7 @@ describe("a ticket past its work", () => {
     expect(dispatches(ran)).toEqual(["n 0m", "o 10m"])
     expectLog(ran, [
       "  c, carried over from the last run, is closed, so it waits to merge",
-      "  skipping o: after c: both touch src/a.ts",
+      "  skipping o: after c: both touch area:a",
       "[1] n dispatching: n",
       closedLine("c"),
       "[2] o dispatching: o",

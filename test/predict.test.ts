@@ -325,7 +325,7 @@ describe("a predicted footprint", () => {
     expect(showFootprint(footprintOf(named, repository, predicted))).toBe("src/b.ts")
   })
 
-  test("grows a running ticket's footprint: a ticket touching its file is held back", async () => {
+  test("grows a running ticket's footprint: a ticket touching its file starts warned", async () => {
     const { result } = await run(
       [{ id: "t-1", title: "Make the greeting friendlier" }],
       { predictor: { files: ["src/a.ts"] } },
@@ -339,12 +339,15 @@ describe("a predicted footprint", () => {
       }),
     )
     const [started, held, lines] = result
-    expect(started).toEqual(["t-1"])
-    expect(held).toBe("HeldBack:overlap")
-    expect(lines).toContain("  skipping t-2: after t-1: both touch src/a.ts")
+    expect(started).toEqual(["t-1", "t-2"])
+    expect(held).toBe("Working")
+    expect(lines.some((text) => text.includes("skipping"))).toBe(false)
+    expect(lines).toContain(
+      "  LIKELY_CONFLICT: t-2 starts beside t-1, both working on src/a.ts; the second to merge may conflict",
+    )
   })
 
-  test("holds back a queued ticket predicted to touch a running ticket's file", async () => {
+  test("warns of a queued ticket predicted to touch a running ticket's file as it starts", async () => {
     const { result } = await run(
       [
         { id: "t-1", priority: 0, metadata: files("src/a.ts") },
@@ -363,9 +366,12 @@ describe("a predicted footprint", () => {
       }),
     )
     const [started, held, lines] = result
-    expect(started).toEqual(["t-1"])
-    expect(held).toBe("HeldBack:overlap")
-    expect(lines).toContain("  skipping t-2: after t-1: both touch src/a.ts")
+    expect(started).toEqual(["t-1", "t-2"])
+    expect(held).toBe("Working")
+    expect(lines.some((text) => text.includes("skipping"))).toBe(false)
+    expect(lines).toContain(
+      "  LIKELY_CONFLICT: t-2 starts beside t-1, both working on src/a.ts; the second to merge may conflict",
+    )
   })
 
   test("comes too late for tickets already running: LIKELY_CONFLICT when both edit it", async () => {

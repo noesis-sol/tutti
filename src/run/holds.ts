@@ -4,7 +4,8 @@
 // waits for a blocker, and a follow-up for the ticket it was filed from (discovered-from, which bd
 // doesn't count as blocking), until that one merges: bd ready lists a ticket once its blockers are
 // closed, but their code isn't on the base until they merge. With a slot free, a ticket whose
-// footprint overlaps a running ticket's is skipped for the next. A solo ticket runs alone (the
+// footprint shares an area or a function with a running ticket's is skipped for the next; one
+// sharing only a file starts beside it, warned LIKELY_CONFLICT. A solo ticket runs alone (the
 // scheduler's pick). The log says once why each ticket waits, and again only when that changes.
 //
 // What holds the whole run, its stop reasons and the exit codes they end it with, is below, then
@@ -24,7 +25,7 @@ import type { Footprint } from "./footprint.ts"
 import type { State } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import { holdWord as machineWord } from "./machine.ts"
-import { type Mentions, shared } from "./overlap.ts"
+import { holdsApart, type Mentions, sharedFile } from "./overlap.ts"
 import { type HoldBack, phaseFacts } from "./phase.ts"
 import { holdWord as pressureWord } from "./pressureCap.ts"
 import type { RunHold, Usage } from "./runView.ts"
@@ -182,21 +183,41 @@ export const waitsOnLinks = (issue: Pick<Issue, "dependencies">): boolean =>
 
 /**
  * What holds a ticket with footprint `fp` back for a running ticket's (`running`, by ID): the first,
- * by ID, whose footprint it overlaps. Undefined when it overlaps none, or names nothing. A file
- * `apart` says no to (one of the settings' shared files) holds none back.
+ * by ID, with which it shares an area or a function (`holdsApart`). Undefined when it shares none,
+ * or names nothing. A file both work on holds it back for none: it starts, warned (`startsBeside`).
  */
 export const overlapHold = (
   fp: Footprint,
   running: ReadonlyMap<string, Footprint>,
-  mentions?: Mentions,
-  apart?: (file: string) => boolean,
 ): Held | undefined => {
   for (const id of [...running.keys()].sort()) {
-    const what = shared(fp, running.get(id) as Footprint, mentions, apart)
+    const what = holdsApart(fp, running.get(id) as Footprint)
     if (what !== "") return { why: "overlap", text: afterOverlap(id, what) }
   }
   return undefined
 }
+
+/** A running ticket a ticket starts beside, and a file or folder both work on. */
+export interface Beside {
+  readonly other: string
+  readonly file: string
+}
+
+/**
+ * The running tickets (`running`, by ID, in their order) a ticket with footprint `fp` starts
+ * beside, each with the first file or folder both work on (`shared`), for its LIKELY_CONFLICT. A
+ * file `apart` says no to (one of the settings' shared files) is none.
+ */
+export const startsBeside = (
+  fp: Footprint,
+  running: ReadonlyMap<string, Footprint>,
+  mentions?: Mentions,
+  apart?: (file: string) => boolean,
+): ReadonlyArray<Beside> =>
+  [...running.keys()].sort().flatMap((other) => {
+    const file = sharedFile(fp, running.get(other) as Footprint, mentions, apart)
+    return file === "" ? [] : [{ other, file }]
+  })
 
 /** `  <id> waits: <why>`, said once per reason. */
 export const waitsLine = (id: TicketId, why: string): Line => detail`${id} waits: ${why}`
@@ -238,6 +259,10 @@ export const sharedChanges = (
 /** The LIKELY_CONFLICT line, as orchestra words it. */
 export const likelyConflictLine = (edit: SharedChange): Line =>
   detail`LIKELY_CONFLICT: ${edit.a} and ${edit.b} both edit ${edit.file}; the second to merge may conflict`
+
+/** The LIKELY_CONFLICT line of ticket `id` starting beside a running one (`startsBeside`). */
+export const startsBesideLine = (id: TicketId, beside: Beside): Line =>
+  detail`LIKELY_CONFLICT: ${id} starts beside ${beside.other}, both working on ${beside.file}; the second to merge may conflict`
 
 /** The reason last said for each ticket, so that it is said again only when it changes. */
 export type Said = ReadonlyMap<string, string>

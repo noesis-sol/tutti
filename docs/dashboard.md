@@ -200,12 +200,13 @@ colour, the rest of it in the quiet grey, and wraps under its text:
 ```
 Up next · 3 held back
 tutti-g1wf    ready
-tutti-twdw  › after tutti-scod: both touch test/init.test.ts
+tutti-twdw  › after tutti-scod: both touch Loop.merge
 tutti-07nj  › after tutti-h2o9 merges
 tutti-fdv1  › after tutti-kkb.28 (solo)
 ```
 
-A ticket overlapping a running one's files waits `after <id>: both touch <files>`; one waiting for
+A ticket sharing a function or an area label with a running one waits `after <id>: both touch
+<what>`; one waiting for
 a blocker or the ticket it was filed from to merge, `after <id> merges` (`after <a>, <b> merge` for
 several); one behind a solo ticket, `after <id> (solo)`; an epic, `after its subtickets: <id>,
 <id>, then +N`. Under `NO_COLOR`, or with a scheme that leaves `live` to the terminal's colour, the

@@ -298,17 +298,21 @@ export const Settings = Schema.Struct({
   queue: Schema.Struct({
     /** The issue types never taken from `bd ready`; [] takes every type. */
     exclude_types: Schema.Array(IssueType).pipe(withDefault(["epic"])),
-    /** false starts tickets side by side even when their footprints overlap. */
+    /**
+     * false starts tickets side by side even when their footprints share a function or an area
+     * label, and warns of none sharing a file.
+     */
     footprint: Schema.Boolean.pipe(withDefault(true)),
     /**
-     * The files whose overlap doesn't hold two tickets apart, as paths or globs (a name without a
-     * slash matches in any folder): those nearly every ticket edits in place, whose conflicts are
-     * cheap to resolve, as the features map. None by default.
+     * The files two tickets share without a warning as one starts beside the other, a `tutti plan`
+     * link or a conflict wait, as paths or globs (a name without a slash matches in any folder):
+     * those nearly every ticket edits in place, whose conflicts are cheap to resolve, as the
+     * features map. None by default.
      */
     shared_files: Schema.Array(Text)
       .annotate({
         description:
-          "files whose overlap doesn't hold two tickets apart: paths or globs, a name without a slash matching in any folder",
+          "files two tickets share without a warning, a tutti plan link or a conflict wait: paths or globs, a name without a slash matching in any folder",
       })
       .pipe(withDefault([])),
   }).pipe(withDefault({})),

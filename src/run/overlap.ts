@@ -1,6 +1,8 @@
 // Whether two footprints overlap (footprint.ts, § 5 item 5): an area, a function, or a file or
 // folder both work on and one of them is to change (`sharedFile`); and the functions each names
-// placed in the files they mention, read from the checkout, for a fill's comparisons.
+// placed in the files they mention, read from the checkout, for a fill's comparisons. Only an area
+// or a function holds two tickets apart in a run (`holdsApart`): a file alone starts them side by
+// side, warned LIKELY_CONFLICT, its conflicts left to the rebase and the hand-back.
 import { join } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
 import { codeExtensions, codeIn } from "./codeText.ts"
@@ -241,8 +243,16 @@ export const shared = (
 }
 
 /**
+ * What holds two footprints' tickets apart in a run: an area label or a function both name, else
+ * "". A file or folder they share alone doesn't: tickets in one file but different functions
+ * conflict seldom, and a conflict is cheap next to a slot left idle (tutti-k4if.1).
+ */
+export const holdsApart = (a: Footprint, b: Footprint): string =>
+  a.areas.find((x) => b.areas.includes(x)) ?? sharedFunc(a, b)
+
+/**
  * Whether two footprints share a file or folder for which keep holds, a function or an area: their
- * tickets don't run side by side.
+ * tickets may conflict.
  */
 export const overlaps = (
   a: Footprint,

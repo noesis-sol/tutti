@@ -379,7 +379,7 @@ describe("tutti plan", () => {
 })
 
 describe("the scheduler", () => {
-  /** Runs a fill of a 2-slot scheduler: the tickets started, and the log. */
+  /** Runs a fill of a 4-slot scheduler: the tickets started, and the log. */
   const fill = (seeds: ReadonlyArray<Seed>) =>
     Effect.runPromise(
       Effect.gen(function* () {
@@ -392,7 +392,7 @@ describe("the scheduler", () => {
           mentions: () => Effect.succeed(() => false),
         }
         const schedule = yield* make({
-          concurrent: 2,
+          concurrent: 4,
           limit: 40,
           scope: null,
           excludeTypes: ["epic"],
@@ -418,26 +418,31 @@ describe("the scheduler", () => {
       ),
     )
 
-  test("keeps a ticket adding a file a running ticket's glob would match from running beside it", async () => {
+  test("warns of a ticket adding a file a running ticket's glob would match as it starts beside it", async () => {
     const [started, lines] = await fill([
       { id: "A", priority: 1, metadata: { files: ["internal/dispatch/*.go"] } },
       { id: "B", priority: 2, metadata: { files: ["internal/dispatch/cart.go"] } },
       { id: "C", priority: 3, metadata: { files: ["internal/dispatch/cart.ts"] } },
     ])
-    expect(started).toEqual(["A", "C"])
+    expect(started).toEqual(["A", "B", "C"])
     expect(lines).toContain(`  A footprint: ${dispatchGo.join(", ")}, internal/dispatch/*.go`)
-    expect(lines).toContain("  skipping B: after A: both touch internal/dispatch/cart.go")
+    expect(lines.filter((line) => line.includes("LIKELY_CONFLICT"))).toEqual([
+      "  LIKELY_CONFLICT: B starts beside A, both working on internal/dispatch/cart.go; the second to merge may conflict",
+    ])
   })
 
-  test("keeps two tickets listing globs in a new folder that can match one file apart", async () => {
+  test("warns of two tickets listing globs in a new folder that can match one file", async () => {
     const [started, lines] = await fill([
       { id: "A", priority: 1, metadata: { files: ["web/src/*.ts"] } },
       { id: "B", priority: 2, metadata: { files: ["web/src/cart.ts"] } },
       { id: "C", priority: 3, metadata: { files: ["web/**/*.ts"] } },
       { id: "D", priority: 4, metadata: { files: ["pages/[id].tsx"] } },
     ])
-    expect(started).toEqual(["A", "D"])
-    expect(lines).toContain("  skipping B: after A: both touch web/src/cart.ts")
-    expect(lines).toContain("  skipping C: after A: both touch web/**/*.ts")
+    expect(started).toEqual(["A", "B", "C", "D"])
+    expect(lines.filter((line) => line.includes("LIKELY_CONFLICT"))).toEqual([
+      "  LIKELY_CONFLICT: B starts beside A, both working on web/src/cart.ts; the second to merge may conflict",
+      "  LIKELY_CONFLICT: C starts beside A, both working on web/**/*.ts; the second to merge may conflict",
+      "  LIKELY_CONFLICT: C starts beside B, both working on web/src/cart.ts; the second to merge may conflict",
+    ])
   })
 })

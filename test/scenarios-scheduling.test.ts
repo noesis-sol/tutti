@@ -67,6 +67,12 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
 /** A ticket whose `files` metadata names `files`, which its footprint holds. */
 const touching = (...files: ReadonlyArray<string>) => ({ metadata: { files } })
 
+/** A ticket changing the function `fn` (one src/a.ts declares) in `files`. */
+const changing = (fn: string, ...files: ReadonlyArray<string>) => ({
+  description: `Change ${fn}().`,
+  ...touching(...files),
+})
+
 /** The time `millis` after the epoch, where TestClock starts, as bd's dates are written. */
 const at = (millis: number) => new Date(millis).toISOString()
 
@@ -259,7 +265,12 @@ interface Plan {
 }
 
 /** The repository's files on main, which footprints are resolved against. */
-const files = { "README.md": "tutti\n", "src/a.ts": "a\n", "src/b.ts": "b\n", "src/c.ts": "c\n" }
+const files = {
+  "README.md": "tutti\n",
+  "src/a.ts": "export const greetUser = () => 1\nexport const countParts = () => 2\n",
+  "src/b.ts": "b\n",
+  "src/c.ts": "c\n",
+}
 
 /**
  * A whole run on main, each ticket's worktree made in git first (the Worktrees test layer makes
@@ -448,13 +459,41 @@ describe("several tickets at once", () => {
 })
 
 describe("footprints", () => {
-  test("a ticket touching a running one's file is skipped for the next, and runs once it ends", async () => {
-    // Three slots: the third stays empty while b overlaps a.
+  test("a ticket in a running one's file but another function starts beside it at once", async () => {
+    // a and b both change src/a.ts, each a function of its own; c is elsewhere.
     const ran = await runs({
       settings: () => ({ concurrent: 3 }),
       backlog: backlog()
-        .ticket("a", { priority: 0, ...touching("src/a.ts") })
-        .ticket("b", { priority: 1, ...touching("src/a.ts") })
+        .ticket("a", { priority: 0, ...changing("greetUser", "src/a.ts") })
+        .ticket("b", { priority: 1, ...changing("countParts", "src/a.ts") })
+        .ticket("c", { priority: 2, ...touching("src/c.ts") }),
+      scripts: (world, places) => ({
+        a: [
+          works(world, places, "a" as TicketId, {
+            takes: "2 minutes",
+            files: { "src/a.ts": "a2\n" },
+          }),
+        ],
+        b: [works(world, places, "b" as TicketId, { takes: "1 minute" })],
+        c: [works(world, places, "c" as TicketId, { takes: "5 minutes" })],
+      }),
+      during: () => passes("6 minutes"),
+    })
+    expectClean(ran, 0)
+    expectPhases(ran, { a: "Done", b: "Done", c: "Done" })
+    expect(pathOf(ran, "b")).toEqual(straight)
+    expect(dispatches(ran)).toEqual(["a 0m", "b 0m", "c 0m"])
+    expect(ran.log.some((text) => text.startsWith("  skipping"))).toBe(false)
+    expect(heldFor(ran, "b")).toEqual([])
+  }, 30_000)
+
+  test("a ticket sharing a running one's function is skipped for the next, and runs once it ends", async () => {
+    // Three slots: the third stays empty while b shares a's function.
+    const ran = await runs({
+      settings: () => ({ concurrent: 3 }),
+      backlog: backlog()
+        .ticket("a", { priority: 0, ...changing("greetUser", "src/a.ts") })
+        .ticket("b", { priority: 1, ...changing("greetUser", "src/a.ts") })
         .ticket("c", { priority: 2, ...touching("src/c.ts") }),
       scripts: (world, places) => ({
         a: [
@@ -475,11 +514,11 @@ describe("footprints", () => {
     expect(dispatches(ran)).toEqual(["a 0m", "c 0m", "b 2m"])
     // Said once, though each fill and poll meanwhile looks again.
     expect(ran.log.filter((text) => text.startsWith("  skipping"))).toEqual([
-      "  skipping b: after a: both touch src/a.ts",
+      "  skipping b: after a: both touch greetUser",
     ])
     expectLog(ran, [
       "[1] a dispatching: a",
-      "  skipping b: after a: both touch src/a.ts",
+      "  skipping b: after a: both touch greetUser",
       "[2] c dispatching: c",
       settledLine("a"),
       "[3] b dispatching: b",
@@ -502,7 +541,7 @@ describe("footprints", () => {
     ])
   }, 30_000)
 
-  test("a running ticket's footprint grows with the files its worktree changed", async () => {
+  test("a ticket on a file a running one's worktree changed starts beside it, warned", async () => {
     // a names src/a.ts but edits src/b.ts; b, naming src/b.ts, becomes ready at 1m, while a runs.
     const ran = await runs({
       backlog: backlog()
@@ -532,20 +571,14 @@ describe("footprints", () => {
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done" })
-    expect(pathOf(ran, "b")).toEqual(heldThenStraight)
-    expect(heldFor(ran, "b")).toEqual(["overlap"])
-    expect(dispatches(ran)).toEqual(["a 0m", "b 3m"])
-    // a, past its work, still holds b back until it merges.
+    expect(pathOf(ran, "b")).toEqual(straight)
+    expect(dispatches(ran)).toEqual(["a 0m", "b 1m"])
+    expect(ran.log.some((text) => text.startsWith("  skipping"))).toBe(false)
     expectLog(ran, [
       "[1] a dispatching: a",
-      "  skipping b: after a: both touch src/b.ts",
-      settledLine("a"),
-      closedLine("a"),
       "[2] b dispatching: b",
-      closedLine("b"),
-      "READY_EMPTY after 2 tickets",
+      "  LIKELY_CONFLICT: b starts beside a, both working on src/b.ts; the second to merge may conflict",
     ])
-    expectEvents(ran, ["dispatch", "queue", "closed", "dispatch", "closed", "done", "end"])
   }, 30_000)
 })
 

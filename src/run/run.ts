@@ -743,9 +743,10 @@ const runFrom = (
         if (!hasRoom(third)) return third
         return [first, second, third].includes("lifted") ? "lifted" : "room"
       })
-    // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
-    // the checks' scripts, and what the merge and full checks' scripts run, count as no ticket's,
-    // and the queue's shared files hold none apart. A ticket works in the worktree the Store saved
+    // With the queue's footprint on (§ 8.4), a ticket sharing a function or an area with a running
+    // one is held back, and one sharing a file is warned of as it starts: the checks' scripts, and
+    // what the merge and full checks' scripts run, count as no ticket's, and the queue's shared
+    // files warn of none. A ticket works in the worktree the Store saved
     // for it, wherever git had it (a reused one, or one an earlier run's --worktrees put
     // elsewhere), or else in <worktrees>/<id>.
     const footprints = config.settings.queue.footprint

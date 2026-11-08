@@ -11,7 +11,7 @@ import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { scriptedChecks } from "../src/project/settings.ts"
 import { checkScriptLines, scriptsRun, uncommented } from "../src/run/checkScripts.ts"
 import { type FootprintTicket, ticketFootprint, withChanges } from "../src/run/footprint.ts"
-import { likelyConflictLine, overlapHold, sharedChanges } from "../src/run/holds.ts"
+import { likelyConflictLine, sharedChanges, startsBeside } from "../src/run/holds.ts"
 import type { RepoFiles } from "../src/run/repoFiles.ts"
 import { footprintsOf } from "../src/run/schedule.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -157,24 +157,24 @@ describe("the check files", () => {
 })
 
 describe("a ticket naming what the merge check runs", () => {
-  test("holds no other ticket naming it, but one naming what check-own's script runs", async () => {
+  test("warns of no other ticket naming it, but of one naming what check-own's script runs", async () => {
     const files = await filesOf(checkout(sources), sources)
     const says = (more: string) =>
       ticketFootprint(ticket(`scripts/check.sh passes. ${more}`), files)
     const running = new Map([["t-1", says("scripts/check-own.ts reads it.")]])
-    expect(overlapHold(says("Nothing else."), running)).toBeUndefined()
-    expect(overlapHold(says("Change scripts/check-own.ts."), running)?.text).toBe(
-      "after t-1: both touch scripts/check-own.ts",
-    )
+    expect(startsBeside(says("Nothing else."), running)).toEqual([])
+    expect(startsBeside(says("Change scripts/check-own.ts."), running)).toEqual([
+      { other: "t-1", file: "scripts/check-own.ts" },
+    ])
   })
 
-  test("isn't held for one changing it, and two changing it are still warned of", async () => {
+  test("isn't warned of beside one changing it, and two changing it are", async () => {
     const files = await filesOf(checkout(sources), sources)
     const changing = withChanges(ticketFootprint(ticket(""), files), ["scripts/check.sh"], files)
     const running = new Map([["t-1", changing]])
-    expect(overlapHold(ticketFootprint(ticket("scripts/check.sh passes."), files), running)).toBe(
-      undefined,
-    )
+    expect(
+      startsBeside(ticketFootprint(ticket("scripts/check.sh passes."), files), running),
+    ).toEqual([])
     const both = sharedChanges(
       new Map<TicketId, ReadonlyArray<string>>([
         ["t-1" as TicketId, ["scripts/check.sh"]],

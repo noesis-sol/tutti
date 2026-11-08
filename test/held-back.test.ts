@@ -9,7 +9,7 @@ import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { ticketFootprint } from "../src/run/footprint.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { overlaps } from "../src/run/overlap.ts"
+import { holdsApart } from "../src/run/overlap.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, footprintsOf, make, type Scheduler } from "../src/run/schedule.ts"
@@ -449,8 +449,8 @@ describe("a footprint overlapping a running ticket's", () => {
 
   test("is skipped for the next ticket while a slot is free, and runs once that one ends", async () => {
     const seeds: ReadonlyArray<Seed> = [
-      { id: "t-1", priority: 0, metadata: files("src/a.ts") },
-      { id: "t-2", priority: 1, metadata: files("src/a.ts") },
+      { id: "t-1", priority: 0, description: "Change Loop.merge.", metadata: files("src/a.ts") },
+      { id: "t-2", priority: 1, description: "Change Loop.merge.", metadata: files("src/a.ts") },
       { id: "t-3", priority: 2, metadata: files("src/b.ts") },
     ]
     const [steps, lines] = await run(
@@ -475,11 +475,11 @@ describe("a footprint overlapping a running ticket's", () => {
       [["t-1", "t-3", "t-2"], ["Working"]],
     ])
     expect(lines.filter((text) => text.includes("skipping"))).toEqual([
-      "  skipping t-2: after t-1: both touch src/a.ts",
+      "  skipping t-2: after t-1: both touch Loop.merge",
     ])
   })
 
-  test("counts the files the running ticket's worktree changed", async () => {
+  test("counts the files the running ticket's worktree changed, warning as one starts beside it", async () => {
     const seeds: ReadonlyArray<Seed> = [
       { id: "t-1", priority: 0, metadata: files("src/a.ts") },
       { id: "t-2", priority: 1, metadata: files("src/c.ts") },
@@ -516,8 +516,11 @@ describe("a footprint overlapping a running ticket's", () => {
       }),
     )
     // t-1 is dispatched in the same fill: its worktree's changes are read as it runs.
-    expect(free).toEqual([["t-1"], ["HeldBack:overlap"]])
-    expect(freeLines).toContain("  skipping t-2: after t-1: both touch src/c.ts")
+    expect(free).toEqual([["t-1", "t-2"], ["Working"]])
+    expect(freeLines.some((text) => text.includes("skipping"))).toBe(false)
+    expect(freeLines).toContain(
+      "  LIKELY_CONFLICT: t-2 starts beside t-1, both working on src/c.ts; the second to merge may conflict",
+    )
   })
 
   test("a solo ticket is never skipped for an overlap: it waits for every running ticket", async () => {
@@ -567,10 +570,12 @@ describe("a footprint overlapping a running ticket's", () => {
     expect(all.filter((record) => record.kind === "warn")).toMatchObject([{ text: warning }])
   })
 
-  test("overlapping tickets never run side by side", async () => {
+  test("tickets sharing a function never run side by side", async () => {
     const names = ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"]
+    const funcs = ["Loop.merge", "Loop.start", "Git.fetch", "Git.rebase"]
     const ticket = fc.record({
       files: fc.subarray(names, { minLength: 1, maxLength: 2 }),
+      funcs: fc.subarray(funcs, { maxLength: 2 }),
       priority: fc.integer({ min: 0, max: 4 }),
     })
     await fc.assert(
@@ -580,7 +585,12 @@ describe("a footprint overlapping a running ticket's", () => {
         fc.array(fc.nat(), { minLength: 10, maxLength: 10 }),
         async (tickets, concurrent, picks) => {
           const seeds = tickets.map(
-            (t, i): Seed => ({ id: `t-${i}`, priority: t.priority, metadata: files(...t.files) }),
+            (t, i): Seed => ({
+              id: `t-${i}`,
+              priority: t.priority,
+              description: t.funcs.length === 0 ? "" : `Change ${t.funcs.join(" and ")}.`,
+              metadata: files(...t.files),
+            }),
           )
           const footprintOf = new Map(
             seeds.map((seed) => [
@@ -588,7 +598,7 @@ describe("a footprint overlapping a running ticket's", () => {
               ticketFootprint(
                 {
                   title: seed.id,
-                  description: "",
+                  description: seed.description ?? "",
                   design: "",
                   acceptance: "",
                   labels: [],
@@ -617,7 +627,7 @@ describe("a footprint overlapping a running ticket's", () => {
                   for (const b of now.slice(i + 1)) {
                     const fa = footprintOf.get(a)
                     const fb = footprintOf.get(b)
-                    if (fa !== undefined && fb !== undefined && overlaps(fa, fb)) {
+                    if (fa !== undefined && fb !== undefined && holdsApart(fa, fb) !== "") {
                       sideBySide.push([a, b])
                     }
                   }

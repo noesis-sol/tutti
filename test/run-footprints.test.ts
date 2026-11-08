@@ -42,6 +42,12 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
 /** A ticket naming the files it works on. */
 const touching = (...files: ReadonlyArray<string>): Omit<Seed, "id"> => ({ metadata: { files } })
 
+/** A ticket labelled `area:<area>`, which holds another labelled so apart, touching `files`. */
+const inArea = (area: string, ...files: ReadonlyArray<string>): Omit<Seed, "id"> => ({
+  labels: [`area:${area}`],
+  ...touching(...files),
+})
+
 /** The run's log so far, once the scenario has started. */
 interface Logged {
   texts: Effect.Effect<ReadonlyArray<string>>
@@ -173,10 +179,10 @@ const runs = (plan: {
 
 describe("the run's footprints", () => {
   const seeds = backlog()
-    .ticket("t-1", { priority: 0, ...touching("src/a.ts") })
-    .ticket("t-2", { priority: 1, ...touching("src/a.ts") }).seeds
+    .ticket("t-1", { priority: 0, ...inArea("a", "src/a.ts") })
+    .ticket("t-2", { priority: 1, ...inArea("a", "src/a.ts") }).seeds
 
-  test("with the queue's footprint on, a ticket touching a running one's file waits for it", async () => {
+  test("with the queue's footprint on, a ticket in a running one's area waits for it", async () => {
     const ran = await runs({
       seeds,
       footprint: true,
@@ -189,7 +195,7 @@ describe("the run's footprints", () => {
     expectPhases(ran, { "t-1": "Done", "t-2": "Done" })
     expectLog(ran, [
       /t-1 dispatching/,
-      /^ {2}skipping t-2: after t-1: both touch src\/a\.ts$/,
+      /^ {2}skipping t-2: after t-1: both touch area:a$/,
       /^ {2}t-1 settled/,
       /t-2 dispatching/,
     ])
@@ -241,10 +247,10 @@ describe("the run's footprints", () => {
   test("an answered ticket's footprint counts as it is resumed", async () => {
     const ran = await runs({
       seeds: backlog()
-        .ticket("t-1", { priority: 0, ...touching("src/a.ts") })
+        .ticket("t-1", { priority: 0, ...inArea("a", "src/a.ts") })
         .ticket("t-2", { priority: 1, ...touching("src/b.ts") })
         // Ready once t-2 merges, while the resumed t-1 still runs.
-        .ticket("t-3", { priority: 2, blockedBy: ["t-2"], ...touching("src/a.ts") }).seeds,
+        .ticket("t-3", { priority: 2, blockedBy: ["t-2"], ...inArea("a", "src/a.ts") }).seeds,
       footprint: true,
       scripts: (world, root, logged) => ({
         "t-1": [
@@ -265,7 +271,7 @@ describe("the run's footprints", () => {
     expectLog(ran, [
       /^ {2}RESUMED: t-1's question \S+ is answered/,
       /^ {2}t-2 closed \(.*\); merged into main/,
-      /^ {2}skipping t-3: after t-1: both touch src\/a\.ts$/,
+      /^ {2}skipping t-3: after t-1: both touch area:a$/,
       /^ {2}t-1 settled/,
       /t-3 dispatching/,
     ])

@@ -1125,7 +1125,7 @@ const heldText = (ticket: TicketId, phase: TicketPhase, status: Status): string 
     case "HeldBack":
       switch (phase.why) {
         case "overlap":
-          return skips[ticket] ?? "overlaps a running ticket"
+          return skips[ticket] ?? "shares a function or an area with a running ticket"
         case "merge":
           return waits[ticket] ?? "waits for a ticket to merge"
         case "parent":
