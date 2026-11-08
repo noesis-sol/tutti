@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.7.1] - 2026-11-08
+
 - The frames' arithmetic is named beside the frames in `src/ui/line.tsx`: `frameInner` for what a box's frame leaves inside (its `frameBorder` and `boxPad` each side, `frameChrome`), `boxWidth` for a box over the screen, `boxMargin` from each side, up to its max and never below its least, `labelChrome` for a label in a frame's edge, and `columnGap` and `framedWidth` for a framed table's columns, which the tickets table and the totals strip sum by; nothing on screen changes (`test/frame-arithmetic.test.ts`; tutti-6bwa.5).
 - The dashboard's section labels, `Tickets`, `Current`, `Up next`, `Needs you · N`, the Needs you list's and `tutti colours`' sample, are drawn by one `sectionLabel` in `src/ui/line.tsx`, past `labelIndent`, in the focus's look and with an optional count; nothing else on screen changes, but the Needs you list's place among more items than fit has its space back before the `·`, `Needs you · 2 of 5` rather than `Needs you· 2 of 5` (tutti-6bwa.6).
 - The ` · ` between a list's parts (the hint's keys, the totals' figures, the title line's, a box's choices, the panel's foot) is one constant, `src/ui/marks.ts`' `separator`, drawn faint by `src/ui/line.tsx`'s `joined`, which every such list is built with; `test/separator.test.ts` fails a `·` written elsewhere in `src/ui`, and nothing on screen changes.
