@@ -40,6 +40,7 @@ import {
   usageLimitNote,
   type WorkerPrompt,
 } from "../project/prompt.ts"
+import type { WorkerChecks } from "../project/settings.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { killTree } from "../services/processTree.ts"
 import { reap, reapGrace } from "../services/reaper.ts"
@@ -89,6 +90,8 @@ export interface WorkerOptionsInput {
   readonly readme?: boolean
   /** The names of the run's requires list now (requiresNote); the settings' when left out. */
   readonly requires?: ReadonlyArray<string>
+  /** The run's checks now (checkNote); the settings' when left out. */
+  readonly checks?: WorkerChecks
   /** The playbook's lessons for its ticket, a marked section after its standing rules; or none. */
   readonly lessons?: string
   readonly callbacks: WorkerCallbacks
@@ -187,21 +190,24 @@ export const allowRequiresReadme: HookCallbackMatcher = {
 
 /**
  * The notes of a worker's standing rules that can change between its session's launches: the
- * requires list's (requiresNote), which a merge changes mid-run, and the check's (checkNote), which
- * a later run may have changed. A resumed session keeps the system prompt it recorded as it began
+ * requires list's (requiresNote) and the check's (checkNote), which a merge or a later run may
+ * have changed. A resumed session keeps the system prompt it recorded as it began
  * (`snapshot: true`), so the host tells it these in its message instead where they may differ.
  */
 export const changingNotes = (
-  input: Pick<WorkerOptionsInput, "config" | "servers" | "readme" | "requires">,
+  input: Pick<WorkerOptionsInput, "config" | "servers" | "readme" | "requires" | "checks">,
   prompt: WorkerPrompt,
-): string =>
-  requiresNote(
-    input.requires ?? input.config.settings.requires.map((r) => r.name),
-    prompt.text,
-    input.readme === true,
-    hasOwn(input.servers, requiresServerName),
-  ) +
-  checkNote(input.config.settings.checks.own.command ?? input.config.settings.checks.fast.command)
+): string => {
+  const checks = input.checks ?? input.config.settings.checks
+  return (
+    requiresNote(
+      input.requires ?? input.config.settings.requires.map((r) => r.name),
+      prompt.text,
+      input.readme === true,
+      hasOwn(input.servers, requiresServerName),
+    ) + checkNote(checks.own.command ?? checks.fast.command)
+  )
+}
 
 /**
  * A worker session's SDK options (§ 4.1). A worker whose servers have tutti's own (withOwn) is told

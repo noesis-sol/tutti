@@ -402,10 +402,16 @@ export const retiredIn = (settings: Settings): ReadonlyArray<string> =>
 export type Requirement = typeof Requirement.Type
 
 /**
+ * The checks a worker's session is told of and kept to: its own, the merge check and the full
+ * check, as the run has them (AgentHost's takeChecks).
+ */
+export type WorkerChecks = Pick<Settings["checks"], "own" | "fast" | "full">
+
+/**
  * The check commands `settings` name: the merge check, the full check and a worker's own. Their
  * files count as no ticket's in footprints, and a worker running one is testing.
  */
-export const checkCommands = (settings: Settings): ReadonlyArray<string> =>
+export const checkCommands = (settings: { readonly checks: WorkerChecks }): ReadonlyArray<string> =>
   [settings.checks.fast.command, settings.checks.full.command, settings.checks.own.command].filter(
     (command): command is string => command !== null,
   )

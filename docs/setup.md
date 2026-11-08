@@ -369,7 +369,8 @@ and lint and type checks on the files it changed. A project with a script for th
 `scripts/check-own.sh`, names it in `"checks": { "own": { "command" } }`: the note on running a
 check once (see [The worker prompt](workers.md#the-worker-prompt)) then gives it as the check to
 run, in place of the merge check. tutti never runs it itself, and its files, as the other checks',
-count as no ticket's in footprints.
+count as no ticket's in footprints. A merge that sets or changes it, or the merge check, in
+`.tutti/settings.json` has the workers started or resumed from then on told the check as it is now.
 
 ### Sizing a check to its share
 

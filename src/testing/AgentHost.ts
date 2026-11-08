@@ -31,7 +31,7 @@ import { type ChosenServers, noServers } from "../agent/mcp.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import { coresNote } from "../project/prompt.ts"
-import type { Settings } from "../project/settings.ts"
+import type { Settings, WorkerChecks } from "../project/settings.ts"
 import type { Log } from "../run/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { appConfig } from "./AppConfig.ts"
@@ -54,6 +54,8 @@ export class Recording extends Context.Service<
     messages(ticket: TicketId): Effect.Effect<ReadonlyArray<SDKUserMessage>>
     /** The names of each requires list the run took from a merge (takeRequires), in order. */
     readonly requires: Effect.Effect<ReadonlyArray<ReadonlyArray<string>>>
+    /** Each set of checks the run took from a merge (takeChecks), in order. */
+    readonly checks: Effect.Effect<ReadonlyArray<WorkerChecks>>
   }
 >()("tutti/testing/AgentHost/Recording") {}
 
@@ -155,6 +157,7 @@ export const layer = (
       const left = new Map(Object.entries(scripts).map(([ticket, script]) => [ticket, [...script]]))
       const sent: Array<Sent> = []
       const requires: Array<ReadonlyArray<string>> = []
+      const checks: Array<WorkerChecks> = []
       const drawn = yield* Ref.make(0)
       const draw = Ref.updateAndGet(drawn, (k) => k + 1)
       // The tickets whose starts and resumes are under way, by the session ID each opens, in order.
@@ -257,6 +260,11 @@ export const layer = (
             Effect.sync(() => void requires.push(names)),
             live.takeRequires(names),
           ),
+        takeChecks: (taken) =>
+          Effect.andThen(
+            Effect.sync(() => void checks.push(taken)),
+            live.takeChecks(taken),
+          ),
       })
 
       const recording = Recording.of({
@@ -269,6 +277,7 @@ export const layer = (
             ),
           ),
         requires: Effect.sync(() => [...requires]),
+        checks: Effect.sync(() => [...checks]),
       })
       return Context.make(AgentHost, host).pipe(Context.add(Recording, recording))
     }),

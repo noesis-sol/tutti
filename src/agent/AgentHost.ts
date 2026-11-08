@@ -46,7 +46,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import type { efforts } from "../project/settings.ts"
+import type { efforts, WorkerChecks } from "../project/settings.ts"
 import { EventStream } from "../run/eventstream.ts"
 import { detail, Log } from "../run/log.ts"
 import { Spending } from "../run/spending.ts"
@@ -257,6 +257,13 @@ export class AgentHost extends Context.Service<
      * it began with; before, the settings' entries.
      */
     takeRequires(names: ReadonlyArray<string>): Effect.Effect<void>
+    /**
+     * The run's checks are `checks` from now on, a merge having changed them: the workers started
+     * after are told the check to run in their standing rules (checkNote), and those resumed after
+     * in their resume's message (resumedNotes); both get Bash's timeouts for the merge check's time
+     * limit (bashTimeouts) and are seen testing as they run one; before, the settings' checks.
+     */
+    takeChecks(checks: WorkerChecks): Effect.Effect<void>
     /** The worker's state now. */
     current(ticket: TicketId): Effect.Effect<WorkerState, AgentGone>
     /**
@@ -422,12 +429,13 @@ export interface Workers {
 }
 
 /**
- * The workers of a host whose project's check commands are `checks` (they classify as testing).
+ * The workers of a host whose project's check commands are `checks` now (they classify as testing),
+ * read as each worker's session starts.
  * Each worker's attention counter, and its wait for a finished task's report, runs in the scope. A
  * report that doesn't come is written to the Log.
  */
 export const makeWorkers = (
-  checks: ReadonlyArray<string> = [],
+  checks: Effect.Effect<ReadonlyArray<string>> = Effect.succeed([]),
 ): Effect.Effect<Workers, never, Attention | Transcripts | Log | Scope.Scope> =>
   Effect.gen(function* () {
     const attention = yield* Attention
@@ -538,7 +546,7 @@ export const makeWorkers = (
         const entry: WorkerEntry = {
           ticket,
           session: yield* Ref.make(session),
-          worker: yield* SubscriptionRef.make(initial(checks)),
+          worker: yield* SubscriptionRef.make(initial(yield* checks)),
           state: yield* SubscriptionRef.make<WorkerState>(WorkerState.Starting()),
           ended: yield* Deferred.make<void>(),
           calls: new Map(),
@@ -598,7 +606,7 @@ export const makeWorkers = (
         }
         const pending = yield* openCount(ticket)
         yield* Ref.set(found.session, session)
-        yield* SubscriptionRef.set(found.worker, { ...initial(checks), pending })
+        yield* SubscriptionRef.set(found.worker, { ...initial(yield* checks), pending })
         yield* fold(found, WorkerEvent.Requests({ session, pending }))
         return found
       })

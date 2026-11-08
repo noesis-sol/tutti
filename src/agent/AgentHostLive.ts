@@ -74,7 +74,7 @@ import {
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
 import { readmeName } from "../project/requires.ts"
-import { checkCommands } from "../project/settings.ts"
+import { checkCommands, type WorkerChecks } from "../project/settings.ts"
 import { detail, Log } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
 import { budgetOf, Shares, shareFileOf, shareOf } from "../run/share.ts"
@@ -353,7 +353,11 @@ export const layer = (
       const log = yield* Log
       const fs = yield* FileSystem.FileSystem
       const claudeCode = yield* ClaudeCode
-      const workers = yield* makeWorkers(checkCommands(config.settings))
+      // The run's checks, as the workers starting now are told and kept to them (takeChecks).
+      const checksNow = yield* Ref.make<WorkerChecks>(config.settings.checks)
+      const workers = yield* makeWorkers(
+        Effect.map(Ref.get(checksNow), (checks) => checkCommands({ checks })),
+      )
       const scope = yield* Effect.scope
       const services = yield* Effect.context<Attention | Transcripts>()
       const otherWorkers = yield* OtherWorkers
@@ -375,7 +379,7 @@ export const layer = (
             },
           )
         return {
-          checkTimeout: config.settings.checks.fast.timeout,
+          checkTimeout: (yield* Ref.get(checksNow)).fast.timeout,
           cores: share.cores,
           memory: share.memory,
           ...(kept === null ? {} : { file: shareFileOf(config.repo) }),
@@ -657,6 +661,7 @@ export const layer = (
           const kind = kindOf(session)
           const given = serversOf(kind, options.servers)
           const requiresNow = yield* Ref.get(requires)
+          const checks = yield* Ref.get(checksNow)
           const worker = (prompt: WorkerPrompt | null, servers: ChosenServers) =>
             workerOptions({
               config,
@@ -667,6 +672,7 @@ export const layer = (
               skills,
               readme,
               requires: requiresNow,
+              checks,
               ...(session.lessons === undefined ? {} : { lessons: session.lessons }),
               callbacks,
               session: how,
@@ -686,7 +692,7 @@ export const layer = (
                   servers,
                   options: worker(options.prompt, servers),
                   notes: changingNotes(
-                    { config, servers, readme, requires: requiresNow },
+                    { config, servers, readme, requires: requiresNow, checks },
                     options.prompt,
                   ),
                 }
@@ -1024,6 +1030,7 @@ export const layer = (
         close: Effect.fn("AgentHost.close")(close),
         end: (ticket) => Effect.andThen(close(ticket), workers.forget(ticket)),
         takeRequires: (names) => Ref.set(requires, names),
+        takeChecks: (taken) => Ref.set(checksNow, taken),
         current: workers.current,
         begun: workers.begun,
         state: workers.state,

@@ -691,7 +691,8 @@ export const settingsAt = (
  * (the base read when not given): a setup set during the run counts
  * from then on, as the environment ticket a spec's breakdown files first sets it for the tickets
  * after it. checks.fast and checks.full too, each where the merge changed its command or time
- * limit (Checks' take), so that the merge checks and the full check after it run them. Its
+ * limit (Checks' take), so that the merge checks and the full check after it run them; and these
+ * with checks.own to the workers started or resumed from then on (AgentHost's takeChecks). Its
  * requires list too, which the run checks before the next ticket starts (requires.ts),
  * and names to the workers started or resumed from then on (AgentHost's takeRequires). One git
  * can't read, or that doesn't parse, is warned of (SETTINGS_UNREAD), and the setup and the
@@ -743,6 +744,17 @@ export const takeSettings = (
       )
     }
     if (runs.fast !== had.fast || runs.full !== had.full) yield* checks.take(runs)
+    const own = taken.checks.own
+    if (Result.isSuccess(earlier) && earlier.success.checks.own.command !== own.command) {
+      yield* logs.write(
+        ticketLine(
+          Tag.setup,
+        )`${id}'s merge changed ${settingsFile} on ${base}: checks.own is ${setupSaid(own.command)} from now on`,
+      )
+    }
+    // The workers started or resumed from now on are told the check to run, and kept to the merge
+    // check's time limit, as the run has them.
+    yield* (yield* AgentHost).takeChecks({ own, ...runs })
     if (!sameRequires(taken.requires, yield* setUps.requires)) {
       yield* setUps.takeRequires(taken.requires)
       yield* (yield* AgentHost).takeRequires(taken.requires.map((r) => r.name))
