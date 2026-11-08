@@ -377,6 +377,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
           Effect.gen(function* () {
             const outputSaid = output === undefined ? "" : line`; the whole output is in ${output}`
             // A question still open for the spec is the one the tree waits on: noted, not filed again.
+            const waitingOn = stillOpen[0]
             const filed =
               waitingOn === undefined
                 ? yield* fileQuestion(env, why, outputSaid, fingerprint(runners), runners)
@@ -398,8 +399,9 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             )
           })
 
-        // A gate question still open for the spec, as the last look at them found it.
-        let waitingOn: Issue | undefined
+        // The gate questions still open for the spec, as the last look at them found them: a hold
+        // notes the first; a pass closes them all, as the tree's tickets wait on each.
+        let stillOpen: ReadonlyArray<Issue> = []
         // The checks the gate runs: the run's, then those the form set (takeChecks).
         let checksNow: GateChecks = config.settings.checks
         // The base's head the form's checks were set on, to take them from once they are committed.
@@ -458,7 +460,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
               )
               return
             }
-            waitingOn = opened[0]
+            stillOpen = opened
 
             // 1. Still empty.
             const empty = runners.flatMap((runner) => {
@@ -533,7 +535,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             }
             yield* record(print)
             yield* closeQuestions(
-              waitingOn === undefined ? [] : [waitingOn],
+              stillOpen,
               `the checks gate passed on ${base} at ${shortHash(at)}`,
             )
             const ms = yield* elapsed
