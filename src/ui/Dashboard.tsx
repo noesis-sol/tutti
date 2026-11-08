@@ -1040,7 +1040,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   const readQuestion = () => {
     const { need } = shownNow()
     if (need?._tag !== "Question") return
-    box.set(Box.Questions({ first: need.question?.id ?? (need.ticket as TicketId) }))
+    box.set(Box.Questions({ first: need.question?.id ?? (need.id as TicketId) }))
   }
   const panelEnter = () => {
     const { need } = shownNow()
