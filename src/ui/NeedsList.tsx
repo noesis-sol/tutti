@@ -249,10 +249,16 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   // The needs as it opens, before it offers its read.
   const [asked] = useState(needs)
   useEffect(() => command(UiCommand.ReadQuestions({ uuid })), [command, uuid])
-  const read = news.find(
+  const found = news.find(
     (each): each is Extract<QuestionNews, { _tag: "Read" | "NotRead" }> =>
       each.uuid === uuid && (each._tag === "Read" || each._tag === "NotRead"),
   )
+  // Kept once read: news of answers and talks comes in, and past newsKept the read falls off it.
+  const [kept, setKept] = useState(found)
+  useEffect(() => {
+    if (found !== undefined) setKept(found)
+  }, [found])
+  const read = kept ?? found
   const questions = read?._tag === "Read" ? read.questions : undefined
   // The questions answered from the list, recorded since, or closed outside the dashboard: left out
   // until the look has them.
