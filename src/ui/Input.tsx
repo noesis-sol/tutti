@@ -106,6 +106,7 @@ export const Input = ({
   const [input] = useState<InputState>(() => ({
     box: external<Box | null>(null),
     toasts: makeToasts(undefined, toastTimer),
+    talks: new Map(),
   }))
   useEffect(() => {
     const unguard = guardInput(keymap, renderer, pasteLimit)

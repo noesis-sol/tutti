@@ -31,6 +31,7 @@ import { layer as memoryGit } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { answersAfter } from "../src/ui/Dashboard.tsx"
+import { Box } from "../src/ui/keys.ts"
 import { newsToast, returnTo } from "../src/ui/QuestionsBox.tsx"
 
 const backlog: ReadonlyArray<Seed> = [
@@ -127,7 +128,9 @@ describe("a talk whose answer bd refuses", () => {
     expect(value.news.flatMap((item) => newsToast(item) ?? [])).toEqual([
       { text: `couldn't record the answer to q-1: ${why}`, failure: true },
     ])
-    expect(value.news.flatMap((item) => returnTo(item) ?? [])).toEqual([{ first: q1 }])
+    expect(value.news.flatMap((item) => returnTo(item) ?? [])).toEqual([
+      Box.Questions({ first: q1 }),
+    ])
     expect(value.logged).toContain(`couldn't record the dashboard's answer to q-1: ${why}`)
   })
 

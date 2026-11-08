@@ -98,10 +98,14 @@ export interface NeedsAnswer {
   readonly question: string
 }
 
-/** What the input layers share: the box open, and the toasts. */
+/**
+ * What the input layers share: the box open, the toasts, and the Needs you list each talk from it
+ * goes back to, by the talk's uuid (QuestionsBox.tsx's TalkReturn).
+ */
 export interface InputState {
   readonly box: Settable<Box | null>
   readonly toasts: ToastStore
+  readonly talks: Map<string, NeedsAt>
 }
 
 export const InputContext = createContext<InputState | null>(null)

@@ -21,6 +21,7 @@ import { layer as memoryGit } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { answersAfter } from "../src/ui/Dashboard.tsx"
+import { Box } from "../src/ui/keys.ts"
 import { newsToast, returnTo } from "../src/ui/QuestionsBox.tsx"
 
 const backlog: ReadonlyArray<Seed> = [
@@ -93,7 +94,7 @@ describe("a talk on a question bd has closed", () => {
     expect(news.flatMap((item) => newsToast(item) ?? [])).toEqual([
       { text: "q-2 is already answered", failure: false },
     ])
-    expect(news.flatMap((item) => returnTo(item) ?? [])).toEqual([{ first: q3 }])
+    expect(news.flatMap((item) => returnTo(item) ?? [])).toEqual([Box.Questions({ first: q3 })])
   })
 
   test("as the last question, the box stays closed", async () => {
@@ -116,6 +117,8 @@ describe("a talk on what isn't a question", () => {
         failure: true,
       },
     ])
-    expect(news.flatMap((item) => returnTo(item) ?? [])).toEqual([{ first: "tut-9" as TicketId }])
+    expect(news.flatMap((item) => returnTo(item) ?? [])).toEqual([
+      Box.Questions({ first: "tut-9" as TicketId }),
+    ])
   })
 })

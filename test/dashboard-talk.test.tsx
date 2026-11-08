@@ -18,6 +18,7 @@ import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
+import { Box } from "../src/ui/keys.ts"
 import { newsToast, readingText, returnTo } from "../src/ui/QuestionsBox.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -301,9 +302,11 @@ describe("where the box goes back to, and what a talk's end says", () => {
     })
 
   test("the next question once answered, none after the last; the same one otherwise", () => {
-    expect(returnTo(talked(true, null, "q-2"))).toEqual({ first: "q-2" as TicketId })
+    expect(returnTo(talked(true, null, "q-2"))).toEqual(Box.Questions({ first: "q-2" as TicketId }))
     expect(returnTo(talked(true, null, null))).toBeNull()
-    expect(returnTo(talked(false, talkLeftWhy, "q-2"))).toEqual({ first: "q-1" as TicketId })
+    expect(returnTo(talked(false, talkLeftWhy, "q-2"))).toEqual(
+      Box.Questions({ first: "q-1" as TicketId }),
+    )
     expect(returnTo(QuestionNews.NotRead({ uuid: "u", why: "bd" }))).toBeNull()
   })
 

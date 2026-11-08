@@ -16,7 +16,9 @@
 // question bd has closed starts no talk: the toast says it is already answered, and the box goes on.
 //
 // Opened from the Needs you list (NeedsList.tsx, tutti-fdv1), the box puts that question alone, and
-// once it is answered, left open or closed with Esc opens the list again at the next item. An answer
+// once it is answered, left open or closed with Esc opens the list again at the next item; a talk
+// from it goes back to the list too once it gave an answer, else to the box at its question
+// (tutti-fnvd.7), the list kept meanwhile under the talk's uuid (InputState's talks). An answer
 // bd refuses leaves the list's answers (RefusedAnswers), which brings its question back to the list.
 // A question it finds no longer open was answered outside the dashboard: a toast says it is already
 // answered, as a talk's does, and the list opens again (tutti-fnvd.9).
@@ -93,28 +95,47 @@ export const newsToast = (
 }
 
 /**
- * Where the box opens again once the talk `news` says is over: the question after it once it was
- * answered (none: the box stays closed), the same one otherwise; null for other news.
+ * The Needs you list `back` came from once `question` is answered from it under `uuid`: it leaves
+ * the list, so the next item is at its place.
  */
-export const returnTo = (news: QuestionNews): { readonly first: TicketId } | null => {
+const answeredIn = (back: NeedsAt, uuid: string, question: TicketId): Box =>
+  Box.Needs({ at: back.at, answered: [...back.answered, { uuid, question }] })
+
+/**
+ * Where the box opens again once the talk `news` says is over: the question after it once it was
+ * answered (none: the box stays closed), the same one otherwise; null for other news. A talk from
+ * the Needs you list `back` goes back to it once answered, else to the box at its question alone.
+ */
+export const returnTo = (news: QuestionNews, back?: NeedsAt): Box | null => {
   if (news._tag !== "Talked") return null
-  if (!news.answered) return { first: news.question }
-  return news.next === null ? null : { first: news.next }
+  if (!news.answered) {
+    return Box.Questions(
+      back === undefined ? { first: news.question } : { first: news.question, back },
+    )
+  }
+  if (back !== undefined) return answeredIn(back, news.uuid, news.question)
+  return news.next === null ? null : Box.Questions({ first: news.next })
 }
 
-/** Opens the box again as each talk from it is over (returnTo), unless another box is open. */
+/**
+ * Opens the box again as each talk from it is over (returnTo), or the Needs you list the talk came
+ * from, unless another box is open.
+ */
 export const TalkReturn = () => {
   const news = useQuestionNews()
-  const { box } = useInput()
+  const { box, talks } = useInput()
   const seen = useRef(new Set<QuestionNews>())
   useEffect(() => {
     for (const item of news) {
       if (seen.current.has(item)) continue
       seen.current.add(item)
-      const to = returnTo(item)
-      if (to !== null && box.get() === null) box.set(Box.Questions(to))
+      if (item._tag !== "Talked") continue
+      const back = talks.get(item.uuid)
+      talks.delete(item.uuid)
+      const to = returnTo(item, back)
+      if (to !== null && box.get() === null) box.set(to)
     }
-  }, [news, box])
+  }, [news, box, talks])
   return null
 }
 
@@ -214,7 +235,7 @@ export const QuestionsBox = ({
 }) => {
   const theme = useTheme()
   const command = useCommand()
-  const { box, toasts } = useInput()
+  const { box, toasts, talks } = useInput()
   const { width, height } = useTerminalDimensions()
   const [uuid] = useState(() => crypto.randomUUID())
   const [at, setAt] = useState(0)
@@ -261,13 +282,15 @@ export const QuestionsBox = ({
   if (questions === undefined || question === undefined) return null
   const reply = (given: Reply) => {
     if (given._tag === "Talk") {
-      // The talk takes the screen; TalkReturn opens the box again once it is over.
+      // The talk takes the screen; TalkReturn opens the box, or the list, again once it is over.
+      const uuid = crypto.randomUUID()
+      if (back !== undefined) talks.set(uuid, back)
       command(
         UiCommand.TalkQuestion({
           question: question.id,
           title: question.title,
           next: questions[at + 1]?.id ?? null,
-          uuid: crypto.randomUUID(),
+          uuid,
         }),
       )
       return box.set(null)
@@ -279,14 +302,7 @@ export const QuestionsBox = ({
     // Back to the list it came from: an answered question leaves it, so the next is at its place.
     if (back !== undefined) {
       const answered = given._tag === "Answer"
-      return box.set(
-        answered
-          ? Box.Needs({
-              at: back.at,
-              answered: [...back.answered, { uuid, question: question.id }],
-            })
-          : nextIn(back),
-      )
+      return box.set(answered ? answeredIn(back, uuid, question.id) : nextIn(back))
     }
     setAt((now) => now + 1)
   }
