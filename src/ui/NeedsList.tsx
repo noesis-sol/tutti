@@ -1,6 +1,7 @@
 // The Needs you list (Box.Needs, § 7.2, tutti-fdv1): on a dashboard without the panel beside the
 // tickets table, Enter on the totals' Needs you cell, or a click on it, opens a list of what needs
-// you, the panel's needs one a line (`? <question> <title>`, `■ <ticket> blocked: <why>`), then,
+// you, the panel's needs one a line (`? <question> <title>`, `■ <ticket> blocked: <why>`), a question
+// once however many tickets ask it (tutti-fnvd.20), then,
 // faint, the open questions in the run's scope no ticket in the run waits on, which the list reads
 // as it opens (ReadQuestions, under a quiet uuid: having none open needs no toast). ↑↓ or Tab move
 // between them, Enter or a click opens one: a question in the questions box at it (QuestionsBox.tsx),
@@ -53,9 +54,12 @@ export const emptyLife = 2000
 /** What the list says, faint, under what needs you until the run has read the open questions. */
 export const listReadingText = "reading the open questions…"
 
-/** An item of the list: a need, or an open question no ticket in the run waits on. */
+/**
+ * An item of the list: a need, with the needs `also` of the other tickets asking its question, or an
+ * open question no ticket in the run waits on.
+ */
 export type NeedsItem =
-  | { readonly _tag: "Need"; readonly need: Need }
+  | { readonly _tag: "Need"; readonly need: Need; readonly also: ReadonlyArray<Need> }
   | { readonly _tag: "Open"; readonly question: OpenQuestion }
 
 /** The question an item puts, by its ID; none for a Blocked ticket. */
@@ -67,17 +71,28 @@ export const questionOf = (item: NeedsItem): string | null =>
       : null
 
 /**
- * The list's items: `needs` in the run's order, the questions `answered` left out, then the open
- * questions `read` that no need puts, those answered left out too.
+ * The list's items: `needs` in the run's order, one a question however many tickets ask it, the
+ * questions `answered` left out, then the open questions `read` that no need puts, those answered
+ * left out too. A question answered from the list takes one item out, so the list opens again at
+ * the one after it (tutti-fnvd.20).
  */
 export const needsItems = (
   needs: ReadonlyArray<Need>,
   answered: ReadonlySet<string>,
   read: ReadonlyArray<OpenQuestion> | undefined,
 ): ReadonlyArray<NeedsItem> => {
-  const items = needs
-    .map((need): NeedsItem => ({ _tag: "Need", need }))
-    .filter((item) => !answered.has(questionOf(item) ?? ""))
+  // Each question's needs, by its ID; a Blocked ticket's alone, by its ticket.
+  const asking = new Map<string, Array<Need>>()
+  for (const need of needs) {
+    const question = questionOf({ _tag: "Need", need, also: [] })
+    if (question !== null && answered.has(question)) continue
+    const key = question ?? `blocked ${need.ticket}`
+    asking.set(key, [...(asking.get(key) ?? []), need])
+  }
+  const items = [...asking.values()].flatMap(
+    ([need, ...also]): ReadonlyArray<NeedsItem> =>
+      need === undefined ? [] : [{ _tag: "Need", need, also }],
+  )
   const put = new Set(items.flatMap((item) => questionOf(item) ?? []))
   for (const need of needs) if (need._tag === "Question") put.add(need.id)
   const open = (read ?? [])
@@ -98,7 +113,7 @@ export const closedSince = (
   if (read === undefined) return []
   const open = new Set<string>(read.map((question) => question.id))
   return asked.flatMap((need) => {
-    const question = questionOf({ _tag: "Need", need })
+    const question = questionOf({ _tag: "Need", need, also: [] })
     return question === null || open.has(question) ? [] : [question]
   })
 }
@@ -123,7 +138,9 @@ export const itemLine = (
       width,
     )
   }
-  const title = need.question?.title ?? `${need.label} waits on it`
+  const labels = [need, ...item.also].map((each) => each.label)
+  const title =
+    need.question?.title ?? `${labels.join(", ")} ${labels.length === 1 ? "waits" : "wait"} on it`
   return cut(
     [
       mark,
