@@ -45,8 +45,9 @@ export type QuestionNews = Data.TaggedEnum<{
   NotAnswered: { readonly uuid: string; readonly question: TicketId; readonly why: string }
   /**
    * A talk is over, its answer recorded if it gave one (Answered, AlreadyAnswered or NotAnswered
-   * came first), `answered` too where bd had the question closed before it started (AlreadyAnswered
-   * came first): `why` it gave none, or null; `next`, the question the box goes on from.
+   * came first), `answered` unless bd refused it (NotAnswered), and too where bd had the question
+   * closed before it started (AlreadyAnswered came first): `why` it gave none, or null (as where
+   * bd refused it, NotAnswered saying why); `next`, the question the box goes on from.
    */
   Talked: {
     readonly uuid: string
@@ -84,11 +85,14 @@ export const readQuestions = (
     )
   })
 
-/** Records `answer` to `question` (answerQuestion.ts), and how it went in `news` under `uuid`. */
+/**
+ * Records `answer` to `question` (answerQuestion.ts), and how it went in `news` under `uuid`:
+ * whether the question is answered now, by this answer or one before it (false: NotAnswered).
+ */
 export const answerQuestion = (
   request: { readonly question: TicketId; readonly answer: string; readonly uuid: string },
   news: SubscriptionRef.SubscriptionRef<ReadonlyArray<QuestionNews>>,
-): Effect.Effect<void, never, Beads | Log> =>
+): Effect.Effect<boolean, never, Beads | Log> =>
   Effect.gen(function* () {
     const logs = yield* Log
     const { question, answer, uuid } = request
@@ -98,15 +102,18 @@ export const answerQuestion = (
         yield* logs.write(
           line`the dashboard's answer to ${question} left out, it is already answered: ${answer}`,
         )
-        return yield* added(news, QuestionNews.AlreadyAnswered({ uuid, question }))
+        yield* added(news, QuestionNews.AlreadyAnswered({ uuid, question }))
+        return true
       }
       const why = recordWhy(recorded.failure)
       yield* logs.write(line`couldn't record the dashboard's answer to ${question}: ${why}`)
-      return yield* added(news, QuestionNews.NotAnswered({ uuid, question, why }))
+      yield* added(news, QuestionNews.NotAnswered({ uuid, question, why }))
+      return false
     }
     const { title, decided } = recorded.success
     yield* logs.write(line`answered ${question} (${title}) on the dashboard: ${answer}`)
     yield* added(news, QuestionNews.Answered({ uuid, question, title, decided }))
+    return true
   })
 
 /** Why a talk didn't start while another is shown. */
@@ -142,11 +149,9 @@ export const talkThrough = (
       )
     }
     if (ended._tag === "Answered") {
-      yield* answerQuestion({ question, answer: ended.answer, uuid }, news)
-      return yield* added(
-        news,
-        QuestionNews.Talked({ uuid, question, answered: true, why: null, next }),
-      )
+      // An answer bd refused leaves the question open and the box at it; NotAnswered says why.
+      const answered = yield* answerQuestion({ question, answer: ended.answer, uuid }, news)
+      return yield* added(news, QuestionNews.Talked({ uuid, question, answered, why: null, next }))
     }
     yield* logs.write(
       line`the talk about ${question} on the dashboard ended without an answer: ${ended.why}`,
