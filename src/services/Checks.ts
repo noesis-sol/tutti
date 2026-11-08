@@ -31,7 +31,7 @@ import { BranchEnv, type CheckShare, checkShareEnv } from "../agent/env.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { Settings } from "../project/settings.ts"
 import { detail, Log } from "../run/log.ts"
-import { Shares, shareFileOf } from "../run/share.ts"
+import { mergeShareFileOf, Shares } from "../run/share.ts"
 import { ellipsis } from "../ui/marks.ts"
 import { exec } from "./exec.ts"
 import { processCount, Strays } from "./Strays.ts"
@@ -630,10 +630,11 @@ export class Checks extends Context.Service<
 >()("tutti/services/Checks") {
   /**
    * The checks AppConfig's settings name, run in process groups of their own. The merge check, and
-   * the early check that takes its slot, get the share of the machine the run keeps (Shares) as
-   * they start, and the file it keeps it in, as a worker's checks do: the memory budget counts a
-   * share for them (src/run/share.ts), and without one a check script sizes itself by the memory
-   * free now (tutti-sri2). Where the run keeps none, as in --overnight's pre-flight, they get none.
+   * the early and train checks that take its slot, get the merge check's share of the machine the
+   * run keeps (Shares' `merge`, mergeWeight parts of the memory budget; tutti-k4if.3) as they
+   * start, and the file it keeps it in, as a worker's checks get theirs: the memory budget counts
+   * it for them (src/run/share.ts), and without one a check script sizes itself by the memory free
+   * now (tutti-sri2). Where the run keeps none, as in --overnight's pre-flight, they get none.
    * Where the layer is built with Strays, what a check that didn't pass left running in its folder
    * is stopped (stoppingStrays), and said in the Log, where there is one.
    */
@@ -651,7 +652,7 @@ export class Checks extends Context.Service<
         check !== "fast"
           ? Effect.succeed(undefined)
           : Effect.map(shares.now, (share) =>
-              share === null ? undefined : { ...share, file: shareFileOf(config.repo) },
+              share === null ? undefined : { ...share.merge, file: mergeShareFileOf(config.repo) },
             )
       return checksOf(config.settings.checks, (check, command, timeLimit, options) =>
         stoppingStrays(

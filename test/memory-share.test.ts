@@ -1,8 +1,9 @@
 // Each worker's checks get a share of the machine's memory beside their cores (tutti-epza.18): the
 // budget from the load readings (src/run/share.ts' budgetOf), divided among the workers allowed,
-// the other runs' and the merge check (src/agent/env.ts' memoryShare), at least a floor; kept live
-// in .tutti/run/share.json, rewritten as the cap or the readings move it, and named in each
-// worker's environment (TUTTI_SHARE_FILE) beside TUTTI_MEMORY_MB.
+// the other runs', a part each, and the merge check, mergeWeight parts (src/agent/env.ts'
+// memoryShare, tutti-k4if.3), at least a floor; kept live in .tutti/run/share.json, rewritten as the
+// cap or the readings move it, and named in each worker's environment (TUTTI_SHARE_FILE) beside
+// TUTTI_MEMORY_MB.
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -18,6 +19,7 @@ import {
   memoryShare,
   memoryVariable,
   memoryVariables,
+  mergeWeight,
   orchestraMemoryVariable,
   sharedEnv,
   shareFileVariable,
@@ -44,6 +46,7 @@ import {
   gigabytes,
   type Kept,
   makeShareKeeper,
+  mergeShareFile,
   type Share,
   Shares,
   shareChangeLine,
@@ -66,15 +69,16 @@ import { workersIn } from "./workerEnv.ts"
 const gb = 1024 ** 3
 
 describe("memoryShare", () => {
-  test("divides the budget among the workers allowed and the merge check", () => {
-    expect(memoryShare(9 * gb, 2)).toBe(3 * 1024)
-    expect(memoryShare(8 * gb, 1)).toBe(4 * 1024)
-    expect(memoryShare(12 * gb, 2, 1)).toBe(3 * 1024)
+  test("divides the budget among the workers allowed, a part each, and the merge check, two", () => {
+    expect(mergeWeight).toBe(2)
+    expect(memoryShare(12 * gb, 2)).toBe(3 * 1024)
+    expect(memoryShare(9 * gb, 1)).toBe(3 * 1024)
+    expect(memoryShare(10 * gb, 2, 1)).toBe(2 * 1024)
   })
 
   test("counts no more workers than the machine's cap", () => {
-    expect(memoryShare(12 * gb, 2, 4, 3)).toBe(3 * 1024)
-    expect(memoryShare(12 * gb, 2, 4, 0)).toBe(Math.floor((12 * 1024) / 7))
+    expect(memoryShare(10 * gb, 2, 4, 3)).toBe(2 * 1024)
+    expect(memoryShare(12 * gb, 2, 4, 0)).toBe(Math.floor((12 * 1024) / 8))
   })
 
   test("is never under the floor, however short the machine", () => {
@@ -94,7 +98,7 @@ describe("memoryShare", () => {
           const budget = budgetMb * mebibyte
           const share = memoryShare(budget, allowed, others, limit)
           const all = Math.max(allowed, 1) + others
-          const checks = (limit > 0 ? Math.min(all, limit) : all) + 1
+          const checks = (limit > 0 ? Math.min(all, limit) : all) + mergeWeight
           expect(Number.isInteger(share)).toBe(true)
           expect(share * mebibyte).toBeGreaterThanOrEqual(memoryFloor)
           if (share * mebibyte > memoryFloor) {
@@ -330,7 +334,7 @@ describe("the memory budget", () => {
 
 const machine = { cores: 10, limit: 0 }
 const division = (over: Partial<Division> = {}): Division => ({
-  budget: 9 * gb,
+  budget: 12 * gb,
   allowed: 2,
   others: 0,
   ...over,
@@ -344,26 +348,27 @@ describe("a change of the share", () => {
   test("follows the workers allowed, saying so", () => {
     const next = changeOf(kept(), machine, division({ allowed: 1 }))
     expect(next?.change).toEqual({
-      from: { cores: 5, memory: 3072 },
-      to: { cores: 10, memory: 4608 },
+      from: { cores: 5, memory: 3072, merge: { cores: 10, memory: 6144 } },
+      to: { cores: 10, memory: 4096, merge: { cores: 10, memory: 8192 } },
       why: "workers allowed 2 → 1",
     })
     expect(next === null ? "" : shareChangeLine(next.change)).toBe(
-      "share: cores 5 → 10, memory 3.0 → 4.5 GB: workers allowed 2 → 1",
+      "share: cores 5 → 10, memory 3.0 → 4.0 GB; merge check memory 6.0 → 8.0 GB: workers allowed 2 → 1",
     )
   })
 
   test("follows the other runs' workers and the budget, naming each that moved", () => {
     const next = changeOf(kept(), machine, division({ others: 1, budget: 5 * gb }))
-    expect(next?.change.why).toBe("other runs' workers 0 → 1, memory budget 9.0 → 5.0 GB")
+    expect(next?.change.why).toBe("other runs' workers 0 → 1, memory budget 12.0 → 5.0 GB")
     expect(next?.kept.division.others).toBe(1)
   })
 
   test("doesn't follow a budget that moves less than memoryStep a share", () => {
-    const little = changeOf(kept(), machine, division({ budget: 9 * gb + 3 * (memoryStep - 1) }))
+    const little = changeOf(kept(), machine, division({ budget: 12 * gb + 4 * (memoryStep - 1) }))
     expect(little).toBeNull()
-    const enough = changeOf(kept(), machine, division({ budget: 9 * gb + 3 * memoryStep }))
+    const enough = changeOf(kept(), machine, division({ budget: 12 * gb + 4 * memoryStep }))
     expect(enough?.change.to.memory).toBe(3072 + memoryStep / mebibyte)
+    expect(enough?.change.to.merge.memory).toBe(2 * (3072 + memoryStep / mebibyte))
   })
 
   test("is none where nothing moves", () => {
@@ -410,18 +415,24 @@ describe("the START block's note", () => {
     )
     expect(shareNote(budget, machine, { budget: 0, allowed: 2, others: 0 })).toBe(
       "share: memory budget 4.0 GB (5.0 GB available and 1.0 GB in checks, less the 2.0 GB " +
-        "reserve), divided among 3 (2 workers allowed and the merge check): 1.3 GB a check, 5 " +
-        "cores a worker; kept live in .tutti/run/share.json",
+        "reserve), divided into 4 parts (2 workers allowed, a part each, and the merge check, 2 " +
+        "parts): 1.0 GB and 5 cores a worker's checks, 2.0 GB and 10 cores the merge check's; " +
+        "kept live in .tutti/run/share.json and .tutti/run/merge-share.json",
     )
     expect(
       shareNote(budget, { cores: 8, limit: 0 }, { budget: 0, allowed: 1, others: 2 }),
-    ).toContain("divided among 4 (1 worker allowed, 2 of other runs and the merge check)")
+    ).toContain(
+      "divided into 5 parts (1 worker allowed, 2 of other runs, a part each, and the merge check, 2 parts)",
+    )
   })
 })
 
-/** The share file in `repo`, as a check script reads it. */
-const readShare = (repo: string): { cores: number; memory_mb: number; at: string } =>
-  JSON.parse(readFileSync(join(repo, shareFile), "utf8"))
+/** The share file in `repo`, a worker's or `file`, as a check script reads it. */
+const readShare = (
+  repo: string,
+  file = shareFile,
+): { cores: number; memory_mb: number; at: string } =>
+  JSON.parse(readFileSync(join(repo, file), "utf8"))
 
 describe("the run's share keeper", () => {
   const mac = (available: number) =>
@@ -450,16 +461,16 @@ describe("the run's share keeper", () => {
     )
   }
 
-  test("writes the file as it is made, from no reading", async () => {
+  test("writes the files as it is made, from no reading", async () => {
     await keep(({ repo }) =>
       Effect.gen(function* () {
-        expect(readShare(repo)).toMatchObject({
-          cores: 5,
-          memory_mb: Math.floor((8 * gb - memoryReserve) / 3 / mebibyte),
-        })
+        const memory = Math.floor((8 * gb - memoryReserve) / 4 / mebibyte)
+        expect(readShare(repo)).toMatchObject({ cores: 5, memory_mb: memory })
+        expect(readShare(repo, mergeShareFile)).toMatchObject({ cores: 10, memory_mb: 2 * memory })
         expect(yield* (yield* Shares).now).toEqual({
           cores: 5,
-          memory: Math.floor((8 * gb - memoryReserve) / 3 / mebibyte),
+          memory,
+          merge: { cores: 10, memory: 2 * memory },
         })
       }),
     )
@@ -468,40 +479,47 @@ describe("the run's share keeper", () => {
   test("takes the first reading's share without a word, then says each change", async () => {
     const records = await keep(({ repo, allowed, keeper }) =>
       Effect.gen(function* () {
-        // 9 GB available less the 2 reserve: 7 GB among 3.
-        yield* keeper.read(mac(9))
-        expect(readShare(repo).memory_mb).toBe(Math.floor((7 * 1024) / 3))
-        // The cap falls: 7 GB among 2.
+        // 10 GB available less the 2 reserve: 8 GB in 4 parts.
+        yield* keeper.read(mac(10))
+        expect(readShare(repo).memory_mb).toBe(2048)
+        expect(readShare(repo, mergeShareFile).memory_mb).toBe(4096)
+        // The cap falls: 8 GB in 3 parts.
         yield* Ref.set(allowed, 1)
-        yield* keeper.read(mac(9))
-        expect(readShare(repo)).toMatchObject({ cores: 10, memory_mb: Math.floor((7 * 1024) / 2) })
-        expect(yield* (yield* Shares).now).toEqual({ cores: 10, memory: 3584 })
-        // The readings move the budget by 3 GB: 4 GB among 2.
-        yield* keeper.read(mac(6))
-        expect(readShare(repo).memory_mb).toBe(2048)
+        yield* keeper.read(mac(10))
+        expect(readShare(repo)).toMatchObject({ cores: 10, memory_mb: Math.floor((8 * 1024) / 3) })
+        expect(yield* (yield* Shares).now).toEqual({
+          cores: 10,
+          memory: 2730,
+          merge: { cores: 10, memory: 5460 },
+        })
+        // The readings move the budget by 3 GB: 5 GB in 3 parts.
+        yield* keeper.read(mac(7))
+        expect(readShare(repo).memory_mb).toBe(Math.floor((5 * 1024) / 3))
+        expect(readShare(repo, mergeShareFile).memory_mb).toBe(2 * 1706)
         // A little more held elsewhere moves nothing.
-        yield* keeper.read(mac(5.75))
-        expect(readShare(repo).memory_mb).toBe(2048)
+        yield* keeper.read(mac(6.75))
+        expect(readShare(repo).memory_mb).toBe(1706)
         return yield* (yield* Captured).records
       }),
     )
     expect(records.flatMap((record) => (record.kind === "share" ? [record.text] : []))).toEqual([
-      "share: cores 5 → 10, memory 2.3 → 3.5 GB: workers allowed 2 → 1",
-      "share: memory 3.5 → 2.0 GB: memory budget 7.0 → 4.0 GB",
+      "share: cores 5 → 10, memory 2.0 → 2.7 GB; merge check memory 4.0 → 5.3 GB: workers allowed 2 → 1",
+      "share: memory 2.7 → 1.7 GB; merge check memory 5.3 → 3.3 GB: memory budget 8.0 → 5.0 GB",
     ])
     const first = records.find((record) => record.kind === "share")
-    expect(first).toMatchObject({ cores: { from: 5, to: 10 }, memory: { from: 2389, to: 3584 } })
+    expect(first).toMatchObject({ cores: { from: 5, to: 10 }, memory: { from: 2048, to: 2730 } })
   })
 
   test("follows the cap without a reading, as the load stops being read", async () => {
     await keep(({ repo, allowed, keeper }) =>
       Effect.gen(function* () {
-        yield* keeper.read(mac(9))
+        yield* keeper.read(mac(10))
         yield* Ref.set(allowed, 3)
         yield* keeper.refresh
-        expect(readShare(repo)).toMatchObject({ cores: 3, memory_mb: Math.floor((7 * 1024) / 4) })
+        expect(readShare(repo)).toMatchObject({ cores: 3, memory_mb: Math.floor((8 * 1024) / 5) })
+        expect(readShare(repo, mergeShareFile)).toMatchObject({ cores: 6, memory_mb: 2 * 1638 })
         expect(yield* texts).toContain(
-          "share: cores 5 → 3, memory 2.3 → 1.8 GB: workers allowed 2 → 3",
+          "share: cores 5 → 3, memory 2.0 → 1.6 GB; merge check cores 10 → 6, memory 4.0 → 3.2 GB: workers allowed 2 → 3",
         )
       }),
     )
@@ -521,7 +539,7 @@ describe("the run's share keeper", () => {
         })
         yield* keeper.read(mac(9))
         yield* keeper.read(mac(5))
-        expect((yield* (yield* Shares).now)?.memory).toBe(Math.floor((3 * 1024) / 2))
+        expect((yield* (yield* Shares).now)?.memory).toBe(1024)
         return yield* texts
       }).pipe(Effect.provide(Layer.mergeAll(logLayer(), eventsLayer(), shares))),
     )
@@ -604,7 +622,11 @@ const sessionMemory = (kept: Share | null) => {
 
 describe("a worker's session", () => {
   test("names the share file, with the share the run keeps", async () => {
-    const { repo, logged } = sessionMemory({ cores: 3, memory: 2560 })
+    const { repo, logged } = sessionMemory({
+      cores: 3,
+      memory: 2560,
+      merge: { cores: 6, memory: 5120 },
+    })
     expect(await logged).toEqual([
       {
         TUTTI_MEMORY_MB: "2560",

@@ -314,8 +314,10 @@ export const PressureCap = Schema.Struct({
 const Moved = Schema.Struct({ from: Count, to: Count })
 
 /**
- * A worker's share of the machine for its checks moved (`share: cores 5 → 3, memory 6.0 → 3.5 GB:
- * workers allowed 2 → 1`), and .tutti/run/share.json with it (src/run/share.ts).
+ * A worker's share of the machine for its checks moved (`share: cores 5 → 3, memory 6.0 → 3.5 GB;
+ * merge check cores 10 → 6, memory 12.0 → 7.0 GB: workers allowed 2 → 1`), and
+ * .tutti/run/share.json with it, the merge check's merge-share.json moving with it (src/run/share.ts):
+ * the figures are a worker's, the text says the merge check's too.
  */
 export const ShareMoved = Schema.Struct({
   ...head("share"),

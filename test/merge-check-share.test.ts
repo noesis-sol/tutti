@@ -1,7 +1,8 @@
-// The merge check, and the early check that takes its slot, get the share of the machine the run
-// keeps (Shares) in their environment, as a worker's checks do: TUTTI_CORES, TUTTI_MEMORY_MB, their
-// orchestra names, GOFLAGS' -p and TUTTI_SHARE_FILE, so a check script sizes itself by the share
-// the memory budget counts for it rather than by the memory free now (tutti-sri2).
+// The merge check, and the early check that takes its slot, get the merge check's share of the
+// machine the run keeps (Shares' merge, tutti-k4if.3) in their environment, as a worker's checks
+// get theirs: TUTTI_CORES, TUTTI_MEMORY_MB, their orchestra names, GOFLAGS' -p and
+// TUTTI_SHARE_FILE, so a check script sizes itself by the share the memory budget counts for it
+// rather than by the memory free now (tutti-sri2).
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -10,7 +11,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer } from "effect"
 import { BranchEnv, checkShareEnv, sharedEnv } from "../src/agent/env.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
-import { type Share, Shares, shareFileOf } from "../src/run/share.ts"
+import { mergeShareFileOf, type Share, Shares } from "../src/run/share.ts"
 import { Checks } from "../src/services/Checks.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { testEnv } from "./env.ts"
@@ -77,14 +78,17 @@ const run = async (share: Share | null) => {
   }
 }
 
+/** A worker's share, and the merge check's, twice its memory and cores. */
+const share: Share = { cores: 3, memory: 2048, merge: { cores: 6, memory: 4096 } }
+
 describe("the merge check's share", () => {
-  test("the merge check gets the share the run keeps, and the file it keeps it in", async () => {
-    const said = await run({ cores: 3, memory: 2048 })
-    expect(said.fast).toBe(`3 3 2048 2048 ${shareFileOf(repo)} -p=3\n`)
+  test("the merge check gets the merge check's share the run keeps, and its file", async () => {
+    const said = await run(share)
+    expect(said.fast).toBe(`6 6 4096 4096 ${mergeShareFileOf(repo)} -p=6\n`)
   })
 
   test("the setup and the full check get none", async () => {
-    const said = await run({ cores: 3, memory: 2048 })
+    const said = await run(share)
     expect(said.setup).toBe(unset)
     expect(said.full).toBe(unset)
   })

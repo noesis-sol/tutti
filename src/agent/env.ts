@@ -118,15 +118,25 @@ export const orchestraMemoryVariable = "ORCHESTRA_MEMORY_MB"
 export const shareFileVariable = "TUTTI_SHARE_FILE"
 
 /**
- * A check's share of the memory checks may use, `budget` bytes (src/run/share.ts' budgetOf), in
- * MiB: divided among the run's `allowed` workers and the machine's other runs' `others`, no more
- * workers than `limit` (as coreShare), and one more for the merge check, which the early check's
- * slot is; at least memoryFloor, so a check can always run, one process at a time. A test runner
- * left alone starts as many processes as it has cores, each of a gigabyte or more, and two
- * workers' checks wanted 15 GB of a 16 GB machine (tutti-epza.18).
+ * The parts of the memory budget the merge check gets where a worker's checks get one, and its
+ * cores as many times a worker's (src/run/share.ts' shareOf): it runs one at a time, every ticket
+ * waits on it, and at a worker's part, 1.0 GB, it ran the whole suite in one process, a median
+ * 7.3 min where the full check took 4.0 min with the machine to itself (tutti-k4if.3). The early
+ * and train checks take its slot, and its share.
+ */
+export const mergeWeight = 2
+
+/**
+ * A worker's checks' share of the memory checks may use, `budget` bytes (src/run/share.ts'
+ * budgetOf), in MiB: divided among the run's `allowed` workers and the machine's other runs'
+ * `others`, no more workers than `limit` (as coreShare), a part each, and the merge check,
+ * mergeWeight parts, which the early check's slot is; at least memoryFloor, so a check can always
+ * run, one process at a time. A test runner left alone starts as many processes as it has cores,
+ * each of a gigabyte or more, and two workers' checks wanted 15 GB of a 16 GB machine
+ * (tutti-epza.18).
  */
 export const memoryShare = (budget: number, allowed: number, others = 0, limit = 0): number => {
-  const each = Math.max(budget, 0) / (sharers(allowed, others, limit) + 1)
+  const each = Math.max(budget, 0) / (sharers(allowed, others, limit) + mergeWeight)
   return Math.floor(Math.max(each, memoryFloor) / mebibyte)
 }
 
