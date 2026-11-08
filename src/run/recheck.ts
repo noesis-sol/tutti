@@ -255,16 +255,20 @@ export const notNow = (queue: Pick<MergeQueue, "state">, options: MergeOptions) 
  * Puts back in the merge queue, ToMerge by RECHECK, each ticket waiting to be checked once more
  * whose base has moved on since its check failed, each in a slot of its own until its merge is
  * over (`options.recheckSlot`); none while the run winds down or holds, the merges have stopped, a
- * solo ticket runs or is next, or no slot is free. A ticket touched since stays set aside, and the
- * log says why. `at`: where the base is, as a merge just put it; git is asked without it. The
- * tickets it put back.
+ * solo ticket runs or is next, or no slot is free. A ticket touched since stays set aside, its
+ * session closed, and the log says why. `at`: where the base is, as a merge just put it; git is
+ * asked without it. The tickets it put back.
  */
 export const recheckDue = (
   rechecks: Rechecks,
   queue: Pick<MergeQueue, "offer" | "state" | "changes">,
   options: MergeOptions,
   at?: string,
-): Effect.Effect<ReadonlyArray<string>, never, Beads | Git | Ledger | Log | EventStream> =>
+): Effect.Effect<
+  ReadonlyArray<string>,
+  never,
+  AgentHost | Beads | Git | Ledger | Log | EventStream
+> =>
   Effect.gen(function* () {
     const back: Array<string> = []
     // Where the base is, read once for every ticket waiting, when one is due a look.
@@ -293,6 +297,8 @@ export const recheckDue = (
         if (why !== undefined) {
           const text = detail`${id} is not checked again: ${why}; it stays set aside`
           yield* info(text, id)
+          // No longer waiting to be checked again, its session isn't kept for it (§ 4.8).
+          yield* fit(id)
           return
         }
         const text = ticketLine(
