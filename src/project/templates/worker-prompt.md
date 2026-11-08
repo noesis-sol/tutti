@@ -4,10 +4,12 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   stash, merge, or touch any other checkout; tutti merges your branch.
 - Claim it with `bd update TICKET_ID --claim`, then read it with `bd show TICKET_ID`.
 - Check your own change before you close the ticket: run the project's suites on what it touches
-  (the modules or packages it changes and their tests, existing ones included), the slower suites
-  too where they cover it, and lint and type checks on the files you changed. While iterating, run
-  only the checks you need. A check that runs the slower suites as well as the faster ones does
-  all the faster one does: when you want the slower suites, run it alone, not after the faster one.
+  (the modules or packages it changes and their tests, existing ones included), and lint and type
+  checks on the files you changed. While iterating, run only the faster checks you need, never the
+  slower suites. Run the slower suites where they cover what you changed once, after your last
+  commit, as the last check before you close the ticket, and again only when a later change touches
+  what they cover. A check that runs the slower suites as well as the faster ones does all the
+  faster one does: when you want the slower suites, run it alone, not after the faster one.
   The suites are the commands `scripts/check-fast.sh` and `scripts/check-full.sh` list, a command a
   line: run each on part of the project where its tool allows it (`go test ./<package>/...`,
   `pytest <paths>`, `eslint <files>`), and whole where it doesn't.

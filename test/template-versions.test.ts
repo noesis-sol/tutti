@@ -54,8 +54,8 @@ import * as TestGit from "../src/testing/Git.ts"
 
 // The templates as their last recorded versions have them. A change to a template is a new version
 // of it: the first test fails until src/init/templates.ts records it.
-const promptTemplateSum = "8bd686b3aa142c6a9ece5d0a7922b5739e2b2796f49eff06bac903b2c4c1720c"
-const verifierTemplateSum = "4ba3193b5fe3b22299902405072ae30672f2ebba9b614c040ad0734bcf2c3151"
+const promptTemplateSum = "16916b6b7729a5e1c093cb58ef759f9b9871fe52e0c29e616fdedc8d09ab6f9e"
+const verifierTemplateSum = "6dc18fd40773ba498b063ca6b4e2d5e9b0f346eec068f66d2716bc61be30486c"
 
 const sum = (text: string): string => createHash("sha256").update(text).digest("hex")
 
@@ -174,7 +174,7 @@ describe("an older worker prompt or verifier", () => {
     const note = notes[0] ?? ""
     for (const want of [
       "templates: .tutti/worker-prompt.md is older than tutti's worker prompt template, which has since changed ",
-      "the opening (a removal Claude Code's safety check holds is refused outright in auto mode; a worker passes Bash no timeout of its own, as tutti raises Bash's default to the merge check's limit; a worker checks its own change and leaves the whole suite to the merge check; what a ticket needs of the machine goes in the project's requires list, never installed by hand outside it; a check that runs the slower suites with the faster ones is run alone, not after the faster one; a worker leaves no dev server, watcher or other background command running as it ends its turn, as tutti stops them)",
+      "the opening (a removal Claude Code's safety check holds is refused outright in auto mode; a worker passes Bash no timeout of its own, as tutti raises Bash's default to the merge check's limit; a worker checks its own change and leaves the whole suite to the merge check; what a ticket needs of the machine goes in the project's requires list, never installed by hand outside it; a check that runs the slower suites with the faster ones is run alone, not after the faster one; a worker leaves no dev server, watcher or other background command running as it ends its turn, as tutti stops them; a worker iterates with the faster checks and runs the slower suites once, after its last commit, and again only when a later change touches what they cover)",
       ", Close (a ticket closes once the worker's own checks pass; a question gives its options and the recommended one in its metadata too; a question that asks the maintainer to act rather than choose is marked maintainer_only, never answered for them; a decision only the maintainer can make about another ticket is a question blocking that ticket, never left in the final message; a question is a stop of its own: the worker doesn't defer its ticket as well) and Working unattended (no to-do checklist is asked for, which Beads' own guidance forbids)",
       ": tutti init --update rewrites those sections from the template",
     ]) {
@@ -192,11 +192,15 @@ describe("an older worker prompt or verifier", () => {
     expect(notes[0]).toContain(
       "Verify (the worker gives the verifier the commit at which its checks passed",
     )
+    expect(notes[0]).toContain(
+      "after a fix the worker runs the slower suites again only where it touches what they cover",
+    )
     for (const want of [
       `templates: ${verifierPath} is older than tutti's verifier template`,
       "the opening (its description asks",
       "Its checks (how to run each suite on what a change touches)",
       "How to verify (it quotes the worker's passing checks",
+      "; the slower suites' results at an earlier commit stand where nothing since touches what they cover",
       "Rules (it passes Bash no timeout",
     ]) {
       expect(notes[1]).toContain(want)

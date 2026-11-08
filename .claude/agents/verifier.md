@@ -9,19 +9,20 @@ and try to show that it is not done.
 
 ## The project
 
-- orchestra init's scout didn't describe the stack: read the manifests (go.mod, package.json,
+- tutti init's scout didn't describe the stack: read the manifests (go.mod, package.json,
   pyproject.toml and the like) to learn it.
 
 ## Its checks
 
-- `scripts/check-fast.sh`, the merge check: orchestra runs it on each ticket before it merges it. It runs:
+- `scripts/check-fast.sh`, the merge check: tutti runs it on each ticket before it merges it. It runs:
   - `echo "SUITE: check"`
   - `(scripts/check.sh)`
-- `scripts/check-full.sh`, every check, which orchestra runs at the end of a run: `scripts/check-fast.sh`, then:
+- `scripts/check-full.sh`, every check, which tutti runs at the end of a run: `scripts/check-fast.sh`, then:
   - `echo "SUITE: check-slow"`
   - `(TUTTI_SLOW=1 scripts/check.sh)`
 - Run each of those commands on what a change touches where its tool allows it
-  (`go test ./<package>/...`, `pytest <paths>`, `eslint <files>`), and whole where it doesn't.
+  (`bun test <files>`, `go test ./<package>/...`, `pytest <paths>`, `eslint <files>`), and whole
+  where it doesn't.
 
 ## How to verify
 
@@ -32,10 +33,13 @@ and try to show that it is not done.
    the file their output is in where it kept one. When `git rev-parse HEAD` is that commit and
    `git status --porcelain` prints nothing, those results stand: quote them (the end of the file,
    where it gave one) rather than run them again, and run only a suite they leave out that covers
-   what the change touches. Otherwise, or when it gave no commit, run the suites on what the change
+   what the change touches. The worker runs the slower suites once, after its last commit, and
+   again only when a later fix touches what they cover: where it gives an earlier commit at which
+   they passed, and `git diff <that commit> HEAD` touches nothing they cover, their results stand
+   too. Otherwise, or when it gave no commit, run the suites on what the change
    touches, as under Its checks: each on the modules or packages it changes and their tests, the
    slower suites too where they cover it, and lint and type checks on the files it changed. Quote
-   each command and the end of its output. Leave the whole suite to orchestra: `scripts/check-fast.sh` runs
+   each command and the end of its output. Leave the whole suite to tutti: `scripts/check-fast.sh` runs
    on the ticket before it merges, and `scripts/check-full.sh` at the end of the run.
 4. For each requirement and acceptance criterion: is it implemented, and is there a test that would
    fail without the change?

@@ -145,6 +145,18 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     what: "a question is a stop of its own: the worker doesn't defer its ticket as well",
     marker: "A question is a stop of its own",
   },
+  {
+    version: 13,
+    section: "",
+    what: "a worker iterates with the faster checks and runs the slower suites once, after its last commit, and again only when a later change touches what they cover",
+    marker: "Run the slower suites where they cover what you changed once",
+  },
+  {
+    version: 13,
+    section: verifyHeading,
+    what: "after a fix the worker runs the slower suites again only where it touches what they cover, else gives the verifier the commit at which they last passed",
+    marker: "give it too the commit at which they last",
+  },
 ]
 
 /** The changes to the verifier's template, verifier.md. */
@@ -178,6 +190,12 @@ export const verifierChanges: ReadonlyArray<TemplateChange> = [
     section: "Rules",
     what: "it passes Bash no timeout where Bash's default is as long as a check may take, as in a worker, and otherwise waits on a longer check in the background with short waits",
     marker: "Give a check its time",
+  },
+  {
+    version: 3,
+    section: "How to verify",
+    what: "the slower suites' results at an earlier commit stand where nothing since touches what they cover, as the worker runs them once, after its last commit",
+    marker: "where it gives an earlier commit at which",
   },
 ]
 

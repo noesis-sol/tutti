@@ -30,7 +30,10 @@ and try to show that it is not done.
    the file their output is in where it kept one. When `git rev-parse HEAD` is that commit and
    `git status --porcelain` prints nothing, those results stand: quote them (the end of the file,
    where it gave one) rather than run them again, and run only a suite they leave out that covers
-   what the change touches. Otherwise, or when it gave no commit, run the suites on what the change
+   what the change touches. The worker runs the slower suites once, after its last commit, and
+   again only when a later fix touches what they cover: where it gives an earlier commit at which
+   they passed, and `git diff <that commit> HEAD` touches nothing they cover, their results stand
+   too. Otherwise, or when it gave no commit, run the suites on what the change
    touches, as under Its checks: each on the modules or packages it changes and their tests, the
    slower suites too where they cover it, and lint and type checks on the files it changed. Quote
    each command and the end of its output. Leave the whole suite to tutti: `{{fastRunner}}` runs

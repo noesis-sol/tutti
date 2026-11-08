@@ -34,8 +34,8 @@
     "effort": "high"
   },
   "templates": {
-    "worker_prompt": 10,
-    "verifier": 2,
+    "worker_prompt": 13,
+    "verifier": 3,
     "check_suite_skill": 1
   }
 }

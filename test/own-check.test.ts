@@ -57,10 +57,12 @@ describe("the worker prompt's check section", () => {
     const prompt = builtInWorkerPrompt
     expect(prompt).toContain(
       "- Check your own change before you close the ticket: run the project's suites on what it touches\n" +
-        "  (the modules or packages it changes and their tests, existing ones included), the slower suites\n" +
-        "  too where they cover it, and lint and type checks on the files you changed. While iterating, run\n" +
-        "  only the checks you need. A check that runs the slower suites as well as the faster ones does\n" +
-        "  all the faster one does: when you want the slower suites, run it alone, not after the faster one.\n" +
+        "  (the modules or packages it changes and their tests, existing ones included), and lint and type\n" +
+        "  checks on the files you changed. While iterating, run only the faster checks you need, never the\n" +
+        "  slower suites. Run the slower suites where they cover what you changed once, after your last\n" +
+        "  commit, as the last check before you close the ticket, and again only when a later change touches\n" +
+        "  what they cover. A check that runs the slower suites as well as the faster ones does all the\n" +
+        "  faster one does: when you want the slower suites, run it alone, not after the faster one.\n" +
         unknownSuitesLines +
         "- Leave the whole suite to tutti: its merge check, `scripts/check-fast.sh`, runs on every ticket\n" +
         "  before it merges it, and hands the ticket back to you when your change breaks something you\n" +
@@ -82,6 +84,12 @@ describe("the worker prompt's check section", () => {
       "- Before you close the ticket, once your checks pass after your last commit, have the verifier\n",
     )
     expect(verifierSection).toContain("commit, run your\n  checks again, and ask it again")
+    // The slower suites run again only where the fix touches what they cover.
+    expect(verifierSection).toContain(
+      "Run the slower suites again only\n" +
+        "  where the fix touches what they cover; where you don't, give it too the commit at which they last\n" +
+        "  passed.",
+    )
     expect(verifierSection).not.toContain("scripts/check-fast.sh")
   })
 })

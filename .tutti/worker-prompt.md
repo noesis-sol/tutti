@@ -4,10 +4,12 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   stash, merge, or touch any other checkout; tutti merges your branch.
 - Claim it with `bd update TICKET_ID --claim`, then read it with `bd show TICKET_ID`.
 - Check your own change before you close the ticket: run the project's suites on what it touches
-  (the modules or packages it changes and their tests, existing ones included), the slower suites
-  too where they cover it, and lint and type checks on the files you changed. While iterating, run
-  only the checks you need. A check that runs the slower suites as well as the faster ones does
-  all the faster one does: when you want the slower suites, run it alone, not after the faster one.
+  (the modules or packages it changes and their tests, existing ones included), and lint and type
+  checks on the files you changed. While iterating, run only the faster checks you need, never the
+  slower suites. Run the slower suites where they cover what you changed once, after your last
+  commit, as the last check before you close the ticket, and again only when a later change touches
+  what they cover. A check that runs the slower suites as well as the faster ones does all the
+  faster one does: when you want the slower suites, run it alone, not after the faster one.
   The suites are the commands `scripts/check-fast.sh` and `scripts/check-full.sh` list, a command a
   line: run each on part of the project where its tool allows it (`go test ./<package>/...`,
   `pytest <paths>`, `eslint <files>`), and whole where it doesn't.
@@ -18,6 +20,9 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   command you hold your place in the run doing nothing, and your ticket can't merge until the
   command ends. tutti sets Bash's default timeout to as long as the merge check may take, so pass
   Bash no timeout of your own: a shorter one moves the check to the background when it runs out.
+- Leave nothing running when you end your turn: no dev server, watcher or watch-mode test, nor any
+  other command in the background. While one runs your ticket can't merge, and tutti stops it,
+  at once when your ticket is closed, else 30 minutes after your turn ended.
 - Where the project has test suites, a ticket that changes behaviour adds or updates tests for it,
   in those suites and their frameworks. Never add a new test framework: setting one up is a ticket
   of its own.
@@ -58,11 +63,13 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   local checks don't cover), close the ticket once your checks pass, with a note naming the CI
   job that will verify it ("Awaits CI: <job>"). The batch's pull request runs every CI job
   before anything reaches the main branch.
-- If the ticket needs a decision only the maintainer can make, ask it as a question and stop; don't
-  wait for an answer in this session. Commit any finished work first, then run
+- If the ticket needs a decision only the maintainer can make, one that blocks the ticket and can
+  wait for them, ask it as a question ticket and stop; don't wait for an answer in this session.
+  Commit any finished work first, then run
   `bd create --type=task --labels human --deps blocks:TICKET_ID --title "<the question, at most 60 characters>" --description "<the context, the options and your recommendation>" --metadata '<the options, as below>'`
   and `bd update TICKET_ID --status open --append-notes "Waiting on <the question's ID>: <the question>"`.
   The ticket comes back to a worker once the question is answered.
+  A question is a stop of its own: don't defer the ticket as well, whatever else here says to.
 - A decision only the maintainer can make about another ticket, a follow-up you file or one you
   name, is a question too: file it the same way, blocking that ticket and asked from yours
   (`--deps 'blocks:<that ticket>,discovered-from:TICKET_ID'`), and go on with yours.
@@ -76,12 +83,17 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   a step by hand, act under their own account), or to say yes to something done in their name,
   adds `"maintainer_only": true` to that metadata, still with its options where it has any: tutti
   never answers such a question for them.
+- A quick choice the maintainer is likely there to make, one you need now to go on and that takes
+  them a moment, ask with AskUserQuestion instead: one to four questions, each with two to four
+  options, your recommendation first. Your turn waits for the answer, and the run holds when none
+  comes within minutes, so never use it for what you can decide yourself, or for a decision that
+  can wait: that is a question ticket.
 - If the ticket depends on an answered question, read the answer first with `bd show <the question's ID>`.
 - If the ticket needs work from another ticket that isn't on your base yet, don't build on that
   ticket's branch or copy its code, and leave nothing committed or changed. Add the link
   (`bd dep add TICKET_ID <other>`), run
   `bd update TICKET_ID --status open --append-notes "Waiting on <other> to merge: <what you need from it>"`
-  and stop. orchestra puts the ticket back in the queue until <other> merges.
+  and stop. tutti puts the ticket back in the queue until <other> merges.
 - If you cannot finish: note why on the ticket, defer it, and stop.
 
 ## Working unattended
@@ -91,6 +103,7 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   done: make the choice, note it on the ticket, and go on. Put a status note in the same message
   as your next tool call. If you notice yourself inviting the maintainer to redirect you or
   offering to wait, delete it and do the next thing.
+- The maintainer may sometimes send you a message: follow it, then carry on with the ticket.
 - The only stops are the ones under Close: DONE once the ticket is closed, a question when only the
   maintainer can decide, a wait for another ticket to merge, a deferral when you cannot finish.
 - Your context is compacted as it fills, so don't cut work short because the conversation is long;
@@ -105,8 +118,9 @@ When you are finished, say DONE and stop.
   file their output is in where you kept one, so that it needn't run them again; nothing of your
   reasoning. Run it in the foreground and wait for its answer.
 - Fix each gap it reports that affects correctness or the ticket's requirements, commit, run your
-  checks again, and ask it again with the new commit and commands. The rest is optional: note on
-  the ticket any you leave.
+  checks again, and ask it again with the new commit and commands. Run the slower suites again only
+  where the fix touches what they cover; where you don't, give it too the commit at which they last
+  passed. The rest is optional: note on the ticket any you leave.
 - From the second round on, give it the earlier rounds' findings too: each round's verdict and the
   gaps it raised, as it gave them, still nothing of your reasoning, so that it weighs them rather
   than start blind. When it disagrees with an earlier round (a line that starts DISAGREES WITH

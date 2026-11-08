@@ -590,8 +590,9 @@ export const verifierSection = `
   file their output is in where you kept one, so that it needn't run them again; nothing of your
   reasoning. Run it in the foreground and wait for its answer.
 - Fix each gap it reports that affects correctness or the ticket's requirements, commit, run your
-  checks again, and ask it again with the new commit and commands. The rest is optional: note on
-  the ticket any you leave.
+  checks again, and ask it again with the new commit and commands. Run the slower suites again only
+  where the fix touches what they cover; where you don't, give it too the commit at which they last
+  passed. The rest is optional: note on the ticket any you leave.
 - From the second round on, give it the earlier rounds' findings too: each round's verdict and the
   gaps it raised, as it gave them, still nothing of your reasoning, so that it weighs them rather
   than start blind. When it disagrees with an earlier round (a line that starts DISAGREES WITH
