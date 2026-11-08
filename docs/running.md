@@ -885,25 +885,28 @@ another, `GIT_FAILED` or `STATE_UNWRITABLE`. An overnight run's pre-flight asks 
 Each worker's checks get a share of the machine's memory as well as its cores, as a test runner left
 alone starts a process per core, each of a gigabyte or more. The **memory budget** is what checks may
 use: the memory available, on macOS `vm_stat`'s free, inactive, speculative and purgeable pages and
-on Linux `MemAvailable`, and what the checks hold already, less a 2 GB reserve. It is divided among the workers
-allowed now (the pressure cap), the other runs' workers (no more than `--machine-workers`) and one
-more for the merge check, whose slot the early check takes, at least 1 GB a check so that one can
-always run, one process at a time. The `START` block says the budget and how it is divided:
+on Linux `MemAvailable`, and what the checks hold already, less a 2 GB reserve. It is divided into
+parts: one for each of the workers allowed now (the pressure cap) and the other runs' workers (no
+more than `--machine-workers`), at least 1 GB so that a check can always run, one process at a time,
+and two for the merge check, whose slot the early and train checks take: it runs one at a time and
+every ticket waits on it. The merge check also gets twice a worker's cores, no more than the
+machine's. The `START` block says the budget and how it is divided:
 
 ```
-share: memory budget 6.3 GB (5.9 GB available and 2.4 GB in checks, less the 2.0 GB reserve), divided among 3 (2 workers allowed and the merge check): 2.1 GB a check, 5 cores a worker; kept live in .tutti/run/share.json
+share: memory budget 6.3 GB (5.9 GB available and 2.4 GB in checks, less the 2.0 GB reserve), divided into 4 parts (2 workers allowed, a part each, and the merge check, 2 parts): 1.6 GB and 5 cores a worker's checks, 3.1 GB and 10 cores the merge check's; kept live in .tutti/run/share.json and .tutti/run/merge-share.json
 ```
 
 The share follows the run. Each load reading works it out again, and where the workers allowed or
 the other runs' workers changed, or the readings moved the memory share by half a gigabyte or more,
 the run writes it to `.tutti/run/share.json`, a single JSON line, `{"cores":3,"memory_mb":3584,"at":"2026-11-03T09:12:40.000Z"}`,
-and says so: `share: cores 5 → 3, memory 6.0 → 3.5 GB: workers allowed 2 → 1`, a `share` record in
-the event stream. Each worker's environment has `TUTTI_MEMORY_MB` (and `ORCHESTRA_MEMORY_MB`), the
+and the merge check's to `.tutti/run/merge-share.json`, and says so: `share: cores 5 → 3, memory
+6.0 → 3.5 GB; merge check cores 10 → 6, memory 12.0 → 7.0 GB: workers allowed 2 → 1`, a `share`
+record in the event stream. Each worker's environment has `TUTTI_MEMORY_MB` (and `ORCHESTRA_MEMORY_MB`), the
 memory share in MB as its session started, beside `TUTTI_CORES`, and `TUTTI_SHARE_FILE`, the file's
 path, which a check script reads as it starts, so that a check started under pressure starts
-smaller ([Setup](setup.md#sizing-a-check-to-its-share)). The merge check, and the early check that
-takes its slot, get the same variables as each starts, the share and the file the run keeps then:
-the budget counts a share for them too.
+smaller ([Setup](setup.md#sizing-a-check-to-its-share)). The merge check, and the early and train
+checks that take its slot, get the same variables as each starts, the merge check's share and its
+file, `.tutti/run/merge-share.json`: the budget counts its two parts for them.
 
 ### Footprints
 
