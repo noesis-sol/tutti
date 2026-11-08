@@ -84,7 +84,7 @@ const until = async (rendered: Rendered, ready: (frame: Frame) => boolean): Prom
   }
 }
 
-/** Has the run read the questions for the list once it offers ReadQuestions. */
+/** Has the run read q-1, open, for the list once it offers ReadQuestions. */
 const reads = async (
   rendered: Rendered,
   commands: Commands,
@@ -94,7 +94,9 @@ const reads = async (
   for (;;) {
     const read = taken(commands).find((each) => each._tag === "ReadQuestions")
     if (read?._tag === "ReadQuestions") {
-      await rendered.input(() => news.set([QuestionNews.Read({ uuid: read.uuid, questions: [] })]))
+      await rendered.input(() =>
+        news.set([QuestionNews.Read({ uuid: read.uuid, questions: [flag] })]),
+      )
       return
     }
     if (Date.now() > deadline) throw new Error("nothing read the questions")
