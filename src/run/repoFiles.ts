@@ -104,10 +104,10 @@ export interface RepoFiles {
    */
   shared(file: string): boolean
   /**
-   * Whether the path, a file, a folder (ending in /) or a glob as written, is vendored (vendored.ts):
-   * a copy of another project's files, which no footprint names. A tracked file .gitattributes or
-   * the settings' `vendored` mark, a path those globs match, and any other in a folder whose tracked
-   * files all are.
+   * Whether the path, a file, a folder (ending in /) or a glob as written, is vendored
+   * (vendored.ts): a copy of another project's files, which no footprint names. A tracked file
+   * .gitattributes or the settings' `vendored` mark, a path those globs match, and any other in a
+   * folder whose tracked files all are.
    */
   vendored(path: string): boolean
   /**
@@ -140,7 +140,8 @@ export const repoFiles = (
   declared?: ReadonlyMap<string, ReadonlyArray<string>>,
   vendored: Vendored = noneVendored,
 ): RepoFiles => {
-  // The files as git lists them, by their NFC form: two whose names differ only in form are both meant.
+  // The files as git lists them, by their NFC form: two whose names differ only in form are both
+  // meant.
   const files = new Map<string, Array<string>>()
   const byBase = new Map<string, Array<string>>()
   const dirs = new Set<string>(["."])
@@ -162,10 +163,10 @@ export const repoFiles = (
   const known = tracked !== undefined
   const formsOf = (n: string): ReadonlyArray<string> => files.get(n) ?? []
 
-  // The files pattern matches, in any folder as a partial path does: its last part a file's name or
-  // a folder's, holding every file under it; and pattern anchored at each folder it matched in
-  // (run/*.ts as src/run/*.ts), which holds the files another ticket adds there that it would match,
-  // from the repository's root (globHolds). A folder's name is a part of the glob as it is.
+  // The files pattern matches, in any folder as a partial path does: its last part a file's name
+  // or a folder's, holding every file under it; and pattern anchored at each folder it matched in
+  // (run/*.ts as src/run/*.ts), which holds the files another ticket adds there that it would
+  // match, from the repository's root (globHolds). A folder's name is a part of the glob as it is.
   const glob = (
     pattern: string,
   ): { readonly files: ReadonlyArray<string>; readonly anchored: ReadonlyArray<string> } => {
