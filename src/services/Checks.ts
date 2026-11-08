@@ -415,6 +415,20 @@ export interface RunOptions {
    * the limit again, as a hand-back's (exec's `loaded`). Without it, all of the time awake counts.
    */
   readonly loaded?: Effect.Effect<boolean>
+  /**
+   * The time limit in place of the settings': the checks gate's, whose form may have set another
+   * since the run started (checksGate.ts). A setup's, in place of that of the check it comes before.
+   */
+  readonly timeLimit?: Duration.Input
+}
+
+/** A check's options with a command of their own. */
+export interface CheckOptions extends RunOptions {
+  /**
+   * The command to run in place of the settings': the checks gate's, whose form may have set another
+   * since the run started (checksGate.ts); null runs nothing.
+   */
+  readonly command?: string | null
 }
 
 export interface SetupOptions extends RunOptions {
@@ -524,11 +538,23 @@ export const checksOf = (checks: Settings["checks"], run: RunCommand): Checks["S
       start(
         "setup",
         options.command === undefined ? checks.setup.command : options.command,
-        limit[options.before],
+        options.timeLimit ?? limit[options.before],
         options,
       ),
-    fast: (options) => start("fast", checks.fast.command, limit.fast, options),
-    full: (options) => start("full", checks.full.command, limit.full, options),
+    fast: (options) =>
+      start(
+        "fast",
+        options.command === undefined ? checks.fast.command : options.command,
+        options.timeLimit ?? limit.fast,
+        options,
+      ),
+    full: (options) =>
+      start(
+        "full",
+        options.command === undefined ? checks.full.command : options.command,
+        options.timeLimit ?? limit.full,
+        options,
+      ),
   }
 }
 
@@ -574,9 +600,9 @@ export class Checks extends Context.Service<
     /** The setup command (checks.setup.command), within the limit of the check it comes before. */
     setup(options: SetupOptions): Effect.Effect<CheckResult, CheckError>
     /** The merge check (checks.fast.command), within checks.fast.timeout. */
-    fast(options: RunOptions): Effect.Effect<CheckResult, CheckError>
+    fast(options: CheckOptions): Effect.Effect<CheckResult, CheckError>
     /** The full check (checks.full.command), within checks.full.timeout. */
-    full(options: RunOptions): Effect.Effect<CheckResult, CheckError>
+    full(options: CheckOptions): Effect.Effect<CheckResult, CheckError>
   }
 >()("tutti/services/Checks") {
   /**

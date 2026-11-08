@@ -14,7 +14,9 @@
 //
 // A hold without a terminal files a question for the maintainer, which the tree's open tickets wait
 // on, and stops the run with CHECKS_HELD (exit 2). In a terminal tutti checks' form opens first, and
-// a change there is committed on the base, `tutti: set the checks`, and checked from step 1 again.
+// a change there is committed on the base, `tutti: set the checks`, and checked from step 1 again,
+// with the commands and time limits it changed in .tutti/settings.json: the run read the settings as
+// it started, and the gate runs its checks with those it has taken since.
 //
 // It runs once per spec: once it passes, the root epic's `checks_gate` metadata records the runners
 // it passed (their fingerprint), so that a run carried on, or a spec update whose environment ticket
@@ -28,6 +30,7 @@ import { Clock, Duration, Effect, Option, Ref, Result, Semaphore } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { fastRunner, fullRunner, isRunner, runnerCommands, runsNothing } from "../init/runners.ts"
 import { formatDuration } from "../project/configFile.ts"
+import { type Settings, settingsFile } from "../project/settings.ts"
 import {
   Beads,
   beadsWhy,
@@ -55,6 +58,7 @@ import { Ledger } from "./ledger.ts"
 import { type Line, Log, line, Tag, tagged } from "./log.ts"
 import { warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
+import { settingsAt } from "./setup.ts"
 import { SpecMetadata } from "./spec.ts"
 
 /** The root epic's metadata key recording the runners the gate passed: their fingerprint. */
@@ -83,6 +87,9 @@ export interface RunnerRead {
   /** The runner's script on the base; null where the command isn't a runner, or it is missing. */
   readonly script: string | null
 }
+
+/** The fast and full checks' settings, as the gate runs them. */
+export type GateChecks = Pick<Settings["checks"], "fast" | "full">
 
 /** What `runner` runs, a line each, for the gate's lines and its form: the runner's commands. */
 export const runsOf = (runner: RunnerRead): ReadonlyArray<string> =>
@@ -274,8 +281,8 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
         return issue.status === "closed" && !issue.labels.includes(unmergedLabel)
       })
 
-    /** The runners on the base at `at`, as the settings name the checks. */
-    const readRunners = (at: Sha) =>
+    /** The runners on the base at `at`, as `checks` name them. */
+    const readRunners = (at: Sha, checks: GateChecks) =>
       Effect.forEach(
         [
           { check: "fast" as const, runner: fastRunner },
@@ -283,7 +290,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
         ],
         ({ check, runner }) =>
           Effect.gen(function* () {
-            const command = config.settings.checks[check].command
+            const command = checks[check].command
             const path = command !== null && isRunner(command, runner) ? runner : null
             const script =
               path === null
@@ -292,6 +299,41 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             return { check, command, path, script } satisfies RunnerRead
           }),
       )
+
+    /**
+     * The checks as the gate runs them once the form committed new settings on the base, `from` to
+     * `to`: fast and full each taken from .tutti/settings.json at `to` where its command or time
+     * limit changed there, else as `was` has them, so that a time limit a flag gave stays. Both
+     * where the settings at `from` can't be read; `was` where those at `to` can't.
+     */
+    const takeChecks = (was: GateChecks, from: Sha, to: Sha) =>
+      Effect.gen(function* () {
+        const now = yield* settingsAt(config.repo, to)
+        if (Result.isFailure(now)) {
+          yield* logs.write(
+            gateLine`${settingsFile} on ${base} at ${shortHash(to)} could not be read (${now.failure}); the checks stay as they were`,
+          )
+          return was
+        }
+        const before = yield* settingsAt(config.repo, from)
+        const taken: { fast: GateChecks["fast"]; full: GateChecks["full"] } = { ...was }
+        for (const check of ["fast", "full"] as const) {
+          const entry = now.success.checks[check]
+          const old = Result.isSuccess(before) ? before.success.checks[check] : undefined
+          if (
+            old !== undefined &&
+            old.command === entry.command &&
+            Duration.equals(old.timeout, entry.timeout)
+          ) {
+            continue
+          }
+          taken[check] = entry
+          yield* logs.write(
+            gateLine`checks.${check} from ${settingsFile} on ${base} at ${shortHash(to)}: ${entry.command === null ? "no command" : line`'${entry.command}'`}, time limit ${formatDuration(entry.timeout)}`,
+          )
+        }
+        return taken
+      })
 
     const gate = (env: Issue) =>
       Effect.gen(function* () {
@@ -358,6 +400,10 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
 
         // A gate question still open for the spec, as the last look at them found it.
         let waitingOn: Issue | undefined
+        // The checks the gate runs: the run's, then those the form set (takeChecks).
+        let checksNow: GateChecks = config.settings.checks
+        // The base's head the form's checks were set on, to take them from once they are committed.
+        let setOn: Sha | null = null
 
         const run = Effect.gen(function* () {
           for (;;) {
@@ -368,7 +414,11 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
               return
             }
             const at = head.success
-            const runners = yield* readRunners(at)
+            if (setOn !== null) {
+              checksNow = yield* takeChecks(checksNow, setOn, at)
+              setOn = null
+            }
+            const runners = yield* readRunners(at, checksNow)
             const print = fingerprint(runners)
             yield* logs.write(
               gateLine`${env.id}, the spec's environment ticket, merged: checking the checks on ${base} at ${shortHash(at)} before the rest of ${root} starts`,
@@ -420,6 +470,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
               yield* logs.write(gateLine`${why}`)
               if (options.ask !== undefined && (yield* options.ask.held(why)) === "set") {
                 changed = true
+                setOn = at
                 continue
               }
               yield* hold("empty", why, at, runners)
@@ -459,6 +510,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
                 const why = line`${failed.why}${failed.output === undefined ? "" : line`; the whole output is in ${failed.output}`}`
                 if ((yield* options.ask.held(why)) === "set") {
                   changed = true
+                  setOn = at
                   continue
                 }
               }
@@ -476,6 +528,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             }
             if (options.ask !== undefined && (yield* options.ask.shown(shown)) === "set") {
               changed = true
+              setOn = at
               continue
             }
             yield* record(print)
@@ -506,7 +559,8 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
               const worktrees = yield* Worktrees
               const checks = yield* Checks
               const setup = yield* options.setup
-              const command = config.settings.checks[check].command ?? ""
+              const settings = checksNow[check]
+              const command = settings.command ?? ""
               yield* show(
                 setup === null
                   ? { step: "check", command, began: since, gate: true }
@@ -564,7 +618,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
                 })
               const body = Effect.gen(function* () {
                 yield* logs.write(
-                  gateLine`running ${what}${setup === null ? "" : line`, after '${setup}',`} in ${dir} (time limit ${formatDuration(config.settings.checks[check].timeout)})`,
+                  gateLine`running ${what}${setup === null ? "" : line`, after '${setup}',`} in ${dir} (time limit ${formatDuration(settings.timeout)})`,
                 )
                 if (setup !== null) {
                   const setUp = yield* timed(
@@ -576,7 +630,13 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
                           recorded(
                             "setup",
                             undefined,
-                            checks.setup({ cwd: dir, ...to, before: check, command: setup }),
+                            checks.setup({
+                              cwd: dir,
+                              ...to,
+                              before: check,
+                              command: setup,
+                              timeLimit: settings.timeout,
+                            }),
                           ),
                       ),
                     ),
@@ -595,7 +655,12 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
                       recorded(
                         check === "fast" ? "merge" : "full",
                         undefined,
-                        checks[check]({ cwd: dir, ...to }),
+                        checks[check]({
+                          cwd: dir,
+                          ...to,
+                          command: settings.command,
+                          timeLimit: settings.timeout,
+                        }),
                       ),
                     ),
                   ),
@@ -778,7 +843,10 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
           if (Result.isSuccess(head)) {
             const meta = yield* Effect.result(beads.metadata(root))
             const passed = Result.isSuccess(meta) ? meta.success[gateKey] : undefined
-            if (passed !== undefined && passed === fingerprint(yield* readRunners(head.success))) {
+            if (
+              passed !== undefined &&
+              passed === fingerprint(yield* readRunners(head.success, config.settings.checks))
+            ) {
               yield* logs.write(
                 gateLine`the checks on ${base} passed it for ${path} already; not run again`,
               )

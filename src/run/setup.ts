@@ -662,6 +662,25 @@ export const setupNote = (command: string | null): string =>
 /** The setup command for a line: quoted, or `none`. */
 const setupSaid = (command: string | null): string => (command === null ? "none" : `'${command}'`)
 
+/** The settings in .tutti/settings.json at commit `at` of `repo`, or why they can't be read. */
+export const settingsAt = (
+  repo: string,
+  at: Sha,
+): Effect.Effect<Result.Result<Settings, string>, never, Git> =>
+  Effect.gen(function* () {
+    const read = yield* Effect.result((yield* Git).fileAt(repo, at, settingsFile))
+    if (Result.isFailure(read)) return Result.fail(read.failure.message)
+    const parsed = parseConfigJson(read.success)
+    if (Result.isFailure(parsed)) return Result.fail(`it ${parsed.failure}`)
+    const decoded = yield* Effect.result(decodeConfig(Settings, settingsFile, parsed.success))
+    if (Result.isSuccess(decoded)) return Result.succeed(decoded.success)
+    return Result.fail(
+      decoded.failure.problems
+        .map((each) => (each.path === "" ? each.message : `${each.path}: ${each.message}`))
+        .join("; "),
+    )
+  })
+
 /**
  * Has the run take checks.setup from .tutti/settings.json as ticket `id`'s merge committed it to the
  * base, when the merge, from `before` to `merged`, the commit it put the base at, changed that file
@@ -690,30 +709,15 @@ export const takeSettings = (
     const changed = yield* Effect.result(git.filesBetween(repo, before, now))
     if (Result.isFailure(changed) || !changed.success.includes(settingsFile)) return
     const was = yield* setUps.now
-    const read = yield* Effect.result(git.fileAt(repo, now, settingsFile))
-    let problem: string | undefined
-    let taken: Settings | undefined
-    if (Result.isFailure(read)) problem = read.failure.message
-    else {
-      const parsed = parseConfigJson(read.success)
-      if (Result.isFailure(parsed)) problem = `it ${parsed.failure}`
-      else {
-        const decoded = yield* Effect.result(decodeConfig(Settings, settingsFile, parsed.success))
-        if (Result.isSuccess(decoded)) taken = decoded.success
-        else {
-          problem = decoded.failure.problems
-            .map((each) => (each.path === "" ? each.message : `${each.path}: ${each.message}`))
-            .join("; ")
-        }
-      }
-    }
-    if (taken === undefined) {
+    const read = yield* settingsAt(repo, now)
+    if (Result.isFailure(read)) {
       const text = ticketLine(
         Tag.settingsUnread,
-      )`${id}'s merge changed ${settingsFile} on ${base}, but it could not be read${problem === undefined ? "" : `: ${problem}`}; the setup stays ${setupSaid(was.command)}, and the requirements as they were`
+      )`${id}'s merge changed ${settingsFile} on ${base}, but it could not be read: ${read.failure}; the setup stays ${setupSaid(was.command)}, and the requirements as they were`
       yield* warn(text, id)
       return
     }
+    const taken = read.success
     if (!sameRequires(taken.requires, yield* setUps.requires)) {
       yield* setUps.takeRequires(taken.requires)
       yield* (yield* AgentHost).takeRequires(taken.requires.map((r) => r.name))
