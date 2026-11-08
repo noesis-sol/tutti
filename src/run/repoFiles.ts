@@ -129,8 +129,8 @@ export interface RepoFiles {
  * commands (`scripts/check-fast.sh`, `bun test && sh scripts/lint.sh`) name among them. `union`
  * holds the files git merges by union (`Git.mergedByUnion`), as git lists them; `sharedFiles` the
  * settings' `queue.shared_files`, paths and globs; `declared` the names their source files declare,
- * each with the files declaring it (`readDeclared`), undefined when unknown; `vendored` the tracked files that are vendored and
- * the settings' globs (`readVendored`).
+ * each with the files declaring it (`readDeclared`), undefined when unknown; `vendored` the tracked
+ * files that are vendored and the settings' globs (`readVendored`).
  */
 export const repoFiles = (
   tracked: ReadonlyArray<string> | undefined,
