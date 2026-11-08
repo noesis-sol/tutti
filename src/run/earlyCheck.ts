@@ -16,13 +16,14 @@
 // while no other check runs (a merge's, a train's, a fix's, the checks gate's, another early check),
 // and each of those takes the slot as it starts (claim), cancelling an early check under way at
 // once, its process group killed; a merge waits for its own ticket's early check instead. An early
-// check is cancelled too when its ticket's branch moves on (a new commit), its worker calls the
-// verifier again (that round starts another), its ticket leaves Working other than for the merge
-// queue (deferred, blocked, set aside), or the run winds down, quits or comes to its full check. A
-// failed early check is dropped: its worker isn't told (its verifier reports to it, and the merge
-// check decides), and its output is kept as a failed check's is (keptChecks.ts), as early-<n>.log.
-// A pass that left uncommitted changes to tracked files in its worktree, a pass on files that won't
-// merge, is dropped too, its record failed and saying why; the merge check judges it as ever.
+// check is cancelled too when its ticket's branch moves on (a new commit; not its turn's rebase onto
+// the same base, to the tree it checks), its worker calls the verifier again (that round starts
+// another), its ticket leaves Working other than for the merge queue (deferred, blocked, set aside),
+// or the run winds down, quits or comes to its full check. A failed early check is dropped: its
+// worker isn't told (its verifier reports to it, and the merge check decides), and its output is
+// kept as a failed check's is (keptChecks.ts), as early-<n>.log. A pass that left uncommitted
+// changes to tracked files in its worktree, a pass on files that won't merge, is dropped too, its
+// record failed and saying why; the merge check judges it as ever.
 //
 // Each is measured in early_check records, with a line in the log: started, cancelled (why), not run
 // (why), passed, failed, and at its ticket's turn hit (and how long the turn waited for it) or miss
@@ -415,18 +416,41 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
         return ended
       })
 
+    // Whether `commit` is what it checks: its rebased tree, on top of the base's commit it rebased
+    // onto, as the ticket's turn rebases the branch before it asks for the early check (passed).
+    const checksAt = (early: Early, commit: Sha) =>
+      Effect.gen(function* () {
+        const tree = yield* Deferred.await(early.tree)
+        if (tree === undefined) return false
+        const read = yield* Effect.result(
+          Effect.all(
+            {
+              tree: git.revParse(repo, `${commit}^{tree}`),
+              fork: git.mergeBase(repo, early.onto, commit),
+            },
+            { concurrency: "unbounded" },
+          ),
+        )
+        return (
+          Result.isSuccess(read) && read.success.tree === tree && read.success.fork === early.onto
+        )
+      })
+
     // Looks every branchPoll whether the branch has moved on from what it checks: its cancellation.
     const watch = (early: Early) =>
       Effect.gen(function* () {
+        let head = early.head
         for (;;) {
           yield* Effect.sleep(branchPoll)
           const now = yield* Effect.result(git.revParse(repo, early.branch))
-          if (Result.isSuccess(now) && now.success !== early.head) {
+          if (Result.isFailure(now) || now.success === head) continue
+          if (!(yield* checksAt(early, now.success))) {
             return yield* cancelled(
               early,
               line`${early.branch} moved on to ${shortHash(now.success)}`,
             )
           }
+          head = now.success
         }
       })
 

@@ -416,6 +416,32 @@ describe("at the ticket's turn", () => {
     expect(recordOf(ran.events, t1, "hit")?.waited).toBeGreaterThan(0)
   }, 15_000)
 
+  test("still running on a branch behind the base, its turn's rebase doesn't cancel it", async () => {
+    const started = Effect.runSync(Deferred.make<void>())
+    const gate = Effect.runSync(Deferred.make<void>())
+    const ran = await run(
+      { ...noTrain, checks: { fast: [gated(started, gate)] } },
+      Effect.gen(function* () {
+        const early = yield* makeEarly(options)
+        const queue = yield* makeQueue({ ...options, early })
+        const ticket = yield* working(t1)
+        yield* moveMain()
+        yield* early.called(t1)
+        yield* Deferred.await(started)
+        yield* close(ticket)
+        yield* queue.offer(ticket)
+        yield* settle
+        yield* advance("30 seconds")
+        yield* settle
+        yield* Deferred.succeed(gate, undefined)
+        yield* queue.settled
+      }),
+    )
+    expect(details(ran.events, t1)).toEqual(["started", "passed", "hit"])
+    expect(fastRuns(ran)).toHaveLength(1)
+    expect(recordOf(ran.events, t1, "hit")?.waited).toBeGreaterThan(0)
+  }, 15_000)
+
   test("the base moved on since: a miss, and the merge check runs", async () => {
     const ran = await run(
       noTrain,
