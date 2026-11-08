@@ -7,7 +7,8 @@
 // which opens the list again once it is answered, the next one chosen, that question left out unless
 // bd refuses the answer (RefusedAnswers); a Blocked ticket in a box
 // saying what clears it, Enter there opening its worker view, `h` handing back one blocked on its
-// merge conflict (§ 4.3), Esc back to the list at the next one.
+// merge conflict (§ 4.3), Esc back to the list at the next one, as is its leaving Blocked, the box
+// drawing it as the run has it now.
 // A list with nothing in it once the questions are read says Nothing needs you for `emptyLife`, on
 // the toasts' timer, and closes by itself, unless a need comes in meanwhile; Esc, Enter or a click
 // anywhere closes it sooner. A read that failed has its own toast, and the empty list closes at
@@ -247,7 +248,17 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
   ])
   const items = needsItems(needs, done, questions)
   const [chosen, setChosen, chosenNow] = useKeyState(() => at)
-  const [blocked, setBlocked] = useState<Extract<Need, { _tag: "Blocked" }> | null>(null)
+  const [blockedOn, setBlockedOn] = useState<TicketId | null>(null)
+  const blocked =
+    needs.find(
+      (each): each is Extract<Need, { _tag: "Blocked" }> =>
+        each._tag === "Blocked" && each.ticket === blockedOn,
+    ) ?? null
+  // The ticket left Blocked: back to the list, where the next one is at its place.
+  const gone = blockedOn !== null && blocked === null
+  useEffect(() => {
+    if (gone) setBlockedOn(null)
+  }, [gone])
   const index = Math.min(Math.max(chosen, 0), Math.max(items.length - 1, 0))
   // Nothing in it once the questions are read: it says so, and closes after `emptyLife` on the
   // toasts' timer, which a need coming in stops. A read that failed has its own toast, and the list
@@ -279,11 +290,11 @@ export const NeedsList = ({ at, answered }: NeedsAt) => {
     if (item._tag === "Need" && item.need._tag === "Blocked") {
       // Opened by a click, it is chosen too: Esc comes back at the one after it.
       setChosen(() => i)
-      setBlocked(item.need)
+      setBlockedOn(item.need.ticket)
     }
   }
   const back = () => {
-    setBlocked(null)
+    setBlockedOn(null)
     setChosen(() => Math.min(Math.max(chosenNow(), 0), Math.max(items.length - 1, 0)) + 1)
   }
   const commands: ReadonlyArray<Command> =
