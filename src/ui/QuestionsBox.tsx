@@ -213,9 +213,15 @@ export const QuestionsBox = ({
   const [uuid] = useState(() => crypto.randomUUID())
   const [at, setAt] = useState(0)
   useEffect(() => command(UiCommand.ReadQuestions({ uuid })), [command, uuid])
-  const read = useQuestionNews().find(
+  const found = useQuestionNews().find(
     (news) => news.uuid === uuid && (news._tag === "Read" || news._tag === "NotRead"),
   )
+  // Kept once read: each answer adds news, and past newsKept the read falls off it (tutti-fnvd.6).
+  const [kept, setKept] = useState(found)
+  useEffect(() => {
+    if (found !== undefined) setKept(found)
+  }, [found])
+  const read = kept ?? found
   const close = () => box.set(back === undefined ? null : nextIn(back))
   const all = read?._tag === "Read" ? read.questions : undefined
   // From the Needs you list, its question alone.
