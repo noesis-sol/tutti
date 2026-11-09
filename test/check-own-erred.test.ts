@@ -47,6 +47,11 @@ describe("erredFiles", () => {
     expect(erredFiles(framed, 1, files, dir)).toEqual(["test/c.test.ts"])
   })
 
+  test("reads the heading bun prints under GitHub Actions, ::group::<file>:", () => {
+    const output = between("::group::test/b.test.ts", join(dir, "src/helper.ts"))
+    expect(erredFiles(output, 1, files, dir)).toEqual(["test/b.test.ts"])
+  })
+
   test("takes no line of a test's output for its heading", () => {
     const output = `test/a.test.ts:\nnoise:\n${between("noise", join(dir, "src/helper.ts"))}`
     expect(erredFiles(output, 1, files, dir)).toEqual(["test/a.test.ts"])

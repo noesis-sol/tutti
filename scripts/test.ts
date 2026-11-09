@@ -275,7 +275,8 @@ export const summaryCounts = (
  * The errors bun test printed as "# Unhandled error between tests", each the text from that heading
  * to the dashed line that closes it, with the last line before it that reads "<file>:" for a file
  * `isFile` takes: the test file bun ran it in, which it names so above its tests, and again above
- * the error under --parallel (Bun 1.4.3). A test's own output may read so too, hence `isFile`.
+ * the error under --parallel (Bun 1.4.3); under GitHub Actions (GITHUB_ACTIONS) bun prints it
+ * "::group::<file>:". A test's own output may read so too, hence `isFile`.
  */
 const errorBlocks = (
   output: string,
@@ -288,7 +289,7 @@ const errorBlocks = (
     if (block === undefined) {
       if (line.trim() === "# Unhandled error between tests") block = []
       else {
-        const heading = /^(\S.*):\s*$/.exec(line)?.[1]
+        const heading = /^(?:::group::)?(\S.*):\s*$/.exec(line)?.[1]
         if (heading !== undefined && isFile(heading)) file = heading
       }
     } else if (/^-+\s*$/.test(line)) {
