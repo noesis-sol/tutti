@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.7.2] - 2026-11-09
+
 - `scripts/test.ts` reads bun's file headings under GitHub Actions (`::group::<file>:`), so a test file whose error between tests is thrown from a module it imports is no longer kept as passed there (tutti-0f7v).
 - The Needs you list keeps the questions it read: past 16 news items (answers or talks recorded elsewhere) while it stayed open, it went back to `reading the open questions…`, as its read had fallen off the screen's latest news, as the `Shift+A` questions box did before tutti-fnvd.6 (§ 7.2; `src/ui/NeedsList.tsx`; `test/needs-list-news-kept.test.tsx`; tutti-fgpz).
 - Talk it through on a question opened from the Needs you list comes back to the list: once the talk gives an answer, the list opens again at the next item, the question left out as an answer in the box leaves it; a talk without one opens the box at that question alone, whose `Esc` goes back to the list. It went on through every open question in the run's scope instead, or, answered, closed the list (tutti-fnvd.7).
