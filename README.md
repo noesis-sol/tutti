@@ -10,17 +10,6 @@ workers side by side, each in its own git worktree. It rebases, checks and fast-
 finished ticket, one at a time, into the branch you started on. A live terminal dashboard shows the
 run, and you can open any worker to read what it is doing or talk to it.
 
-It is a port of [orchestra](https://github.com/noesis-sol/orchestra) that keeps orchestra's concepts
-and drops its terminal multiplexers:
-
-- **No tabs.** Workers are Claude Agent SDK sessions held by tutti's own process. A worker's "tab" is
-  a view tutti draws, opened by selecting its card.
-- **Exact worker state**, from the sessions' own messages, not from reading a screen.
-- **Requests answered in tutti.** A worker's permission requests and questions are answered on its
-  card, in its view, or with `tutti answer`.
-- **Any terminal**, on macOS or Linux, inside tmux or over ssh. Nothing to install beyond `git`
-  (2.38 or later), `bd` and a Claude login.
-
 ## Install
 
 The recommended install is a release archive: one binary, with its Claude Code embedded, from the
