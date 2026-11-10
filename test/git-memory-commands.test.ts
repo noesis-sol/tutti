@@ -69,6 +69,11 @@ const calls: ReadonlyArray<{
     call: (git, dir) => git.createBranch(dir, "b", "main"),
   },
   {
+    op: "branch -f",
+    command: "git branch --force --end-of-options b main",
+    call: (git, dir) => git.moveBranch(dir, "b", "main"),
+  },
+  {
     op: "checkout",
     command: "git -c core.hooksPath=/dev/null checkout --quiet --end-of-options b",
     call: (git, dir) => git.checkout(dir, "b"),

@@ -1257,11 +1257,14 @@ export interface DoneTicket {
  * wrote there (checkWrote.ts), as git refuses it otherwise (CLEANUP_FAILED), a detail line naming
  * them once they are gone. `moveToBase`: the branch moved to the base first, so that git deletes it
  * as merged when the base holds its changes without its commits (its reflog keeps them); "ahead"
- * when it has commits beyond the base, or git can't say. `leaveChanged`: a worktree with any
- * changes, tutti's files too, or one git can't read, is left with its branch rather than handed to
- * git, as one a person may be working in. Without a worktree, only the branch is removed. A worktree
- * with no changes, or only tutti's files, is set aside in the trash folder rather than deleted by
- * git, its files deleted in the background (trash.ts), so the merge queue doesn't wait on them.
+ * when it has commits beyond the base, or git can't say. A worktree left off its branch (detached,
+ * on another branch) has no checkout to reset, so the branch is moved from the main checkout
+ * instead (Git.moveBranch), which git refuses only for a branch a worktree has. `leaveChanged`: a
+ * worktree with any changes, tutti's files too, or one git can't read, is left with its branch
+ * rather than handed to git, as one a person may be working in. Without a worktree, only the branch
+ * is removed. A worktree with no changes, or only tutti's files, is set aside in the trash folder
+ * rather than deleted by git, its files deleted in the background (trash.ts), so the merge queue
+ * doesn't wait on them.
  */
 export const removeMerged = (
   ticket: Omit<DoneTicket, "title">,
@@ -1293,7 +1296,15 @@ export const removeMerged = (
             (commits) => Result.isFailure(commits) || commits.success.length > 0,
           )
         : Effect.succeed(how.moveToBase)
-    if (yield* ahead) yield* restoreBranch({ branch, worktree: at }, options.base, 1)
+    if (yield* ahead) {
+      const restored = yield* restoreBranch({ branch, worktree: at }, options.base, 1)
+      // The worktree off its branch (detached, on another branch), there is no checkout to reset:
+      // the branch is moved from the main checkout, which git refuses only where a worktree has it
+      // checked out. A move that fails leaves the branch for git to refuse, CLEANUP_FAILED.
+      if (restored._tag === "OffBranch") {
+        yield* Effect.ignore(git.moveBranch(options.repo, branch, options.base))
+      }
+    }
     const removal = written === undefined ? { at } : { at, untracked: true }
     // Nothing in it git would refuse to delete: its files go in the background.
     const aside =

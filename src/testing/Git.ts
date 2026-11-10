@@ -923,6 +923,28 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               branches.set(branch, hash)
             }),
           ),
+        // As git: a branch not there is made at `to`, one a worktree has checked out is refused.
+        moveBranch: (repo, branch, to) =>
+          operation(gitCall(gitOps.moveBranch, branch, to), repo, (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, repo)
+              if (branch === "" || /[\s~^:?*[\\]|\.\.|^-|\/$|\.lock$/.test(branch)) {
+                return yield* refuse(128, `fatal: '${branch}' is not a valid branch name`)
+              }
+              const holder = holderOf(branch)
+              if (holder !== undefined) {
+                return yield* refuse(
+                  128,
+                  `fatal: cannot force update the branch '${branch}' used by worktree at '${holder.path}'`,
+                )
+              }
+              const hash = resolve(checkout, to)
+              if (hash === undefined) {
+                return yield* refuse(128, `fatal: not a valid object name: '${to}'`)
+              }
+              branches.set(branch, hash)
+            }),
+          ),
         deleteBranch: (repo, branch, options = {}) =>
           operation(gitCall(gitOps.deleteBranch, branch, options.force), repo, (refuse) =>
             Effect.gen(function* () {

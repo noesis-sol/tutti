@@ -417,6 +417,16 @@ export const gitOps = {
       ...revisions([branch, start]),
     ],
   },
+  // Refused by git for a branch a worktree has checked out, as a reset of its HEAD would be.
+  moveBranch: {
+    op: "branch -f",
+    kind: "write",
+    args: (branch: string, to: string): ReadonlyArray<string> => [
+      "branch",
+      "--force",
+      ...revisions([branch, to]),
+    ],
+  },
   // With the project's hooks off, as addWorktree: a post-checkout hook could outlast the write's
   // time limit. `create` makes the branch at HEAD (-b), where it is gone.
   checkout: {
@@ -885,6 +895,11 @@ export class Git extends Context.Service<
     /** git branch: a new branch at `start`. */
     createBranch(repo: string, branch: string, start: string): Effect.Effect<void, GitError>
     /**
+     * git branch --force: moves `branch` to `to` from the main checkout, without a worktree on it;
+     * git refuses a branch a worktree has checked out (as `git branch -f` does), the branch left.
+     */
+    moveBranch(repo: string, branch: string, to: string): Effect.Effect<void, GitError>
+    /**
      * git checkout: puts worktree on `branch`, which must be checked out nowhere else; `create` makes
      * it at the worktree's HEAD (-b), so the branch must not exist. Changes to tracked files are
      * carried over where the switch doesn't touch them, as git does; untracked files stay.
@@ -1266,6 +1281,8 @@ export class Git extends Context.Service<
             Effect.asVoid(write(gitCall(gitOps.repairWorktrees, paths), repo)),
           createBranch: (repo, branch, start) =>
             Effect.asVoid(write(gitCall(gitOps.createBranch, branch, start), repo)),
+          moveBranch: (repo, branch, to) =>
+            Effect.asVoid(write(gitCall(gitOps.moveBranch, branch, to), repo)),
           checkout: (worktree, branch, options = {}) =>
             Effect.asVoid(write(gitCall(gitOps.checkout, branch, options.create), worktree)),
           deleteBranch: (repo, branch, remove = {}) =>
