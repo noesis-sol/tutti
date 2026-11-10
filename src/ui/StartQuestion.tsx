@@ -219,14 +219,16 @@ export const StartQuestion = ({
   )
 
   // Option `at` chosen: the current tickets answer; a spec asks for its file, a new feature for its
-  // description.
+  // description. Only while the select is the field answered: a later step keeps what it has
+  // (tutti-34k9.11).
   const choose = (at: number) => {
+    if (stepNow() !== "choose") return
     if (at === optionAt.tickets) answer(Work.Tickets())
-    else if (stepNow() === "choose" && at === optionAt.spec) {
+    else if (at === optionAt.spec) {
       setStep(() => "spec")
       // The read's keys after this Enter are the field's, before React draws it.
       field.input.current?.focus()
-    } else if (stepNow() === "choose") {
+    } else {
       setError(null)
       setStep(() => "describe")
       description.current?.focus()
@@ -312,13 +314,18 @@ export const StartQuestion = ({
           <box flexDirection="column" flexShrink={0}>
             <Field theme={theme} focused={step === "choose"}>
               <Lines lines={heading} />
-              <Lines
-                lines={choices}
-                press={(at) => {
-                  setHighlighted(() => at)
-                  choose(at)
-                }}
-              />
+              {/* Click targets only while the select is answered: a later step keeps its text. */}
+              {step === "choose" ? (
+                <Lines
+                  lines={choices}
+                  press={(at) => {
+                    setHighlighted(() => at)
+                    choose(at)
+                  }}
+                />
+              ) : (
+                <Lines lines={choices} />
+              )}
             </Field>
           </box>
         </box>
