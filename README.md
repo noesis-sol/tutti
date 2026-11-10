@@ -10,6 +10,9 @@ workers side by side, each in its own git worktree. It rebases, checks and fast-
 finished ticket, one at a time, into the branch you started on. A live terminal dashboard shows the
 run, and you can open any worker to read what it is doing or talk to it.
 
+<img width="3216" height="2100" alt="Screenshot 2026-11-10 at 12 40 15 PM" src="https://github.com/user-attachments/assets/92037c8f-c6bd-4571-bb56-796f1d2f2fee" />
+
+
 ## Install
 
 The recommended install is a release archive: one binary, with its Claude Code embedded, from the
