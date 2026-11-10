@@ -37,6 +37,13 @@ import {
 // orchestra's checkRebased has it.
 
 const options = { repo: "/repo", base: "main" }
+
+/**
+ * The checks and the setups before them, in the worktree, in order: the setup in the main checkout
+ * after the merge, for the bun.lock the branch changes, left out (checkout-setup.test.ts).
+ */
+const inWorktree = (ran: Ran<unknown>): ReadonlyArray<string> =>
+  ran.checkRuns.filter((each) => each.cwd !== options.repo).map((each) => each.check)
 const check = "scripts/check-fast.sh"
 const setupCommand = "bun install --frozen-lockfile"
 
@@ -187,7 +194,7 @@ describe("the setup before a fix's check", () => {
       a: [finishedSession(fixes(world, "a", { "bun.lock": "fixed\n" }))],
     }))
     expect(resultOf(ran).a).toEqual(expect.objectContaining({ _tag: "Done" }))
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast", "setup", "fast"])
+    expect(inWorktree(ran)).toEqual(["fast", "setup", "fast"])
     const [, setup, checked] = ran.checkRuns
     expect(setup?.cwd).toBe(worktreeOf("a"))
     expect(checked?.cwd).toBe(worktreeOf("a"))
@@ -199,7 +206,7 @@ describe("the setup before a fix's check", () => {
       a: [finishedSession(fixes(world, "a", { "fix.txt": "fixed\n" }))],
     }))
     expect(resultOf(ran).a).toEqual(expect.objectContaining({ _tag: "Done" }))
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast", "fast"])
+    expect(inWorktree(ran)).toEqual(["fast", "fast"])
     expect(ran.log.some((each) => each.includes("before the check"))).toBe(false)
   })
 
@@ -230,7 +237,7 @@ describe("the setup before a fix's check", () => {
     )
     expect(resultOf(ran).a).toEqual(expect.objectContaining({ _tag: "Done" }))
     // The merge's setup, for package.json, passed: the fix's sets up again for its bun.lock.
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["setup", "fast", "setup", "fast"])
+    expect(inWorktree(ran)).toEqual(["setup", "fast", "setup", "fast"])
     expectLog(ran, [
       `  a: package.json changed in the rebase; running '${setupCommand}' before the check`,
       /^ {2}FIXING: /,
@@ -255,7 +262,7 @@ describe("the setup before a fix's check", () => {
     expect(resultOf(ran).a).toEqual(expect.objectContaining({ _tag: "Done" }))
     // The failed setup leaves the worktree set up for the branch before the first fix, so the
     // second fix's check sets up for the first's bun.lock.
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast", "setup", "setup", "fast"])
+    expect(inWorktree(ran)).toEqual(["fast", "setup", "setup", "fast"])
     expectLog(ran, [/^ {2}FIXING: /, fixLine, /^ {2}FIXING: /, fixLine, passesLine])
   })
 })
@@ -266,7 +273,7 @@ describe("the setup before a resolution's check", () => {
       a: [finishedSession(resolves(world, "a", { "a.txt": "both\n", "bun.lock": "both\n" }))],
     }))
     expect(resultOf(ran).a).toEqual(expect.objectContaining({ _tag: "Done" }))
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["setup", "fast"])
+    expect(inWorktree(ran)).toEqual(["setup", "fast"])
     expectLog(ran, [
       /^ {2}RESOLVING: /,
       `  a: bun.lock changed in its worker's resolution; running '${setupCommand}' before the check`,
@@ -279,7 +286,7 @@ describe("the setup before a resolution's check", () => {
       a: [finishedSession(resolves(world, "a", { "a.txt": "both\n" }))],
     }))
     expect(resultOf(ran).a).toEqual(expect.objectContaining({ _tag: "Done" }))
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast"])
+    expect(inWorktree(ran)).toEqual(["fast"])
     expect(ran.log.some((each) => each.includes("before the check"))).toBe(false)
   })
 })

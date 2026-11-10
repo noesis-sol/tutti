@@ -35,6 +35,10 @@
 // on one (SETUP_WAITS). A merge that changes checks.setup, checks.fast or checks.full in
 // .tutti/settings.json has the run use them from then on (takeSettings), and one that changes its requires list has the run check the new
 // list before the next ticket starts (requires.ts).
+//
+// The main checkout gets the same care (setUpCheckout): the merges fast-forward the base there, and
+// after one whose commits change a file checks.setup.files names, the setup runs there too, so that
+// its dependencies match the base; a failure is a warning, not the ticket's, which merged.
 import { unlinkSync } from "node:fs"
 import { join } from "node:path"
 import { Data, Duration, Effect, Option, Ref, Result } from "effect"
@@ -45,6 +49,7 @@ import { type Requirement, Settings, settingsFile } from "../project/settings.ts
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { Checks, type RunChecks, setupLogName } from "../services/Checks.ts"
 import { Git, type Sha, type StatusEntry } from "../services/Git.ts"
+import { checkoutTrackedChanges } from "../services/gitStatus.ts"
 import { Store, ticketsIn } from "../services/Store.ts"
 import {
   checkRunFolder,
@@ -495,6 +500,76 @@ export const setUpWorktree = (
     if (now !== undefined) yield* setUps.setWorktree(id, now)
     yield* dropMark(id, path)
     return WorktreeSetUp.Passed()
+  })
+
+/**
+ * Runs the run's setup command in the main checkout after ticket `id`'s merge, from `onto`, where
+ * the base was, to `at`, the commit the fast-forward put it at, when the merge's commits change a
+ * file the setup reads (setUps.now), or git can't say what they change. The merges fast-forward
+ * the base there but installed nothing for it, so its dependencies stayed at what was last installed
+ * by hand: on 2026-11-09 the main checkout still had OpenTUI 0.7.0 a week after a merge bumped it to
+ * 0.8.1, and a test failed there on every run (tutti-b45i). It runs within the merge check's time
+ * limit, its whole output in the main checkout's .tutti/run/setup.log, a failure's copy kept as a
+ * check's (keptChecks.ts). The ticket is merged whatever it does: a failure is a SETUP warning that
+ * the main checkout's dependencies are behind, naming the output; so are uncommitted changes to
+ * tracked files it leaves there (an install that rewrites its lockfile), on which the next merge
+ * would stop, DIRTY_TREE.
+ */
+export const setUpCheckout = (
+  id: TicketId,
+  options: MergeTarget & Partial<Pick<MergeOptions, "loaded">>,
+  setUps: SetUps,
+  onto: Sha,
+  at: Sha,
+): Effect.Effect<void, never, AppConfig | Checks | Git | Worktrees | Log | EventStream> =>
+  Effect.gen(function* () {
+    const { command, files } = yield* setUps.now
+    if (command === null) return
+    const git = yield* Git
+    const { repo, base } = options
+    const changed = yield* Effect.result(git.filesBetween(repo, onto, at))
+    let why: string
+    if (Result.isFailure(changed)) {
+      why = "git could not say what its merge changed"
+    } else {
+      const hit = setupFilesIn(changed.success, files)
+      if (hit.length === 0) return
+      why = line`${fileList(hit)} changed in its merge`
+    }
+    yield* (yield* Log).write(
+      detail`${id}: ${why}; running '${command}' in the main checkout ${repo}, so that its dependencies match ${base}`,
+    )
+    const checks = yield* Checks
+    const { ran, output, kept } = yield* Effect.scoped(
+      Effect.gen(function* () {
+        const to = yield* outputTo({ id, worktree: repo }, setupLogName, "the setup's")
+        const { ran, kept } = yield* recordedKeeping(
+          "setup",
+          id,
+          checks.setup({ cwd: repo, ...to, before: "fast", command, ...loadedOf(options.loaded) }),
+          { keep: { worktree: repo, name: setupLogName } },
+        )
+        return { ran, output: to.outputFile, kept }
+      }),
+    )
+    if (Result.isFailure(ran)) {
+      const where = outputKept({ output, kept })
+      const text = ticketLine(
+        Tag.setup,
+      )`'${command}' ${howFailed(ran.failure)} in the main checkout ${repo} after ${id}'s merge, so its dependencies are behind ${base}; the whole output is in ${where}. Run it there by hand`
+      yield* warn(text, id)
+      return
+    }
+    if (ran.success._tag === "NoCheckCommand") return
+    // The fast-forward found no uncommitted change to a tracked file: any now is the setup's.
+    const status = yield* Effect.result(git.status(repo))
+    if (Result.isFailure(status)) return
+    const left = checkoutTrackedChanges(status.success)
+    if (left.length === 0) return
+    const text = ticketLine(
+      Tag.setup,
+    )`'${command}' left uncommitted changes to ${fileList(left)} in the main checkout ${repo} after ${id}'s merge; the next merge stops on them, DIRTY_TREE, until they are committed or undone`
+    yield* warn(text, id)
   })
 
 /** How many tickets the run has merged. */

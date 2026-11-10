@@ -198,7 +198,11 @@ describe("the setup before the merge check", () => {
   test("doesn't run for a setup file only the ticket's own commits change", async () => {
     const ran = await mergeA({ "bun.lock": "a's\n" }, { "main.txt": "moved\n" })
     expect(resultOf(ran).phases.a?._tag).toBe("Done")
-    expect(ran.checkRuns.map((run) => run.check)).toEqual(["fast"])
+    // The one setup is the main checkout's, after the merge (checkout-setup.test.ts).
+    expect(ran.checkRuns.map((run) => [run.check, run.cwd === options.repo])).toEqual([
+      ["fast", false],
+      ["setup", true],
+    ])
   })
 
   test("doesn't run without a setup command", async () => {
@@ -217,7 +221,11 @@ describe("the setup before the merge check", () => {
       ),
     )
     expect(resultOf(ran).phases.a?._tag).toBe("Done")
-    expect(ran.checkRuns.map((run) => run.check)).toEqual(["fast"])
+    // The one setup is the main checkout's, after the merge (checkout-setup.test.ts).
+    expect(ran.checkRuns.map((run) => [run.check, run.cwd === options.repo])).toEqual([
+      ["fast", false],
+      ["setup", true],
+    ])
   })
 
   test("names at most five of the files that changed, then how many more", async () => {

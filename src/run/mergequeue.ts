@@ -81,7 +81,7 @@ import { type CheckAhead, make as makeTrain } from "./mergetrain.ts"
 import { Detail, type InvalidTransition, Move, type TicketPhase } from "./phase.ts"
 import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
 import { fit } from "./sessions.ts"
-import { makeSetUps, takeSettings } from "./setup.ts"
+import { makeSetUps, setUpCheckout, takeSettings } from "./setup.ts"
 import { type Conflicting, takeBackDue } from "./takenBack.ts"
 
 export interface QueueState {
@@ -450,6 +450,11 @@ export const make = (
             yield* options.merged?.({ ticket: ticket.id, onto: prepared.onto, at: prepared.at }) ??
               Effect.void
             yield* takeSettings(ticket.id, options, setUps, prepared.onto, prepared.at)
+            // The main checkout's dependencies, for a merge that changed a setup file (setUpCheckout):
+            // interruptible, so that a quit doesn't wait on an install.
+            yield* Effect.exit(
+              restore(setUpCheckout(ticket.id, options, setUps, prepared.onto, prepared.at)),
+            )
             yield* Effect.exit(restore(recheckFrom(prepared.at)))
           }
           if (prepared._tag === "Over") yield* keepAside(ticket)

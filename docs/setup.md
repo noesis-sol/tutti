@@ -360,6 +360,15 @@ runs always before the full check, which runs in a fresh worktree. A merge that 
 `checks.setup` in `.tutti/settings.json` has the run use the new one from then on (`SETUP: <id>'s
 merge changed .tutti/settings.json on main: the setup is 'npm ci' from now on`).
 
+The main checkout gets the same care: the merges fast-forward `main` there, so after a merge whose
+commits change a file `"files"` names, tutti runs the setup in the main checkout too (`<id>: bun.lock
+changed in its merge; running 'npm ci' in the main checkout <repo>, so that its dependencies match
+main`), its whole output in `.tutti/run/setup.log` there. A failure unmerges nothing: it warns that
+the main checkout's dependencies are behind (`SETUP: 'npm ci' fails in the main checkout <repo> after
+<id>'s merge, so its dependencies are behind main; the whole output is in …. Run it there by hand`),
+as do uncommitted changes to tracked files the setup leaves there, on which the next merge would
+stop, `DIRTY_TREE`.
+
 ### A worker's own check
 
 A worker doesn't run the whole merge check before it closes its ticket: tutti runs that on every

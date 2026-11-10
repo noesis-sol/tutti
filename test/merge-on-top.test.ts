@@ -258,11 +258,17 @@ describe("a branch on top of the base already", () => {
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done" })
-    // The setup ran once, in its new worktree before its worker, and not again before the check.
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["setup", "fast"])
-    expect(ran.log.filter((text) => text.includes(`running '${setup}'`))).toEqual([
+    // The setup ran once in its new worktree before its worker, not again before the check, and in
+    // the main checkout after the merge, whose commits change bun.lock (checkout-setup.test.ts).
+    expect(ran.checkRuns.map((each) => each.check)).toEqual(["setup", "fast", "setup"])
+    const setupLines = ran.log.filter((text) => text.includes(`running '${setup}'`))
+    expect(setupLines).toHaveLength(2)
+    expect(setupLines[0]).toBe(
       `  a: running '${setup}' in its new worktree before its worker starts`,
-    ])
+    )
+    expect(setupLines[1]).toMatch(
+      /^ {2}a: bun\.lock changed in its merge; running '.*' in the main checkout .*, so that its dependencies match main$/,
+    )
   })
 
   test("with no check command, it merges as before, without the line", async () => {
