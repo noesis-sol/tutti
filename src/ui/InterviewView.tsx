@@ -46,7 +46,7 @@ import {
   useTranscriptKeys,
   useTranscriptWindow,
 } from "./transcriptView.ts"
-import { type External, useCommand, useRunViewPart, useTheme } from "./useRunView.ts"
+import { type External, useCommand, useRunViewPart, useShell, useTheme } from "./useRunView.ts"
 import { panelBudget, underToasts, type ViewChrome, ViewHint, viewLayout } from "./WorkerView.tsx"
 import { aboveLines, ViewHead } from "./worker/Head.tsx"
 import { LooksContext, useSyntaxStyles } from "./worker/Looks.tsx"
@@ -200,6 +200,7 @@ export const InterviewView = () => {
   const { sends } = transcript
   const composer = useComposer()
   const input = useInput()
+  const shell = useShell()
   const inner = Math.max(width, 1)
   const queued = queuedLines(sends.queued, theme, inner)
   // The panel has the height the view's other parts leave it, and a few of the transcript's
@@ -266,12 +267,21 @@ export const InterviewView = () => {
     "Leave",
   )
   // The view draws its Leave box and binds its keys: unmounted with it open, nothing would, and the
-  // box would hold the keys of the view after it (tutti-por).
+  // box would hold the keys of the view after it (tutti-por). Its reason box and answer form read
+  // its shell: a talk's, over once the talk ends, would keep the box open over the dashboard with
+  // a request nothing answers any more (tutti-34k9.4).
   useEffect(
     () => () => {
-      if (input.box.get()?._tag === "Leave") input.box.set(null)
+      const open = input.box.get()
+      if (open === null) return
+      if (
+        open._tag === "Leave" ||
+        ((open._tag === "Reason" || open._tag === "Form") && open.shell === shell)
+      ) {
+        input.box.set(null)
+      }
     },
-    [input],
+    [input, shell],
   )
   const { help, actions } = useTranscriptKeys({
     transcript,

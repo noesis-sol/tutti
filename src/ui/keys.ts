@@ -32,7 +32,7 @@ import { Data } from "effect"
 import { createContext, useContext, useEffect } from "react"
 import type { TicketId } from "../services/Beads.ts"
 import type { ToastStore } from "./Toasts.tsx"
-import { type Settable, useEvent } from "./useRunView.ts"
+import { type Settable, type ShellValue, useEvent } from "./useRunView.ts"
 
 /** The layers, highest first: each one's keys win over those of the layers below it. */
 export const priorities = {
@@ -60,10 +60,22 @@ export type Box = Data.TaggedEnum<{
   Stop: { readonly windingDown: boolean }
   /** Enter's on a compact card waiting for you: the worker's request and its buttons (§ 7.2). */
   Answer: { readonly ticket: TicketId }
-  /** Shift+D's: a reason to deny the request `requestId` with, typed in a small field. */
-  Reason: { readonly requestId: string; readonly ticket: TicketId; readonly label: string }
-  /** Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5). */
-  Form: { readonly requestId: string; readonly ticket: TicketId }
+  /**
+   * Shift+D's: a reason to deny the request `requestId` with, typed in a small field. `shell` is
+   * the shell of the view that opened it, whose requests and commands the box reads and answers
+   * through: a question's talk's own, not the dashboard's, when its view opened it (§ 4.11).
+   */
+  Reason: {
+    readonly requestId: string
+    readonly ticket: TicketId
+    readonly label: string
+    readonly shell: ShellValue
+  }
+  /**
+   * Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5).
+   * `shell` is the shell of the view that opened it, as Reason's.
+   */
+  Form: { readonly requestId: string; readonly ticket: TicketId; readonly shell: ShellValue }
   /**
    * Shift+A's on the dashboard: the open questions in the run's scope, put one by one, from
    * `first`'s; with `back`, `first` alone, the Needs you list opened again once it is answered.

@@ -28,7 +28,7 @@ import {
   withLive,
 } from "./transcriptItems.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { external, useEvent, useTranscripts } from "./useRunView.ts"
+import { external, useEvent, useShell, useTranscripts } from "./useRunView.ts"
 
 /** The most requests the panel shows whole; the rest are counted under them. */
 export const panelRequests = 2
@@ -204,11 +204,13 @@ export const usePanel = (
   fit: PanelFit = (requests) => requests.length,
 ): Panel => {
   const input = useInput()
+  // The shell the form reads: this view's, a question's talk's own under its Interview view.
+  const shell = useShell()
   const waiting = card?.requests ?? []
   const oldest = waiting.slice(0, panelRequests)
   const requests = oldest.slice(0, Math.max(fit(oldest, waiting.length), 1))
   const answering = useAnswering(requests, undefined, (request) =>
-    input.box.set(Box.Form({ requestId: request.id, ticket: request.ticket })),
+    input.box.set(Box.Form({ requestId: request.id, ticket: request.ticket, shell })),
   )
   return { requests, more: waiting.length - requests.length, answering }
 }

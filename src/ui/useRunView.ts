@@ -118,7 +118,11 @@ export interface TalkShown {
 
 export const ShellContext = createContext<ShellValue | null>(null)
 
-const useShell = (): ShellValue => {
+/**
+ * The shell the component draws in: the run's, or a question's talk's own under its Interview view
+ * (App.tsx). A box opened from a view takes it along, so that the box reads the same one (keys.ts).
+ */
+export const useShell = (): ShellValue => {
   const shell = useContext(ShellContext)
   if (shell === null) throw new Error("tutti's screen is drawn outside its ShellContext")
   return shell

@@ -27,7 +27,7 @@ import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { RowBox } from "./RowBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
 import { makeToasts, suspendToast, type Timer, Toasts } from "./Toasts.tsx"
-import { external, useCommand, useTheme } from "./useRunView.ts"
+import { external, ShellContext, useCommand, useTheme } from "./useRunView.ts"
 
 /** Ctrl+C and Ctrl+Z, over every layer, in every view. */
 const GlobalKeys = () => {
@@ -56,7 +56,11 @@ const CopyOnSelect = ({ input }: { readonly input: InputState }) => {
   return null
 }
 
-/** The box open over the view. */
+/**
+ * The box open over the view. The reason box and the answer form read the shell of the view that
+ * opened them (Box's `shell`): a question's talk's own, under its Interview view, rather than the
+ * run's, whose RunView leaves the talk's requests out (§ 4.11).
+ */
 const OpenBox = ({ input }: { readonly input: InputState }) => {
   const box = useSyncExternalStore(input.box.subscribe, input.box.get)
   if (box === null) return null
@@ -72,9 +76,17 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
       // the worker view draws its interrupt question and the Interview view its leave question.
       return null
     case "Reason":
-      return <ReasonBox requestId={box.requestId} ticket={box.ticket} label={box.label} />
+      return (
+        <ShellContext.Provider value={box.shell}>
+          <ReasonBox requestId={box.requestId} ticket={box.ticket} label={box.label} />
+        </ShellContext.Provider>
+      )
     case "Form":
-      return <AnswerForm requestId={box.requestId} ticket={box.ticket} />
+      return (
+        <ShellContext.Provider value={box.shell}>
+          <AnswerForm requestId={box.requestId} ticket={box.ticket} />
+        </ShellContext.Provider>
+      )
     case "Questions":
       return <QuestionsBox first={box.first} back={box.back} />
     case "Needs":

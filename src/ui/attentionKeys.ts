@@ -26,7 +26,14 @@ import {
 } from "./openUrl.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { ShellContext, useClock, useCommand, useEvent, useLatestRunView } from "./useRunView.ts"
+import {
+  ShellContext,
+  useClock,
+  useCommand,
+  useEvent,
+  useLatestRunView,
+  useShell,
+} from "./useRunView.ts"
 
 /**
  * How long input to a card is ignored after its request appears or changes, or becomes the target,
@@ -308,6 +315,8 @@ export const useAnswering = (
   const answer = useSendAnswer()
   const clock = useClock()
   const { box } = useInput()
+  // The shell the reason box reads: this view's, a talk's own under its Interview view.
+  const shell = useShell()
   // When each request shown first appeared, kept for those still shown. Updated as the cards are
   // drawn, so a key pressed after a render guards the request that render drew.
   const shown = useRef(new Map<string, number>())
@@ -391,7 +400,14 @@ export const useAnswering = (
       if (request === undefined || !settled(request)) return
       if (request.kind._tag === "Elicitation") send(request, { _tag: "Decline" })
       else
-        box.set(Box.Reason({ requestId: request.id, ticket: request.ticket, label: request.label }))
+        box.set(
+          Box.Reason({
+            requestId: request.id,
+            ticket: request.ticket,
+            label: request.label,
+            shell,
+          }),
+        )
     },
     target: aim,
     pick: (request, n) => {
