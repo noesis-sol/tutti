@@ -181,6 +181,11 @@ describe("the start question takes clicks", () => {
       />
     )
     await withRender(node, size, async (rendered) => {
+      await click(rendered, "Current tickets")
+    })
+    expect(all).toEqual([Work.Tickets()])
+    all.length = 0
+    await withRender(node, size, async (rendered) => {
       await click(rendered, "New feature")
       const frame = await rendered.capture()
       expect(frame.chars).toContain("> New feature")
@@ -190,9 +195,12 @@ describe("the start question takes clicks", () => {
       await click(rendered, "What should it do, and why?")
       expect(focused?.focused).toBe(true)
       expect(all).toEqual([])
+      // At the description step, the select's lines answer nothing (tutti-34k9.11).
       await click(rendered, "Current tickets")
+      expect(all).toEqual([])
+      expect((await rendered.capture()).chars).toContain("What should it do, and why?")
     })
-    expect(all).toEqual([Work.Tickets()])
+    expect(all).toEqual([])
   })
 })
 

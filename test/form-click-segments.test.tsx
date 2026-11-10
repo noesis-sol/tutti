@@ -87,10 +87,19 @@ describe("the start question on a narrow screen", () => {
       const x = (lines[y + 1] ?? "").indexOf("through")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, y + 1))
       expect((await rendered.capture()).chars).toContain("> New feature")
-      // A click past an option's text, to the field's edge, lands on it.
+      // At the description step the select's lines are no click targets (tutti-34k9.11).
       const at = linesOf(await rendered.capture()).findIndex((line) =>
         line.includes("Current tickets"),
       )
+      await rendered.input((setup) => setup.mockMouse.click(34, at))
+      expect(said).toEqual([])
+    })
+    // A click past an option's text, to the field's edge, lands on it.
+    await withRender(node, { width: 40, height: 30 }, async (rendered) => {
+      const at = linesOf(await rendered.capture()).findIndex((line) =>
+        line.includes("Current tickets"),
+      )
+      expect(at).toBeGreaterThan(0)
       await rendered.input((setup) => setup.mockMouse.click(34, at))
     })
     expect(said).toEqual([Work.Tickets()])
