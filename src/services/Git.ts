@@ -416,6 +416,16 @@ export const gitOps = {
       ...revisions([branch, start]),
     ],
   },
+  // With the project's hooks off, as addWorktree: a post-checkout hook could outlast the write's
+  // time limit. `create` makes the branch at HEAD (-b), where it is gone.
+  checkout: {
+    op: "checkout",
+    kind: "write",
+    args: (branch: string, create = false): ReadonlyArray<string> =>
+      create
+        ? [...noHooks, "checkout", "--quiet", "-b", branch]
+        : [...noHooks, "checkout", "--quiet", ...revisions([branch])],
+  },
   // Deleting a ref takes packed-refs.lock, which a worker's commit in its worktree takes for a
   // moment too; git gives up after a second, too soon on a loaded machine, so it waits longer.
   deleteBranch: {
@@ -863,6 +873,16 @@ export class Git extends Context.Service<
     repairWorktrees(repo: string, paths: ReadonlyArray<string>): Effect.Effect<void, GitError>
     /** git branch: a new branch at `start`. */
     createBranch(repo: string, branch: string, start: string): Effect.Effect<void, GitError>
+    /**
+     * git checkout: puts worktree on `branch`, which must be checked out nowhere else; `create` makes
+     * it at the worktree's HEAD (-b), so the branch must not exist. Changes to tracked files are
+     * carried over where the switch doesn't touch them, as git does; untracked files stay.
+     */
+    checkout(
+      worktree: string,
+      branch: string,
+      options?: { readonly create?: boolean },
+    ): Effect.Effect<void, GitError>
     /** git branch -d: refuses a branch not merged into HEAD unless forced (-D). */
     deleteBranch(
       repo: string,
@@ -1232,6 +1252,8 @@ export class Git extends Context.Service<
             Effect.asVoid(write(gitCall(gitOps.repairWorktrees, paths), repo)),
           createBranch: (repo, branch, start) =>
             Effect.asVoid(write(gitCall(gitOps.createBranch, branch, start), repo)),
+          checkout: (worktree, branch, options = {}) =>
+            Effect.asVoid(write(gitCall(gitOps.checkout, branch, options.create), worktree)),
           deleteBranch: (repo, branch, remove = {}) =>
             Effect.asVoid(write(gitCall(gitOps.deleteBranch, branch, remove.force), repo)),
           rebase,

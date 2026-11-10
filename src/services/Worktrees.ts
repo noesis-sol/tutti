@@ -6,7 +6,16 @@
 // A ticket's ID names a folder and a branch, and workers file tickets themselves: Beads checks only
 // an ID's prefix, so one like x-../../y reaches the run. An ID that could lead out of the worktree
 // folder, or that git can't take in a branch name, is BadTicketId before prepare makes anything of it:
-// checkTicketId checks it there, once. remove makes no path of an ID, and takes one unchecked.
+// checkTicketId checks it there, once. remove takes one unchecked, and looks at <root>/<id> only for
+// an ID prepare would take.
+//
+// A ticket's worktree is found by its branch, else at <root>/<id>: git lists one left mid-rebase
+// (a git rebase or git pull --rebase its worker ran that stopped on conflicts as its session ended),
+// detached (git checkout --detach, git bisect) or on another branch with no branch line, or
+// another's, and git worktree add on the branch it holds fails ('tutti/<id>' is already used by
+// worktree at …) until the ticket is deferred, its work intact. prepare puts such a worktree back
+// on its branch: a rebase left in progress is aborted, as every rebase a run leaves is (§ 4.12),
+// and the branch checked out again, made at the worktree's HEAD where it is gone (tutti-34k9.3).
 //
 // A worktree's .tutti/run/ is its worker's to change, and a worker reads ticket text tutti can't
 // fully trust. Had it put a symbolic link in place of .tutti, .tutti/run or a file there, tutti
@@ -34,7 +43,14 @@ import {
 import { detail, Log } from "../run/log.ts"
 import { writeFileAtomic } from "./atomicFile.ts"
 import type { TicketId } from "./Beads.ts"
-import { type Commit, Git, type GitError, GitWriter, type StatusEntry } from "./Git.ts"
+import {
+  type Commit,
+  Git,
+  type GitError,
+  GitWriter,
+  type StatusEntry,
+  type Worktree,
+} from "./Git.ts"
 import { processCount, Strays } from "./Strays.ts"
 
 /** A ticket ID that can't name a worktree folder and a branch; `why` says what is wrong with it. */
@@ -165,17 +181,28 @@ export interface TicketWorktree {
   /** Its worktree's folder was made now: nothing is installed in it. */
   readonly fresh: boolean
   readonly earlier: Earlier
+  /**
+   * How prepare put the worktree back on its branch, where an earlier attempt left it off it
+   * (mid-rebase, detached or on another branch), for the log; absent where it was on it.
+   */
+  readonly putBack?: string
 }
 
 /**
  * The ticket's worktree at `path`, from what preparing it found: its worktree there already
- * (`existing`), else its branch left without one (`branchLeft`), and what an earlier attempt left
- * in it (`earlier`), counted only where one of them was there.
+ * (`existing`), else its branch left without one (`branchLeft`), what an earlier attempt left in it
+ * (`earlier`), counted only where one of them was there, and how it was put back on its branch
+ * (`putBack`), where it was off it.
  */
 export const found = (
   id: TicketId,
   path: string,
-  left: { readonly existing: boolean; readonly branchLeft: boolean; readonly earlier: Earlier },
+  left: {
+    readonly existing: boolean
+    readonly branchLeft: boolean
+    readonly earlier: Earlier
+    readonly putBack?: string
+  },
 ): TicketWorktree => {
   const reused = left.existing || left.branchLeft
   return {
@@ -185,6 +212,7 @@ export const found = (
     reused,
     fresh: !left.existing,
     earlier: reused ? left.earlier : nothingEarlier,
+    ...(left.putBack === undefined ? {} : { putBack: left.putBack }),
   }
 }
 
@@ -402,11 +430,56 @@ export class Worktrees extends Context.Service<
         const logs = yield* Effect.serviceOption(Log)
         const { repo, root, base } = options
 
-        // The worktree that has the branch checked out, if one does; a prunable one doesn't count.
-        const worktreeOf = (branch: string) =>
-          Effect.map(git.worktrees(repo), (worktrees) =>
-            worktrees.find((worktree) => worktree.branch === branch && !worktree.prunable),
-          )
+        // The ticket's worktree: the one that has its branch checked out, else the one at
+        // <root>/<id>, left off its branch (see the top). A prunable one doesn't count. An ID
+        // prepare wouldn't take names no folder under the root, so none is looked for.
+        const worktreeOf = (id: TicketId) => {
+          const branch = branchOf(id)
+          const path = ticketIdProblem(id) === undefined ? join(root, id) : undefined
+          return Effect.map(git.worktrees(repo), (worktrees) => {
+            const kept = worktrees.filter((worktree) => !worktree.prunable)
+            return (
+              kept.find((worktree) => worktree.branch === branch) ??
+              kept.find((worktree) => worktree.path === path)
+            )
+          })
+        }
+
+        // Puts a worktree an earlier attempt left off its branch back on it: a rebase left in
+        // progress is aborted, the branch as its worker had it before the rebase, and the branch is
+        // checked out again, made at the worktree's HEAD where it is gone. What was done, for the
+        // log; nothing where the worktree is on its branch.
+        const putBackOnBranch = (worktree: Worktree, branch: string) =>
+          Effect.gen(function* () {
+            if (worktree.branch === branch) return undefined
+            const path = worktree.path
+            const rebasing = yield* git.rebaseInProgress(path)
+            if (rebasing) yield* git.abortRebase(path)
+            const on = yield* git.currentBranch(path)
+            const own = Option.isSome(on) && on.value === branch
+            const was = Option.isSome(on) ? `on ${on.value}` : "detached"
+            if (rebasing) {
+              if (own) {
+                return `left mid-rebase: the rebase is aborted, ${branch} back as its worker left it`
+              }
+              const other = Option.isSome(on) ? ` ${was}` : ""
+              yield* checkOutAgain(path, branch)
+              return `left mid-rebase${other}: the rebase is aborted, ${branch} checked out again`
+            }
+            if (own) return undefined
+            const made = yield* checkOutAgain(path, branch)
+            return made
+              ? `left ${was}, ${branch} gone: ${branch} made again at its HEAD`
+              : `left ${was}: ${branch} checked out again`
+          })
+
+        // Checks the branch out in the worktree, making it at HEAD where it is gone (true then).
+        const checkOutAgain = (path: string, branch: string) =>
+          Effect.gen(function* () {
+            const left = yield* git.branchExists(repo, branch)
+            yield* git.checkout(path, branch, { create: !left })
+            return !left
+          })
 
         const earlierIn = (path: string) =>
           Effect.all({ commits: git.log(path, base), status: git.status(path) })
@@ -423,10 +496,16 @@ export class Worktrees extends Context.Service<
                 )
                 // Forgets a worktree whose folder was deleted, so it isn't reused.
                 yield* git.pruneWorktrees(repo)
-                const existing = yield* worktreeOf(branch)
+                const existing = yield* worktreeOf(id)
                 if (existing !== undefined) {
+                  const putBack = yield* putBackOnBranch(existing, branch)
                   const earlier = yield* earlierIn(existing.path)
-                  return found(id, existing.path, { existing: true, branchLeft: true, earlier })
+                  return found(id, existing.path, {
+                    existing: true,
+                    branchLeft: true,
+                    earlier,
+                    ...(putBack === undefined ? {} : { putBack }),
+                  })
                 }
                 const path = join(root, id)
                 const branchLeft = yield* git.branchExists(repo, branch)
@@ -438,7 +517,7 @@ export class Worktrees extends Context.Service<
                   .pipe(
                     Effect.tapError(() =>
                       Effect.ignore(
-                        Effect.flatMap(worktreeOf(branch), (made) =>
+                        Effect.flatMap(worktreeOf(id), (made) =>
                           made === undefined
                             ? Effect.void
                             : git.removeWorktree(repo, made.path, { force: true }),
@@ -499,7 +578,7 @@ export class Worktrees extends Context.Service<
                       yield* Effect.result(git.removeWorktree(repo, at, { force: forceWorktree })),
                     ))
                 if (!removed) {
-                  const existing = yield* worktreeOf(branch)
+                  const existing = yield* worktreeOf(id)
                   if (existing !== undefined)
                     yield* git.removeWorktree(repo, existing.path, { force: forceWorktree })
                   // A worktree whose folder was deleted holds its branch until git forgets it.

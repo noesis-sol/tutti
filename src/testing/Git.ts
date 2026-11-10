@@ -847,6 +847,65 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               }
             }),
           ),
+        checkout: (worktree, branch, options = {}) =>
+          operation(gitCall(gitOps.checkout, branch, options.create), worktree, (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, worktree)
+              if (checkout.conflicts.size > 0) {
+                return yield* refuse(1, "error: you need to resolve your current index first")
+              }
+              if (options.create) {
+                if (branches.has(branch)) {
+                  return yield* refuse(128, `fatal: a branch named '${branch}' already exists`)
+                }
+                branches.set(branch, headOf(checkout))
+                checkout.head = { branch }
+                return
+              }
+              const tip = branches.get(branch)
+              if (tip === undefined) {
+                return yield* refuse(
+                  1,
+                  `error: pathspec '${branch}' did not match any file(s) known to git`,
+                )
+              }
+              const holder = holderOf(branch)
+              if (holder !== undefined && holder !== checkout) {
+                return yield* refuse(
+                  128,
+                  `fatal: '${branch}' is already used by worktree at '${holder.path}'`,
+                )
+              }
+              // A change to a file the switch would change is refused, as git does; the rest go
+              // over with it, staged or not.
+              const from = treeOf(headOf(checkout))
+              const to = treeOf(tip)
+              const { unstaged, staged } = changes(checkout)
+              const overwritten = [...new Set([...unstaged, ...staged])].filter(
+                (path) => from.get(path) !== to.get(path),
+              )
+              if (overwritten.length > 0) {
+                return yield* refuse(
+                  1,
+                  `error: Your local changes to the following files would be overwritten by checkout:\n${overwritten.map((path) => `\t${path}\n`).join("")}Please commit your changes or stash them before you switch branches.\nAborting`,
+                )
+              }
+              const index = new Map(checkout.index)
+              const work = new Map(checkout.work)
+              checkout.head = { branch }
+              switchTo(checkout, to)
+              for (const path of staged) {
+                const kept = index.get(path)
+                if (kept === undefined) checkout.index.delete(path)
+                else checkout.index.set(path, kept)
+              }
+              for (const path of unstaged) {
+                const kept = work.get(path)
+                if (kept === undefined) checkout.work.delete(path)
+                else checkout.work.set(path, kept)
+              }
+            }),
+          ),
         createBranch: (repo, branch, start) =>
           operation(gitCall(gitOps.createBranch, branch, start), repo, (refuse) =>
             Effect.gen(function* () {

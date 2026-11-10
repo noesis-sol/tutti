@@ -69,6 +69,16 @@ const calls: ReadonlyArray<{
     call: (git, dir) => git.createBranch(dir, "b", "main"),
   },
   {
+    op: "checkout",
+    command: "git -c core.hooksPath=/dev/null checkout --quiet --end-of-options b",
+    call: (git, dir) => git.checkout(dir, "b"),
+  },
+  {
+    op: "checkout",
+    command: "git -c core.hooksPath=/dev/null checkout --quiet -b b",
+    call: (git, dir) => git.checkout(dir, "b", { create: true }),
+  },
+  {
     op: "branch -d",
     command: "git -c core.packedRefsTimeout=10000 branch -d --end-of-options b",
     call: (git, dir) => git.deleteBranch(dir, "b"),

@@ -493,9 +493,11 @@ export const start = (
       ),
     )
     const { path, branch } = worktree
-    const made = worktree.reused
-      ? log.detail`reusing worktree ${path} (${branch})`
-      : log.detail`worktree ${path} on ${branch}`
+    const made = !worktree.reused
+      ? log.detail`worktree ${path} on ${branch}`
+      : worktree.putBack === undefined
+        ? log.detail`reusing worktree ${path} (${branch})`
+        : log.detail`reusing worktree ${path} (${branch}), ${worktree.putBack}`
     yield* info(made, id)
     yield* worktrees
       .checkRunFolder(path)
