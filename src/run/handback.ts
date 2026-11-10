@@ -63,7 +63,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
 import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, givenHash, type Sha, shortHash } from "../services/Git.ts"
-import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
+import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import { attemptAt, baseSince, branchHead, leftAt, onBranch, restoreBranch } from "./branch.ts"
@@ -76,6 +76,7 @@ import {
   timedOutLoaded,
 } from "./check.ts"
 import type { Carried } from "./checkback.ts"
+import { leftUntracked } from "./checkWrote.ts"
 import { holdingSlot } from "./earlyCheck.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
@@ -1175,7 +1176,7 @@ export const leftClean = (
     if (trackedChanges(status).length > 0) {
       return line`its worker left uncommitted changes in ${worktree}`
     }
-    const loose = untrackedFiles(status)
+    const loose = yield* leftUntracked(worktree, status)
     if (loose.length > 0) {
       return line`its worker left untracked files in ${worktree}: ${someFiles(loose)}`
     }

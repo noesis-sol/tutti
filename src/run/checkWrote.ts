@@ -37,11 +37,14 @@ const listed = (worktree: string): Effect.Effect<ReadonlySet<string>> =>
 
 /**
  * Runs `effect`, a setup or check in the worktree, and adds the untracked files it made there to
- * its check-wrote list. Nothing is added when git can't read the worktree before or after, or
- * when `effect` fails or is interrupted: no file is taken for one tutti wrote that it may not have.
- * `before`: the worktree's status its caller read just before, nothing having run in it since; it
- * is read here without one. `read` is given the worktree's status read after it, when git read one,
- * for its caller to go on with rather than read it again.
+ * its check-wrote list, whether it passed, failed or was stopped (a check ahead of its turn, the
+ * branch ahead moving on): a failed or stopped check's coverage report is as much tutti's as a
+ * passed one's, and its ticket's fix, resolution or check once more must not be refused for it
+ * (leftUntracked). Nothing is added when git can't read the worktree before or after: no file is
+ * taken for one tutti wrote that it may not have. `before`: the worktree's status its caller read
+ * just before, nothing having run in it since; it is read here without one. `read` is given the
+ * worktree's status read after it, when git read one, for its caller to go on with rather than
+ * read it again.
  */
 export const noteWritten = <A, E, R>(
   worktree: string,
@@ -53,17 +56,39 @@ export const noteWritten = <A, E, R>(
 ): Effect.Effect<A, E, R | Git> =>
   Effect.gen(function* () {
     const before = how.before ?? (yield* statusIn(worktree))
-    const result = yield* effect
-    const status = before === undefined ? undefined : yield* statusIn(worktree)
-    if (before === undefined || status === undefined) return result
-    how.read?.(status)
+    if (before === undefined) return yield* effect
     const earlier = new Set(untrackedFiles(before))
-    const made = untrackedFiles(status).filter((file) => !earlier.has(file))
-    if (made.length === 0) return result
-    const known = yield* listed(worktree)
-    const all = [...new Set([...known, ...made])].sort()
-    yield* Effect.ignore(writeRunFile(worktree, checkWroteName, `${all.join("\0")}\0`))
-    return result
+    return yield* Effect.ensuring(
+      effect,
+      Effect.gen(function* () {
+        const status = yield* statusIn(worktree)
+        if (status === undefined) return
+        how.read?.(status)
+        const made = untrackedFiles(status).filter((file) => !earlier.has(file))
+        if (made.length === 0) return
+        const known = yield* listed(worktree)
+        const all = [...new Set([...known, ...made])].sort()
+        yield* Effect.ignore(writeRunFile(worktree, checkWroteName, `${all.join("\0")}\0`))
+      }),
+    )
+  })
+
+/**
+ * The untracked files in the worktree, outside .tutti/run/, that tutti's setups and checks didn't
+ * write (noteWritten): its worker's, or there before tutti's ran. A fix, a resolution or a check
+ * once more is refused for these, which the check would see but the merge not bring in, and not
+ * for what tutti's own check left, a coverage report say, which its worker never made. `status`:
+ * the worktree's status as git read it.
+ */
+export const leftUntracked = (
+  worktree: string,
+  status: ReadonlyArray<StatusEntry>,
+): Effect.Effect<ReadonlyArray<string>> =>
+  Effect.gen(function* () {
+    const loose = untrackedFiles(status)
+    if (loose.length === 0) return loose
+    const wrote = yield* listed(worktree)
+    return loose.filter((file) => !wrote.has(file))
   })
 
 /**

@@ -21,7 +21,8 @@ import type { AgentHost } from "../agent/AgentHost.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git, type GitError, shortHash } from "../services/Git.ts"
-import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
+import { trackedChanges } from "../services/gitStatus.ts"
+import { leftUntracked } from "./checkWrote.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
@@ -218,8 +219,9 @@ const whyNot = (recheck: Recheck, issue: Issue, options: MergeTarget) =>
     if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
       return line`${worktree} has uncommitted changes`
     }
-    // The check runs in the worktree and would see them, but the merge of its branch wouldn't.
-    const loose = untrackedFiles(status.success)
+    // The check runs in the worktree and would see them, but the merge of its branch wouldn't;
+    // what tutti's own check left there, as when it failed, doesn't count (leftUntracked).
+    const loose = yield* leftUntracked(worktree, status.success)
     if (loose.length > 0) return line`${worktree} has untracked files: ${someFiles(loose)}`
     const head = yield* Effect.result(git.revParse(options.repo, branch))
     if (Result.isFailure(head) || head.success !== recheck.head) {

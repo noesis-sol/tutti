@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Effect, Fiber, Layer } from "effect"
+import { Effect, Exit, Fiber, Layer, Result } from "effect"
 import { checkWroteName, noteWritten, writtenOnly } from "../src/run/checkWrote.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -227,16 +227,16 @@ describe("noteWritten and writtenOnly", () => {
     expect(written).toEqual(["out/1.txt", "out/2.txt"])
   })
 
-  test("a run that fails notes nothing", async () => {
+  test("a run that fails notes its files too, and fails as it did", async () => {
     const { repo, path } = worktree()
-    await inGit(
+    const failed = await inGit(
       repo,
       Effect.gen(function* () {
         const repository = yield* Repository
         yield* Effect.orDie(
           (yield* Git).addWorktree(repo, path, { branch: "tutti/a", base: "main" }),
         )
-        yield* Effect.ignore(
+        return yield* Effect.result(
           noteWritten(
             path,
             Effect.andThen(repository.write(path, { "out.txt": "1\n" }), Effect.fail("no")),
@@ -244,7 +244,30 @@ describe("noteWritten and writtenOnly", () => {
         )
       }),
     )
-    expect(existsSync(join(path, runFolder, checkWroteName))).toBe(false)
+    expect(failed).toEqual(Result.fail("no"))
+    expect(readFileSync(join(path, runFolder, checkWroteName), "utf8")).toBe("out.txt\0")
+  })
+
+  test("a run that is stopped notes its files too", async () => {
+    const { repo, path } = worktree()
+    const interrupted = await inGit(
+      repo,
+      Effect.gen(function* () {
+        const repository = yield* Repository
+        yield* Effect.orDie(
+          (yield* Git).addWorktree(repo, path, { branch: "tutti/a", base: "main" }),
+        )
+        const fiber = yield* Effect.forkChild(
+          noteWritten(
+            path,
+            Effect.andThen(repository.write(path, { "out.txt": "1\n" }), Effect.interrupt),
+          ),
+        )
+        return yield* Fiber.await(fiber)
+      }),
+    )
+    expect(Exit.hasInterrupts(interrupted)).toBe(true)
+    expect(readFileSync(join(path, runFolder, checkWroteName), "utf8")).toBe("out.txt\0")
   })
 })
 
