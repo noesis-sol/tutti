@@ -15,6 +15,7 @@ import type { OutputMode } from "../src/services/Tty.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as gitLayer } from "../src/testing/Git.ts"
 import { layer as memoryLock } from "../src/testing/RunLock.ts"
+import { layer as worktreesLayer } from "../src/testing/Worktrees.ts"
 import { TicketCount, Work } from "../src/ui/questions.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { noSpecAsk } from "./specAsk.ts"
@@ -99,7 +100,7 @@ const count = (seeds: ReadonlyArray<Seed>, fields: Partial<Options> = {}, failin
   return Effect.runPromise(
     ticketCount(asked, Effect.succeed(asked)).pipe(
       Effect.provide(
-        Layer.mergeAll(beads, gitLayer({ dir: "/repo" })).pipe(
+        Layer.mergeAll(beads, gitLayer({ dir: "/repo" }), worktreesLayer()).pipe(
           Layer.provideMerge(TestClock.layer()),
         ),
       ),

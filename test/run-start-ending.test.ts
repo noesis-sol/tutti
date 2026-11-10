@@ -13,6 +13,7 @@ import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as gitLayer } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { layer as worktreesLayer } from "../src/testing/Worktrees.ts"
 import { FormCancelled, TicketCount, type Work } from "../src/ui/questions.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { noSpecAsk } from "./specAsk.ts"
@@ -70,9 +71,13 @@ const start = (seeds: ReadonlyArray<Seed>, ask: Effect.Effect<Work, FormCancelle
     }).pipe(
       Effect.provideService(Console.Console, console),
       Effect.provide(
-        Layer.mergeAll(beadsLayer(seeds), gitLayer({ dir: repo }), logLayer(), eventsLayer()).pipe(
-          Layer.provideMerge(TestClock.layer()),
-        ),
+        Layer.mergeAll(
+          beadsLayer(seeds),
+          gitLayer({ dir: repo }),
+          worktreesLayer(),
+          logLayer(),
+          eventsLayer(),
+        ).pipe(Layer.provideMerge(TestClock.layer())),
       ),
     ),
   )

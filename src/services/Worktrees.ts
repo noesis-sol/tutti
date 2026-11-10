@@ -16,6 +16,9 @@
 // worktree at …) until the ticket is deferred, its work intact. prepare puts such a worktree back
 // on its branch: a rebase left in progress is aborted, as every rebase a run leaves is (§ 4.12),
 // and the branch checked out again, made at the worktree's HEAD where it is gone (tutti-34k9.3).
+// worktreeOf gives the lookup to the run's other readers of a ticket's worktree (a merge by hand's
+// cleanup, handMerged.ts; the deferred-free report, deferredFree.ts), so that none finds a worktree
+// by its branch alone (tutti-i0vf).
 //
 // A worktree's .tutti/run/ is its worker's to change, and a worker reads ticket text tutti can't
 // fully trust. Had it put a symbolic link in place of .tutti, .tutti/run or a file there, tutti
@@ -370,6 +373,13 @@ export class Worktrees extends Context.Service<
         readonly aside?: boolean
       },
     ): Effect.Effect<string | undefined, GitError>
+    /**
+     * The ticket's worktree, as git lists it: the one on tutti/<id>, else the one at
+     * <worktrees>/<id>, left off its branch (see the top), by its real path. One whose folder is
+     * gone doesn't count; undefined without one. It takes an ID unchecked, as remove does: one
+     * prepare would refuse names no folder, and is looked for by its branch alone.
+     */
+    worktreeOf(id: TicketId): Effect.Effect<Worktree | undefined, GitError>
     /** Deletes a folder remove set aside in the trash folder, whatever is in it. */
     deleteAside(path: string): Effect.Effect<void, PlatformError>
     /**
@@ -655,6 +665,7 @@ export class Worktrees extends Context.Service<
         return Worktrees.of({
           prepare,
           remove,
+          worktreeOf,
           deleteAside,
           leftAside,
           addDetached,

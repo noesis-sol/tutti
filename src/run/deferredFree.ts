@@ -9,7 +9,7 @@ import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from ".
 import { shellWord } from "../services/exec.ts"
 import { Git } from "../services/Git.ts"
 import { allChanges } from "../services/gitStatus.ts"
-import { branchOf } from "../services/Worktrees.ts"
+import { branchOf, Worktrees } from "../services/Worktrees.ts"
 import type { Carried } from "./carry.ts"
 import { asking, type Branches, type ClosedBranches } from "./closedBranches.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -23,8 +23,9 @@ export interface DeferredFree {
   /** The tickets blocking it, each closed and merged. */
   readonly blockers: ReadonlyArray<TicketId>
   /**
-   * Its worktree (on tutti/<id>), left with no commits beyond the base and no uncommitted changes,
-   * and so safe to remove; absent when there is none, or it holds work.
+   * Its worktree (on tutti/<id>, or the one at <worktrees>/<id> left off it), left with no commits
+   * beyond the base and no uncommitted changes, and so safe to remove; absent when there is none,
+   * or it holds work.
    */
   readonly worktree?: string
   /**
@@ -125,23 +126,28 @@ const mergedBlockers = (
   })
 
 /**
- * The worktree a worker left for ticket `id` when its branch has no commits beyond the base: as
- * empty when it has no uncommitted changes either, else as uncommitted. Neither when there is
- * none, it has commits, or git can't list the worktrees or the commits; a git status that fails
+ * The worktree a worker left for ticket `id` (Worktrees.worktreeOf: on its branch, or left off it)
+ * when it has no commits beyond the base, its branch's and, where it is off its branch, its HEAD's:
+ * as empty when it has no uncommitted changes either, else as uncommitted. Neither when there is
+ * none, it has commits, or git can't find the worktree or list the commits; a git status that fails
  * counts as uncommitted changes.
  */
 const leftWorktree = (
   freeing: Freeing,
   id: TicketId,
-): Effect.Effect<Pick<DeferredFree, "worktree" | "uncommitted">, never, Git> =>
+): Effect.Effect<Pick<DeferredFree, "worktree" | "uncommitted">, never, Git | Worktrees> =>
   Effect.gen(function* () {
     const git = yield* Git
     const branch = branchOf(id)
-    const worktrees = yield* Effect.result(git.worktrees(freeing.repo))
-    if (Result.isFailure(worktrees)) return {}
-    const found = worktrees.success.find((each) => each.branch === branch && !each.prunable)
-    if (found === undefined) return {}
-    const commits = yield* Effect.result(git.log(freeing.repo, freeing.base, branch))
+    const worktree = yield* Effect.result((yield* Worktrees).worktreeOf(id))
+    if (Result.isFailure(worktree) || worktree.success === undefined) return {}
+    const found = worktree.success
+    const own = git.log(freeing.repo, freeing.base, branch)
+    const commits = yield* Effect.result(
+      found.branch === branch
+        ? own
+        : Effect.map(Effect.all([own, git.log(found.path, freeing.base)]), (each) => each.flat()),
+    )
     if (Result.isFailure(commits) || commits.success.length > 0) return {}
     const status = yield* Effect.result(git.status(found.path))
     return Result.isSuccess(status) && allChanges(status.success).length === 0
@@ -168,7 +174,7 @@ const plainlyHeld = (ticket: Issue, unclosed: ReadonlySet<TicketId>): boolean =>
 export const list = (
   freeing: Freeing,
   unclosed: ReadonlyArray<Issue>,
-): Effect.Effect<ReadonlyArray<DeferredFree>, BeadsError, Beads | Git> =>
+): Effect.Effect<ReadonlyArray<DeferredFree>, BeadsError, Beads | Git | Worktrees> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const now = yield* Clock.currentTimeMillis
@@ -212,7 +218,7 @@ export const reasonOf = (error: BeadsError): string =>
  */
 export const say = (
   freeing: Freeing,
-): Effect.Effect<void, never, Beads | Git | Log | EventStream> =>
+): Effect.Effect<void, never, Beads | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const logs = yield* Log
@@ -254,7 +260,7 @@ export const sayAtStart = (options: {
   readonly carried: ReadonlyMap<TicketId, Carried>
   readonly unmerged: ReadonlySet<TicketId>
   readonly closedBranches?: ClosedBranches
-}): Effect.Effect<void, never, Beads | Git | Log | EventStream> =>
+}): Effect.Effect<void, never, Beads | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const { root } = options
     const subs = yield* Effect.result(

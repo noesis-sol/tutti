@@ -17,7 +17,7 @@ import { Effect, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { type Commit, Git, gitWhy, shortHash } from "../services/Git.ts"
-import { branchOf } from "../services/Worktrees.ts"
+import { branchOf, Worktrees } from "../services/Worktrees.ts"
 import type { HandBacks } from "./handback.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
 import { detail, type Line, line } from "./log.ts"
@@ -86,17 +86,15 @@ const takeAsMerged = (
   options: MergeTarget,
 ) =>
   Effect.gen(function* () {
-    const git = yield* Git
     const { id } = issue
     yield* rechecks.drop(id)
     // Its part in the run is over: its worker is ended, as sessions.ts's fit ends a merged one's.
     yield* (yield* AgentHost).end(id)
-    // Its worktree, as git has it on its branch, removed there without looking for it again.
+    // Its worktree, on its branch or left off it (Worktrees.worktreeOf), removed there without
+    // looking for it again; without one git lists, its branch alone is removed.
     const branch = branchOf(id)
-    const listed = yield* Effect.result(git.worktrees(options.repo))
-    const worktree = Result.isSuccess(listed)
-      ? listed.success.find((each) => each.branch === branch && !each.prunable)?.path
-      : undefined
+    const found = yield* Effect.result((yield* Worktrees).worktreeOf(id))
+    const worktree = Result.isSuccess(found) ? found.success?.path : undefined
     const was = wasOf(phase)
     const ticket = { id, title: issue.title, branch, worktree }
     yield* retire(ticket, options, {

@@ -1,8 +1,10 @@
 // The Worktrees test layer (§ 3.3): temp folders. A ticket's worktree is a plain folder at
 // <root>/<id>, with no git in it: reused when it is there already, or made anew where the options
 // say its branch was left without it, with what they say an earlier attempt left, as live's found
-// counts it. A detached worktree is a new folder under <root>, its name starting with
-// its prefix, checked out in Git's test layer too where the caller has it (its Repository), as live
+// counts it. A ticket's worktree is looked for (worktreeOf) as live looks, among the worktrees of
+// Git's test layer where the caller has it: the one on its branch, else the one at <root>/<id>; with
+// no Git, the folder at <root>/<id> is it, on its branch. A detached worktree is a new folder under
+// <root>, its name starting with its prefix, checked out in Git's test layer too where the caller has it (its Repository), as live
 // adds it with git, so that git commands run in it; removed, git forgets it. IDs are checked by prepare, and run files opened through the symlink guard, as live;
 // remove, which takes an ID unchecked as live does, deletes no folder for one prepare refuses; asked
 // to set a worktree aside, it moves its folder into <root>/.trash, as live, when it is there.
@@ -19,8 +21,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer, Option } from "effect"
 import type { TicketId } from "../services/Beads.ts"
-import { Git } from "../services/Git.ts"
+import { Git, type Worktree } from "../services/Git.ts"
 import {
+  branchOf,
   checkRunFolder,
   checkTicketId,
   type Earlier,
@@ -109,6 +112,24 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
           const moved = mkdtempSync(join(trash, `${id}-`))
           renameSync(path, join(moved, id))
           return moved
+        }),
+      worktreeOf: (id) =>
+        Effect.gen(function* () {
+          const path = ticketIdProblem(id) === undefined ? join(root, id) : undefined
+          const git = yield* inGit
+          if (git !== undefined) {
+            const listed = yield* git.git.worktrees(git.repo.dir)
+            const kept = listed.filter((worktree) => !worktree.prunable)
+            return (
+              kept.find((worktree) => worktree.branch === branchOf(id)) ??
+              kept.find((worktree) => worktree.path === path)
+            )
+          }
+          const folder: Worktree | undefined =
+            path !== undefined && existsSync(path)
+              ? { path, branch: branchOf(id), prunable: false }
+              : undefined
+          return folder
         }),
       deleteAside: (path) =>
         Effect.sync(() => {

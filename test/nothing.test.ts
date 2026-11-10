@@ -21,10 +21,12 @@ import {
 } from "../src/run/nothing.ts"
 import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git, type GitWriter } from "../src/services/Git.ts"
+import type { Worktrees } from "../src/services/Worktrees.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as gitLayer, Repository } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { layer as worktreesLayer } from "../src/testing/Worktrees.ts"
 import { boxPad } from "../src/ui/spacing.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { type BoxShown, boxesIn, boxWith } from "./screen.ts"
@@ -32,18 +34,25 @@ import { type BoxShown, boxesIn, boxWith } from "./screen.ts"
 // The message a run with nothing to run shows, in a box on a terminal and as plain lines otherwise,
 // as orchestra's nothing_test.go has them; the check that finds it; and DEFERRED_FREE.
 
-type Env = Beads | Backlog | Git | GitWriter | Repository | Log | EventStream | Captured
+type Env = Beads | Backlog | Git | GitWriter | Repository | Worktrees | Log | EventStream | Captured
 
 const repo = "/repo"
 
-/** Runs `effect` against the in-memory backlog with `seeds`, a repository, a log and events. */
+/**
+ * Runs `effect` against the in-memory backlog with `seeds`, a repository, the worktrees (looked
+ * for among the repository's), a log and events.
+ */
 const run = <A, E>(seeds: ReadonlyArray<Seed>, effect: Effect.Effect<A, E, Env>): Promise<A> =>
   Effect.runPromise(
     effect.pipe(
       Effect.provide(
-        Layer.mergeAll(beadsLayer(seeds), gitLayer({ dir: repo }), logLayer(), eventsLayer()).pipe(
-          Layer.provideMerge(TestClock.layer()),
-        ),
+        Layer.mergeAll(
+          beadsLayer(seeds),
+          gitLayer({ dir: repo }),
+          worktreesLayer(),
+          logLayer(),
+          eventsLayer(),
+        ).pipe(Layer.provideMerge(TestClock.layer())),
       ),
     ),
   )

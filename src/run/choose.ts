@@ -10,6 +10,7 @@ import type { AppConfigValue } from "../cli/AppConfig.ts"
 import { Beads } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import type { OutputMode, TtyValue } from "../services/Tty.ts"
+import type { Worktrees } from "../services/Worktrees.ts"
 import { startQuestion, streamInput } from "../ui/plain/forms.ts"
 import {
   type FormCancelled,
@@ -67,7 +68,7 @@ export const asking = (
 export const ticketCount = <R>(
   where: Pick<nothing.Options, "scope" | "filter">,
   options: Effect.Effect<nothing.Options, never, R>,
-): Effect.Effect<TicketCount, never, Beads | Git | R> =>
+): Effect.Effect<TicketCount, never, Beads | Git | Worktrees | R> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const ready = yield* Effect.result(scope.ready(beads, where.scope, where.filter))

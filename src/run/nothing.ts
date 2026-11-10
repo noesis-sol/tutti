@@ -8,6 +8,7 @@
 import { Console, Effect, Result } from "effect"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
+import type { Worktrees } from "../services/Worktrees.ts"
 import { boxed, type Look, paint, seg } from "../ui/line.tsx"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { boxPad } from "../ui/spacing.ts"
@@ -246,7 +247,7 @@ const scopeNothing = (
 export const check = (
   options: Options,
   read: { readonly deferred?: boolean; readonly ready?: ReadonlyArray<Issue> } = {},
-): Effect.Effect<NothingToRun | null, BeadsError, Beads | Git> =>
+): Effect.Effect<NothingToRun | null, BeadsError, Beads | Git | Worktrees> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const root = options.scope
@@ -527,7 +528,7 @@ export const report = (
 export const nothingToRun = (
   options: Options,
   output: Output,
-): Effect.Effect<boolean, never, Beads | Git | Log | EventStream> =>
+): Effect.Effect<boolean, never, Beads | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const n = yield* Effect.result(check(options))
     if (Result.isFailure(n) || n.success === null) return false
@@ -556,7 +557,7 @@ export const endWith = (
 export const endIfNothing = (
   options: Options,
   output: Output,
-): Effect.Effect<number | null, never, Beads | Git | Log | EventStream> =>
+): Effect.Effect<number | null, never, Beads | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const n = yield* Effect.result(check(options))
     if (Result.isFailure(n) || n.success === null) return null

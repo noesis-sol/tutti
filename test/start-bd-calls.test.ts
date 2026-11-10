@@ -12,8 +12,10 @@ import * as free from "../src/run/deferredFree.ts"
 import { check, heldAtStart, noHolds, type Options } from "../src/run/nothing.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
+import type { Worktrees } from "../src/services/Worktrees.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as gitLayer } from "../src/testing/Git.ts"
+import { layer as worktreesLayer } from "../src/testing/Worktrees.ts"
 import { TicketCount } from "../src/ui/questions.ts"
 
 const repo = "/repo"
@@ -24,7 +26,7 @@ const repo = "/repo"
  */
 const run = async <A, E>(
   seeds: ReadonlyArray<Seed>,
-  effect: Effect.Effect<A, E, Beads | Git>,
+  effect: Effect.Effect<A, E, Beads | Git | Worktrees>,
 ): Promise<{ readonly result: A; readonly calls: ReadonlyArray<string> }> => {
   const calls: Array<string> = []
   const logged = Layer.effect(
@@ -53,9 +55,11 @@ const run = async <A, E>(
   const result = await Effect.runPromise(
     effect.pipe(
       Effect.provide(
-        Layer.mergeAll(Layer.provide(logged, beadsLayer(seeds)), gitLayer({ dir: repo })).pipe(
-          Layer.provideMerge(TestClock.layer()),
-        ),
+        Layer.mergeAll(
+          Layer.provide(logged, beadsLayer(seeds)),
+          gitLayer({ dir: repo }),
+          worktreesLayer(),
+        ).pipe(Layer.provideMerge(TestClock.layer())),
       ),
     ),
   )
