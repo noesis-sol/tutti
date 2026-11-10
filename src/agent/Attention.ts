@@ -901,19 +901,24 @@ export const make = (
         }
         yield* answered(open.request, given, via)
         yield* Deferred.succeed(open.done, given)
-      }).pipe(one.withPermit)
+      }).pipe(Effect.uninterruptible, one.withPermit)
 
-    // Withdraws the request if it is still open: the SDK no longer waits for it.
+    // Withdraws the request if it is still open: the SDK no longer waits for it. Whole once begun
+    // (uninterruptible), as answer: a request taken out of the open ones is recorded and its waiter
+    // woken, whatever interrupts its caller.
     const cancel = (id: string) =>
       Effect.gen(function* () {
         const open = yield* take(id)
         if (open === undefined) return
         yield* answered(open.request, Cancelled, undefined)
         yield* Deferred.succeed(open.done, Cancelled)
-      }).pipe(one.withPermit)
+      }).pipe(Effect.uninterruptible, one.withPermit)
 
     // Opens the request, answers it by the policy if it has one, and waits for its outcome; an
-    // abort withdraws it.
+    // abort withdraws it. So does an interrupt (the session's scope closing as the request opens,
+    // tutti-34k9.8), from the moment the request is among the open ones: one interrupted while it
+    // announces the request, waiting for the log's permit, would else leave it open with no one
+    // behind it, holding the ticket at NeedsYou.
     const wait = (request: AttentionRequest, callback: number, signal: AbortSignal) =>
       Effect.gen(function* () {
         const done = yield* Deferred.make<Outcome>()
@@ -940,8 +945,8 @@ export const make = (
                   Effect.andThen(Deferred.await(done)),
                 ),
               )
-        return yield* answering.pipe(Effect.onInterrupt(() => cancel(request.id)))
-      })
+        return yield* answering
+      }).pipe(Effect.onInterrupt(() => cancel(request.id)))
 
     // Whether every rule the request suggests was allowed for this run.
     const allowedByRule = (request: AttentionRequest) =>
