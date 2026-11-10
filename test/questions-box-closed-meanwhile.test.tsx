@@ -4,10 +4,12 @@
 // another question as if it were the one asked for, whose Enter answered it. Now the box closes
 // with the toast the Needs you list's path gives, `<id> is already answered`, whoever opened it; and
 // its first frame with the questions is at the question asked for, the index derived in the render
-// rather than set in an effect after a frame at the first question.
+// rather than set in an effect after a commit at the first question, whose Enter was bound.
 import { describe, expect, test } from "bun:test"
+import { type BaseRenderable, type TextNodeRenderable, TextRenderable } from "@opentui/core"
 import { Effect, Queue } from "effect"
 import fc from "fast-check"
+import { Profiler } from "react"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -117,7 +119,17 @@ interface At {
   readonly news: Settable<ReadonlyArray<QuestionNews>>
   readonly commands: Commands
   readonly rendered: Rendered
+  /** What each React commit put in the tree since the last `taken`: its <text>s' text, joined. */
+  readonly commits: Array<string>
 }
+
+/** The text of a <text>'s nodes, read as they are: nothing composed, which a frame does later. */
+const nodeText = (node: string | TextNodeRenderable): string =>
+  typeof node === "string" ? node : node.children.map(nodeText).join("")
+
+/** The text of every <text> under `node`, in tree order, as it is at a commit, before a frame. */
+const texts = (node: BaseRenderable): ReadonlyArray<string> =>
+  node instanceof TextRenderable ? [nodeText(node.textNode)] : node.getChildren().flatMap(texts)
 
 const scene = async (
   screen: Screen,
@@ -126,20 +138,32 @@ const scene = async (
 ) => {
   const news = external<ReadonlyArray<QuestionNews>>([])
   const commands = Effect.runSync(makeCommands)
+  const commits: Array<string> = []
+  let setup: Rendered["setup"] | undefined
   await withRender(
-    <Root
-      value={{
-        view: external(view),
-        screen: external<Screen>(screen),
-        commands,
-        appearance: external<Appearance>("dark"),
-        themeOf,
-        now: () => began + 60_000,
-        questions: news,
+    <Profiler
+      id="root"
+      onRender={() => {
+        if (setup !== undefined) commits.push(texts(setup.renderer.root).join("\n"))
       }}
-    />,
+    >
+      <Root
+        value={{
+          view: external(view),
+          screen: external<Screen>(screen),
+          commands,
+          appearance: external<Appearance>("dark"),
+          themeOf,
+          now: () => began + 60_000,
+          questions: news,
+        }}
+      />
+    </Profiler>,
     size,
-    (rendered) => body({ news, commands, rendered }),
+    (rendered) => {
+      setup = rendered.setup
+      return body({ news, commands, rendered, commits })
+    },
   )
 }
 
@@ -212,18 +236,22 @@ describe("the questions box opened at a question no longer open", () => {
 })
 
 describe("the questions box opened at a question still open", () => {
-  test("is at it in its first frame with the questions, another one read first", async () => {
+  test("is at it in its first commit with the questions, another one read first", async () => {
     await scene(Screen.Dashboard(), narrow, async (at) => {
       await until(at.rendered, has("Which flag name?"))
       await at.rendered.input((setup) => {
         setup.mockInput.pressEnter()
         setup.mockInput.pressEnter()
       })
+      at.commits.length = 0
       await reads(at, [licence, flag])
-      // The frame drawn with the read, not one awaited: the box is at q-1 from the first.
+      // Every React commit with the questions, the first included, puts q-1: none puts the question
+      // read first, as setting the index in an effect did before the jump (tutti-34k9.5).
+      const put = at.commits.flatMap((commit) => commit.match(/Open question [^\n]*/g) ?? [])
+      expect(put.length).toBeGreaterThan(0)
+      expect(new Set(put)).toEqual(new Set(["Open question 2 of 2 · q-1"]))
       const first = await at.rendered.capture()
       expect(first.chars).toContain("Open question 2 of 2 · q-1")
-      expect(first.chars).not.toContain("Open question 1 of 2")
       // Enter answers q-1, not the question read first.
       await at.rendered.input((setup) => setup.mockInput.pressEnter())
       const answered = taken(at.commands).filter((command) => command._tag === "AnswerQuestion")
