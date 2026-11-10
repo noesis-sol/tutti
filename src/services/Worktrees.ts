@@ -432,18 +432,23 @@ export class Worktrees extends Context.Service<
 
         // The ticket's worktree: the one that has its branch checked out, else the one at
         // <root>/<id>, left off its branch (see the top). A prunable one doesn't count. An ID
-        // prepare wouldn't take names no folder under the root, so none is looked for.
-        const worktreeOf = (id: TicketId) => {
-          const branch = branchOf(id)
-          const path = ticketIdProblem(id) === undefined ? join(root, id) : undefined
-          return Effect.map(git.worktrees(repo), (worktrees) => {
-            const kept = worktrees.filter((worktree) => !worktree.prunable)
+        // prepare wouldn't take names no folder under the root, so none is looked for. git lists
+        // a worktree's real path (/private/tmp for /tmp on macOS), so the folder's is resolved
+        // too; one that isn't there, or can't be, is compared as given.
+        const worktreeOf = (id: TicketId) =>
+          Effect.gen(function* () {
+            const branch = branchOf(id)
+            const path = ticketIdProblem(id) === undefined ? join(root, id) : undefined
+            const real =
+              path === undefined
+                ? undefined
+                : yield* fs.realPath(path).pipe(Effect.orElseSucceed(() => path))
+            const kept = (yield* git.worktrees(repo)).filter((worktree) => !worktree.prunable)
             return (
               kept.find((worktree) => worktree.branch === branch) ??
-              kept.find((worktree) => worktree.path === path)
+              kept.find((worktree) => worktree.path === path || worktree.path === real)
             )
           })
-        }
 
         // Puts a worktree an earlier attempt left off its branch back on it: a rebase left in
         // progress is aborted, the branch as its worker had it before the rebase, and the branch is

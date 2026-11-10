@@ -229,6 +229,29 @@ slow.describe("a worktree left off its branch, in a real repository", () => {
     expect(repo.head(branch)).toBe(ours)
   })
 
+  test("under a root git lists by another path (through a symbolic link), it is found all the same", async () => {
+    // macOS's temp folder is a link (/var/folders → /private/var/folders): makeRepo resolves
+    // its own, so this root is named as the link gives it, as a configured root may be.
+    const repo = makeRepo()
+    const unresolved = mkdtempSync(join(tmpdir(), "tutti-off-branch-link-"))
+    const root = join(unresolved, "worktrees")
+    const run = <A, E>(effect: Effect.Effect<A, E, Worktrees>) =>
+      Effect.runPromise(Effect.provide(effect, liveLayer(repo, root)))
+    const first = await run(prepare)
+    repo.commit("demo-1: Some work", { "work.txt": "work\n" }, first.path)
+    repo.git(["checkout", "--quiet", "--detach"], first.path)
+    expect(branchListed(repo, realpathSync(first.path))).toBeUndefined()
+
+    const again = await run(prepare)
+    expect(realpathSync(again.path)).toBe(realpathSync(first.path))
+    expect(again.putBack).toBe(`left detached: ${branch} checked out again`)
+    expect(currentBranch(repo, first.path)).toEqual(Option.some(branch))
+
+    await run(remove)
+    expect(existsSync(first.path)).toBe(false)
+    expect(repo.git(["branch", "--list", branch]).trim()).toBe("")
+  })
+
   test("left on another branch: its own checked out again, the other kept", async () => {
     const { repo, run } = setUp()
     const first = await run(prepare)
