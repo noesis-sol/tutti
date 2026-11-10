@@ -203,7 +203,9 @@ describe("a branch a killed run left rebased ahead of its turn", () => {
     expect(markOf(ended.state, "b", offBaseKey)).toBeUndefined()
   })
 
-  test("that moved since, is left as it is, saying so", async () => {
+  test("that moved since, is left as it is, its mark kept, and its turn sets it aside", async () => {
+    // A commit landed on tutti/b after the rebase: it still sits on top of tutti/a, which didn't
+    // merge, so putting it back isn't the run's to do, and merging it would merge tutti/a with it.
     const ended = await afterKill(
       (left) => ({ ...left, behind: "tutti/a", setUp: false }),
       (worktree) =>
@@ -211,11 +213,20 @@ describe("a branch a killed run left rebased ahead of its turn", () => {
           Effect.asVoid(repository.commit(worktree, "More of b (b)", { "b2.txt": "b2\n" })),
         ),
     )
+    expectPhases(ended.ran, { b: "Review" })
+    expect(ended.main.has("a.txt")).toBe(false)
+    expect(ended.main.has("b.txt")).toBe(false)
+    expect(ended.after).not.toBe(ended.left.orig)
+    expect(ended.after).not.toBe(ended.left.head)
     expectLog(ended.ran, [
-      "  tutti/b was rebased onto tutti/a to be checked ahead of its turn by a run that was killed before its turn, but has moved since: left as it is",
+      `  tutti/b was rebased onto tutti/a to be checked ahead of its turn by an earlier run, but has moved since, to ${ended.after.slice(0, 7)}, so it is not put back as its worker left it, at ${ended.left.orig.slice(0, 7)}: its turn sets it aside unless tutti/a has merged as it was checked`,
+      new RegExp(
+        `^ {2}REBASE_FAILED: b closed, but tutti/b was rebased onto tutti/a to be checked ahead of its turn and has moved since, so it was not put back as its worker left it, at ${ended.left.orig.slice(0, 7)}, so it may have the commits of tutti/a; worktree .*/b left for review$`,
+      ),
     ])
-    expect(ended.ran.log.some((text) => text.includes("put back as its worker left it"))).toBe(
-      false,
+    expect(ended.ran.checkRuns).toEqual([])
+    expect(markOf(ended.state, "b", aheadKey)).toEqual(
+      expect.objectContaining({ orig: ended.left.orig, head: ended.left.head }),
     )
   })
 

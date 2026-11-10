@@ -28,7 +28,9 @@
 // worker left it, and then with the commit it was rebased to; boarding the train or putting the
 // branch back clears the mark. As the next run starts (putBackLeft), a branch still marked and at
 // the commit it was rebased to is put back as its worker left it. One git could not put back, on a
-// quit or as the run starts, keeps its mark, and its turn sets it aside (merge.ts's Enter step).
+// quit or as the run starts, or that has moved since its rebase (a commit landed on it, so it isn't
+// the train's to put back), keeps its mark, and its turn sets it aside (merge.ts's Enter step),
+// unless the branch ahead has merged as it was checked, when it merges as any other.
 import {
   Data,
   Effect,
@@ -236,7 +238,8 @@ const setUpOnTop = (behind: string) =>
  * (or, the rebase's end unrecorded, on top of the commit it was rebased onto) is reset to where
  * its worker left it, with a line saying so. One whose setup may have run on top of the branch
  * ahead is set up again before its next check. The mark is cleared, but kept where git fails, for
- * the next run to try again.
+ * the next run to try again, and where the branch has moved since the rebase, for its merge to
+ * catch it (merge.ts's Enter step).
  */
 export const putBackLeft = (
   repo: string,
@@ -281,10 +284,11 @@ export const putBackLeft = (
         mark.head !== undefined
           ? at.success === mark.head
           : fork !== undefined && Result.isSuccess(fork) && fork.success === mark.onto
+      // Neither where its worker left it nor as the train rebased it: the branch moved since, and
+      // may still sit on top of the branch ahead. Its mark is kept, for its merge to catch it.
       if (!rebased) {
-        yield* clearAhead(id)
         yield* log.write(
-          detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn by a run that was killed before its turn, but has moved since: left as it is`,
+          detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn by an earlier run, but has moved since, to ${shortHash(at.success)}, so it is not put back as its worker left it, at ${shortHash(mark.orig)}: its turn sets it aside unless ${mark.behind} has merged as it was checked`,
         )
         continue
       }
@@ -606,20 +610,34 @@ export const make = (
     // put back. The train rebased it only in a clean worktree, so what its setup and check changed
     // in tracked files is discarded with it. Dependencies set up on top of the branch ahead are set
     // up again before its next check. Its mark is cleared once its branch is back, or was not the
-    // train's to put back; it is kept, for its merge to catch it, where its train rebased it but git
-    // couldn't say to what and it isn't where its worker left it.
+    // train's to put back; it is kept, for its merge to catch it, wherever the branch is neither
+    // where its worker left it nor back there: git couldn't say what its train rebased it to, or it
+    // has moved since the rebase (a commit landed on it), when it still sits on top of the branch
+    // ahead and is left as it is, with a line saying so.
     const putBack = (run: Run, head: Sha) =>
       Effect.gen(function* () {
-        if (setUpOf(run.step)) yield* memory.setUps.offBase(run.ticket.id, setUpOnTop(run.behind))
+        const { id, branch, worktree } = run.ticket
+        if (setUpOf(run.step)) yield* memory.setUps.offBase(id, setUpOnTop(run.behind))
+        const rebasedTo = headOf(run.step)
         const restored =
-          run.orig === undefined || headOf(run.step) === undefined || head !== headOf(run.step)
+          run.orig === undefined || rebasedTo === undefined || head !== rebasedTo
             ? undefined
             : yield* restoreBranch(run.ticket, run.orig, 1, true)
-        const unread = run.orig !== undefined && headOf(run.step) === undefined && head !== run.orig
-        const kept =
-          restored === undefined ? unread : notBack(run.ticket.worktree, restored) !== undefined
-        if (!kept) yield* clearAhead(run.ticket.id)
-        return restored
+        if (restored !== undefined) {
+          if (notBack(worktree, restored) === undefined) yield* clearAhead(id)
+          return restored
+        }
+        // Neither as its worker left it nor as its train rebased it: not the train's to put back.
+        if (run.orig === undefined || head === run.orig) {
+          yield* clearAhead(id)
+          return undefined
+        }
+        if (rebasedTo !== undefined) {
+          yield* log.write(
+            detail`${branch} was rebased onto ${run.behind} to be checked ahead of its turn, but has moved since, to ${shortHash(head)}, so it is not put back as its worker left it, at ${shortHash(run.orig)}: its turn sets it aside unless ${run.behind} has merged as it was checked`,
+          )
+        }
+        return undefined
       })
 
     const watch: CheckWatch = {

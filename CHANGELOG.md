@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A branch the merge train rebased onto the branch ahead, that moved since (a commit landed on it, its worker's or by hand) and whose branch ahead didn't merge as checked, keeps its `checked_ahead` mark and is set aside in its turn, `REBASE_FAILED`, rather than merge the commits of the branch ahead with its own: the train, finding it neither as its worker left it nor as it rebased it, cleared the mark and said nothing, as its turn came, on a quit, and as the next run started (`has moved since: left as it is`), and its turn then found it on top of the base and fast-forwarded it, the branch ahead's unmerged commits with it. A line says so where it is left as it is, and one whose branch ahead has merged as it was checked is checked in its turn as any other, its mark cleared (`src/run/mergetrain.ts`' `putBack` and `putBackLeft`, `src/run/merge.ts`' Enter step; `test/train-moved-after-rebase.test.ts`; tutti-34k9.2).
 - `scripts/test.sh` runs no test on a `node_modules` behind `bun.lock`, naming each package installed at another version and `bun install --frozen-lockfile` (`scripts/check-deps.ts`; `test/check-deps.test.ts`; tutti-a8q2): the main checkout, which tutti's merges fast-forward but nobody reinstalls in, still had OpenTUI 0.7.0 after the bump to 0.8.1, and `test/ui-worker-view-range-shrink.test.tsx` failed there on every run on the bug 0.8.0 fixed.
 
 ## [0.7.2] - 2026-11-09

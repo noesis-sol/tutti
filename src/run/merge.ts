@@ -650,20 +650,35 @@ const enter = (turn: Turn): Next =>
       return Prepared.Over({})
     }
     // Still marked as rebased by a train onto the branch ahead, which git couldn't put back (as on
-    // a quit, or as the run started): it may have that branch's commits, and would merge them with
-    // its own. One back where its worker left it merges as any other.
+    // a quit, or as the run started) or which moved since its rebase, a commit landed on it: it may
+    // have that branch's commits, and would merge them with its own. One back where its worker left
+    // it merges as any other; so does one whose branch ahead merged as it was checked, as the
+    // commits it may have are on the base already, so it is checked as any other, its mark cleared.
     const metadata = yield* (yield* Store).metadata(id)
     const mark = rebasedAheadOf(Object.hasOwn(metadata, aheadKey) ? metadata[aheadKey] : undefined)
     if (mark !== undefined) {
       const at = yield* Effect.result(steering(git.revParse(options.repo, branch)))
       if (Result.isFailure(at)) return yield* lost(ticket, at.failure)
       if (at.success !== mark.orig) {
-        yield* closedBut(
-          ticket,
-          Tag.rebaseFailed,
-          "rebase failed",
-        )`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn and could not be put back as its worker left it, at ${shortHash(mark.orig)}, so it may have the commits of ${mark.behind}; worktree ${worktree} left for review`
-        return Prepared.Over({})
+        // Where git can't say whether the branch ahead has merged, it hasn't.
+        const base =
+          mark.onto === undefined
+            ? undefined
+            : yield* Effect.result(steering(git.mergeBase(options.repo, options.base, mark.onto)))
+        const merged = base !== undefined && Result.isSuccess(base) && base.success === mark.onto
+        const moved = mark.head !== undefined && at.success !== mark.head
+        if (merged) {
+          yield* (yield* Log).write(
+            detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn and is not back as its worker left it, at ${shortHash(mark.orig)}, but ${mark.behind} has merged as it was checked: checked in its turn as any other`,
+          )
+        } else {
+          yield* closedBut(
+            ticket,
+            Tag.rebaseFailed,
+            "rebase failed",
+          )`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn and ${moved ? "has moved since, so it was not" : "could not be"} put back as its worker left it, at ${shortHash(mark.orig)}, so it may have the commits of ${mark.behind}; worktree ${worktree} left for review`
+          return Prepared.Over({})
+        }
       }
     }
     if (Object.hasOwn(metadata, aheadKey)) yield* clearAhead(id)
