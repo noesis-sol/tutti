@@ -126,10 +126,12 @@ export interface View {
 export const unmergedLabel = "unmerged"
 
 /**
- * The View the ledger gives: a closed ticket the run still has short of Done is not merged (for
- * the reason its phase gives, if any), and so is one labelled `unmerged`; one Deferred, left for
- * Review or Blocked was set aside; `closed` names the epics the run closed; `setups` gives, by
- * ticket, where the output is of the setup that failed in its worktree.
+ * The View the ledger gives: a ticket the run has past its work (waiting to merge, merging, or
+ * handed back) is not merged whatever status the issue gives, as a list read before its worker
+ * closed it still says in_progress; a closed one the run has short of Done is not merged for the
+ * reason its phase gives, if any, and so is one labelled `unmerged`; one Deferred, left for Review
+ * or Blocked was set aside; `closed` names the epics the run closed; `setups` gives, by ticket,
+ * where the output is of the setup that failed in its worktree.
  */
 export const ledgerView = (
   state: State,
@@ -138,17 +140,21 @@ export const ledgerView = (
 ): View => ({
   unmerged: (issue) => {
     const phase = state.tickets.get(issue.id)?.phase
-    if (issue.status !== "closed" || phase?._tag === "Done") return undefined
+    if (phase?._tag === "Done") return undefined
     switch (phase?._tag) {
-      case "Review":
-      case "Blocked":
-      case "Stopped":
-        return phase.why
+      // Its worker closed it, by the ledger: the issue's status may be older (tutti-34k9.7).
       case "ToMerge":
       case "Merging":
       case "Resolving":
       case "Fixing":
         return "waiting to merge"
+    }
+    if (issue.status !== "closed") return undefined
+    switch (phase?._tag) {
+      case "Review":
+      case "Blocked":
+      case "Stopped":
+        return phase.why
     }
     return issue.labels.includes(unmergedLabel) ? `labelled ${unmergedLabel}` : undefined
   },
