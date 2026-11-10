@@ -1321,9 +1321,16 @@ export const make = (
           ])
           if (say !== "") yield* logs.write(say)
           for (const id of picked.heldSolo) holds.set(id, "solo")
+          // A slot that freed while the holds were read (a fiber ended) doesn't start the pick: with
+          // no slot free as the loop began, it was made without the overlap check and the issues of
+          // the tickets running, so the loop picks again with them.
+          if (start !== undefined && !slot) {
+            const now = yield* current
+            if (slotFree(now.s, now.state, options.concurrent)) continue
+          }
           // The others are placed once the slots are filled, as the last pick leaves them: one
           // dispatched changes what holds the rest, and they aren't released only to be held again.
-          if (start === undefined || !(yield* mayStart)) {
+          if (start === undefined || !slot || !(yield* mayStart)) {
             for (const issue of inLine) yield* placeWaiting(issue.id, holds.get(issue.id), ids)
             // A ticket that ended while its footprint was read no longer holds the others back.
             if (overlaps.size > 0 && (yield* Ref.get(slots)).running !== s.running) continue
