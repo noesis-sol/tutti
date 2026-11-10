@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `scripts/test.sh` runs no test on a `node_modules` behind `bun.lock`, naming each package installed at another version and `bun install --frozen-lockfile` (`scripts/check-deps.ts`; `test/check-deps.test.ts`; tutti-a8q2): the main checkout, which tutti's merges fast-forward but nobody reinstalls in, still had OpenTUI 0.7.0 after the bump to 0.8.1, and `test/ui-worker-view-range-shrink.test.tsx` failed there on every run on the bug 0.8.0 fixed.
+
 ## [0.7.2] - 2026-11-09
 
 - `scripts/test.ts` reads bun's file headings under GitHub Actions (`::group::<file>:`), so a test file whose error between tests is thrown from a module it imports is no longer kept as passed there (tutti-0f7v).

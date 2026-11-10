@@ -97,6 +97,8 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
 - Run tests through `scripts/test.sh`, not a bare `bun test`: `bunfig.toml` defines `NODE_ENV` as
   `"production"` for React's production build (spec § 3.1), and `scripts/test.sh` defines `"test"`
   over it, which `@opentui/react/test-utils` needs.
+- `scripts/test.sh` runs nothing on a `node_modules` behind `bun.lock` (`scripts/check-deps.ts`): it
+  names the packages installed at another version; run `bun install --frozen-lockfile`.
 - `scripts/test.sh` reruns each failed test once by name and prints `FLAKY: <file> <test>` for one
   that passes on its rerun; a flaky test doesn't fail the check.
 - `scripts/test.sh` runs the test files in parallel (`bun test --parallel`), in as many worker

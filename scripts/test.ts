@@ -59,6 +59,9 @@
 // reached the live tests' sessions (tutti-y0e); and notifications off (TUTTI_NOTIFY=0), so that no
 // tutti a test runs shows a desktop notification on the machine (tutti-twdw). Tests read it through
 // test/env.ts, which Biome's rules hold them to (biome.json, test/lint/).
+//
+// It runs nothing on a node_modules behind bun.lock, saying which packages differ (check-deps.ts):
+// the suites would run on the packages of before a bump, and fail on bugs it fixed (tutti-a8q2).
 import {
   lstatSync,
   mkdirSync,
@@ -93,6 +96,7 @@ import {
   psArgs,
 } from "../src/run/load.ts"
 import { processAlive } from "../src/services/processTree.ts"
+import { staleDependencies, staleReport } from "./check-deps.ts"
 
 export interface TestCase {
   /** The test file, relative to the folder bun test ran in. */
@@ -1346,6 +1350,9 @@ export const killLeftWorkers = (
   })
 
 if (import.meta.main) {
+  const stale = staleReport("scripts/test.sh", staleDependencies(resolve(import.meta.dir, "..")))
+  for (const line of stale) console.error(line)
+  if (stale.length > 0) process.exit(1)
   const base = runTempBase(process.env, process.platform)
   removeStaleRuns(base)
   for (const line of killLeftWorkers()) console.error(line)
