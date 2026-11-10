@@ -510,7 +510,9 @@ export const setUpWorktree = (
  * by hand: on 2026-11-09 the main checkout still had OpenTUI 0.7.0 a week after a merge bumped it to
  * 0.8.1, and a test failed there on every run (tutti-b45i). It runs within the merge check's time
  * limit, its whole output in the main checkout's .tutti/run/setup.log, a failure's copy kept as a
- * check's (keptChecks.ts). The ticket is merged whatever it does: a failure is a SETUP warning that
+ * check's (keptChecks.ts). What it leaves running in the main checkout is left (leaveStrays): people
+ * and tutti's own git and bd run there, where a check that doesn't pass in a worktree has what it
+ * left stopped. The ticket is merged whatever it does: a failure is a SETUP warning that
  * the main checkout's dependencies are behind, naming the output; so are uncommitted changes to
  * tracked files it leaves there (an install that rewrites its lockfile), on which the next merge
  * would stop, DIRTY_TREE.
@@ -546,7 +548,14 @@ export const setUpCheckout = (
         const { ran, kept } = yield* recordedKeeping(
           "setup",
           id,
-          checks.setup({ cwd: repo, ...to, before: "fast", command, ...loadedOf(options.loaded) }),
+          checks.setup({
+            cwd: repo,
+            ...to,
+            before: "fast",
+            command,
+            leaveStrays: true,
+            ...loadedOf(options.loaded),
+          }),
           { keep: { worktree: repo, name: setupLogName } },
         )
         return { ran, output: to.outputFile, kept }

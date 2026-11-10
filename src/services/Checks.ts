@@ -431,6 +431,12 @@ export interface RunOptions {
    * since the run started (checksGate.ts). A setup's, in place of that of the check it comes before.
    */
   readonly timeLimit?: Duration.Input
+  /**
+   * Leave the processes the command leaves running in `cwd` as they are, where the layer stops
+   * them (stoppingStrays): for a command run in the main checkout, where people and tutti's own git
+   * and bd run (setup.ts's setUpCheckout); a check in a worktree has them stopped.
+   */
+  readonly leaveStrays?: boolean
 }
 
 /** A check's options with a command of their own. */
@@ -636,7 +642,8 @@ export class Checks extends Context.Service<
    * it for them (src/run/share.ts), and without one a check script sizes itself by the memory free
    * now (tutti-sri2). Where the run keeps none, as in --overnight's pre-flight, they get none.
    * Where the layer is built with Strays, what a check that didn't pass left running in its folder
-   * is stopped (stoppingStrays), and said in the Log, where there is one.
+   * is stopped (stoppingStrays), and said in the Log, where there is one; not for a run asked with
+   * `leaveStrays`, the main checkout's setup.
    */
   static readonly layer = Layer.effect(
     Checks,
@@ -661,7 +668,7 @@ export class Checks extends Context.Service<
           Effect.flatMap(shareOf(check), (share) =>
             runCheck(check, command, timeLimit, options, share),
           ),
-          strays,
+          options.leaveStrays === true ? Option.none() : strays,
           logs,
         ).pipe(Effect.provideContext(context)),
       )

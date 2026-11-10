@@ -150,6 +150,9 @@ describe("the setup in the main checkout after a merge", () => {
     expect(setup?.command).toBe(setupCommand)
     expect(setup?.outputFile).toBe(`${repo}/.tutti/run/setup.log`)
     expect(setup?.outputFd).toEqual(expect.any(Number))
+    // What it leaves running in the main checkout is left: people and tutti's own git run there.
+    expect(setup?.leaveStrays).toBe(true)
+    expect(check?.leaveStrays).toBeUndefined()
     expect(existsSync(`${repo}/.tutti/run/setup.log`)).toBe(true)
     expectLog(ran, [
       /^ {2}a closed \(.*\); merged into main, worktree and branch removed$/,
