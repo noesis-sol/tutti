@@ -21,7 +21,10 @@
 // (tutti-fnvd.7), the list kept meanwhile under the talk's uuid (InputState's talks). An answer
 // bd refuses leaves the list's answers (RefusedAnswers), which brings its question back to the list.
 // A question it finds no longer open was answered outside the dashboard: a toast says it is already
-// answered, as a talk's does, and the list opens again (tutti-fnvd.9).
+// answered, as a talk's does, and the list opens again (tutti-fnvd.9). Opened at a question from the
+// panel beside the tickets table, Enter on its Asked row, or the worker view's Answer, the box
+// starts at it in its first frame with the questions, and one no longer open closes it with the
+// same toast, rather than put another question as if it were the one asked for (tutti-34k9.5).
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
@@ -34,7 +37,7 @@ import { Box, type NeedsAt, useInput } from "./keys.ts"
 import { seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { type Closing, OpenQuestionForm } from "./OpenQuestion.tsx"
-import type { Reply } from "./questions.ts"
+import type { OpenQuestion, Reply } from "./questions.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import type { ToastStore } from "./Toasts.tsx"
 import { useCommand, useQuestionNews, useTheme } from "./useRunView.ts"
@@ -51,7 +54,10 @@ export const readingText = "Reading the open questions…"
 /** The toast when no question is open in the run's scope. */
 export const noneOpenText = "No open questions to answer"
 
-/** What a read's uuid starts with where none open needs no toast: the Needs you list's. */
+/**
+ * What a read's uuid starts with where none open needs no toast: the Needs you list's, and the
+ * box's opened at a question, whose toast says that question is already answered.
+ */
 const quietPrefix = "quiet-"
 
 /** A uuid for a read whose having no question open needs no toast (the Needs you list's). */
@@ -223,8 +229,25 @@ export const QuestionToasts = ({ toasts }: { readonly toasts: ToastStore }) => {
 }
 
 /**
- * The box, its questions put from `first`'s where it is among them (the panel's Enter), else from
- * the first; with `back`, `first`'s alone, then the Needs you list again.
+ * The questions the box puts, of the `read` ones, and where among them it starts: with `back` (the
+ * Needs you list's), `first` alone; else all of them, from `first` where it is given (the panel's
+ * Enter, the worker view's Answer), from the first otherwise. `start` is -1 where `first` is given
+ * and not among them: it was answered outside the dashboard since (tutti-34k9.5).
+ */
+export const placed = (
+  read: ReadonlyArray<OpenQuestion>,
+  first: TicketId | undefined,
+  back: NeedsAt | undefined,
+): { readonly questions: ReadonlyArray<OpenQuestion>; readonly start: number } => {
+  const questions = back === undefined ? read : read.filter((question) => question.id === first)
+  const start = first === undefined ? 0 : questions.findIndex((question) => question.id === first)
+  return { questions, start }
+}
+
+/**
+ * The box, its questions put from `first` where it is given (the panel's Enter, the worker view's
+ * Answer), else from the first; with `back`, `first`'s alone, then the Needs you list again. A
+ * `first` no longer open closes the box, a toast saying it is already answered.
  */
 export const QuestionsBox = ({
   first,
@@ -237,8 +260,11 @@ export const QuestionsBox = ({
   const command = useCommand()
   const { box, toasts, talks } = useInput()
   const { width, height } = useTerminalDimensions()
-  const [uuid] = useState(() => crypto.randomUUID())
-  const [at, setAt] = useState(0)
+  // Opened at a question, a read with none open has no toast of its own: the box's says that
+  // question is already answered.
+  const [uuid] = useState(() => (first === undefined ? crypto.randomUUID() : quietUuid()))
+  // How many questions were answered or left open in the box: its place is `start` and these.
+  const [advanced, setAdvanced] = useState(0)
   useEffect(() => command(UiCommand.ReadQuestions({ uuid })), [command, uuid])
   const found = useQuestionNews().find(
     (news) => news.uuid === uuid && (news._tag === "Read" || news._tag === "NotRead"),
@@ -250,18 +276,17 @@ export const QuestionsBox = ({
   }, [found])
   const read = kept ?? found
   const close = () => box.set(back === undefined ? null : nextIn(back))
-  const all = read?._tag === "Read" ? read.questions : undefined
-  // From the Needs you list, its question alone.
-  const questions = back === undefined ? all : all?.filter((question) => question.id === first)
-  // Opened on a question from the panel beside the tickets table, the box starts at it.
-  const startAt = questions?.findIndex((question) => question.id === first) ?? -1
-  useEffect(() => {
-    if (startAt > 0) setAt(startAt)
-  }, [startAt])
-  // None to put, or bd couldn't say: QuestionToasts says so, and the box closes. From the list, its
-  // question not open any more was answered outside the dashboard, which the toast here says.
-  const done = read !== undefined && (questions === undefined || at >= questions.length)
-  const closed = back !== undefined && questions?.length === 0 ? first : undefined
+  // Derived in the render, not set in an effect: the first frame with the questions is at `first`,
+  // with no frame at another question whose Enter would answer it (tutti-34k9.5).
+  const put = read?._tag === "Read" ? placed(read.questions, first, back) : undefined
+  const questions = put?.questions
+  const at = (put?.start ?? 0) + advanced
+  // `first` not open any more was answered outside the dashboard, which the toast here says,
+  // whoever opened the box. None to put, or bd couldn't say: QuestionToasts says so. The box closes.
+  const closed = put !== undefined && put.start === -1 ? first : undefined
+  const done =
+    read !== undefined &&
+    (questions === undefined || closed !== undefined || at >= questions.length)
   // biome-ignore lint/correctness/useExhaustiveDependencies: close is the latest render's
   useEffect(() => {
     if (!done) return
@@ -304,7 +329,7 @@ export const QuestionsBox = ({
       const answered = given._tag === "Answer"
       return box.set(answered ? answeredIn(back, uuid, question.id) : nextIn(back))
     }
-    setAt((now) => now + 1)
+    setAdvanced((now) => now + 1)
   }
   return (
     <box
