@@ -29,6 +29,12 @@ export interface DeferredFree {
    */
   readonly worktree?: string
   /**
+   * Whether its branch, tutti/<id>, is gone while its worktree is there (a worker's `git checkout
+   * --detach` then `git branch -D`): the worktree's HEAD alone has its commits, and removing it
+   * takes no `git branch -d`. Absent where the branch is there, or there is no worktree.
+   */
+  readonly branchGone?: true
+  /**
    * Its worktree when that has no commits beyond the base but uncommitted changes, which removing
    * it with --force would lose; absent otherwise.
    */
@@ -38,11 +44,16 @@ export interface DeferredFree {
 /** The command that puts the ticket back in bd ready. */
 export const reopen = (d: DeferredFree): string => `bd update ${d.id} --status open`
 
-/** The command that removes the ticket's empty worktree and its branch; undefined without one. */
+/**
+ * The command that removes the ticket's empty worktree and its branch, the worktree alone where
+ * the branch is gone (`git branch -d` of a missing branch fails); undefined without a worktree.
+ */
 export const cleanup = (d: DeferredFree): string | undefined =>
   d.worktree === undefined
     ? undefined
-    : `git worktree remove ${shellWord(d.worktree)} && git branch -d ${branchOf(d.id)}`
+    : d.branchGone
+      ? `git worktree remove ${shellWord(d.worktree)}`
+      : `git worktree remove ${shellWord(d.worktree)} && git branch -d ${branchOf(d.id)}`
 
 /** The command that shows the uncommitted changes in the ticket's worktree; undefined without them. */
 export const changes = (d: DeferredFree): string | undefined =>
@@ -127,15 +138,21 @@ const mergedBlockers = (
 
 /**
  * The worktree a worker left for ticket `id` (Worktrees.worktreeOf: on its branch, or left off it)
- * when it has no commits beyond the base, its branch's and, where it is off its branch, its HEAD's:
- * as empty when it has no uncommitted changes either, else as uncommitted. Neither when there is
- * none, it has commits, or git can't find the worktree or list the commits; a git status that fails
- * counts as uncommitted changes.
+ * when it has no commits beyond the base, its branch's and, where it is off its branch, its HEAD's,
+ * the HEAD's alone where the branch is gone (deleted after a `git checkout --detach`, as
+ * Worktrees.prepare makes it again at the HEAD): as empty when it has no uncommitted changes
+ * either, else as uncommitted; `branchGone` with either where the branch is gone. Neither when
+ * there is none, it has commits, or git can't find the worktree, say whether the branch is there,
+ * or list the commits; a git status that fails counts as uncommitted changes.
  */
 const leftWorktree = (
   freeing: Freeing,
   id: TicketId,
-): Effect.Effect<Pick<DeferredFree, "worktree" | "uncommitted">, never, Git | Worktrees> =>
+): Effect.Effect<
+  Pick<DeferredFree, "worktree" | "uncommitted" | "branchGone">,
+  never,
+  Git | Worktrees
+> =>
   Effect.gen(function* () {
     const git = yield* Git
     const branch = branchOf(id)
@@ -143,16 +160,25 @@ const leftWorktree = (
     if (Result.isFailure(worktree) || worktree.success === undefined) return {}
     const found = worktree.success
     const own = git.log(freeing.repo, freeing.base, branch)
+    const atHead = git.log(found.path, freeing.base)
+    const branchThere =
+      found.branch === branch
+        ? Result.succeed(true)
+        : yield* Effect.result(git.branchExists(freeing.repo, branch))
+    if (Result.isFailure(branchThere)) return {}
     const commits = yield* Effect.result(
       found.branch === branch
         ? own
-        : Effect.map(Effect.all([own, git.log(found.path, freeing.base)]), (each) => each.flat()),
+        : branchThere.success
+          ? Effect.map(Effect.all([own, atHead]), (each) => each.flat())
+          : atHead,
     )
     if (Result.isFailure(commits) || commits.success.length > 0) return {}
+    const gone = branchThere.success ? {} : { branchGone: true as const }
     const status = yield* Effect.result(git.status(found.path))
     return Result.isSuccess(status) && allChanges(status.success).length === 0
-      ? { worktree: found.path }
-      : { uncommitted: found.path }
+      ? { worktree: found.path, ...gone }
+      : { uncommitted: found.path, ...gone }
   })
 
 /**
