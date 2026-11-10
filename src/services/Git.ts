@@ -19,6 +19,7 @@ import {
   Semaphore,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
+import { writeFileUnder } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
   type Command,
@@ -486,6 +487,16 @@ export const gitOps = {
     op: "rebase --abort",
     kind: "write",
     args: (): ReadonlyArray<string> => [...noHooks, "rebase", "--abort"],
+  },
+  /**
+   * The checkout's own git folder, `<common dir>/worktrees/<id>` for a linked worktree, as git
+   * resolves it: a file is written there by its name below the folder, through the symlink guard.
+   * `--git-path` would resolve a link planted at the name to the link's target.
+   */
+  gitDir: {
+    op: "rev-parse --absolute-git-dir",
+    kind: "read",
+    args: (): ReadonlyArray<string> => ["rev-parse", "--absolute-git-dir"],
   },
   /** Where git keeps each of these names, a line each, as `rebaseFolders`. */
   gitPaths: {
@@ -1190,12 +1201,15 @@ export class Git extends Context.Service<
             }
             if (replayed.length === 0) return gitCall(gitOps.rebase, onto, "merges")
             const call = gitCall(gitOps.rebase, onto, "replaying")
-            const path = (yield* read(
-              gitCall(gitOps.gitPaths, [rebaseMergesFile]),
-              worktree,
-            )).trim()
+            const gitDir = (yield* read(gitCall(gitOps.gitDir), worktree)).trim()
+            const path = join(gitDir, rebaseMergesFile)
+            // Written through the symlink guard (§ 9.1), as the lock files and state.json are: the
+            // worktree's git folder is writable from the worktree, so a worker could put a link at
+            // the script's name, which a plain write would follow (and `git rev-parse --git-path`
+            // resolves to its target). writeFileUnder refuses a link at the name, and renames a
+            // fresh file over it otherwise, so a file hard-linked to the name is left as it was.
             // Not written, the rebase is as if it ran and failed: nothing was begun to abort.
-            yield* fs.writeFileString(path, rebaseMergesScript).pipe(
+            yield* writeFileUnder(gitDir, rebaseMergesFile, rebaseMergesScript).pipe(
               Effect.mapError(
                 (error) =>
                   new GitFailed({
