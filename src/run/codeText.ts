@@ -129,7 +129,11 @@ const families: ReadonlyArray<readonly [string, Syntax]> = [
   ],
   [
     "go",
-    syntax({ ...cComments, quotes: [doubleQuoted, quote("`", { escape: false })], chars: true }),
+    syntax({
+      ...cComments,
+      quotes: [doubleQuoted, quote("`", { escape: false, line: false })],
+      chars: true,
+    }),
   ],
   [
     "rs",
