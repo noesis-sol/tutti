@@ -50,7 +50,10 @@
 // short-lived processes, build-script.test.ts' bun build --compile 2.5 GB, tutti-skill.test.ts'
 // bun src/main.ts 1 GB, alone each 620 MB at most, and one run's sample catching the compile had
 // set every run's processes at 2.5 GB. A plain run counts what plain runs' processes and their
-// tests took, a TUTTI_SLOW run what slow runs' did (tutti-k4if.2).
+// tests took, a TUTTI_SLOW run what slow runs' did (tutti-k4if.2). CI's runners, which run nothing
+// else, give the run their whole memory as its share (TUTTI_MEMORY_MB, .github/workflows/ci.yml):
+// the memory free less the reserve held macos-latest's 7 GB to one process at the 1.5 GB default a
+// fresh runner has, having no record (tutti-34k9.9).
 //
 // The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or

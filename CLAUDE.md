@@ -114,7 +114,9 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   first line says the choice: `scripts/test.sh: 3 processes (cores 5, memory 4.6 GB at ~1.5 GB
   each)`, `… memory 4.6 GB less ~2.5 GB for what the tests start, at ~0.6 GB each)`. A run that
   met memory pressure at `warn` reruns its failures, and holds the next 10 minutes' runs, to one
-  fewer.
+  fewer. CI's and the release's checks set `TUTTI_MEMORY_MB` to the runner's whole memory beside
+  `TUTTI_TEST_PARALLEL`, as it runs nothing else: at the 1.5 GB default a fresh runner's memory
+  free less 2 GB held macos-latest's 3 cores to one process (`test/workflow-every-core.test.ts`).
 - On macOS, a run killed outright can leave `bun test --parallel`'s workers spinning, each in a
   process group of its own (on Linux, Bun has the kernel kill them with it): `scripts/test.sh`
   kills, as it starts, the test workers of runs whose process has gone (their `TMPDIR` names the

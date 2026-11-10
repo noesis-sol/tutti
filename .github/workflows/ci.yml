@@ -67,11 +67,15 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      # The tests on every core of the runner, which runs nothing else, rather than the half
-      # scripts/test.sh keeps to on a shared machine (testWorkers): macos-latest's 3 cores ran them in
-      # one process.
-      - name: Use every core
-        run: echo "TUTTI_TEST_PARALLEL=$(getconf _NPROCESSORS_ONLN)" >> "$GITHUB_ENV"
+      # The tests on every core of the runner and in all its memory, as it runs nothing else, rather
+      # than the half of the cores scripts/test.sh keeps to on a shared machine (testWorkers) and the
+      # memory free now less the 2 GB tutti keeps (availableMemory): macos-latest's 3 cores ran them in
+      # one process, and so did its 7 GB, taken at 1.5 GB a process while a fresh runner has no record
+      # of what one takes (tutti-34k9.9).
+      - name: Use every core and all the memory
+        run: |
+          echo "TUTTI_TEST_PARALLEL=$(getconf _NPROCESSORS_ONLN)" >> "$GITHUB_ENV"
+          echo "TUTTI_MEMORY_MB=$(bun --print 'Math.floor(require("node:os").totalmem() / 1048576)')" >> "$GITHUB_ENV"
 
       - name: Check
         run: scripts/check-full.sh

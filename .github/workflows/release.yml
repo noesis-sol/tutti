@@ -90,9 +90,11 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      # The tests on every core of the runner, as ci.yml's check.
-      - name: Use every core
-        run: echo "TUTTI_TEST_PARALLEL=$(getconf _NPROCESSORS_ONLN)" >> "$GITHUB_ENV"
+      # The tests on every core of the runner and in all its memory, as ci.yml's check.
+      - name: Use every core and all the memory
+        run: |
+          echo "TUTTI_TEST_PARALLEL=$(getconf _NPROCESSORS_ONLN)" >> "$GITHUB_ENV"
+          echo "TUTTI_MEMORY_MB=$(bun --print 'Math.floor(require("node:os").totalmem() / 1048576)')" >> "$GITHUB_ENV"
 
       - name: Check
         run: scripts/check-full.sh
