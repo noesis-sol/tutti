@@ -1056,7 +1056,8 @@ export const make = (
         }
         const queue = candidates.filter((issue) => !setAsideNow.includes(issue.id))
 
-        const open = (yield* LookOpen) ?? (yield* beads.list())
+        const looked = yield* LookOpen
+        let open = looked ?? (yield* beads.list())
         const unclosed = unclosedIn(open, options.scope, filter)
         yield* remember((m) => ({ ...m, unclosed }))
 
@@ -1064,8 +1065,12 @@ export const make = (
         // those of the tickets not closed or left unmerged, and of the run's tickets not merged yet.
         // bd ready's list counts with bd's open list: the look read that list before the answers
         // were taken, and a child a worker filed meanwhile is in bd ready alone, its parent with it
-        // (tutti-k8wx). bd show gives the parent of one the run didn't dispatch. They hold back only
-        // a ticket in line, so they are read for the first a fill weighs, and not at all with none.
+        // (tutti-k8wx). A ticket bd ready lists that the look's list lacks says the backlog changed
+        // since that list was read, and a child filed with it that bd ready omits (blocked by a
+        // ticket outside its parent's subtickets, or in progress) is in neither list: the open list
+        // is then read afresh (tutti-7tun). bd show gives the parent of one the run didn't dispatch.
+        // They hold back only a ticket in line, so they are read for the first a fill weighs, and
+        // not at all with none.
         let holders:
           | {
               readonly labelled: ReadonlyArray<Issue>
@@ -1077,6 +1082,10 @@ export const make = (
           if (holders !== undefined) return holders
           const labelled = yield* beads.list({ status: "closed", labels: [unmergedLabel] })
           const left = leftUnmerged(yield* ledger.current, labelled)
+          if (looked !== undefined) {
+            const lookedIds = new Set(looked.map((issue) => issue.id))
+            if (found.some((issue) => !lookedIds.has(issue.id))) open = yield* beads.list()
+          }
           const openIds = new Set([...open, ...found].map((issue) => issue.id))
           const parentOf = new Map((yield* Ref.get(memo)).parentOf)
           for (const id of unmerged(yield* ledger.current)) {
