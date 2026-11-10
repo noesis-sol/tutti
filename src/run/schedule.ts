@@ -1062,8 +1062,10 @@ export const make = (
 
         // The tickets left unmerged by an earlier run, and the parents waiting for their subtickets:
         // those of the tickets not closed or left unmerged, and of the run's tickets not merged yet.
-        // bd show gives the parent of one the run didn't dispatch. They hold back only a ticket in
-        // line, so they are read for the first a fill weighs, and not at all with none.
+        // bd ready's list counts with bd's open list: the look read that list before the answers
+        // were taken, and a child a worker filed meanwhile is in bd ready alone, its parent with it
+        // (tutti-k8wx). bd show gives the parent of one the run didn't dispatch. They hold back only
+        // a ticket in line, so they are read for the first a fill weighs, and not at all with none.
         let holders:
           | {
               readonly labelled: ReadonlyArray<Issue>
@@ -1075,7 +1077,7 @@ export const make = (
           if (holders !== undefined) return holders
           const labelled = yield* beads.list({ status: "closed", labels: [unmergedLabel] })
           const left = leftUnmerged(yield* ledger.current, labelled)
-          const openIds = new Set(open.map((issue) => issue.id))
+          const openIds = new Set([...open, ...found].map((issue) => issue.id))
           const parentOf = new Map((yield* Ref.get(memo)).parentOf)
           for (const id of unmerged(yield* ledger.current)) {
             if (parentOf.has(id) || openIds.has(id)) continue
@@ -1083,7 +1085,11 @@ export const make = (
             if (Result.isSuccess(read)) parentOf.set(id, read.success.parent ?? null)
           }
           yield* remember((m) => ({ ...m, parentOf: new Map([...m.parentOf, ...parentOf]) }))
-          const parents = parentsWaiting([...open, ...left], yield* ledger.current, parentOf)
+          const parents = parentsWaiting(
+            [...open, ...found, ...left],
+            yield* ledger.current,
+            parentOf,
+          )
           holders = { labelled, left, parents }
           return holders
         })
