@@ -6,9 +6,11 @@
 #               or JSON file changed, deleted ones included
 #   biome:      bunx biome check on the changed files
 #   test:       scripts/test.sh on the test files the change touches (scripts/check-own.ts): those
-#               that changed, and those that import a changed module at any depth or name a changed
-#               file; the slow suites too when TUTTI_SLOW=1. Those that passed in an earlier run in
-#               this worktree, and that nothing changed since touches, are left out: see below
+#               that changed, those that import a changed module at any depth or name a changed
+#               file, and, when any file under src/ changed, those that read the whole of src/
+#               (test/layers.test.ts); the slow suites too when TUTTI_SLOW=1. Those that passed in
+#               an earlier run in this worktree, and that nothing changed since touches, are left
+#               out: see below
 #   lint:       shellcheck on the changed shell scripts (and bin/tutti, which has no .sh)
 # A change to the project's setup (package.json, bun.lock, tsconfig.json, bunfig.toml, biome.json,
 # scripts/check.sh) runs scripts/check.sh whole instead, and so does a branch without main to start

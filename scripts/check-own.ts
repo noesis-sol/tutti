@@ -9,7 +9,9 @@
 // error a change causes in a test is tsc's to find, which check-own.sh runs on the whole project
 // when TypeScript changed. import { type X } … still counts, as verbatimModuleSyntax keeps it as a
 // side-effect import. A change to the test runner (scripts/test.ts) or its preload
-// (test/warm-up.ts) touches every test.
+// (test/warm-up.ts) touches every test. A change to any file under src/ touches the test helpers
+// that read the whole of src/ rather than import it (srcReaders: test/importGraph.ts, which the
+// layering and cycle checks read), and so the tests that import them.
 //
 // A pass stands for the next run in the same worktree (standOn): check-own.sh keeps, under the
 // worktree's own git dir, the tree its tests passed on (HEAD's with what isn't committed yet,
@@ -32,6 +34,14 @@ import { dirname, join, normalize } from "node:path"
 
 /** Changes that touch every test. */
 export const wholeSuite: ReadonlyArray<string> = ["scripts/test.ts", "test/warm-up.ts"]
+
+/**
+ * The test helpers that read the whole of src/ rather than import it: test/importGraph.ts reads
+ * every module's imports for the layering check (test/layers.test.ts) and the cycle check. A
+ * change to any file under src/ touches them, and so the tests that import them, which import no
+ * src/ module and would otherwise run only in the merge check.
+ */
+export const srcReaders: ReadonlyArray<string> = ["test/importGraph.ts"]
 
 /**
  * The project's setup, a change to which since main makes check-own.sh run scripts/check.sh whole
@@ -155,6 +165,9 @@ export const testsFor = (
     for (const [source, text] of testTexts) {
       if (mentions.some((mention) => text.includes(mention))) touch(source)
     }
+  }
+  if (changed.some((file) => file.startsWith("src/"))) {
+    for (const reader of srcReaders) touch(reader)
   }
   for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
     for (const importer of importers.get(file) ?? []) touch(importer)
