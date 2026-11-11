@@ -159,6 +159,7 @@ export const afterStart = (
     const { queue, mergeStop } = parts.merge
     const { machine, lookAround } = parts.starting
     const { watch, quits } = watchers
+    // Held at --machine-workers, the run reads the other runs every machinePoll, and looks again once
     // one of their workers has finished; it doesn't read bd ready meanwhile.
     if (machine.poll !== undefined) yield* watch(machine.poll(lookAround))
     // Triage's verdicts go on their tickets' rows as they come in.
