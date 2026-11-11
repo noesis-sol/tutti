@@ -144,7 +144,8 @@ _Add a brief overview of your project architecture_
   environment of what tutti starts and a check's share of the machine; it imports values only from
   `src/text`, `src/native` and Effect) and `src/native`; then `src/project`; `src/services`;
   `src/agent`; `src/organs`; `src/run`; `src/ui`, `src/print`, `src/answer`, `src/plan`,
-  `src/init` and `src/update`; `src/cli`; `src/main.ts` is the entry point, run with
+  `src/init` and `src/update`; `src/cli` (with `src/cli/start/`, the steps of a bare `tutti`'s
+  run, in the order `runFrom` lists them); `src/main.ts` is the entry point, run with
   `BunRuntime.runMain`. `src/testing` holds the services' test layers, outside the layers.
 - **Effect services.** Each service is a `Context.Service` with a live layer next to it and a test
   layer under `src/testing/`, one file per service. Tests and whole-run scenarios use the test layers.

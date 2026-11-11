@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
-// tutti's entry point: the command line (src/cli/commands.ts), and a bare `tutti`'s run (§ 5): the
-// startup checks (exit 2), the run lock (§ 9.2), the start question (src/cli/choose.ts), then the
-// run (src/run/run.ts) on a ManagedRuntime of the live layers, which is disposed of, and the lock
-// released, once the run's scope has closed. When Tty says the terminal can draw the dashboard,
-// the run asks the start question and shows the dashboard in the command's one OpenTUI renderer
-// (src/ui/renderer.ts), the log goes to its file alone, and once the renderer is gone the run's
-// summary, closing and scope lines are printed in the theme of the renderer's appearance, then the
-// report with its organ lines, then the end record (src/run/run.ts's finish). New feature, at the
-// start question, and --feature "<request>" open the Interview view in that renderer
-// (src/run/interview.ts); once its epic is filed, the run goes on, scoped to the epic, into the
-// dashboard, with nothing asked. --feature without a terminal for it ends with exit 2, nothing
-// filed. Otherwise the run is plain (§ 7.6): the start question as lines, log lines on stdout,
-// with a line saying why when the terminal couldn't show a dashboard, the log's summary lines,
-// then the report.
+// tutti's entry point: the command line (src/cli/commands.ts), and a bare `tutti`'s run (§ 5), in
+// the steps of src/cli/start/ (runFrom lists them): the startup checks (exit 2), the run lock
+// (§ 9.2), the start question (src/cli/choose.ts), then the run (src/run/run.ts) on a
+// ManagedRuntime of the live layers, which is disposed of, and the lock released, once the run's
+// scope has closed. When Tty says the terminal can draw the dashboard, the run asks the start
+// question and shows the dashboard in the command's one OpenTUI renderer (src/ui/renderer.ts), the
+// log goes to its file alone, and once the renderer is gone the run's summary, closing and scope
+// lines are printed in the theme of the renderer's appearance, then the report with its organ
+// lines, then the end record (src/run/run.ts's finish). New feature, at the start question, and
+// --feature "<request>" open the Interview view in that renderer (src/run/interview.ts); once its
+// epic is filed, the run goes on, scoped to the epic, into the dashboard, with nothing asked.
+// --feature without a terminal for it ends with exit 2, nothing filed. Otherwise the run is plain
+// (§ 7.6): the start question as lines, log lines on stdout, with a line saying why when the
+// terminal couldn't show a dashboard, the log's summary lines, then the report.
 // Signals (§ 7.4, src/run/quit.ts): SIGUSR1 winds the run down, SIGUSR2 too, their handlers in place
 // before the lock names tutti's PID; SIGTSTP is ignored with a log line (D18); while the run goes,
 // SIGINT, SIGTERM and SIGHUP quit it (§ 4.8), the third ending tutti at once, and before and after
@@ -20,134 +20,55 @@
 // renderer is gone, exit 4.
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`; the npm bundle from src/npm.ts, which detects musl first.
-import { availableParallelism, homedir } from "node:os"
 import { BunServices } from "@effect/platform-bun"
-import {
-  Clock,
-  Console,
-  Deferred,
-  Duration,
-  Effect,
-  Layer,
-  Option,
-  Queue,
-  Result,
-  Scope,
-} from "effect"
+import { Clock, Effect, Layer, Result, Scope } from "effect"
 import { Command } from "effect/cli"
 import { talkHere } from "./answer/talkHere.ts"
-import {
-  asking,
-  askLines,
-  askThenBegin,
-  cancelled,
-  interviewUnavailable,
-  specAsk,
-  takeSpec,
-  ticketCount,
-} from "./cli/choose.ts"
+import { asking } from "./cli/choose.ts"
 import { checkoutOf, mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
-import { gitLayer, runLayers } from "./cli/start/layers.ts"
+import { presentDashboard } from "./cli/start/dashboard.ts"
+import { exitWith } from "./cli/start/exit.ts"
+import { runLayers } from "./cli/start/layers.ts"
 import { lockRun } from "./cli/start/lock.ts"
 import { overnight } from "./cli/start/overnight.ts"
+import { presentPlain } from "./cli/start/plain.ts"
 import { power } from "./cli/start/power.ts"
-import { cannotStart, liveLines, preflight, signalQueues } from "./cli/start/preflight.ts"
+import { cannotStart, preflight, signalQueues } from "./cli/start/preflight.ts"
 import { prepareWork } from "./cli/start/prepare.ts"
+import { starting } from "./cli/start/starting.ts"
 import { tuttiVersion, version } from "./cli/version.ts"
 import { runStarted } from "./core/localTime.ts"
-import { detail, type Line, Log } from "./core/log.ts"
-import { readySteps } from "./print/gettingReady.ts"
-import { endWith, type Output, themeStyles } from "./print/nothing.ts"
-import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
-import { screenOut } from "./print/screenOut.ts"
+import { Log } from "./core/log.ts"
+import { guardOutput } from "./print/organLine.ts"
 import type { RunFlags } from "./project/flags.ts"
-import { talkQuestion } from "./run/answerTalk.ts"
-import { carriedTickets } from "./run/carry.ts"
-import { startBranches } from "./run/closedBranches.ts"
-import { scopedTo } from "./run/feature.ts"
 import { exitCodes } from "./run/holds.ts"
-import { inRenderer } from "./run/inRenderer.ts"
-import { type InterviewScreen, interview, interviewEnding } from "./run/interview.ts"
-import { liveLoad } from "./run/load.ts"
-import {
-  check as checkNothing,
-  heldAtStart,
-  type Options as NothingOptions,
-} from "./run/nothing.ts"
-import {
-  openQuestions,
-  type Put,
-  putQuestions,
-  stoppedAtQuestions,
-} from "./run/overnightQuestions.ts"
-import {
-  breakdownFailed,
-  listen,
-  logSuspends,
-  type QuitRequest,
-  quitBy,
-  runMain,
-} from "./run/quit.ts"
-import { finish, run } from "./run/run.ts"
-import { startShareNote } from "./run/share.ts"
-import { specStart } from "./run/specStart.ts"
-import { type Started, startBlock } from "./run/startup.ts"
-import { fixedLeft } from "./run/takenBack.ts"
-import { stillUnmerged } from "./run/unmerged.ts"
-import { Beads, beadsWhy, type TicketId } from "./services/Beads.ts"
-import { EventStream } from "./services/EventStream.ts"
-import { endRecord } from "./services/Spending.ts"
-import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
-import { dashboard, interviewScreen } from "./ui/App.tsx"
-import { liveClipboard } from "./ui/clipboard.ts"
-import { askOpenQuestion } from "./ui/OpenQuestion.tsx"
-import { showOrgans } from "./ui/OrganScreen.tsx"
-import { liveUrlOpener } from "./ui/openUrl.ts"
-import { openQuestion, streamInput } from "./ui/plain/forms.ts"
-import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
-import { closeLimit, open as openRenderer, type Shell } from "./ui/renderer.ts"
-import { askStart } from "./ui/StartQuestion.tsx"
-import {
-  type Appearance,
-  appearanceOf,
-  makeTheme,
-  outputAppearance,
-  printedTheme,
-  type Theme,
-} from "./ui/theme.ts"
-import { newerNotice } from "./update/update.ts"
+import { runMain } from "./run/quit.ts"
+import type { Started } from "./run/startup.ts"
+import { outputMode, layer as ttyLayer } from "./services/Tty.ts"
 
 export { version }
 
-/** Ends tutti at once with `code` (a third request to quit), `said` printed first if given. */
-const exitNow =
-  (destroy?: () => Promise<void>) =>
-  (code: number, said: ReadonlyArray<Line>): Effect.Effect<void> =>
-    Effect.promise(async () => {
-      if (destroy !== undefined) {
-        await destroy()
-        stdout.write(`${said.join("\n")}\n`)
-      }
-      process.exit(code)
-    })
-
 /**
- * Says that release `newer` is out (§ 7.11 "A newer release"), below the run's end: on stdout after
- * the dashboard, in `theme` (the line `notice`, its command `emphasis` bold), or with plain output
- * on stderr when that is a terminal. Not on a terminal, it says nothing.
+ * A bare `tutti`: the run, in the folder tutti was started in; its exit code. Its steps are
+ * src/cli/start/'s, in this order, which is behaviour: what is said first when two things are
+ * wrong, and what is released when a later step fails.
+ *
+ * 1. The signal handlers (§ 7.4), before tutti's PID is written anywhere; the terminal and its
+ *    getting-ready line, gone with the scope at the latest; the newer-release check (§ 12).
+ * 2. A spec run's setup (§ 4.14), then the startup checks (§ 5 item 1, exit 2), then --feature
+ *    refused without a terminal for its interview (§ 4.10): prepareWork.
+ * 3. The machine's power: the keep-awake plan, the battery (§ 5 item 16) and the lid, as START
+ *    block notes.
+ * 4. The run lock (§ 5 item 2, § 9.2), held until the services below have been disposed of, then
+ *    the worktrees' root under it (§ 9.1): lockRun.
+ * 5. An overnight run keeps the machine awake from before its pre-flight, then the pre-flight
+ *    (§ 5 item 2, § 8.2), with the lock held and before the services are made, so its fixes reach
+ *    them.
+ * 6. The run's services (runLayers), on a runtime disposed of before the lock is released.
+ * 7. On them, what the run starts from (starting), the mode's presentation (§ 5 items 3 and 4,
+ *    § 7.1, § 7.6: presentPlain or presentDashboard), and the end on the main screen (§ 5 item 14,
+ *    § 7.11 "A newer release": exitWith), whose exit code is the process's.
  */
-const sayNewer = (newer: string, dashboard: boolean, theme: Effect.Effect<Theme>) =>
-  Effect.gen(function* () {
-    const { text, command } = newerNotice(newer, version)
-    if (dashboard) {
-      const { styles } = yield* theme
-      stdout.write(`${styles.deferred.paint(text)}${styles.key.paint(command)}\n`)
-    } else if (process.stderr.isTTY) {
-      process.stderr.write(`${text}${command}\n`)
-    }
-  })
-
-/** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
   Effect.gen(function* () {
     const { drains, suspends } = yield* signalQueues
@@ -173,7 +94,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     const locked = yield* lockRun(checked, at, ready)
     if (typeof locked === "number") return locked
     const { lock } = locked
-    let { holder, started } = locked
+    const { holder } = locked
+    let { started } = locked
     config = started.config
 
     // The scope the run's services and the keep-awake command close with, once the report is done.
@@ -217,593 +139,27 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     }
 
     const code = yield* Effect.gen(function* () {
-      const events = yield* EventStream
-      const tty = yield* Tty
-      yield* logSuspends(suspends)
-
-      const depth = tty.colourDepth === "truecolor" ? "truecolor" : "256"
-      const themeOf = (appearance: Appearance, styled = true) =>
-        makeTheme(config.scheme.scheme, { appearance, depth, noColor: config.noColor, styled })
-      /** The theme of what is printed to `out` with no renderer's appearance: unstyled off a TTY. */
-      const printedThemeOf = (out: Out) =>
-        printedTheme(themeOf, config.appearance, { dumb: tty.dumb, tty: out.tty })
-      // The main screen's theme: the box's, and the line form's. A dumb terminal isn't asked for
-      // its background.
-      const mainTheme =
-        mode._tag === "Dashboard" || asks === "lines"
-          ? themeOf(
-              tty.dumb
-                ? appearanceOf(config.appearance, null)
-                : yield* outputAppearance(config.appearance, null),
-            )
-          : undefined
-      /** Where the report goes, in `theme`, on the main screen. */
-      const reportOut = (theme: Theme) =>
-        Effect.map(tty.size, (size) => ({
-          printer: makePrinter(stdout, theme),
-          theme,
-          width: size.columns,
-        }))
-      const output: Output =
-        mainTheme === undefined || mode._tag === "Plain"
-          ? { _tag: "Plain" }
-          : { _tag: "Box", width: (yield* tty.size).columns, styles: themeStyles(mainTheme) }
-
-      // The run's scope: --ticket's, the epic --feature filed, or a spec's root epic.
-      let scope = config.ticket
-      // The request a feature run was talked through from: --feature's, or New feature's.
-      let feature = config.feature
-      // The spec: --spec's, or the one chosen at the start question.
-      let spec = started.spec ?? null
-      yield* ready.step(readySteps.backlog)
-      // bd failing to list the tickets left unmerged is something to run: the run lists them again,
-      // and stops on it. Only the nothing check needs them: read once, as the start question opens
-      // or when the check first asks.
-      const unmergedNow = yield* Effect.cached(
-        Effect.result(stillUnmerged({ repo: config.repo, base })),
-      )
-      const beads = yield* Beads
-      // A conflict an earlier run left, fixed by hand since, is something to run too (takenBack.ts).
-      const carried = new Set([
-        ...(yield* carriedTickets),
-        ...(yield* fixedLeft({ repo: config.repo, base })),
-      ])
-      const filter = { excludeTypes: config.settings.queue.exclude_types }
-      const nothingOptions = (left: ReadonlySet<TicketId>): NothingOptions => {
-        // A blocker closed by hand while its branch has commits the base lacks holds, as in the run.
-        const branches = startBranches({ repo: config.repo, base })
-        return {
-          scope,
-          filter,
-          repo: config.repo,
-          base,
-          carried,
-          unmerged: left,
-          branches,
-          held: heldAtStart(beads, left, branches),
-        }
-      }
-      /** Nothing to run, to report once the renderer has gone; null when there is something. */
-      const nothingYet = Effect.gen(function* () {
-        yield* ready.step(readySteps.backlog)
-        const unmerged = yield* unmergedNow
-        const nothing = Result.isSuccess(unmerged)
-          ? yield* Effect.result(checkNothing(nothingOptions(unmerged.success)))
-          : Result.succeed(null)
-        yield* ready.step(readySteps.starting)
-        return Result.isSuccess(nothing) && nothing.success !== null
-          ? ({ _tag: "Nothing", nothing: nothing.success } as const)
-          : null
+      const on = yield* starting({
+        started,
+        holder,
+        base,
+        subscription,
+        setup,
+        ready,
+        mode,
+        asks,
+        lock,
+        runScope,
+        machine,
+        unanswered,
+        drains,
+        suspends,
+        fieldFetch,
+        fetchContext,
       })
-      /** Whether there is nothing to run, which it then reports on the main screen. */
-      const nothingReported = Effect.gen(function* () {
-        const nothing = yield* nothingYet
-        if (nothing === null) return false
-        yield* ready.end
-        yield* endWith(nothing.nothing, output)
-        return true
-      })
-      // What the start question needs to ask for a spec.
-      const specAsking = specAsk(config.repo, homedir(), fieldFetch, fetchContext)
-      const count =
-        asks === "no"
-          ? TicketCount.Unknown()
-          : yield* ticketCount(
-              { scope, filter },
-              Effect.map(unmergedNow, (unmerged) =>
-                nothingOptions(Result.isSuccess(unmerged) ? unmerged.success : new Set()),
-              ),
-            )
-      // The question opens: the tickets left unmerged are read while it is asked.
-      if (asks !== "no") yield* Effect.forkChild(unmergedNow)
-      yield* ready.step(readySteps.starting)
-
-      const awakeOption = machine.runOption()
-      /**
-       * The run begins on `work`: the machine kept awake until the run's scope closes, the feature
-       * chosen named in the lock, and the start event.
-       */
-      const begin = (work: Work) =>
-        Effect.gen(function* () {
-          // Its line goes to the log, which plain output prints.
-          yield* machine.hold(runScope, mode._tag === "Plain" ? ready.end : Effect.void)
-          const feature = work._tag === "Feature" ? work.description : config.feature
-          // The lock is held all the same if its holder can't be rewritten.
-          if (work._tag === "Feature") {
-            yield* Effect.ignore(lock.rewrite({ ...holder, feature: work.description }))
-          }
-          yield* events.emit({
-            kind: "start",
-            version,
-            repo: config.repo,
-            branch: base,
-            ...(scope === null ? {} : { scope }),
-            ...(feature === null ? {} : { feature }),
-            ...(spec === null ? {} : { spec: spec.path }),
-            ...(spec?.url === undefined ? {} : { spec_source: spec.url }),
-            concurrency: config.settings.concurrent,
-            billing: config.billing,
-            permission_mode: started.account.permissionMode.inEffect,
-            ...(config.autoAnswer === null
-              ? {}
-              : { auto_answer: Duration.toMillis(config.autoAnswer) }),
-            ...(config.overnight ? { overnight: true as const } : {}),
-          })
-        })
-      /** A spec chosen at the start question begins the run once its breakdown has scoped it. */
-      const beginUnlessSpec = (work: Work) => (work._tag === "Spec" ? Effect.void : begin(work))
-      /** A new feature chosen at the start question asked as lines: the interview needs the renderer. */
-      const noInterview = Effect.gen(function* () {
-        yield* ready.end
-        yield* Console.error(interviewUnavailable)
-        yield* Effect.flatMap(endRecord(exitCodes.ok), events.emit)
-        return exitCodes.ok
-      })
-
-      // The run's quits: SIGINT, SIGTERM and SIGHUP while it goes (§ 4.8), and a spec's breakdown
-      // failing after the early start.
-      const quits = yield* Queue.unbounded<QuitRequest>()
-      // --spec (src/run/specStart.ts): the spec committed with the setup's files and broken down
-      // where it needs to be, then the run scoped to its root epic, which the lock then names. What
-      // it says goes to `out` and `error`; a refinement is shown with `refine`. The exit code when
-      // it stopped the run.
-      const wireSpec = () =>
-        specStart({
-          setup,
-          holder,
-          rewrite: lock.rewrite,
-          runScope,
-          quit: Queue.offer(quits, breakdownFailed),
-        })
-      let specStarting = wireSpec()
-      // With the renderer open, `shell`, its appearance is the theme's: asking the terminal for its
-      // background would take stdin from the renderer, which then gets no key. `drawn`, an Out on
-      // its screen, draws the organ lines there as well, unstyled, while `out` holds them.
-      const startSpec = (io: {
-        readonly out: Out
-        readonly error: (text: string) => Effect.Effect<void>
-        readonly refine: Option.Option<InterviewScreen>
-        readonly shell?: Shell
-        readonly drawn?: Out
-      }) =>
-        Effect.gen(function* () {
-          if (spec === null) return undefined
-          yield* ready.end
-          const theme =
-            io.shell === undefined
-              ? yield* printedThemeOf(io.out)
-              : themeOf(io.shell.appearance.get())
-          // Drawn on the screen, its organ lines are held for the main screen with their final
-          // lines alone, as off a terminal.
-          const printer = makePrinter(
-            io.drawn === undefined ? io.out : { ...io.out, tty: false },
-            theme,
-          )
-          const begun = yield* specStarting.start(spec, config, {
-            printer:
-              io.drawn === undefined
-                ? printer
-                : bothPrinters(printer, makePrinter(io.drawn, themeOf(theme.appearance, false))),
-            error: io.error,
-            refine: io.refine,
-          })
-          if (begun._tag === "Stopped") {
-            yield* Effect.flatMap(endRecord(begun.exitCode), events.emit)
-            return begun.exitCode
-          }
-          scope = begun.root
-          return undefined
-        })
-      /**
-       * The spec chosen at the start question, `work`, taken as --spec takes one: what was chosen
-       * said on `out`, then the spec read as the startup checks read it, the run, the lock and the
-       * spec's start wired to it. The exit code where it can't be run, having said why on `error`.
-       */
-      const takeChosen = (
-        work: Extract<Work, { readonly _tag: "Spec" }>,
-        out: Out,
-        error: (text: string) => Effect.Effect<void>,
-      ) =>
-        Effect.gen(function* () {
-          const taken = yield* takeSpec(work, {
-            repo: config.repo,
-            fetch: fieldFetch,
-            out: (text) => out.write(text),
-            error,
-            rewrite: (read) => lock.rewrite({ ...holder, spec: read.path }),
-          }).pipe(Effect.provide(gitLayer), Effect.provideContext(fetchContext))
-          if (taken._tag === "Refused") return taken.exitCode
-          spec = taken.spec
-          config = { ...config, refine: work.refine }
-          started = { ...started, spec: taken.spec, config }
-          holder = { ...holder, spec: taken.spec.path }
-          specStarting = wireSpec()
-          return undefined
-        })
-      const canAsk = tty.stdinIsTty && tty.stdoutIsTty
-      const error = (text: string) => Console.error(text)
-      const scoped = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-        scope === null ? effect : scopedTo(scope, spec?.path ?? null, feature)(effect)
-
-      // While the run goes, SIGINT, SIGTERM and SIGHUP quit it (§ 4.8).
-      const listening = <A, E, R>(running: Effect.Effect<A, E, R>) =>
-        Effect.scoped(
-          Effect.andThen(
-            listen((signal) => Queue.offerUnsafe(quits, quitBy(signal))),
-            running,
-          ),
-        )
-      // --overnight's open questions in the run's scope, put to you before the first ticket
-      // (src/run/overnightQuestions.ts): in the renderer below with a dashboard, as lines in plain
-      // output, and listed, nothing asked, without a terminal. bd failing to list them leaves them
-      // to you, saying so.
-      const questions = config.overnight
-        ? yield* openQuestions(scope).pipe(
-            Effect.catch((failure) =>
-              Effect.as(
-                Effect.andThen(
-                  ready.end,
-                  Console.error(
-                    `tutti --overnight couldn't read the open questions to put to you first: ${beadsWhy(failure)}`,
-                  ),
-                ),
-                [],
-              ),
-            ),
-          )
-        : []
-      // A question of the pre-flight nobody answered leaves them open, as without a terminal.
-      const putsThem = canAsk && !unanswered
-      const putInRenderer = questions.length > 0 && putsThem && mode._tag === "Dashboard"
-      /** The questions put as lines in a terminal, or listed without one, on the main screen. */
-      const putOnMainScreen = Effect.gen(function* () {
-        if (questions.length === 0) return null
-        yield* ready.end
-        const theme = mainTheme ?? (yield* printedThemeOf(stdout))
-        const write = (text: string) => process.stdout.write(text)
-        const live = liveLines(tty)
-        const put: Put = (question, at, limit) =>
-          Effect.scoped(
-            Effect.flatMap(streamInput(process.stdin), (input) =>
-              openQuestion({ input, write, theme, ...live }, question, at, limit),
-            ),
-          )
-        const putting = yield* putQuestions({
-          questions,
-          put: putsThem ? Option.some(put) : Option.none(),
-          say: { ...makePrinter(stdout, theme), theme },
-        })
-        return putting._tag === "Cancelled" ? yield* stoppedAtQuestions(putting.answered) : null
-      })
-      const why = mode._tag === "Plain" ? plainReasonLine(mode.reason, tty.term) : undefined
-      // The workers' share of the machine, from one reading of it, for the START block.
-      const share = yield* startShareNote(
-        liveLoad(),
-        { cores: availableParallelism(), limit: config.machineWorkers },
-        config.settings.concurrent,
-      )
-      const start = () => [
-        ...startBlock(
-          { ...started, config: { ...config, ticket: scope, feature } },
-          version,
-          share,
-        ),
-        ...(why === undefined ? [] : [detail`${why}`]),
-      ]
-
-      if (mode._tag === "Plain") {
-        const stoppedAt = yield* putOnMainScreen
-        if (stoppedAt !== null) return stoppedAt
-        // A refinement needs the renderer, which plain output doesn't open.
-        const specStopped = yield* startSpec({ out: stdout, error, refine: Option.none() })
-        if (specStopped !== undefined) return specStopped
-        const work = yield* askThenBegin(
-          asks === "lines" && mainTheme !== undefined
-            ? Effect.andThen(
-                ready.end,
-                askLines(
-                  process.stdin,
-                  (text) => process.stdout.write(text),
-                  mainTheme,
-                  count,
-                  specAsking,
-                ),
-              )
-            : Effect.succeed(Work.Tickets()),
-          beginUnlessSpec,
-        )
-        if (work === null) return yield* cancelled
-        if (work._tag === "Feature") return yield* noInterview
-        if (work._tag === "Spec") {
-          // A spec chosen as lines, run as it is: refining it needs the renderer.
-          const failed = yield* takeChosen(work, stdout, error)
-          if (failed !== undefined) return failed
-          const chosenStopped = yield* startSpec({ out: stdout, error, refine: Option.none() })
-          if (chosenStopped !== undefined) return chosenStopped
-          yield* begin(Work.Tickets())
-        }
-        if (yield* nothingReported) return exitCodes.ok
-        yield* ready.end
-        const ran = yield* listening(
-          scoped(
-            run({
-              version,
-              base,
-              subscription,
-              start: start(),
-              drains,
-              quits,
-              ...awakeOption,
-              ...specStarting.runOptions(),
-              exitNow: exitNow(),
-              endLater: true,
-            }),
-          ),
-        )
-        // A breakdown the run's end cut short stops with it.
-        yield* specStarting.stop
-        // The report's theme, made only when the report prints: off the main screen's theme, it
-        // asks the terminal for its background.
-        const theme = mainTheme === undefined ? printedThemeOf(stdout) : Effect.succeed(mainTheme)
-        const code = yield* finish(ran, Effect.flatMap(theme, reportOut), false)
-        return specStarting.exitCode(code)
-      }
-      if (!putInRenderer) {
-        const stoppedAt = yield* putOnMainScreen
-        if (stoppedAt !== null) return stoppedAt
-      }
-      // The questions put in the renderer come first, and a spec's breakdown: the run begins below,
-      // once they are.
-      if (asks === "no" && !putInRenderer && spec === null) {
-        yield* begin(Work.Tickets())
-        if (config.feature === null && (yield* nothingReported)) return exitCodes.ok
-      }
-      // The renderer, from the start question or --feature's interview through the dashboard,
-      // destroyed once the run's scope and then its own have closed. What follows it goes to the
-      // main screen, after what was said while it was open.
-      const shown = yield* Effect.scoped(
-        Effect.gen(function* () {
-          const opened = yield* Effect.scope
-          // The getting-ready line gone before the renderer takes the screen.
-          const open = openRenderer({ chosen: config.appearance, mouse: config.mouse }).pipe(
-            Scope.provide(opened),
-          )
-          const screen = inRenderer({
-            out: stdout,
-            error,
-            open: ready.end.pipe(Effect.andThen(open)),
-          })
-          // Added before the renderer opens, so it runs once the renderer has closed.
-          yield* Effect.addFinalizer(() => screen.release)
-          /**
-           * The breakdown of a spec chosen at the start question and run as it is, as --spec breaks
-           * one down, with the renderer open: its organ lines drawn there meanwhile, unstyled, and
-           * held for the main screen; Ctrl+C stops it, as on the main screen, with exit 130.
-           */
-          const breakdownOnScreen = (shell: Shell) =>
-            Effect.scoped(
-              Effect.gen(function* () {
-                const drawn = screenOut(() => shell.renderer.width)
-                const stop = yield* Deferred.make<void>()
-                yield* showOrgans(shell, themeOf, drawn.text, () => {
-                  Effect.runFork(Deferred.succeed(stop, undefined))
-                })
-                const ended = yield* Effect.raceFirst(
-                  startSpec({
-                    out: screen.out,
-                    error: screen.error,
-                    refine: Option.none(),
-                    shell,
-                    drawn: drawn.out,
-                  }),
-                  Effect.as(Deferred.await(stop), "stopped" as const),
-                )
-                if (ended !== "stopped") return ended
-                yield* Effect.flatMap(endRecord(exitCodes.interrupted), events.emit)
-                return exitCodes.interrupted
-              }),
-            )
-          const refining = spec !== null && config.refine
-          if (spec !== null && !refining) {
-            // A headless breakdown on the main screen, its spinner there, before the dashboard
-            // opens; what it says once that is open is held for after it.
-            const specStopped = yield* startSpec({
-              out: screen.out,
-              error: screen.error,
-              refine: Option.none(),
-            })
-            if (specStopped !== undefined) {
-              return { _tag: "Stopped", exitCode: specStopped } as const
-            }
-            yield* begin(Work.Tickets())
-            const nothing = yield* nothingYet
-            if (nothing !== null) return nothing
-          }
-          const shell = yield* screen.shell
-          const clipboard = yield* liveClipboard(shell.renderer, tty.overSsh)
-          const desktop = { clipboard, urlOpener: yield* liveUrlOpener(clipboard, tty.overSsh) }
-          /**
-           * The interview of the feature `description` describes, in this renderer, `chosen` the
-           * lines saying what was chosen at the start question; once its epic is filed and checked,
-           * the run scoped to it, with nothing asked (undefined). What it says is held for the main
-           * screen until the renderer is gone.
-           */
-          const interviewed = (description: string, chosen: ReadonlyArray<string>) =>
-            Effect.gen(function* () {
-              const printer = makePrinter(screen.out, themeOf(shell.appearance.get()))
-              const outcome = yield* interview(description, {
-                screen: interviewScreen(shell, themeOf, desktop),
-                say: printer.print,
-                error: screen.error,
-              })
-              if (outcome._tag !== "Run") {
-                return { _tag: "Interviewed", chosen, ending: interviewEnding(outcome) } as const
-              }
-              scope = outcome.epic
-              feature = description
-              return undefined
-            })
-          if (config.feature !== null) {
-            // --feature: the interview, as New feature's, the request its first message.
-            const ended = yield* interviewed(config.feature, [])
-            if (ended !== undefined) return ended
-            const nothing = yield* nothingYet
-            if (nothing !== null) return nothing
-          }
-          if (refining) {
-            // The refinement in the Interview view, in this renderer; then the run.
-            const specStopped = yield* startSpec({
-              out: screen.out,
-              error: screen.error,
-              refine: Option.some(interviewScreen(shell, themeOf, desktop)),
-              shell,
-            })
-            if (specStopped !== undefined) {
-              return { _tag: "Stopped", exitCode: specStopped } as const
-            }
-            yield* begin(Work.Tickets())
-            const nothing = yield* nothingYet
-            if (nothing !== null) return nothing
-          }
-          if (putInRenderer) {
-            // What it says is held for the main screen until the renderer is gone, in its theme now.
-            const theme = themeOf(shell.appearance.get())
-            // Talk it through shows the talk in the Interview view, in this renderer (§ 4.11).
-            const putting = yield* putQuestions({
-              questions,
-              put: Option.some((question, at, limit) =>
-                askOpenQuestion(shell, themeOf, question, at, true, limit),
-              ),
-              talk: (question) => talkQuestion(question, interviewScreen(shell, themeOf, desktop)),
-              say: { ...makePrinter(screen.out, theme), theme },
-            })
-            if (putting._tag === "Cancelled") {
-              return { _tag: "AtQuestions", answered: putting.answered } as const
-            }
-            yield* begin(Work.Tickets())
-            const nothing = yield* nothingYet
-            if (nothing !== null) return nothing
-          }
-          if (asks !== "no") {
-            const work = yield* askThenBegin(
-              askStart(shell, themeOf, count, specAsking),
-              beginUnlessSpec,
-            )
-            if (work === null) return { _tag: "Cancelled" } as const
-            if (work._tag === "Spec") {
-              // The spec chosen, then refined in the Interview view, or broken down with its organ
-              // lines drawn in this renderer (Ctrl+C stops it); then the run, once it has begun.
-              const failed = yield* takeChosen(work, screen.out, screen.error)
-              if (failed !== undefined) return { _tag: "Stopped", exitCode: failed } as const
-              const specStopped = work.refine
-                ? yield* startSpec({
-                    out: screen.out,
-                    error: screen.error,
-                    refine: Option.some(interviewScreen(shell, themeOf, desktop)),
-                    shell,
-                  })
-                : yield* breakdownOnScreen(shell)
-              if (specStopped !== undefined) {
-                return { _tag: "Stopped", exitCode: specStopped } as const
-              }
-              yield* begin(Work.Tickets())
-            }
-            if (work._tag === "Feature") {
-              const ended = yield* interviewed(work.description, chosenLines(work))
-              if (ended !== undefined) return ended
-            }
-            const nothing = yield* nothingYet
-            if (nothing !== null) return nothing
-          }
-          // Exiting at once, the renderer is destroyed first, waited for up to closeLimit.
-          const destroy = () => {
-            shell.renderer.destroy()
-            return Promise.race([
-              shell.renderer.closed.catch(() => undefined),
-              Bun.sleep(closeLimit),
-            ]).then(() => undefined)
-          }
-          const ran = yield* listening(
-            scoped(
-              run({
-                version,
-                base,
-                subscription,
-                start: start(),
-                drains,
-                quits,
-                ...awakeOption,
-                ...specStarting.runOptions(),
-                exitNow: exitNow(destroy),
-                dashboard: dashboard(shell, themeOf, desktop),
-                endLater: true,
-              }),
-            ),
-          )
-          // A breakdown the run's end cut short stops with it.
-          yield* specStarting.stop
-          return { _tag: "Ran", outcome: ran, appearance: shell.appearance.get() } as const
-        }),
-      ).pipe(Effect.result)
-      if (Result.isFailure(shown)) {
-        return yield* cannot(`tutti cannot open its screen: ${shown.failure.message}`)
-      }
-      const ended = shown.success
-      switch (ended._tag) {
-        case "Cancelled":
-          return yield* cancelled
-        case "AtQuestions":
-          return yield* stoppedAtQuestions(ended.answered)
-        case "Stopped":
-          return ended.exitCode
-        case "Interviewed": {
-          if (ended.chosen.length > 0) yield* Console.log(ended.chosen.join("\n"))
-          const said = ended.ending
-          if (said.out.length > 0) yield* Console.log(said.out.join("\n"))
-          if (said.error.length > 0) yield* Console.error(said.error.join("\n"))
-          yield* Effect.flatMap(endRecord(said.exitCode), events.emit)
-          return said.exitCode
-        }
-        case "Nothing":
-          return yield* endWith(ended.nothing, output)
-        case "Ran": {
-          const code = yield* finish(ended.outcome, reportOut(themeOf(ended.appearance)), true)
-          return specStarting.exitCode(code)
-        }
-      }
+      const ended = yield* mode._tag === "Plain" ? presentPlain(on) : presentDashboard(on)
+      return yield* exitWith(on, ended, newer)
     }).pipe(Effect.provideContext(services.success), Effect.provide(ttyLayer))
-    const found = yield* newer
-    if (Option.isSome(found)) {
-      const depth = terminal.colourDepth === "truecolor" ? "truecolor" : "256"
-      const theme = Effect.map(
-        terminal.dumb
-          ? Effect.succeed(appearanceOf(config.appearance, null))
-          : outputAppearance(config.appearance, null),
-        (appearance) =>
-          makeTheme(config.scheme.scheme, { appearance, depth, noColor: config.noColor }),
-      )
-      yield* sayNewer(found.value, mode._tag === "Dashboard", theme)
-    }
     return code
   }).pipe(
     Effect.scoped,
