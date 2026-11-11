@@ -113,40 +113,26 @@ export interface Starting extends Pick<TicketFibers, "onResumedLimit" | "outcome
   readonly lookAround: Effect.Effect<void>
 }
 
-/** What starts the run's tickets, made over the parts before it, in the run's scope. */
-export const make = (
+/**
+ * What is checked before a ticket starts or resumes: the requires list a merge changed
+ * (requires.ts), then a spec run's checks gate (checksGate.ts), asked in init's form with the
+ * dashboard (gateForm.ts).
+ */
+const beforeStartOf = (
   options: Pick<RunOptions, "version" | "gateAsk">,
-  services: Pick<
-    Services,
-    "config" | "store" | "base" | "context" | "status" | "screen" | "wakeUp" | "holds"
-  >,
-  runHolds: Pick<
-    Holds,
-    | "panicked"
-    | "setUps"
-    | "environment"
-    | "organs"
-    | "triage"
-    | "limitReached"
-    | "gate"
-    | "slots"
-    | "machineFull"
-    | "pressure"
-    | "disk"
-    | "overnight"
-  >,
-  merge: Pick<MergeSide, "early" | "criticIdle" | "playbook" | "queue" | "branches">,
+  services: Pick<Services, "config" | "base" | "status" | "screen" | "holds">,
+  runHolds: Pick<Holds, "setUps" | "organs" | "gate">,
+  merge: Pick<MergeSide, "early">,
 ): Effect.Effect<
-  Starting,
+  Pick<Starting, "checksGate" | "beforeStart">,
   never,
   RunEnv | Ledger | FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const { config, store, base, status, screen, wakeUp, holds } = services
+    const { config, base, status, screen } = services
     const { stopped } = services.holds
-    const { setUps, organs, limitReached, gate, slots, machineFull, pressure, disk } = runHolds
-    const { early, criticIdle, playbook, queue, branches } = merge
-    const { onResumedLimit, outcomeOf, ticketFiber } = ticketFibers(services, runHolds, merge)
+    const { setUps, organs, gate } = runHolds
+    const { early } = merge
     // A merge that changed the requires list has it checked again before the next ticket starts
     // (requires.ts): what is still missing stops the run as at its start, the running tickets
     // finishing first. The scheduler checks it before each start and carry (its beforeStart), so
@@ -198,6 +184,43 @@ export const make = (
     })
     const beforeStart = Effect.andThen(requiresChecked, checksGate.before)
 
+    return { checksGate, beforeStart }
+  })
+
+/** What starts the run's tickets, made over the parts before it, in the run's scope. */
+export const make = (
+  options: Pick<RunOptions, "version" | "gateAsk">,
+  services: Pick<
+    Services,
+    "config" | "store" | "base" | "context" | "status" | "screen" | "wakeUp" | "holds"
+  >,
+  runHolds: Pick<
+    Holds,
+    | "panicked"
+    | "setUps"
+    | "environment"
+    | "organs"
+    | "triage"
+    | "limitReached"
+    | "gate"
+    | "slots"
+    | "machineFull"
+    | "pressure"
+    | "disk"
+    | "overnight"
+  >,
+  merge: Pick<MergeSide, "early" | "criticIdle" | "playbook" | "queue" | "branches">,
+): Effect.Effect<
+  Starting,
+  never,
+  RunEnv | Ledger | FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const { config, store, base, status, wakeUp, holds } = services
+    const { organs, limitReached, gate, slots, machineFull, pressure, disk } = runHolds
+    const { criticIdle, playbook, queue, branches } = merge
+    const { onResumedLimit, outcomeOf, ticketFiber } = ticketFibers(services, runHolds, merge)
+    const { checksGate, beforeStart } = yield* beforeStartOf(options, services, runHolds, merge)
     // The machine's other tutti and orchestra runs (machineGate.ts): with --machine-workers, the
     // ticket about to start waits while the workers across them are at that cap.
     const machine = yield* makeMachineGate({ holds, status, wakeUp: wakeUp("hold") })

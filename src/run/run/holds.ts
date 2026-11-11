@@ -48,7 +48,7 @@ import type { Services } from "./services.ts"
 import { firstLine, type RunEnv } from "./shared.ts"
 
 /** What holds the run, and what its parts read of the machine and the account. */
-export interface Holds {
+export interface Holds extends Gates {
   /** The first request to quit, or a panic: it ends the loop, and the run quits. */
   readonly quitting: Deferred.Deferred<Quitting>
   /** A panic in one of the run's fibers (`where`), logged with its stack, quits the run: PANIC. */
@@ -62,6 +62,10 @@ export interface Holds {
   /** The run's organs, when it has them. */
   readonly organs: Option.Option<Organs["Service"]>
   readonly triage: Triage
+}
+
+/** Whether the run may take work, and what gates the ticket about to start or resume. */
+export interface Gates {
   /** --limit reached, the scheduler's count once it is made: no ticket has started before it is. */
   readonly limitReached: Ref.Ref<Effect.Effect<boolean>>
   /** Whether the run may take work (holds.ts's Gate), read once for each decision. */
@@ -85,86 +89,15 @@ export interface Holds {
   readonly overnight: { readonly overnight?: OvernightAside }
 }
 
-/** What holds the run, made over `services`, in the run's scope. */
-export const make = (
-  services: Pick<
-    Services,
-    "config" | "ledger" | "logs" | "fibers" | "base" | "status" | "commands" | "wakeUp" | "holds"
-  >,
-): Effect.Effect<Holds, never, RunEnv | Ledger | Scope.Scope> =>
+/** The run's gate and the machine's gates, over the holds without a stop. */
+const gates = (
+  services: Pick<Services, "config" | "ledger" | "status" | "commands" | "wakeUp" | "holds">,
+  held: Pick<Holds, "usage" | "apiOutage" | "loginCheck">,
+): Effect.Effect<Gates, never, RunEnv | Ledger | Scope.Scope> =>
   Effect.gen(function* () {
-    const { config, ledger, logs, fibers, base, status, commands, wakeUp, holds } = services
-    const { changeHolds, currentStops, stopped } = holds
-    // The first request to quit, or a panic, ends the loop below, and the run quits (quitting.ts).
-    const quitting = yield* Deferred.make<Quitting>()
-    // A panic in one of the run's fibers (`where`), logged with its stack, quits the run: PANIC.
-    const panicked = (where: string, stop: StopReason, defect: unknown) =>
-      Effect.andThen(
-        logs.write(...panicLines(where, defect)),
-        Deferred.succeed(quitting, Quitting.Panic({ stop })),
-      )
-    // Each worker's compactions are counted and logged (compactions.ts), from before any worker
-    // starts or is carried over; a watcher that dies panics the run.
-    yield* FiberSet.run(
-      yield* fibers.make("compactions"),
-      Effect.catchDefect(noteCompactions, (defect) =>
-        panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
-      ),
-    )
-
-    // The run's setups (setup.ts): the setup before each worker and before each check, and the
-    // tickets whose setup failed, which the merge queue and the tickets' starts share.
-    const setUps = yield* makeSetUps
-    // Workers failing at once, or setups failing, hold the run, as a stop does, until the probe
-    // (environment.ts).
-    const environment = yield* makeEnvironmentHold({
-      onHold: stopped,
-      base,
-      setup: Effect.map(setUps.now, (setup) => setup.command),
-    })
-
-    // The account's usage limit holds the run until it resets, without a stop (usageLimit.ts).
-    const usage = yield* makeUsageHold({
-      base,
-      wakeUp: wakeUp("hold"),
-      show: (view) => changeHolds((now) => showUsage(now, view)),
-    })
-    // Claude's API unavailable in a worker's turn holds the run until a probe finds it answering
-    // again, its workers told then to carry on (apiOutage.ts); it follows the workers below.
-    const apiOutage = yield* makeApiOutage({
-      show: (held) => changeHolds((now) => withApiHold(now, held)),
-      wakeUp: wakeUp("hold"),
-    })
-    // A worker's turn refused for Claude's login holds the run while a few probes check the login
-    // again, its workers told then what the turn was to tell them; every probe failing quits the
-    // run, LOGIN (loginCheck.ts, login.ts, § 4.13), as a refusal outside the run's tickets does.
-    const loginCheck = yield* makeLoginCheck({
-      show: (held) => changeHolds((now) => withLoginHold(now, held)),
-      wakeUp: wakeUp("hold"),
-      quit: (first, said) =>
-        Effect.gen(function* () {
-          const ours = (yield* ledger.current).tickets.has(first.ticket)
-          const stop = loginStop(first.error, ours ? first.ticket : undefined)
-          if (yield* Deferred.succeed(quitting, Quitting.Login({ stop }))) {
-            yield* warn(said, ours ? first.ticket : undefined)
-          }
-        }),
-    })
-    // The account's windows on the title line all the time, each figure recorded (usageWindows.ts).
-    yield* watchUsageWindows({
-      show: showOn(status, "windows"),
-      rise: showOn(status, "rise"),
-    })
-
-    // Triage in the background, when the run has organs: each verdict wakes the run, which doesn't
-    // end while a ticket waits for one.
-    const organs = yield* Effect.serviceOption(Organs)
-    const triage = Option.isNone(organs)
-      ? triageOff
-      : yield* makeTriage({ base, hold: environment, done: wakeUp("verdict") }).pipe(
-          Effect.provideService(Organs, organs.value),
-        )
-
+    const { config, ledger, status, commands, wakeUp, holds } = services
+    const { currentStops } = holds
+    const { usage, apiOutage, loginCheck } = held
     // Whether the run may take work (holds.ts's Gate), read once for each decision. --limit is the
     // scheduler's count, made below: no ticket has started before it is.
     const limitReached = yield* Ref.make<Effect.Effect<boolean>>(Effect.succeed(false))
@@ -239,15 +172,6 @@ export const make = (
     // hand-backs' included.
     const overnight = config.overnight ? { overnight: yield* makeOvernightAside } : {}
     return {
-      quitting,
-      panicked,
-      setUps,
-      environment,
-      usage,
-      apiOutage,
-      loginCheck,
-      organs,
-      triage,
       limitReached,
       gate,
       noMore,
@@ -259,5 +183,99 @@ export const make = (
       pressure,
       disk,
       overnight,
+    }
+  })
+
+/** What holds the run, made over `services`, in the run's scope. */
+export const make = (
+  services: Pick<
+    Services,
+    "config" | "ledger" | "logs" | "fibers" | "base" | "status" | "commands" | "wakeUp" | "holds"
+  >,
+): Effect.Effect<Holds, never, RunEnv | Ledger | Scope.Scope> =>
+  Effect.gen(function* () {
+    const { ledger, logs, fibers, base, status, wakeUp, holds } = services
+    const { changeHolds, stopped } = holds
+    // The first request to quit, or a panic, ends the loop below, and the run quits (quitting.ts).
+    const quitting = yield* Deferred.make<Quitting>()
+    // A panic in one of the run's fibers (`where`), logged with its stack, quits the run: PANIC.
+    const panicked = (where: string, stop: StopReason, defect: unknown) =>
+      Effect.andThen(
+        logs.write(...panicLines(where, defect)),
+        Deferred.succeed(quitting, Quitting.Panic({ stop })),
+      )
+    // Each worker's compactions are counted and logged (compactions.ts), from before any worker
+    // starts or is carried over; a watcher that dies panics the run.
+    yield* FiberSet.run(
+      yield* fibers.make("compactions"),
+      Effect.catchDefect(noteCompactions, (defect) =>
+        panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
+      ),
+    )
+
+    // The run's setups (setup.ts): the setup before each worker and before each check, and the
+    // tickets whose setup failed, which the merge queue and the tickets' starts share.
+    const setUps = yield* makeSetUps
+    // Workers failing at once, or setups failing, hold the run, as a stop does, until the probe
+    // (environment.ts).
+    const environment = yield* makeEnvironmentHold({
+      onHold: stopped,
+      base,
+      setup: Effect.map(setUps.now, (setup) => setup.command),
+    })
+
+    // The account's usage limit holds the run until it resets, without a stop (usageLimit.ts).
+    const usage = yield* makeUsageHold({
+      base,
+      wakeUp: wakeUp("hold"),
+      show: (view) => changeHolds((now) => showUsage(now, view)),
+    })
+    // Claude's API unavailable in a worker's turn holds the run until a probe finds it answering
+    // again, its workers told then to carry on (apiOutage.ts); it follows the workers below.
+    const apiOutage = yield* makeApiOutage({
+      show: (held) => changeHolds((now) => withApiHold(now, held)),
+      wakeUp: wakeUp("hold"),
+    })
+    // A worker's turn refused for Claude's login holds the run while a few probes check the login
+    // again, its workers told then what the turn was to tell them; every probe failing quits the
+    // run, LOGIN (loginCheck.ts, login.ts, § 4.13), as a refusal outside the run's tickets does.
+    const loginCheck = yield* makeLoginCheck({
+      show: (held) => changeHolds((now) => withLoginHold(now, held)),
+      wakeUp: wakeUp("hold"),
+      quit: (first, said) =>
+        Effect.gen(function* () {
+          const ours = (yield* ledger.current).tickets.has(first.ticket)
+          const stop = loginStop(first.error, ours ? first.ticket : undefined)
+          if (yield* Deferred.succeed(quitting, Quitting.Login({ stop }))) {
+            yield* warn(said, ours ? first.ticket : undefined)
+          }
+        }),
+    })
+    // The account's windows on the title line all the time, each figure recorded (usageWindows.ts).
+    yield* watchUsageWindows({
+      show: showOn(status, "windows"),
+      rise: showOn(status, "rise"),
+    })
+
+    // Triage in the background, when the run has organs: each verdict wakes the run, which doesn't
+    // end while a ticket waits for one.
+    const organs = yield* Effect.serviceOption(Organs)
+    const triage = Option.isNone(organs)
+      ? triageOff
+      : yield* makeTriage({ base, hold: environment, done: wakeUp("verdict") }).pipe(
+          Effect.provideService(Organs, organs.value),
+        )
+
+    return {
+      quitting,
+      panicked,
+      setUps,
+      environment,
+      usage,
+      apiOutage,
+      loginCheck,
+      organs,
+      triage,
+      ...(yield* gates(services, { usage, apiOutage, loginCheck })),
     }
   })
