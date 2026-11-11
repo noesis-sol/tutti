@@ -66,7 +66,6 @@
 import { availableParallelism } from "node:os"
 import { join } from "node:path"
 import {
-  Cause,
   Clock,
   Deferred,
   Duration,
@@ -86,15 +85,12 @@ import type { ChildProcessSpawner } from "effect/process"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
 import { serve } from "../agent/attentionFiles.ts"
-import type { Transcripts } from "../agent/Transcripts.ts"
-import type { UsageLimits } from "../agent/UsageLimits.ts"
 import { AppConfig } from "../core/AppConfig.ts"
-import { type Line, Log, line, tagged } from "../core/log.ts"
+import { Log, line, tagged } from "../core/log.ts"
 import { scoutSearch } from "../init/checks.ts"
 import { liveMachine } from "../init/steps.ts"
 import { section } from "../organs/evidence.ts"
 import { Organs } from "../organs/Organs.ts"
-import type { UsageProbe } from "../organs/UsageProbe.ts"
 import { printSummary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { schemeNotices } from "../project/scheme.ts"
@@ -103,7 +99,7 @@ import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts
 import { checksNow } from "../services/Checks.ts"
 import { EventStream } from "../services/EventStream.ts"
 import { earlyEvidence } from "../services/figures.ts"
-import { Git, gitWhy } from "../services/Git.ts"
+import { Git } from "../services/Git.ts"
 import { OtherWorkers } from "../services/machine.ts"
 import type { Notifier } from "../services/Notifier.ts"
 import { OrganCost } from "../services/OrganCost.ts"
@@ -128,13 +124,13 @@ import { Battery, watchBattery } from "./battery.ts"
 import { make as makeBlockedWatch } from "./blockedWatch.ts"
 import { clearStaleLocks } from "./branch.ts"
 import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carry.ts"
-import { type GateAsk, make as makeChecksGate } from "./checksGate.ts"
+import { make as makeChecksGate } from "./checksGate.ts"
 import { closedBranches } from "./closedBranches.ts"
 import { noteCompactions } from "./compactions.ts"
 import { off as criticOff, make as makeCritic } from "./critic.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
 import { make as makeDiskGate } from "./diskGate.ts"
-import { type DrainRequest, hear } from "./drain.ts"
+import { hear } from "./drain.ts"
 import { make as makeEarlyChecks } from "./earlyCheck.ts"
 import { make as makeEndOfRun } from "./endOfRun.ts"
 import { make as makeEnvironmentHold, removeLeftProbes } from "./environment.ts"
@@ -179,7 +175,7 @@ import { make as makePredictor } from "./predict.ts"
 import { capEvidence } from "./pressureCap.ts"
 import { make as makePressureGate } from "./pressureGate.ts"
 import { backoff, failedRead, lasted, type Outage, readDue, sustained } from "./queueOutage.ts"
-import { interruptedText, keptText, panicLines, type QuitRequest } from "./quit.ts"
+import { interruptedText, keptText, panicLines } from "./quit.ts"
 import { make as makeQuits, Quitting, quitStop } from "./quitting.ts"
 import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport, showConcurrency } from "./report.ts"
@@ -194,12 +190,11 @@ import {
   readyPoll,
   type Scheduler,
 } from "./schedule.ts"
-import { type Dashboard, show } from "./screen.ts"
+import { show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
 import { makeShareKeeper } from "./share.ts"
 import { watchSleeps } from "./slept.ts"
-import type { Ending, Summary } from "./summary.ts"
 import { Trash } from "./trash.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
@@ -208,139 +203,24 @@ import { make as watchUsageWindows } from "./usageWindows.ts"
 import { make as makeWakes, mergeWakes, reads } from "./wakes.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
-/** How a run ended: its exit code, and each ticket's phase then. */
-export interface Outcome {
-  readonly exitCode: number
-  readonly phases: Readonly<Record<string, TicketPhase>>
-  /** The summary and closing lines the run wrote at its end. */
-  readonly ending: ReadonlyArray<Line>
-  /** What the styled summary is made from (§ 7.1). */
-  readonly summary: Summary
-  /** How the run ended, for the styled closing line and the report: a scoped run's part included. */
-  readonly closing: Ending
-  /** The lines the run wrote after its closing line: the full check's, a quit's as it ended. */
-  readonly after: ReadonlyArray<Line>
-  /**
-   * The run report on the `out` made (report.ts), which `finish` runs; nothing without organs, and
-   * `out` made only when the report prints.
-   */
-  readonly report: (out: Effect.Effect<ReportOut>) => Effect.Effect<void>
-}
+export {
+  errorStop,
+  type Outcome,
+  panicStop,
+  type RunEnv,
+  type RunOptions,
+  showEndOfRun,
+} from "./run/shared.ts"
 
-export interface RunOptions {
-  /** tutti's version, for the summary's title. */
-  readonly version: string
-  /** Where finished tickets land: the branch the main checkout is on. */
-  readonly base: string
-  /**
-   * Whether its workers bill a subscription login: the summary's dollars are then the API-price
-   * estimate, and it gives the account's usage windows. Not, by default.
-   */
-  readonly subscription?: boolean
-  /** What the run says first: the START block, and why the output is plain if it is. */
-  readonly start?: ReadonlyArray<Line>
-  /** Requests to wind down or to take tickets again, such as SIGUSR1's. */
-  readonly drains?: Queue.Dequeue<DrainRequest>
-  /**
-   * Requests to quit now (§ 4.8): SIGINT's, SIGTERM's and SIGHUP's, the quit box's `q`. The first
-   * quits, the second says what is under way, the third ends tutti at once through `exitNow`.
-   */
-  readonly quits?: Queue.Dequeue<QuitRequest>
-  /** Ends tutti at once with `code`, `said` the lines to print once the screen has gone. */
-  readonly exitNow?: (code: number, said: ReadonlyArray<Line>) => Effect.Effect<void>
-  /** The dashboard to show when Tty says the terminal can draw one; the run is plain without it. */
-  readonly dashboard?: Dashboard
-  /**
-   * Whether the keep-awake command holds the machine awake (keepAwake.ts), as it changes: the
-   * title line's badge. None for a run that doesn't keep the machine awake.
-   */
-  readonly keepingAwake?: Stream.Stream<boolean>
-  /**
-   * A spec's breakdown still filing the tickets of the run's scope, the run having started on its
-   * environment ticket (§ 4.14, src/run/specRun.ts): what it has filed so far, which the title line
-   * shows as a hold's banner, and the run waits for the rest rather than end, until it is null.
-   */
-  readonly filing?: SubscriptionRef.SubscriptionRef<string | null>
-  /**
-   * How a spec run's checks gate asks in a terminal (checksGate.ts): tutti checks' form in place
-   * of the dashboard. Without it, a hold files a question for the maintainer.
-   */
-  readonly gateAsk?: GateAsk
-  /**
-   * Leaves the report and the end record to `finish`, run once the dashboard's renderer is gone,
-   * so that they follow the summary on the main screen (§ 5 item 14 "Then", § 7.1).
-   */
-  readonly endLater?: boolean
-}
-
-/**
- * Every service the run uses; it makes its own Ledger. Given Organs as well, it triages the tickets
- * set aside (triage.ts), unless triage is off.
- */
-export type RunEnv =
-  | Exclude<WorkEnv, Ledger>
-  | Attention
-  | RunFibers
-  | Trash
-  | Transcripts
-  | Tty
-  | UsageLimits
-  | UsageProbe
-  | Notifier
-  | FileSystem.FileSystem
-  | ChildProcessSpawner.ChildProcessSpawner
-
-/** The stop a ticket's fiber failing with `error` stops the run for (§ 5 item 10). */
-export const errorStop = (ticket: TicketId, error: WorkError): StopReason => {
-  switch (error._tag) {
-    case "GitFailed":
-    case "GitTimedOut":
-      return stopFor("GIT_FAILED", `git failed on ${ticket}: ${gitWhy(error)}`, { ticket })
-    case "BeadsFailed":
-    case "BeadsTimedOut":
-    case "BeadsUnreadable":
-      return stopFor("BEADS_FAILED", `bd failed on ${ticket}: ${beadsWhy(error)}`, { ticket })
-    case "ExcludeUnwritable":
-      return stopFor("WORKTREE_FAILED", `${ticket}'s worktree: ${error.message}`, { ticket })
-    case "StoreWriteFailed":
-      return stopFor("STATE_UNWRITABLE", `${ticket}: ${error.message}`, { ticket })
-  }
-}
-
-/** The first line of what `defect` says. */
-const firstLine = (defect: unknown): string => {
-  const said = defect instanceof Error ? defect.message : String(defect)
-  return said.split("\n")[0] ?? ""
-}
-
-/** The PANIC stop of a ticket's fiber that died with `defect`. */
-export const panicStop = (ticket: TicketId, defect: unknown): StopReason =>
-  stopFor("PANIC", `${ticket}'s fiber: ${firstLine(defect)}`, { ticket })
-
-/** What a fiber that died with `cause` died of: its defect, or the cause told. */
-const defectOf = (cause: Cause.Cause<unknown>): unknown => {
-  const defect = Cause.findDefect(cause)
-  return Result.isSuccess(defect) ? defect.success : Cause.pretty(cause)
-}
-
-/** The stop a ticket's fiber ending with `cause` stops the run for, if any. */
-const causeStop = (ticket: TicketId, cause: Cause.Cause<WorkError>): StopReason | undefined => {
-  if (Cause.hasInterruptsOnly(cause)) return undefined
-  const error = Cause.findError(cause)
-  if (Result.isSuccess(error)) return errorStop(ticket, error.success)
-  const defect = Cause.findDefect(cause)
-  return panicStop(ticket, Result.isSuccess(defect) ? defect.success : Cause.pretty(cause))
-}
-
-/**
- * Shows the end-of-run box (D19) on `status`: the workers waiting on you it names, or null for
- * none. It reads and sets the status in one step, so that another fiber's change in between isn't
- * lost, and publishes nothing when the box is the same.
- */
-export const showEndOfRun = (
-  status: SubscriptionRef.SubscriptionRef<Status>,
-  tickets: ReadonlyArray<TicketId> | null,
-): Effect.Effect<void> => showOn(status, "endOfRun")(tickets)
+import {
+  causeStop,
+  defectOf,
+  firstLine,
+  type Outcome,
+  type RunEnv,
+  type RunOptions,
+  showEndOfRun,
+} from "./run/shared.ts"
 
 /**
  * The run, from its START block to its end record, in the run's scope: it hands back its exit
