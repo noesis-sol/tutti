@@ -49,21 +49,15 @@ import {
   takeSpec,
   ticketCount,
 } from "./cli/choose.ts"
-import {
-  checkoutOf,
-  mainCheckout,
-  planServices,
-  setUpForSpec,
-  thisBuildKind,
-  tuttiWith,
-} from "./cli/commands.ts"
+import { checkoutOf, mainCheckout, planServices, setUpForSpec, tuttiWith } from "./cli/commands.ts"
 import { gitLayer, preflightLayers, runLayers } from "./cli/start/layers.ts"
+import { cannotStart, liveLines, preflight, signalQueues } from "./cli/start/preflight.ts"
 import { tuttiVersion, version } from "./cli/version.ts"
 import { AppConfig } from "./core/AppConfig.ts"
 import { runStarted } from "./core/localTime.ts"
 import { detail, type Line, Log } from "./core/log.ts"
 import { updateTemplates } from "./init/update.ts"
-import { type GettingReady, gettingReady, readySteps } from "./print/gettingReady.ts"
+import { type GettingReady, readySteps } from "./print/gettingReady.ts"
 import { endWith, type Output, themeStyles } from "./print/nothing.ts"
 import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
 import { screenOut } from "./print/screenOut.ts"
@@ -74,7 +68,6 @@ import { claudeUserSettingsFile } from "./run/askRules.ts"
 import { type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import { startBranches } from "./run/closedBranches.ts"
-import type { DrainRequest } from "./run/drain.ts"
 import { scopedTo } from "./run/feature.ts"
 import { exitCodes } from "./run/holds.ts"
 import { inRenderer } from "./run/inRenderer.ts"
@@ -86,7 +79,7 @@ import {
   heldAtStart,
   type Options as NothingOptions,
 } from "./run/nothing.ts"
-import { type Ask, preflight, refusal } from "./run/overnight.ts"
+import { type Ask, preflight as overnightPreflight, refusal } from "./run/overnight.ts"
 import {
   openQuestions,
   type Put,
@@ -96,7 +89,6 @@ import {
 import { freeDisk, listNamed } from "./run/processes.ts"
 import {
   breakdownFailed,
-  catchSignals,
   listen,
   logSuspends,
   type QuitRequest,
@@ -131,7 +123,7 @@ import { liveClipboard } from "./ui/clipboard.ts"
 import { askOpenQuestion } from "./ui/OpenQuestion.tsx"
 import { showOrgans } from "./ui/OrganScreen.tsx"
 import { liveUrlOpener } from "./ui/openUrl.ts"
-import { confirm, type LineIO, openQuestion, streamInput } from "./ui/plain/forms.ts"
+import { confirm, openQuestion, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
 import { closeLimit, open as openRenderer, type Shell } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
@@ -143,13 +135,7 @@ import {
   printedTheme,
   type Theme,
 } from "./ui/theme.ts"
-import {
-  cacheDir,
-  checksForUpdates,
-  githubReleases,
-  newerNotice,
-  startCheck,
-} from "./update/update.ts"
+import { newerNotice } from "./update/update.ts"
 
 export { version }
 
@@ -164,13 +150,6 @@ const exitNow =
       }
       process.exit(code)
     })
-
-/**
- * Says `message` on stderr, once the getting-ready line `ready` has gone, and gives the exit code
- * of a run that can't start.
- */
-export const cannotStart = (ready: GettingReady) => (message: string) =>
-  ready.end.pipe(Effect.andThen(Console.error(message)), Effect.as(exitCodes.setup))
 
 /**
  * Says that release `newer` is out (§ 7.11 "A newer release"), below the run's end: on stdout after
@@ -228,7 +207,7 @@ const overnight = (
         ),
       )
     const ran = yield* Effect.result(
-      preflight({
+      overnightPreflight({
         started,
         update: updateTemplates,
         night: {
@@ -280,50 +259,12 @@ const overnight = (
     }
   })
 
-/**
- * A line form's live terminal (forms.ts' LineIO), whose countdown is drawn again above its prompt:
- * stdout a terminal that moves its cursor, not TERM=dumb.
- */
-const liveLines = (terminal: TtyValue): Pick<LineIO, "live"> =>
-  terminal.stdoutIsTty && !terminal.dumb
-    ? { live: { columns: () => process.stdout.columns ?? 80 } }
-    : {}
-
 /** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
   Effect.gen(function* () {
-    // SIGUSR1 and SIGUSR2 wind the run down, as orchestra's drain, and SIGTSTP is ignored: each
-    // handler is in place before tutti's PID is written anywhere, as without one each signal kills
-    // or stops tutti.
-    const drains = yield* Queue.unbounded<DrainRequest>()
-    const suspends = yield* Queue.unbounded<void>()
-    yield* catchSignals({
-      drain: (signal) => Queue.offerUnsafe(drains, { on: true, how: `by ${signal}` }),
-      suspend: () => Queue.offerUnsafe(suspends, undefined),
-    })
-    // What the environment says of the terminal; then the line saying what tutti is doing until
-    // the first thing it draws (src/print/gettingReady.ts), gone with the run's scope at the latest.
-    const terminal = yield* Effect.provide(
-      Effect.gen(function* () {
-        return yield* Tty
-      }),
-      ttyLayer,
-    )
-    const ready = yield* gettingReady(stdout, terminal)
-    yield* Effect.addFinalizer(() => ready.end)
+    const { drains, suspends } = yield* signalQueues
+    const { terminal, ready, newer } = yield* preflight
     const cannot = cannotStart(ready)
-    // A release build's daily check for a newer release (§ 12), in the background (not the npm
-    // package's, which tutti update leaves to the package manager); its answer, if
-    // it has one by then, is said once the run has ended.
-    const env = (name: string) => process.env[name]
-    const newer = checksForUpdates({ kind: thisBuildKind() }, env)
-      ? yield* startCheck({
-          releases: githubReleases,
-          current: version,
-          cache: cacheDir(env),
-          now: Date.now,
-        })
-      : Effect.succeed(Option.none<string>())
     // A spec run in a repository init hasn't set up sets it up first, as init does without a
     // terminal (§ 4.14): what that wrote is committed with the spec.
     // A spec at a URL is fetched once (§ 4.14), by the setup or the checks, whichever reads it first.

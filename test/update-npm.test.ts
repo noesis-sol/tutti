@@ -122,7 +122,7 @@ describe("the npm package's bundle", () => {
     const marked = entry.indexOf("\nmarkNpmBundle()\n")
     expect(marked).toBeGreaterThan(-1)
     expect(entry.indexOf("\nmain()")).toBeGreaterThan(marked)
-    const main = readFileSync(join(checkout, "src/main.ts"), "utf8")
+    const main = readFileSync(join(checkout, "src/cli/start/preflight.ts"), "utf8")
     expect(main).toContain("checksForUpdates({ kind: thisBuildKind() }, env)")
   })
 
