@@ -29,6 +29,7 @@ import { pad } from "../run/localTime.ts"
 import { activityRows } from "../run/phase.ts"
 import { type Card, isAtWork, type ShownRequest } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { marks, separator } from "../text/marks.ts"
 import { attentionInside, attentionLines } from "./AttentionCard.tsx"
 import { clickable } from "./click.ts"
 import { workerMemory } from "./LoadLine.tsx"
@@ -45,9 +46,9 @@ import {
   seg,
   widthOf,
 } from "./line.tsx"
-import { lookOf, marks, motionTones, separator } from "./marks.ts"
 import { cardIndent, fieldGap, markGap, spinnerGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
+import { lookOf, motionTones } from "./tone.ts"
 import { useNow, useSpinner } from "./useRunView.ts"
 
 /** From this many columns the cards go two to a row (§ 7.2). */

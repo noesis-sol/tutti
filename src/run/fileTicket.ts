@@ -11,8 +11,8 @@
 // with the new ticket's ID, never the text, as a MESSAGE line has only its length.
 import { Data, Effect, SubscriptionRef } from "effect"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
-import { ellipsis } from "../ui/marks.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { ellipsis } from "../text/marks.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import * as log from "./log.ts"
 import { Log } from "./log.ts"
 

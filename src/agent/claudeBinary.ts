@@ -26,7 +26,7 @@ import sdk from "@anthropic-ai/claude-agent-sdk/package.json" with { type: "json
 import { Effect, Option } from "effect"
 import { exec } from "../services/exec.ts"
 import { whichOnPath } from "../services/onPath.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { extractedCopy, extractionBase, knownFor, tidyExtracted } from "./claudeExtract.ts"
 
 /** The Claude Code a compiled tutti embeds: the one the SDK's platform packages carry. */

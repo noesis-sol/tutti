@@ -14,7 +14,7 @@ import type { AnswerWord } from "../agent/attentionFiles.ts"
 import { answerWith } from "../answer/answerWith.ts"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { stamp } from "./localTime.ts"
 
 /** Where the log is, below the repository. */

@@ -54,7 +54,7 @@ import { appConfig } from "../src/testing/AppConfig.ts"
 import { Repository } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
-import { oneLine } from "../src/ui/oneLine.ts"
+import { oneLine } from "../src/text/oneLine.ts"
 import {
   advance,
   backlog,

@@ -79,6 +79,7 @@ import {
   type RunView,
 } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { allot } from "./allot.ts"
 import {
   type AnswerKey,
@@ -131,7 +132,6 @@ import {
   upNextLines,
   wantingRows,
 } from "./SidePanel.tsx"
-import { sanitizeLine } from "./sanitize.ts"
 import {
   byAttention,
   fewestTableLines,

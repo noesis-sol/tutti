@@ -31,7 +31,7 @@ import { terminalSafe } from "../run/events.ts"
 import { timestamp } from "../run/localTime.ts"
 import { denier, unknownDenier } from "../run/log.ts"
 import { runFolder, ticketIdProblem } from "../services/Worktrees.ts"
-import { ellipsis } from "../ui/marks.ts"
+import { ellipsis } from "../text/marks.ts"
 import { aboutOf } from "./tools.ts"
 import { asRecord, asString } from "./untrusted.ts"
 

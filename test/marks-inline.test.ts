@@ -1,12 +1,12 @@
-// Every glyph src/ui draws comes from src/ui/marks.ts: a scan of the source, comments left out, for
-// the marks' glyphs and for an `…` that isn't the end of a word in a sentence. A text cut anywhere
-// ends in the one `ellipsis` (tutti-6bwa.4).
+// Every glyph src/ui draws comes from src/text/marks.ts: a scan of the source, comments left out,
+// for the marks' glyphs and for an `…` that isn't the end of a word in a sentence. A text cut
+// anywhere ends in the one `ellipsis` (tutti-6bwa.4).
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { arrowKeys, ellipsis, marks } from "../src/text/marks.ts"
+import { oneLine } from "../src/text/oneLine.ts"
 import { cut } from "../src/ui/line.tsx"
-import { arrowKeys, ellipsis, marks } from "../src/ui/marks.ts"
-import { oneLine } from "../src/ui/oneLine.ts"
 
 const root = resolve(import.meta.dir, "..")
 
@@ -14,7 +14,7 @@ const root = resolve(import.meta.dir, "..")
 const sources = (folder: string): ReadonlyArray<string> =>
   [...new Bun.Glob("**/*.{ts,tsx}").scanSync(resolve(root, folder))]
     .map((file) => `${folder}/${file}`)
-    .filter((file) => file !== "src/ui/marks.ts")
+    .filter((file) => file !== "src/text/marks.ts")
 
 /** `line` of source without its comment; nothing for a line that is all comment. */
 const code = (line: string): string =>

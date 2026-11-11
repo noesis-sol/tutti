@@ -30,7 +30,7 @@ import { Beads, type BeadsError, type Issue, type TicketId } from "../services/B
 import { Git } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { branchOf } from "../services/Worktrees.ts"
-import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 
 /** A blocks link: `blocked` waits for `blocker` (bd dep add <blocked> <blocker>). */
 export interface Link {

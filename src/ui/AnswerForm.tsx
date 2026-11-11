@@ -17,6 +17,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ShownRequest } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { arrowKeys, marks } from "../text/marks.ts"
 import {
   answerOf,
   buttonLabels,
@@ -52,7 +53,6 @@ import {
   targeting,
 } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
-import { arrowKeys, marks } from "./marks.ts"
 import { buttonGap, fieldGap, unpointed } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"

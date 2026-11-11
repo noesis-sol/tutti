@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { lexer, type Token } from "marked"
-import { escapeMarkdown } from "../src/ui/sanitize.ts"
+import { escapeMarkdown } from "../src/text/sanitize.ts"
 
 // inline is the inline tokens Markdown reads in one line of text, as a paragraph.
 const inline = (line: string): ReadonlyArray<Token> => {

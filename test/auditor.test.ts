@@ -52,7 +52,7 @@ import { Git } from "../src/services/Git.ts"
 import { bash, result, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 import { backlog, expectExitCode, expectLog, expectPhases, scenario } from "./harness.ts"
 
 const assistant = (content: unknown) => ({

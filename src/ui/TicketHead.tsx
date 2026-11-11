@@ -22,6 +22,8 @@ import { type RefObject, useMemo, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { TicketLink, TicketText } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { ellipsis, marks, separator } from "../text/marks.ts"
+import { escapeMarkdown, sanitizeLine } from "../text/sanitize.ts"
 import { minHeight } from "./Dashboard.tsx"
 import {
   boxSides,
@@ -41,8 +43,6 @@ import {
   wrap,
   wrapText,
 } from "./line.tsx"
-import { ellipsis, marks, separator } from "./marks.ts"
-import { escapeMarkdown, sanitizeLine } from "./sanitize.ts"
 import { keyGap, namePad } from "./spacing.ts"
 import type { Role, Theme } from "./theme.ts"
 import { useCommand, useTheme } from "./useRunView.ts"

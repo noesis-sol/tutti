@@ -10,7 +10,7 @@
 // with a time it notifies, so you can answer first.
 import { Clock, Duration, Effect, Layer } from "effect"
 import { Notifier } from "../services/Notifier.ts"
-import { oneLine } from "../ui/oneLine.ts"
+import { oneLine } from "../text/oneLine.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { type PhaseTag, phaseFacts } from "./phase.ts"

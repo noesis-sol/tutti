@@ -6,7 +6,7 @@ import fc from "fast-check"
 import { Notifier, noticeOf } from "../src/services/Notifier.ts"
 import { appConfig, layer as appConfigLayer } from "../src/testing/AppConfig.ts"
 import { Captured, layer as capturedLayer } from "../src/testing/Notifier.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 
 const ESC = "\x1b"
 

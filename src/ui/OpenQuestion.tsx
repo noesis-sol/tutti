@@ -14,10 +14,10 @@ import { Duration, type Effect } from "effect"
 import { useEffect, useRef, useState } from "react"
 import { countdownText, countdownTick, leavesOpen } from "../run/answerLimit.ts"
 import type { Key } from "../run/runView.ts"
+import { arrowKeys } from "../text/marks.ts"
 import { type Answers, ask, Field, formHintSegments, targetLines } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { Line, Lines, type Look, type Segments, seg, wrap } from "./line.tsx"
-import { arrowKeys } from "./marks.ts"
 import {
   type Choice,
   choicesOf,

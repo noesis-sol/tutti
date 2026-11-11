@@ -11,11 +11,11 @@ import type { KeyBinding, TextareaRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
+import { arrowKeys } from "../text/marks.ts"
 import { FileBrowser, rowsShown } from "./FileBrowser.tsx"
 import { type Answers, ask, Field, formHintSegments, targetLines } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { Lines, type Look, type Segments, seg, wrap } from "./line.tsx"
-import { arrowKeys } from "./marks.ts"
 import {
   describeDescription,
   describeTitle,

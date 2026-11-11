@@ -8,7 +8,7 @@
 // next look (asked.ts).
 import { Effect, Schema } from "effect"
 import { Beads, type BeadsError, beadsWhy, HumanLabel, type TicketId } from "../services/Beads.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 
 /** QuestionNotOpen's `why` for a question bd has closed. */
 const closedWhy = "closed"

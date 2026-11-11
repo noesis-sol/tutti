@@ -15,7 +15,7 @@ import {
 } from "../services/Beads.ts"
 import { type CheckError, OutputBounds } from "../services/Checks.ts"
 import { Git, shortHash } from "../services/Git.ts"
-import { oneLine } from "../ui/oneLine.ts"
+import { oneLine } from "../text/oneLine.ts"
 import { failedHow } from "./check.ts"
 import type { Entry } from "./ledger.ts"
 import { branchOn } from "./log.ts"

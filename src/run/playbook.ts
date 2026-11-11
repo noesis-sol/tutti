@@ -44,8 +44,8 @@ import {
   writeFileUnder,
 } from "../native/libc.ts"
 import { alike } from "../organs/critic.ts"
-import { oneLine } from "../ui/oneLine.ts"
-import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
+import { oneLine } from "../text/oneLine.ts"
+import { escapeMarkdown, sanitizeLine } from "../text/sanitize.ts"
 import {
   Count,
   type DispatchPlaybook,

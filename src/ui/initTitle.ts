@@ -2,8 +2,8 @@
 // words under it, as its form draws them (src/ui/InitForm.tsx) and its summary prints them
 // (src/print/initSummary.ts); and the scout's clock. The faint parts are `formFaint`'s.
 import { homedir } from "node:os"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { type Segments, seg } from "./line.tsx"
-import { sanitizeLine } from "./sanitize.ts"
 import { badgeGap, fieldGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 

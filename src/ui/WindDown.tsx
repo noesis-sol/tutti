@@ -5,9 +5,9 @@
 // narrow pane drops `, no new tickets`, then the count, then the words, then all but the squares.
 import type { WindDownMark } from "../run/phase.ts"
 import type { WindDownView } from "../run/runView.ts"
+import { marks, separator } from "../text/marks.ts"
 import { firstFit } from "./fit.ts"
 import { type Look, type Segments, seg } from "./line.tsx"
-import { marks, separator } from "./marks.ts"
 import { fieldGap, squareGap, windDownIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 

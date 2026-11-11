@@ -6,7 +6,7 @@ import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { Option, Result } from "effect"
 import { isText } from "../run/spec.ts"
-import { sanitizeLine } from "./sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import type { Entry } from "./specPath.ts"
 
 /** Why reading failed, in the words of the system's error, without the path it names. */

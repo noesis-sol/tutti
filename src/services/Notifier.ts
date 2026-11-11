@@ -19,7 +19,7 @@ import { Context, Duration, Effect, FiberSet, type FileSystem, Layer } from "eff
 import type { ChildProcessSpawner } from "effect/process"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import { Log, Tag, tagged } from "../run/log.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import {
   type Command,
   type CommandExitedNonZero,

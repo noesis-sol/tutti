@@ -26,6 +26,7 @@ import {
   type Totals,
 } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { arrowKeys, ellipsis, marks, separator } from "../text/marks.ts"
 import {
   type Border,
   boxed,
@@ -39,10 +40,10 @@ import {
   seg,
   wrap,
 } from "./line.tsx"
-import { arrowKeys, ellipsis, lookOf, marks, separator } from "./marks.ts"
 import { fieldGap, unpointed } from "./spacing.ts"
 import { queueDivider } from "./Totals.tsx"
 import type { Style, Theme } from "./theme.ts"
+import { lookOf } from "./tone.ts"
 
 /** The narrowest pane with a panel. */
 export const panelPane = 130

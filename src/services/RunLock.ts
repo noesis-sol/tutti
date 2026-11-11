@@ -33,7 +33,7 @@ import {
   unlock,
 } from "../native/libc.ts"
 import { clock } from "../run/localTime.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { lenientKey, Positive } from "./lenient.ts"
 
 /** The two programs whose lock files a run takes. */

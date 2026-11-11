@@ -13,7 +13,7 @@ import { same } from "../src/run/same.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 
 /** Lets forked fibers run, without moving the clock. */
 const flush = Effect.gen(function* () {

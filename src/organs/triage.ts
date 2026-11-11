@@ -13,7 +13,7 @@ import { aboutOf } from "../agent/tools.ts"
 import { asRecord, asString } from "../agent/untrusted.ts"
 import { denier, unknownDenier } from "../run/log.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { oneLine } from "../ui/oneLine.ts"
+import { oneLine } from "../text/oneLine.ts"
 import { type InputPart, section } from "./evidence.ts"
 import { make, type OrganError, Organs } from "./Organs.ts"
 import prompt from "./prompts/triage.md" with { type: "text" }

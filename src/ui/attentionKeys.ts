@@ -16,6 +16,7 @@ import { type Answer, type AttentionRequest, allowsForRun } from "../agent/Atten
 import { UiCommand } from "../run/commands.ts"
 import type { ShownRequest } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { Box, useInput } from "./keys.ts"
 import {
   type Opened,
@@ -24,7 +25,6 @@ import {
   urlCopiedToast,
   urlFailedToast,
 } from "./openUrl.ts"
-import { sanitizeLine } from "./sanitize.ts"
 import { useKeyState } from "./useKeyState.ts"
 import {
   ShellContext,

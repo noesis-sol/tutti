@@ -14,6 +14,7 @@ import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 import { Root } from "../src/ui/App.tsx"
 import {
   answerOf,
@@ -26,7 +27,6 @@ import {
   type Value,
 } from "../src/ui/answerForm.ts"
 import { settle } from "../src/ui/attentionKeys.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
   emptyTranscript,

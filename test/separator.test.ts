@@ -4,8 +4,8 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import fc from "fast-check"
+import { separator } from "../src/text/marks.ts"
 import { joined, type Segments, seg, separatorOf } from "../src/ui/line.tsx"
-import { separator } from "../src/ui/marks.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
@@ -51,9 +51,9 @@ describe("joined", () => {
 
 describe("the separator of src/ui", () => {
   test("is written nowhere but marks.ts", () => {
-    const files = [...new Bun.Glob("**/*.{ts,tsx}").scanSync(resolve(root, "src/ui"))]
-      .map((file) => `src/ui/${file}`)
-      .filter((file) => file !== "src/ui/marks.ts")
+    const files = [...new Bun.Glob("**/*.{ts,tsx}").scanSync(resolve(root, "src/ui"))].map(
+      (file) => `src/ui/${file}`,
+    )
     const found = files.flatMap((file) =>
       readFileSync(resolve(root, file), "utf8")
         .split("\n")

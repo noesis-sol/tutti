@@ -24,8 +24,8 @@ import {
   questionOptions,
   type TicketId,
 } from "../services/Beads.ts"
+import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import type { OpenQuestion, QuestionAt, Reply } from "../ui/questions.ts"
-import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { answerLimit, notAskedText, unansweredText, within } from "./answerLimit.ts"
 import { recordAnswer, recordWhy } from "./answerQuestion.ts"
 import { exitCodes } from "./holds.ts"

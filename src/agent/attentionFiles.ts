@@ -46,7 +46,7 @@ import { timestamp } from "../run/localTime.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { sanitize } from "../ui/sanitize.ts"
+import { sanitize } from "../text/sanitize.ts"
 import { type Answer, Attention, type AttentionRequest, answersOf } from "./Attention.ts"
 
 /** The folder of the open requests and their answers, relative to the main checkout (§ 9.1). */

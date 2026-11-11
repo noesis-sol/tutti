@@ -24,7 +24,7 @@ import verifierTemplate from "../project/templates/verifier.md" with { type: "te
 import { soloLabel } from "../run/holds.ts"
 import { writeFileAtomic } from "../services/atomicFile.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import {
   checkScript,
   fastRunner,

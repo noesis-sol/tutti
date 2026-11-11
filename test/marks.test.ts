@@ -1,4 +1,4 @@
-// The marks table (src/ui/marks.ts): each glyph a cell wide in every terminal, plain Unicode and
+// The marks table (src/text/marks.ts): each glyph a cell wide in every terminal, plain Unicode and
 // no emoji, and each meaning its own glyph. Today's glyphs fall short in places, listed here as
 // known exceptions until the curated set of the worker-view design (tutti-cxgo D7) replaces them;
 // a new mark must not add to them. Not tested: shapes that differ but look alike, ■ and ◼.
@@ -9,8 +9,9 @@ import { type Entry, emptyTallies, type State } from "../src/run/ledger.ts"
 import { type Activity, activities, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
-import { lookOf, type Mark, marks, motionTones } from "../src/ui/marks.ts"
+import { type Mark, marks } from "../src/text/marks.ts"
 import { makeTheme, orchestra, type StyleName } from "../src/ui/theme.ts"
+import { lookOf, motionTones } from "../src/ui/tone.ts"
 import { workersDoing } from "./activity.ts"
 
 const all = Object.entries(marks) as ReadonlyArray<readonly [Mark, string]>

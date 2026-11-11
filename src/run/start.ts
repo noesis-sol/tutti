@@ -50,7 +50,7 @@ import {
   type TicketWorktree,
   Worktrees,
 } from "../services/Worktrees.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { retrying } from "./again.ts"
 import { type Aside, type AsideTicket, putAside } from "./aside.ts"
 import { gitAgain, gitTries } from "./branch.ts"

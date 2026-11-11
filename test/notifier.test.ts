@@ -18,7 +18,7 @@ import { appConfig, layer as appConfigLayer } from "../src/testing/AppConfig.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { Captured, layer as capturedLayer } from "../src/testing/Notifier.ts"
 import { tty } from "../src/testing/Tty.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 
 const ESC = "\x1b"
 const BEL = "\x07"

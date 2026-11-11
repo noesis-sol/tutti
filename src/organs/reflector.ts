@@ -10,8 +10,8 @@
 import { Effect, Schema } from "effect"
 import { LessonEvidence, lessonKinds } from "../run/events.ts"
 import type { Candidate } from "../run/playbook.ts"
-import { oneLine } from "../ui/oneLine.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { oneLine } from "../text/oneLine.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { type InputPart, section } from "./evidence.ts"
 import { make, type OrganError, Organs } from "./Organs.ts"
 import prompt from "./prompts/reflector.md" with { type: "text" }

@@ -3,10 +3,10 @@
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
 import { RGBA } from "@opentui/core"
 import { createContext, memo, type ReactNode, useContext } from "react"
+import { ellipsis, separator } from "../text/marks.ts"
+import { oneLine } from "../text/oneLine.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { clickable } from "./click.ts"
-import { ellipsis, separator } from "./marks.ts"
-import { oneLine } from "./oneLine.ts"
-import { sanitizeLine } from "./sanitize.ts"
 import { boxPad, labelIndent } from "./spacing.ts"
 import { orchestra, rgbaOf, type Style, type Theme } from "./theme.ts"
 

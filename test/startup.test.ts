@@ -38,7 +38,7 @@ import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import * as TestGit from "../src/testing/Git.ts"
 import { Repository } from "../src/testing/Git.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 
 /** A folder for a project, `tutti init` already run in it unless `setUp` is false. */
 const project = (options: { readonly setUp?: boolean; readonly beads?: boolean } = {}) => {

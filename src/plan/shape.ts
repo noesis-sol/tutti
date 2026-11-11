@@ -4,7 +4,7 @@
 // most that run at a time on average, the tickets taken as equal (widthOf). A spec's breakdown warns
 // of a narrow tree from it (narrowWarning, § 4.14 'Checked'): the run goes on all the same.
 import type { Issue, TicketId } from "../services/Beads.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { compareIds, type Link } from "./plan.ts"
 
 /** How many open tickets must wait directly on a ticket for the shape to name it a hub. */

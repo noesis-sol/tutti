@@ -29,7 +29,7 @@ import { planCycle } from "../project/planFile.ts"
 import { Beads, type BeadsError, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, type GitError, type Sha } from "../services/Git.ts"
 import { runFolder } from "../services/Worktrees.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import {
   fetchSpecLive,
   isSpecUrl,

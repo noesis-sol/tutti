@@ -33,7 +33,7 @@ import {
 } from "../services/atomicFile.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
 import { lenientKey } from "../services/lenient.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { parsePublicKey, type ReleaseKey } from "./keys.ts"
 
 /** The GitHub API's address for tutti's repository, which is public: its requests need no token. */

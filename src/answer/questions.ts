@@ -13,8 +13,8 @@ import { type TalkEnd, talkLeftWhy } from "../agent/answerTalk.ts"
 import { recordAnswer, recordWhy } from "../run/answerQuestion.ts"
 import { openQuestionOf, openQuestions, waitingText } from "../run/overnightQuestions.ts"
 import { Beads, type BeadsError, beadsWhy, HumanLabel, type TicketId } from "../services/Beads.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { choicesOf, type OpenQuestion } from "../ui/questions.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
 
 /** What to give a question as its answer, as the listing and the errors say it. */
 export const questionAnswerWords = "an option's number or label, or your own answer in quotes"

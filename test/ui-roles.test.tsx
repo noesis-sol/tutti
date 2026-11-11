@@ -27,9 +27,9 @@ import {
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { separator } from "../src/text/marks.ts"
 import { App, Root } from "../src/ui/App.tsx"
 import { useInput } from "../src/ui/keys.ts"
-import { separator } from "../src/ui/marks.ts"
 import { TicketCount } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import {

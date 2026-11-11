@@ -25,9 +25,9 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { compactLines, idleBox, idleText, labelLines, sectionLines } from "../src/ui/Card.tsx"
 import { type DashboardLayout, dashboardLayout } from "../src/ui/Dashboard.tsx"
-import { type Motion, motionTones } from "../src/ui/marks.ts"
 import { fewestTableLines, ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Motion, motionTones } from "../src/ui/tone.ts"
 import {
   emptyTranscript,
   type OpenTranscript,

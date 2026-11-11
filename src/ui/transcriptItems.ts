@@ -27,7 +27,7 @@ import { asRecord, asString } from "../agent/untrusted.ts"
 import { interval } from "../run/runView.ts"
 import { keepAll } from "../run/same.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { sanitize, sanitizeLine } from "./sanitize.ts"
+import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import { type External, external } from "./useRunView.ts"
 
 /** How many transcript items are mounted while you're at the bottom (§ 7.5). */

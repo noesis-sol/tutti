@@ -13,9 +13,9 @@
 // run has read the machine's load the line has the workers alone.
 import { type Level, swappingPerMinute } from "../run/load.ts"
 import type { LoadView, Totals } from "../run/runView.ts"
+import { marks } from "../text/marks.ts"
 import { type FitPart, fitParts } from "./fit.ts"
 import { cut, type Look, type Segments, seg, separatorOf } from "./line.tsx"
-import { marks } from "./marks.ts"
 import { edgeIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 

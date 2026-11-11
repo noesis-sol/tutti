@@ -7,6 +7,7 @@
 import type { MouseEvent } from "@opentui/core"
 import { useMemo, useRef, useState } from "react"
 import type { AttentionRequest } from "../../agent/Attention.ts"
+import { sanitize, sanitizeLine } from "../../text/sanitize.ts"
 import { buttonsOf, picksOptions, requestText } from "../attentionKeys.ts"
 import {
   boxed,
@@ -20,7 +21,6 @@ import {
   wrap,
 } from "../line.tsx"
 import { requestInputLines } from "../requestInput.ts"
-import { sanitize, sanitizeLine } from "../sanitize.ts"
 import { buttonGap } from "../spacing.ts"
 import type { Theme } from "../theme.ts"
 import { type Panel, requestKey, type Selection } from "../transcriptView.ts"

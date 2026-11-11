@@ -26,7 +26,7 @@ import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
 import { lifetime } from "../src/run/sessions.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
-import { marks } from "../src/ui/marks.ts"
+import { marks } from "../src/text/marks.ts"
 
 /** A phase of each tag, with details that count as the tag's other phases do but Working's. */
 const samples: { readonly [T in PhaseTag]: TicketPhase } = {

@@ -57,7 +57,7 @@ import type { Score } from "../src/run/scorecard.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { ensurePlaybookExcluded, playbookExcludeEntry } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 
 const lesson = (id: string, fields: Partial<Lesson> = {}): Lesson => ({
   id,

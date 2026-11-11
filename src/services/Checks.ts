@@ -32,7 +32,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import type { Settings } from "../project/settings.ts"
 import { detail, Log } from "../run/log.ts"
 import { mergeShareFileOf, Shares } from "../run/share.ts"
-import { ellipsis } from "../ui/marks.ts"
+import { ellipsis } from "../text/marks.ts"
 import { exec } from "./exec.ts"
 import { processCount, Strays } from "./Strays.ts"
 

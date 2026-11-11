@@ -48,6 +48,7 @@
 import { useTerminalDimensions } from "@opentui/react"
 import { useMemo, useState } from "react"
 import type { TicketId } from "../services/Beads.ts"
+import { arrowKeys, marks } from "../text/marks.ts"
 import { stack } from "./allot.ts"
 import {
   Composer,
@@ -64,7 +65,6 @@ import { KeyHelp } from "./KeyHelp.tsx"
 import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
 import { frameInner, Line, Lines, Section, type Segments, seg, widthOf } from "./line.tsx"
-import { arrowKeys, marks } from "./marks.ts"
 import { boxIndent, namePad } from "./spacing.ts"
 import {
   badgesOf,

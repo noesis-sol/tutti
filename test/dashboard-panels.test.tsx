@@ -14,10 +14,10 @@ import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { marks } from "../src/text/marks.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { dashboardHint, dashboardLayout } from "../src/ui/Dashboard.tsx"
-import { marks } from "../src/ui/marks.ts"
 import {
   type Direction,
   focusAmong,

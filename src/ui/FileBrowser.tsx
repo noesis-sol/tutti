@@ -10,6 +10,7 @@
 import { type MouseEvent, RGBA } from "@opentui/core"
 import { Result } from "effect"
 import type { Key } from "../run/runView.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { formHintSegments } from "./Form.tsx"
 import {
   boxSides,
@@ -28,7 +29,6 @@ import {
   wrap,
 } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
-import { sanitizeLine } from "./sanitize.ts"
 import { unpointed } from "./spacing.ts"
 import { browserRows, type Entry, folderLabel, inFolder, parentOf, type Row } from "./specPath.ts"
 import type { Theme } from "./theme.ts"

@@ -19,12 +19,12 @@ import {
 import { noStats } from "../run/ticketStats.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Tty } from "../services/Tty.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { attentionLines } from "../ui/AttentionCard.tsx"
 import { defaultFocus } from "../ui/attentionKeys.ts"
 import { cardLines, contentOf } from "../ui/Card.tsx"
 import { hintSegments } from "../ui/Hint.tsx"
 import { paint, type Segments, sectionLabel } from "../ui/line.tsx"
-import { sanitizeLine } from "../ui/sanitize.ts"
 import { ticketsLines } from "../ui/TicketsTable.tsx"
 import {
   type Appearance,

@@ -4,8 +4,8 @@
 import { Data, type Effect, Schema } from "effect"
 import { isSpecUrl, shownUrl } from "../run/specSource.ts"
 import type { QuestionOption, TicketId } from "../services/Beads.ts"
-import { ellipsis, separator } from "./marks.ts"
-import { sanitize, sanitizeLine } from "./sanitize.ts"
+import { ellipsis, separator } from "../text/marks.ts"
+import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import type { Where } from "./specPath.ts"
 
 /** A form was cancelled: Esc or Ctrl+C in the renderer, the end of input (Ctrl+D) in a line form. */

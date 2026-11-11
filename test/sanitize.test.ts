@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { escapeMarkdown, sanitize, sanitizeLine } from "../src/ui/sanitize.ts"
+import { escapeMarkdown, sanitize, sanitizeLine } from "../src/text/sanitize.ts"
 
 // unsafe is whether text holds what no sanitised text may: a C0 control but newline and tab, DEL, a
 // C1 control, a bidi override or isolate, or a lone surrogate.

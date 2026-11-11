@@ -50,8 +50,8 @@ import { settingsGlobMatch } from "../run/glob.ts"
 import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { RunLock } from "../services/RunLock.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import type { FormCancelled } from "../ui/questions.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import {
   applySkill,

@@ -19,6 +19,7 @@
 // panel, its frame is drawn bright.
 import type { Attention, Card, Row } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { marks } from "../text/marks.ts"
 import {
   fit,
   framed,
@@ -29,8 +30,8 @@ import {
   seg,
   targeting,
 } from "./line.tsx"
-import { lookOf, marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
+import { lookOf } from "./tone.ts"
 
 /** The lines a section takes besides its rows: its label, and its frame's top and bottom. */
 export const sectionChrome = 3

@@ -25,6 +25,8 @@ import { MessageUuid } from "../agent/AgentHost.ts"
 import { interviewWorker } from "../agent/inView.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
+import { arrowKeys, marks } from "../text/marks.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { cardMark, elapsed, statusLook } from "./Card.tsx"
 import { Composer, QueuedLines, queuedLines } from "./Composer.tsx"
 import { hintLines } from "./Hint.tsx"
@@ -33,8 +35,6 @@ import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.t
 import { Box, useInput } from "./keys.ts"
 import { Line, Section, type Segments, seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
-import { arrowKeys, marks } from "./marks.ts"
-import { sanitizeLine } from "./sanitize.ts"
 import { fieldGap, markGap, titleGap } from "./spacing.ts"
 import {
   inertTranscript,

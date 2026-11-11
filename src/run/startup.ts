@@ -38,7 +38,7 @@ import { Beads, type BeadsError, HumanLabel, type TicketId } from "../services/B
 import { Git, gitTooOld } from "../services/Git.ts"
 import { checkoutTrackedChanges } from "../services/gitStatus.ts"
 import { lenientKey } from "../services/lenient.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
 import { featureLine } from "./feature.ts"

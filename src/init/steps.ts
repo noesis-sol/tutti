@@ -7,8 +7,8 @@ import { Deferred, Duration, Effect, type FileSystem, Predicate, Schema } from "
 import type { ChildProcessSpawner } from "effect/process"
 import { exec, showCommand } from "../services/exec.ts"
 import { whichOnPath } from "../services/onPath.ts"
-import { marks as glyphs } from "../ui/marks.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { marks as glyphs } from "../text/marks.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 
 /**
  * How a step went, as the summary marks it: done ✓, kept as it was •, missing ✗ (something to fix

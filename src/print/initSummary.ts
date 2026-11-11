@@ -9,9 +9,9 @@
 import type { InitSummary } from "../init/init.ts"
 import { cancelledLine, signOff } from "../init/init.ts"
 import { marks, type Step, type StepKind } from "../init/steps.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { initHeading, initTitle } from "../ui/initTitle.ts"
 import { boxed, paint, type Segments, seg, wrapText } from "../ui/line.tsx"
-import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Style, Theme } from "../ui/theme.ts"
 
 /**

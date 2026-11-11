@@ -31,7 +31,7 @@
 import { HumanLabel, type Issue } from "../services/Beads.ts"
 import type { Commit } from "../services/Git.ts"
 import { ticketIdProblem } from "../services/Worktrees.ts"
-import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
+import { escapeMarkdown, sanitizeLine } from "../text/sanitize.ts"
 import type { AuditItemName, Event, verdicts } from "./events.ts"
 import { timestamp } from "./localTime.ts"
 

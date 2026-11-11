@@ -28,7 +28,7 @@ import {
   type Status,
   type TicketId,
 } from "../services/Beads.ts"
-import { ellipsis } from "../ui/marks.ts"
+import { ellipsis } from "../text/marks.ts"
 import { specKey } from "./start.ts"
 
 /** The types an issue of the tree can have: an epic, or a ticket's. */

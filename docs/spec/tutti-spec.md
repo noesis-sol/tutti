@@ -1746,8 +1746,8 @@ Carried over too, and not part of any scheme:
 - the spinner, Bubbles' `Dot`: frames `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷`, ten a second; on the dashboard, in init's form, on the organ lines, and on the line a run draws while it gets ready (§7.1 "Getting ready")
 - the state glyphs `▶ ✓ ↷ ! ■ ? ↻ ◷ ◼ ◆ ⟳ •`, and `○ ♪`
 - tutti's latest-action glyph, `▸`
-- each named in `src/ui/marks.ts` by what it marks, and src/ui writes none of them inline (tutti-6bwa.4): the state glyphs, `▸`, the more-below `↓`, the links' `▾ ▴ ←`, the arrow keys of the hints; and `ellipsis`, the `…` that `cut`, `fit` and every other cutter end a text in, a word still going (`Reading the ticket…`) being prose
-- the separator ` · ` between a list's parts, the hint's keys, the totals' figures, the title line's, a box's choices: `separator` in `src/ui/marks.ts`, the one src/ui writes, drawn faint (a form's hint in its `helpSeparator`) by `src/ui/line.tsx`'s `joined` and `separatorOf` (tutti-6bwa.3)
+- each named in `src/text/marks.ts` by what it marks, and src/ui writes none of them inline (tutti-6bwa.4): the state glyphs, `▸`, the more-below `↓`, the links' `▾ ▴ ←`, the arrow keys of the hints; and `ellipsis`, the `…` that `cut`, `fit` and every other cutter end a text in, a word still going (`Reading the ticket…`) being prose
+- the separator ` · ` between a list's parts, the hint's keys, the totals' figures, the title line's, a box's choices: `separator` in `src/text/marks.ts`, the one src/ui writes, drawn faint (a form's hint in its `helpSeparator`) by `src/ui/line.tsx`'s `joined` and `separatorOf` (tutti-6bwa.3)
 
 ---
 
@@ -2360,6 +2360,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | `internal/mcp` | `src/agent/mcp.ts` |
 | `internal/organ` (+ `prompts/`) | `src/organs/` (+ `prompts/`), `src/organs/AgentSdkLanguageModel.ts` |
 | `internal/project` (settings, prompt, init files) | `src/project/` (Schema-defined settings and user config, templates) |
-| `internal/tui` (Bubble Tea) | `src/ui/` (OpenTUI React: `Dashboard`, `Card`, `AttentionCard`, `TicketsTable`, `WorkerView`, `Composer`, `InterviewView`, `InitForm`, `StartQuestion`), `src/ui/worker/` (the worker view's pieces, taking plain props: its head, the transcript's items, the request panel and the Markdown's looks; `useWorkerScreen`, its worker and the commands it sends), `src/ui/plain/` (the line-based forms), `src/print/` (summary and report after the renderer), `src/ui/sanitize.ts`, `src/ui/theme.ts` (the roles, the scheme loader and the styles), `src/ui/schemes/orchestra.json` (from `internal/tui/style.go` and huh's Charm theme) |
+| `internal/tui` (Bubble Tea) | `src/ui/` (OpenTUI React: `Dashboard`, `Card`, `AttentionCard`, `TicketsTable`, `WorkerView`, `Composer`, `InterviewView`, `InitForm`, `StartQuestion`), `src/ui/worker/` (the worker view's pieces, taking plain props: its head, the transcript's items, the request panel and the Markdown's looks; `useWorkerScreen`, its worker and the commands it sends), `src/ui/plain/` (the line-based forms), `src/print/` (summary and report after the renderer), `src/ui/theme.ts` (the roles, the scheme loader and the styles), `src/ui/schemes/orchestra.json` (from `internal/tui/style.go` and huh's Charm theme) |
+| — (text helpers scattered through the packages) | `src/text/`, the base every layer reads: `sanitize.ts` (untrusted text made safe to show, § 7.10), `marks.ts` (the glyphs, the ellipsis and the separator, § 7.11), `oneLine.ts` (text cut to one line); it imports nothing from the other areas of `src/`, so `src/services`, `src/agent` and `src/run` take their text helpers from it, never from `src/ui` |
 | `internal/update` | `src/update/` |
 | test helpers `faketool`, `claudetest`, `tmuxtest`, `cmuxtest`, `gittest` | test layers per service (§3.3); `test/git.ts` for real-git scenarios; recorded SDK fixtures; no fake executables needed |

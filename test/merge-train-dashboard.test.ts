@@ -42,7 +42,7 @@ import { Captured } from "../src/testing/EventStream.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 import { advance, backlog, expectExitCode, expectPhases, scenario, type World } from "./harness.ts"
 
 const checking = "checked ahead of its turn, on top of tutti/a as it is checked"

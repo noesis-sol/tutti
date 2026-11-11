@@ -3,8 +3,8 @@
 // a Bash command as its own lines, an Edit as its diff, a Write as its path and content, and what
 // else the input holds as key and value lines.
 import type { AttentionRequest } from "../agent/Attention.ts"
+import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import { type Look, type Segments, seg, wrap } from "./line.tsx"
-import { sanitize, sanitizeLine } from "./sanitize.ts"
 import { optionIndent, wordSpace } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 import { lineDiff } from "./transcriptItems.ts"

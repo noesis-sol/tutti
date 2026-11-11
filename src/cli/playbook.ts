@@ -19,8 +19,8 @@ import {
   versionOf,
   weakensChecks,
 } from "../run/playbook.ts"
-import { oneLine } from "../ui/oneLine.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { oneLine } from "../text/oneLine.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 
 /** What `tutti playbook` is asked to do: list, or act on a lesson. */
 export type PlaybookAct =

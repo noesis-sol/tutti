@@ -34,9 +34,9 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
+import { marks } from "../src/text/marks.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 import { dashboardHint } from "../src/ui/Dashboard.tsx"
-import { marks } from "../src/ui/marks.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
 
 type Env = Ledger | Log | EventStream | Captured | Scope.Scope
 

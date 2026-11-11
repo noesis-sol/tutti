@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { oneLine } from "../src/ui/oneLine.ts"
+import { oneLine } from "../src/text/oneLine.ts"
 
 describe("oneLine", () => {
   test("puts text on one line, its runs of white space one space", () => {

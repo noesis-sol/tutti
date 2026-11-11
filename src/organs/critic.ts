@@ -14,8 +14,8 @@
 import { Effect, Schema } from "effect"
 import { titleOf } from "../run/fileTicket.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { oneLine } from "../ui/oneLine.ts"
-import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+import { oneLine } from "../text/oneLine.ts"
+import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import { type InputPart, section } from "./evidence.ts"
 import { make, type OrganError, Organs } from "./Organs.ts"
 import prompt from "./prompts/critic.md" with { type: "text" }

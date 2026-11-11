@@ -8,6 +8,7 @@
 // the view under it (tutti-por).
 import { type MouseEvent, RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
+import { ellipsis } from "../text/marks.ts"
 import { clickable } from "./click.ts"
 import { type Command, isOn } from "./keyCommands.ts"
 import {
@@ -23,7 +24,6 @@ import {
   widthOf,
   wrap,
 } from "./line.tsx"
-import { ellipsis } from "./marks.ts"
 import { useTheme } from "./useRunView.ts"
 
 /**

@@ -5,8 +5,8 @@
 // for the rare test that wants the exact text; a box is cut out of the screen by its corners, not by
 // columns. A test that checks a spacing on purpose does it once, through them.
 import { TextAttributes } from "@opentui/core"
+import { marks, separator } from "../src/text/marks.ts"
 import type { Segments } from "../src/ui/line.tsx"
-import { marks, separator } from "../src/ui/marks.ts"
 import { boxPad, cardIndent, hintIndent, markGap } from "../src/ui/spacing.ts"
 import { spinnerFrames } from "../src/ui/useRunView.ts"
 import type { Frame } from "./render.ts"

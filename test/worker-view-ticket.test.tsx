@@ -18,9 +18,9 @@ import { emptyStatus, project, type RunView, ticketText } from "../src/run/runVi
 import { Screen } from "../src/run/screen.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
+import { sanitize } from "../src/text/sanitize.ts"
 import { Root } from "../src/ui/App.tsx"
 import { widthOf } from "../src/ui/line.tsx"
-import { sanitize } from "../src/ui/sanitize.ts"
 import {
   checklist,
   descriptionLines,

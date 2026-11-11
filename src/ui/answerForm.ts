@@ -10,7 +10,7 @@
 // The values sent back are the schema's own, as it gave them.
 import { Predicate } from "effect"
 import type { Answer, AttentionRequest } from "../agent/Attention.ts"
-import { sanitizeLine } from "./sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 
 /** One of a choice's options: its label shown, and the value sent for it. */
 export interface Option {

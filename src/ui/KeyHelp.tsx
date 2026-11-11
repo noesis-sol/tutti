@@ -6,6 +6,7 @@
 // a window at a time, which ↑↓, PgUp/PgDn, g/G and the wheel scroll (tutti-bnhb).
 import { type MouseEvent, RGBA } from "@opentui/core"
 import { useState } from "react"
+import { arrowKeys } from "../text/marks.ts"
 import { globalHelp, type HelpRow } from "./keyCommands.ts"
 import { useLayer } from "./keys.ts"
 import {
@@ -20,7 +21,6 @@ import {
   seg,
   widthOf,
 } from "./line.tsx"
-import { arrowKeys } from "./marks.ts"
 import { fieldGap } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 

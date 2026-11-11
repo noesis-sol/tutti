@@ -11,7 +11,7 @@ import { Effect, Exit, FileSystem, Option, Predicate } from "effect"
 import { decodeConfig } from "../project/configFile.ts"
 import { ticketIdPlaceholder } from "../project/prompt.ts"
 import { permissionModes, Settings, settingsFile } from "../project/settings.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { joinAnd, type Step, step } from "./steps.ts"
 
 /** orchestra's folder, from the project's top. */

@@ -15,8 +15,8 @@ import {
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { formatDuration } from "../project/configFile.ts"
-import { ellipsis } from "../ui/marks.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { ellipsis } from "../text/marks.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import {
   type Command,
   defaultMaxOutputBytes,

@@ -18,7 +18,7 @@ import { Duration, Effect, type FileSystem, Option, Result, Stream } from "effec
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { ChildProcessSpawner } from "effect/process"
 import { exec } from "../services/exec.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 
 /** How long a spec's fetch may take, redirects and gh included. */
 export const fetchTimeLimit: Duration.Duration = Duration.seconds(30)

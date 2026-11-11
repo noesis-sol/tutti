@@ -16,7 +16,7 @@ import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import * as TestGit from "../src/testing/Git.ts"
-import { sanitizeLine } from "../src/ui/sanitize.ts"
+import { sanitizeLine } from "../src/text/sanitize.ts"
 
 /** A folder for a project `tutti init` has set up, with a Beads database. */
 const project = () => {

@@ -10,6 +10,7 @@
 // Where there is no panel beside the tickets table, Needs you is a click target, and the highlight
 // reaches it (NeedsReach, tutti-fdv1): it opens the list of what needs you (NeedsList.tsx).
 import type { Totals as TotalsView } from "../run/runView.ts"
+import { marks, separator } from "../text/marks.ts"
 import { firstFitting } from "./fit.ts"
 import {
   columnGap,
@@ -23,7 +24,6 @@ import {
   targeting,
   widthOf,
 } from "./line.tsx"
-import { marks, separator } from "./marks.ts"
 import { edgeIndent } from "./spacing.ts"
 import type { Theme } from "./theme.ts"
 

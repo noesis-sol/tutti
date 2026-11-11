@@ -25,7 +25,7 @@ import {
   writeExclusive,
 } from "../agent/attentionFiles.ts"
 import { terminalSafe } from "../run/events.ts"
-import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import { answerWith } from "./answerWith.ts"
 
 /** How long `tutti answer` waits for the run to take an answer (§ 4.5). */

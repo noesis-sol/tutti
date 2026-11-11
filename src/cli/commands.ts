@@ -73,12 +73,12 @@ import { Beads, beadsWhy } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
 import * as Tty from "../services/Tty.ts"
+import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import { initFormKind, openInitForm } from "../ui/InitForm.tsx"
 import { checksHeading, type FormHeading, initHeading } from "../ui/initTitle.ts"
 import { streamInput } from "../ui/plain/forms.ts"
 import { FormCancelled } from "../ui/questions.ts"
 import { open as openRenderer } from "../ui/renderer.ts"
-import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import {
   type Appearance,
   appearanceOf,

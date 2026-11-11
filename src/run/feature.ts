@@ -4,7 +4,7 @@
 import { Effect } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { ellipsis } from "../ui/marks.ts"
+import { ellipsis } from "../text/marks.ts"
 
 /**
  * `effect` with AppConfig scoped to `epic`, as --ticket <epic> scopes a run; a spec run's with its
