@@ -113,7 +113,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         ),
       )
       if (Result.isSuccess(logged)) {
-        yield* machine.hold(runScope).pipe(Effect.provideContext(logged.success))
+        yield* machine.holdFirst(runScope).pipe(Effect.provideContext(logged.success))
       }
     }
 

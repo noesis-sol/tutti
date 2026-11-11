@@ -24,14 +24,19 @@ export interface Power {
     readonly keepingAwake?: ReturnType<typeof SubscriptionRef.changes<boolean>>
   }
   /**
-   * The keep-awake command, started once in the run's scope `runScope`, which it closes with, its
-   * line in the log, `before` run first: a later call does nothing. Nothing where there is no
-   * command.
+   * The keep-awake command, started in the run's scope `runScope`, which it closes with, its line
+   * in the log, `before` run first, as the run begins: nothing where there is no command, or where
+   * `holdFirst` started it already.
    */
   readonly hold: (
     runScope: Scope.Scope,
     before?: Effect.Effect<void>,
   ) => ReturnType<typeof keepAwake>
+  /**
+   * The keep-awake command started before the run begins, in `runScope`, as an overnight run does
+   * before its pre-flight: `hold` then starts nothing. Nothing where there is no command.
+   */
+  readonly holdFirst: (runScope: Scope.Scope) => ReturnType<typeof keepAwake>
 }
 
 /**
@@ -72,6 +77,11 @@ export const power = (config: Pick<AppConfigValue, "keepAwake" | "repo">) =>
         Effect.gen(function* () {
           if (awake._tag !== "Command" || kept) return
           yield* before
+          yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(Scope.provide(runScope))
+        }),
+      holdFirst: (runScope) =>
+        Effect.gen(function* () {
+          if (awake._tag !== "Command") return
           yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(Scope.provide(runScope))
           kept = true
         }),
