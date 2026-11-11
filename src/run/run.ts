@@ -1,3 +1,15 @@
+// The run (§ 5, § 3.4): what follows the startup checks and the run lock, from the START block to
+// the end record, a scoped Effect that hands back its exit code and each ticket's phase. Its parts
+// are in src/run/run/: `assemble` (parts.ts) makes its services, status and screen (services.ts),
+// what holds it (holds.ts, § 5 item 10), its merge side (mergeSide.ts) and what starts its tickets
+// (starting.ts), each in the run's scope, in that order; `loop` (loop.ts) forks its watchers
+// (watchers.ts), runs the start's steps (start.ts) and looks at the run (looks.ts, look.ts) at
+// each wake until nothing is left or it quits (§ 4.8, quitting.ts); `end` (end.ts) winds it down
+// and hands back the summary and closing lines (§ 5 item 14), the report and the end record left
+// to `finish` below, which main runs once the renderer is gone (§ 7.1). What the parts share, the
+// run's options, its outcome and the stop a ticket's fiber ends with, is shared.ts. In plain mode
+// (§ 7.6) every line goes to stdout as the Log writes it; with a dashboard (screen.ts) the run
+// shows its status live instead, and main prints the lines it hands back.
 import { Clock, Effect, type Scope } from "effect"
 import { AppConfig } from "../core/AppConfig.ts"
 import { printSummary } from "../print/summary.ts"
@@ -7,6 +19,10 @@ import { AutoAnswer, makeAutoAnswering } from "./autoAnswer.ts"
 import { exitCodes } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import type { ReportOut } from "./report.ts"
+import { end } from "./run/end.ts"
+import { loop } from "./run/loop.ts"
+import { assemble } from "./run/parts.ts"
+import type { Outcome, RunEnv, RunOptions } from "./run/shared.ts"
 
 export {
   errorStop,
@@ -16,11 +32,6 @@ export {
   type RunOptions,
   showEndOfRun,
 } from "./run/shared.ts"
-
-import { end } from "./run/end.ts"
-import { loop } from "./run/loop.ts"
-import { assemble } from "./run/parts.ts"
-import type { Outcome, RunEnv, RunOptions } from "./run/shared.ts"
 
 /**
  * The run, from its START block to its end record, in the run's scope: it hands back its exit
