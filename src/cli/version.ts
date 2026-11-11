@@ -19,6 +19,9 @@ export interface BuildCommit {
   readonly dirty: boolean
 }
 
+/** tutti's version: package.json's, bare. */
+export const version: string = pkg.version
+
 /** The version `tutti --version` shows: the bare version for a release, `<version> <hash>[+dirty]` for a clone. */
 export const formatVersion = (version: string, commit: Option.Option<BuildCommit>): string =>
   Option.match(commit, {
