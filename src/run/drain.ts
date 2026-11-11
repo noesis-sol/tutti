@@ -13,7 +13,8 @@ import { type Line, type Log, line } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { EventStream } from "../services/EventStream.ts"
 import { Ledger } from "./ledger.ts"
-import { dropRechecks, type Rechecks } from "./recheck.ts"
+import type { Rechecks } from "./mergeShared.ts"
+import { dropRechecks } from "./recheck.ts"
 import { say } from "./say.ts"
 
 /** A request to wind down (`on`) or to take tickets again, and who asked: `by SIGUSR1`. */

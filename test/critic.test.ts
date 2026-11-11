@@ -32,8 +32,8 @@ import {
   triggerOf,
 } from "../src/run/critic.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
+import type { FinishedTicket } from "../src/run/mergeShared.ts"
 import { Move } from "../src/run/phase.ts"
 import { Beads, HumanLabel, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { EventStream } from "../src/services/EventStream.ts"

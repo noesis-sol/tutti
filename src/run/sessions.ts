@@ -41,8 +41,8 @@ import { sleepAwake } from "../services/Wake.ts"
 import { leaveForReview } from "./aside.ts"
 import type { HandBacks } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
+import type { Rechecks } from "./mergeShared.ts"
 import { factsOf, type Lifetime, type TicketPhase } from "./phase.ts"
-import type { Rechecks } from "./recheck.ts"
 import { goneText } from "./told.ts"
 
 /**

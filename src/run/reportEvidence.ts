@@ -19,8 +19,7 @@ import { Git, shortHash } from "../services/Git.ts"
 import { oneLine } from "../text/oneLine.ts"
 import { failedHow } from "./check.ts"
 import type { Entry } from "./ledger.ts"
-import type { FinishedTicket, MergeTarget } from "./merge.ts"
-import { foldersOf, type Rechecks } from "./recheck.ts"
+import { type FinishedTicket, foldersOf, type MergeTarget, type Rechecks } from "./mergeShared.ts"
 import { descendants } from "./scope.ts"
 
 /** The most folders the reviewer is given of those a ticket's own commits change, as orchestra's. */

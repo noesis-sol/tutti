@@ -92,7 +92,7 @@ import {
   someFiles,
   type Unchanged,
   unchanged,
-} from "./merge.ts"
+} from "./mergeShared.ts"
 import type { Stuck } from "./overnightAside.ts"
 import { Move } from "./phase.ts"
 import { info, say } from "./say.ts"

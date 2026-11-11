@@ -17,7 +17,7 @@
 
 import { clock } from "../core/localTime.ts"
 import { afterParts } from "../run/after.ts"
-import { someFiles } from "../run/merge.ts"
+import { someFiles } from "../run/mergeShared.ts"
 import {
   isConflict,
   type Need,

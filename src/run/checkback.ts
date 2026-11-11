@@ -46,6 +46,7 @@ import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
 import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { attemptAt, leftAt, restoreBranch } from "./branch.ts"
 import { type CheckFailure, failedHow, outputKept } from "./check.ts"
+import { checksFailed } from "./failedCheck.ts"
 import {
   type Counts,
   carryIfBaseMoved,
@@ -60,14 +61,13 @@ import {
 } from "./handback.ts"
 import { usageHolds } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
-import {
-  checksFailed,
-  type FinishedTicket,
-  type MergeEnv,
-  type MergeMemory,
-  type MergeOptions,
-  type MergeTarget,
-} from "./merge.ts"
+import type {
+  FinishedTicket,
+  MergeEnv,
+  MergeMemory,
+  MergeOptions,
+  MergeTarget,
+} from "./mergeShared.ts"
 import { Move } from "./phase.ts"
 import { info } from "./say.ts"
 import { namesTicket } from "./settle.ts"

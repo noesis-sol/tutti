@@ -18,7 +18,7 @@ import {
 } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { type Again, retrying } from "./again.ts"
-import type { FinishedTicket, MergeTarget } from "./merge.ts"
+import type { FinishedTicket, MergeTarget } from "./mergeShared.ts"
 import { warn } from "./say.ts"
 
 /** How many times a git read that steers a merge is made while it fails, as orchestra asks git. */

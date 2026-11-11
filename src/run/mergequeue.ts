@@ -68,18 +68,18 @@ import {
 import { mergedByHand as handMerged } from "./handMerged.ts"
 import { type Held, makeHeld } from "./held.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
-import {
-  closeUnchanged,
-  type FinishedTicket,
-  type GivenMergeOptions,
-  type MergeEnv,
-  type MergeOptions,
-  type MergeStop,
-  mergeTurn,
-} from "./merge.ts"
+import { closeUnchanged, mergeTurn } from "./merge.ts"
+import type {
+  FinishedTicket,
+  GivenMergeOptions,
+  MergeEnv,
+  MergeOptions,
+  MergeStop,
+  Rechecks,
+} from "./mergeShared.ts"
 import { type CheckAhead, make as makeTrain } from "./mergetrain.ts"
 import { Detail, type InvalidTransition, Move, type TicketPhase } from "./phase.ts"
-import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
+import { makeRechecks, recheckDue } from "./recheck.ts"
 import { fit } from "./sessions.ts"
 import { makeSetUps, setUpCheckout, takeSettings } from "./setup.ts"
 import { type Conflicting, takeBackDue } from "./takenBack.ts"

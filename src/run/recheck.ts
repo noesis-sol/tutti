@@ -26,44 +26,20 @@ import { Git, type GitError, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { leftUntracked } from "./checkWrote.ts"
 import { Ledger } from "./ledger.ts"
-import { type FinishedTicket, type MergeOptions, type MergeTarget, someFiles } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
+import {
+  type FinishedTicket,
+  foldersOf,
+  type MergeOptions,
+  type MergeTarget,
+  type Recheck,
+  type Rechecks,
+  someFiles,
+} from "./mergeShared.ts"
 import { Move } from "./phase.ts"
 import { clean } from "./repoFiles.ts"
 import { info } from "./say.ts"
 import { fit } from "./sessions.ts"
-
-/** A ticket set aside for a failed check, to be checked once more once the base moves on. */
-export interface Recheck {
-  readonly ticket: FinishedTicket
-  /** The commit of the base its check failed on. */
-  readonly onto: string
-  /** Its branch's commit then. */
-  readonly head: string
-}
-
-/**
- * The tickets of a run waiting to be checked once more, and those taken up to be; and what the
- * check said of each ticket it set aside, for the run report.
- */
-export interface Rechecks {
-  /** The tickets waiting to be checked once more, in the order they were set aside. */
-  readonly waiting: Effect.Effect<ReadonlyArray<Recheck>>
-  /** Whether the ticket has been taken up to be checked once more in this run. */
-  rechecked(id: TicketId): Effect.Effect<boolean>
-  /** Keeps the ticket to be checked once more. */
-  keep(recheck: Recheck): Effect.Effect<void>
-  /** Takes the ticket out of those waiting, as checked once more; false when it wasn't waiting. */
-  take(id: TicketId): Effect.Effect<boolean>
-  /** Takes the ticket out of those waiting, not checked once more; false when it wasn't waiting. */
-  drop(id: TicketId): Effect.Effect<boolean>
-  /** Takes every ticket out of those waiting, not checked once more: those that were. */
-  readonly dropAll: Effect.Effect<ReadonlyArray<Recheck>>
-  /** Keeps what the ticket's check said as it set the ticket aside, in place of what it said before. */
-  noteFailure(id: TicketId, evidence: string): Effect.Effect<void>
-  /** What the check said of each ticket it set aside, by ticket, in the order they were first. */
-  readonly failures: Effect.Effect<ReadonlyMap<string, string>>
-}
 
 /** A run's rechecks: none waiting, none taken up. */
 export const makeRechecks: Effect.Effect<Rechecks> = Effect.gen(function* () {
@@ -115,10 +91,6 @@ const failedInBiome = /^([^\s:]+\.\w+)(?::\d+(?::\d+)?)? [a-z][\w/]*(?: +[A-Z]+)
 /** The file a line of a check's output names by its position; undefined when it names none. */
 const fileOf = (line: string): string | undefined =>
   (failedFile.exec(line) ?? failedInTsc.exec(line) ?? failedInBiome.exec(line))?.[1]
-
-/** The folders of `files` (`.` for the top level), each once, sorted. */
-export const foldersOf = (files: ReadonlyArray<string>): ReadonlyArray<string> =>
-  [...new Set(files.map((file) => posix.dirname(file)))].sort()
 
 /**
  * The folders of `own` (those the ticket's own commits change) that the lines `said` of its failed

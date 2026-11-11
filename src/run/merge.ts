@@ -53,21 +53,10 @@
 // handed back is set aside for review, kept to be checked once more once the base moves on
 // (recheck.ts).
 import { Data, Effect, Result } from "effect"
-import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../core/AppConfig.ts"
-import {
-  type Arg,
-  branchOn,
-  detail,
-  type Line,
-  Log,
-  line,
-  Tag,
-  tagged,
-  ticketLine,
-} from "../core/log.ts"
+import { branchOn, detail, type Line, Log, line, Tag, tagged } from "../core/log.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
-import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
+import { checksNow } from "../services/Checks.ts"
 import { EventStream } from "../services/EventStream.ts"
 import {
   Git,
@@ -83,7 +72,6 @@ import { revertsIn } from "../services/scorecard.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
 import { aheadKey, clearAhead, rebasedAheadOf } from "./ahead.ts"
-import { leaveForReview } from "./aside.ts"
 import {
   clearStaleLocks,
   gitReads,
@@ -101,10 +89,7 @@ import {
   clearUnchecked,
   failedHow,
   markUnchecked,
-  outputKept,
-  type Passes,
   runMergeCheck,
-  saidOf,
   timedOutLoaded,
   uncheckedMark,
 } from "./check.ts"
@@ -112,7 +97,6 @@ import {
   type Carried,
   type CheckStop,
   committed,
-  type Fixes,
   fixFailed,
   fixPassed,
   type HandedCheck,
@@ -121,11 +105,8 @@ import {
   toFix,
 } from "./checkback.ts"
 import { writtenOnly } from "./checkWrote.ts"
-import type { MergedWork } from "./critic.ts"
-import type { EarlyChecks } from "./earlyCheck.ts"
+import { checksFailed } from "./failedCheck.ts"
 import {
-  type AtReset,
-  type HandBacks,
   type HandedRebase,
   type NotHandedBack,
   notHandedBack,
@@ -135,129 +116,29 @@ import {
   whyHandBacksOff,
 } from "./handback.ts"
 import { type Entry, Ledger } from "./ledger.ts"
-import type { OvernightAside } from "./overnightAside.ts"
+import {
+  closedBut,
+  closedButLine,
+  type FinishedTicket,
+  type MergeEnv,
+  type MergeMemory,
+  type MergeOptions,
+  type MergeStop,
+  type MergeTarget,
+  notePass,
+  Prepared,
+  type StopWhy,
+  stopCodes,
+  type Unchanged,
+  unchanged,
+} from "./mergeShared.ts"
 import { Detail, Move } from "./phase.ts"
-import { keepForRecheck, type Rechecks } from "./recheck.ts"
-import { noteFailedCheck } from "./reportEvidence.ts"
 import { info, type Said } from "./say.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
-import { shownChanges } from "./settle.ts"
-import { fileList, type SetUps, setUp } from "./setup.ts"
+import { fileList, setUp } from "./setup.ts"
 import { forgetConflictHead, keepConflictHead } from "./takenBack.ts"
 import { Trash } from "./trash.ts"
 import { unlabel } from "./unmerged.ts"
-
-/** A ticket its worker finished: closed, committed, its worktree clean and on its branch. */
-export interface FinishedTicket {
-  readonly id: TicketId
-  /** Its title as Beads gave it. */
-  readonly title: string
-  /** `tutti/<id>`. */
-  readonly branch: string
-  /** Its worktree's folder, absolute. */
-  readonly worktree: string
-}
-
-/**
- * What the merges read of the run, resolved once by mergequeue.make from what the run gave it
- * (GivenMergeOptions): each "without it" is the default it puts in its place.
- */
-export interface MergeOptions {
-  /** The main checkout. */
-  readonly repo: string
-  /** The branch finished tickets land on. */
-  readonly base: string
-  /**
-   * Why the run takes on no more work, as the merges say it (holds.ts's noMoreWork): undefined when
-   * it does. A failed check isn't handed back to its worker then. Without it, only a drain counts.
-   */
-  readonly noMore: Effect.Effect<string | undefined>
-  /**
-   * Where a hand-back due to a worker at the account's usage limit waits for the limit to lift: the
-   * usage-limit hold, which sends it at the reset (handback.ts's give). Without it, it is sent at once (noReset).
-   */
-  readonly atReset: AtReset
-  /**
-   * Whether the machine is loaded now: the run holds at --machine-workers, or its last load reading
-   * has it pressed (load.ts's pressing). A hand-back's time limit, and a check's or setup's, leave
-   * out the time it is, up to the limit again (handback.ts's give, Checks' RunOptions). Without it,
-   * the machine is never loaded.
-   */
-  readonly loaded: Effect.Effect<boolean>
-  /**
-   * An overnight run's register (overnightAside.ts): with it, a worker on a hand-back left blocked on
-   * a request for blockedAfter ends its hand-back, set aside as the hand-back's own failure, rather
-   * than hold the run (handback.ts's give).
-   */
-  readonly overnight?: OvernightAside
-  /**
-   * Takes a slot for a ticket checked once more (recheck.ts) and runs `work` in it, as a running
-   * ticket's: false, taking none, while a solo ticket runs or is next, no slot is free, or the
-   * ticket holds one still (the scheduler's recheckSlot). Without it, a recheck takes no slot.
-   */
-  readonly recheckSlot: (ticket: TicketId, work: Effect.Effect<void>) => Effect.Effect<boolean>
-  /** The run's setups (setup.ts), which starting a ticket shares; the queue's own without it. */
-  readonly setUps: SetUps
-  /**
-   * Whether the run holds at the machine's cap on workers, or the machine's memory is pressed
-   * (pressureGate.ts): no check ahead starts then (mergetrain.ts). Never without it.
-   */
-  readonly machineFull: Effect.Effect<boolean>
-  /**
-   * The run's early checks (earlyCheck.ts): each check of a merge takes their check slot, and a
-   * ticket's turn merges with no second check where its early check passed on the same tree on the
-   * same base. None without them.
-   */
-  readonly early?: EarlyChecks
-  /**
-   * Told of each ticket merged: its base's commit before and the commit the merge put the base at,
-   * for the critic (critic.ts), which may review it. Nothing is told without it.
-   */
-  readonly merged?: (work: MergedWork) => Effect.Effect<void>
-}
-
-/** Where the merges land: the main checkout and the base, all that most of their steps read. */
-export type MergeTarget = Pick<MergeOptions, "repo" | "base">
-
-/** What the run gives the merge queue: where the merges land, and any of the others. */
-export type GivenMergeOptions = MergeTarget & Partial<Omit<MergeOptions, "repo" | "base">>
-
-/** What stops the merges, and the exit code the run ends with for it (§ 5 item 10). */
-export const stopCodes = { DIRTY_TREE: 5, GIT_FAILED: 4, MERGE_FAILED: 6 } as const
-export type StopWhy = keyof typeof stopCodes
-
-/** A merge that stopped the merges: its ticket is Blocked, and the run holds or stops. */
-export interface MergeStop {
-  readonly why: StopWhy
-  readonly code: number
-  readonly ticket: TicketId
-  /** The line the log has for it. */
-  readonly line: Line
-}
-
-/**
- * How a ticket's merge in its turn ends (mergeTurn): over (set aside, blocked or stopped), merged,
- * with nothing of its own left to merge, its rebase stopped on conflicts its worker can take, or its
- * check failed in a way its worker can take, to be handed back.
- */
-export type Prepared = Data.TaggedEnum<{
-  /** Set aside or blocked, or, with `stop`, stopping the merges. */
-  Over: { readonly stop?: MergeStop }
-  /** Its branch, checked at `at`, fast-forwarded onto the base from `onto`. */
-  Merged: { readonly onto: Sha; readonly at: Sha }
-  /**
-   * The branch, its worktree clean, changes nothing beyond the base: `why` says which way, and
-   * `own` whether it has commits of its own still, which keep git from deleting it as merged.
-   */
-  Unchanged: { readonly why: string; readonly own: boolean }
-  HandBack: { readonly stop: HandedRebase }
-  FixBack: { readonly stop: HandedCheck }
-}>
-
-export const Prepared = Data.taggedEnum<Prepared>()
-
-/** Prepared's Unchanged: the branch changes nothing beyond the base. */
-export type Unchanged = Data.TaggedEnum.Value<Prepared, "Unchanged">
 
 /**
  * What the fast-forward did: merged the branch; stopped the merges (`stop`), as the main checkout
@@ -289,12 +170,6 @@ export const budgets = { baseDuringCheck: 3, branchDuringCheck: 3, beforeFastFor
 
 export type Budget = keyof typeof budgets
 
-/** The first `shownChanges` of `files`, and how many more there are, as a line names them. */
-export const someFiles = (files: ReadonlyArray<string>): string => {
-  const more = files.length - shownChanges
-  return `${files.slice(0, shownChanges).join(", ")}${more > 0 ? ` and ${more} more` : ""}`
-}
-
 /** `n` subtickets are merged, as the epic's line says. */
 export const allMerged = (n: number): string =>
   n === 1 ? "its 1 subticket is merged" : `all ${n} subtickets are merged`
@@ -308,40 +183,6 @@ export const epicCloseReason = (n: number, after: TicketId): string => {
 /** The ticket whose merge closed the epic its close reason is, or undefined when tutti didn't. */
 export const closedAfter = (reason: string): TicketId | undefined =>
   /; closed by tutti after (\S+)$/.exec(reason)?.[1] as TicketId | undefined
-
-/** Every service a merge uses. */
-export type MergeEnv =
-  | AppConfig
-  | Git
-  | Worktrees
-  | Beads
-  | Ledger
-  | Log
-  | EventStream
-  | Checks
-  | AgentHost
-  | Store
-  | Trash
-
-/** `<tag>: <id> closed, but …`, the line of a ticket its merge sets aside or blocks. */
-const closedButLine =
-  (ticket: FinishedTicket, tag: string) =>
-  (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>): Line =>
-    ticketLine(tag)`${ticket.id} closed, but ${line(strings, ...args)}`
-
-/**
- * Sets the ticket aside for review, Merging → Review{tag}, `short` its warn record's detail, with
- * its note and the line `<tag>: <id> closed, but …`; `checkLog` where its failed check's output is.
- */
-const closedBut =
-  (ticket: FinishedTicket, tag: string, short: string, checkLog?: string) =>
-  (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>) =>
-    leaveForReview(ticket.id, {
-      why: tag,
-      detail: short,
-      text: closedButLine(ticket, tag)(strings, ...args),
-      ...(checkLog === undefined ? {} : { checkLog }),
-    })
 
 /**
  * The ticket can't merge until you act, for `reason`: Merging → Blocked, with `record` and its line
@@ -375,81 +216,6 @@ export const stopOver = (ticket: FinishedTicket, why: StopWhy, blocked: string, 
 /** A stop of the merges, as fastForward's result. */
 const stopped = (...stop: Parameters<typeof stopOver>) =>
   Effect.map(stopOver(...stop), (made) => FastForward.Stopped({ stop: made }))
-
-/**
- * A branch with a change of its own beyond the base, or one git couldn't rule out: `status` is its
- * worktree's, as `unchanged` read it once, for the merge's next steps, and `entries` the status as
- * git read it, for the setup's and check's (noteWritten); undefined when git couldn't.
- */
-export interface Changed {
-  readonly _tag: "Changed"
-  readonly status: WorktreeStatus | undefined
-  readonly entries: ReadonlyArray<StatusEntry> | undefined
-}
-
-/**
- * The ticket's branch, its worktree clean, with no change of its own beyond where it left the base:
- * `why(own)` says why, given whether it has commits beyond the base. Changed, with the worktree's
- * status it read, when it has a change, or git can't say: the merge's next steps find out.
- */
-export const unchanged = (
-  ticket: FinishedTicket,
-  options: MergeTarget,
-  why: (own: boolean) => string,
-): Effect.Effect<Unchanged | Changed, never, Git> =>
-  Effect.gen(function* () {
-    const git = yield* Git
-    const { repo, base } = options
-    const read = yield* Effect.all(
-      {
-        status: Effect.result(git.status(ticket.worktree)),
-        changed: Effect.result(git.changedFiles(repo, base, ticket.branch)),
-      },
-      gitReads,
-    )
-    const entries = Result.isSuccess(read.status) ? read.status.success : undefined
-    const status = entries === undefined ? undefined : statusOf(entries)
-    const changed = { _tag: "Changed", status, entries } satisfies Changed
-    if (status?._tag !== "Clean" || Result.isFailure(read.changed)) return changed
-    if (read.changed.success.length > 0) return changed
-    const commits = yield* Effect.result(git.log(repo, base, ticket.branch))
-    const own = Result.isFailure(commits) || commits.success.length > 0
-    return Prepared.Unchanged({ why: why(own), own })
-  })
-
-/**
- * What the merge train (mergetrain.ts) is told of the merge check of the ticket whose turn it is:
- * the tickets behind it may be checked ahead of their turn, on top of its branch, while it runs.
- */
-export interface CheckWatch {
-  /** Its check, the setup first if need be, starts on its branch at commit `at`. */
-  starts(ticket: FinishedTicket, at: Sha | undefined): Effect.Effect<void>
-  /** Its check, or the setup before it, ended: passed or not. */
-  ends(passed: boolean): Effect.Effect<void>
-}
-
-/** What a merge keeps of each ticket for the run: rechecks due, setups done, passes, hand-backs. */
-export interface MergeMemory {
-  readonly rechecks: Rechecks
-  readonly setUps: SetUps
-  /** The commits the merge check passed on (check.ts). */
-  readonly passes: Passes
-  readonly handBacks: HandBacks
-  /** The check hand-backs. */
-  readonly fixes: Fixes
-  /** The merge train, told of each check in a ticket's turn; none without it. */
-  readonly train?: CheckWatch
-}
-
-/**
- * Keeps `at`, the commit the ticket's branch was at as its setup and check started (branchHead), as
- * one its merge check passed on; nothing when git couldn't say what it was.
- */
-export const notePass = (
-  ticket: FinishedTicket,
-  passes: Passes,
-  at: Sha | undefined,
-): Effect.Effect<void> => (at === undefined ? Effect.void : passes.set(ticket.id, at))
 
 /**
  * Sets the ticket aside, DIRTY_WORKTREE, when its worktree has uncommitted changes to tracked files,
@@ -1112,57 +878,6 @@ const step = (turn: Turn, next: Step): Next =>
     Check: (at) => check(turn, at),
     Confirm: (at) => confirm(turn, at),
     FastForward: (at) => forward(turn, at),
-  })
-
-/** The short why of a ticket set aside as its check, or the setup before it, failed. */
-export const checksFailedDetail = (error: CheckError): string => {
-  const what = error.check === "setup" ? "setup" : "checks"
-  return `${what} ${error._tag === "CheckTimedOut" ? "timed out" : "failed"}`
-}
-
-/** How a check, or the setup before it, failed on a ticket's branch, for checksFailed. */
-export interface FailedCheck {
-  /** The base's commit its branch was rebased onto, or is on top of. */
-  readonly onto: string
-  readonly error: CheckError
-  /** Where its whole output is in its worktree. */
-  readonly output: string
-  /** Its copy beside the ticket's transcript, where it was kept (check.ts's CheckFailure). */
-  readonly kept?: string | undefined
-  /** What came of handing it back to its worker, if anything, as its line says it. */
-  readonly tried?: Line | string
-  /** On top of the base already, not rebased. */
-  readonly onTop?: boolean
-}
-
-/**
- * Sets the ticket aside as its check, or the setup before it, failed on its branch rebased onto the
- * base at `onto`, or `onTop` of it already, kept to be checked once more once the base moves on,
- * unless this was that once (recheck.ts), and what the check said kept for the report
- * (reportEvidence.ts).
- */
-export const checksFailed = (
-  ticket: FinishedTicket,
-  options: MergeOptions,
-  rechecks: Rechecks,
-  { onto, error, tried = "", onTop = false, ...failure }: FailedCheck,
-): Effect.Effect<void, never, MergeEnv> =>
-  Effect.gen(function* () {
-    const log = yield* Log
-    // The worktree goes once the ticket is set aside: its kept copy is named where there is one.
-    const output = outputKept(failure)
-    const where = error._tag === "CheckNotRun" ? "" : line` (output is in ${output})`
-    const again = (yield* rechecks.rechecked(ticket.id)) ? " again" : ""
-    const later = yield* keepForRecheck(ticket, options, rechecks, onto, error)
-    yield* closedBut(
-      ticket,
-      Tag.checksFailed,
-      `${checksFailedDetail(error)}${again}`,
-      error._tag === "CheckNotRun" ? undefined : output,
-    )`${failedHow(error)}${again} on ${branchOn(ticket.branch, options.base, onTop)}${tried}; worktree ${ticket.worktree} left for review${where}${later}`
-    const said = saidOf(error)
-    if (said.length > 0) yield* log.write(...said.map((each) => detail`  ${each}`))
-    yield* noteFailedCheck(ticket, options, rechecks, onto, error, output, onTop)
   })
 
 /**

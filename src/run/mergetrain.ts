@@ -59,6 +59,7 @@ import { gitReads, onBranch, type Restored, restoreBranch } from "./branch.ts"
 import { Checked, checkOnce, clearUnchecked, failedHow, outputKept } from "./check.ts"
 import { holdingSlot } from "./earlyCheck.ts"
 import { RunFibers } from "./fibers.ts"
+import { stopOver } from "./merge.ts"
 import {
   type CheckWatch,
   type FinishedTicket,
@@ -66,8 +67,7 @@ import {
   type MergeMemory,
   type MergeOptions,
   Prepared,
-  stopOver,
-} from "./merge.ts"
+} from "./mergeShared.ts"
 import { type SetUps, setUp } from "./setup.ts"
 
 export { aheadJson, aheadKey, type RebasedAhead, rebasedAheadOf } from "./ahead.ts"

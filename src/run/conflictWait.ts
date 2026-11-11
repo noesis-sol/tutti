@@ -27,8 +27,8 @@ import { Store } from "../services/Store.ts"
 import { aheadKey, rebasedAheadOf } from "./ahead.ts"
 import { RunFibers } from "./fibers.ts"
 import { nfc, settingsGlobMatch } from "./glob.ts"
-import type { FinishedTicket, MergeTarget } from "./merge.ts"
 import type { QueueState } from "./mergequeue.ts"
+import type { FinishedTicket, MergeTarget } from "./mergeShared.ts"
 import { fileList } from "./setup.ts"
 
 /** Where the tickets are in the queue, as far as a wait goes by it. */

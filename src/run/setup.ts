@@ -73,7 +73,7 @@ import {
 import { noteWritten } from "./checkWrote.ts"
 import { settingsGlobMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
-import type { FinishedTicket, MergeOptions, MergeTarget } from "./merge.ts"
+import type { FinishedTicket, MergeOptions, MergeTarget } from "./mergeShared.ts"
 import { Detail, Move } from "./phase.ts"
 import { sameRequires } from "./requires.ts"
 import { warn } from "./say.ts"

@@ -21,16 +21,9 @@ import { type Commit, Git, gitWhy, shortHash } from "../services/Git.ts"
 import { branchOf, Worktrees } from "../services/Worktrees.ts"
 import type { HandBacks } from "./handback.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
-import {
-  type Cleanup,
-  cleanupFailed,
-  type DoneTicket,
-  type MergeEnv,
-  type MergeTarget,
-  retire,
-} from "./merge.ts"
+import { type Cleanup, cleanupFailed, type DoneTicket, retire } from "./merge.ts"
+import type { MergeEnv, MergeTarget, Rechecks } from "./mergeShared.ts"
 import { Move } from "./phase.ts"
-import type { Rechecks } from "./recheck.ts"
 import { info } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
 import { forgetLeft, mergedSince, namedCommit as named, unlabel } from "./unmerged.ts"

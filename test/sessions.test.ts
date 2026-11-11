@@ -8,8 +8,8 @@ import { line } from "../src/core/log.ts"
 import { makeHandBacks } from "../src/run/handback.ts"
 import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
+import type { FinishedTicket } from "../src/run/mergeShared.ts"
 import {
   Finished,
   type Lifetime,
