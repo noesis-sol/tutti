@@ -15,7 +15,9 @@ import type { Power } from "./power.ts"
  * the machine awake until `runScope` closes (its line going to the log, which plain output
  * prints), names the feature chosen in the `lock` (held all the same if its holder can't be
  * rewritten) and emits the start event; `beginUnlessSpec` leaves a spec chosen at the start
- * question to begin once its breakdown has scoped the run.
+ * question to begin once its breakdown has scoped the run. The run begins once: each step of a
+ * dashboard's start that may be the last before the run calls `begin` (a spec's breakdown or
+ * refinement, the open questions put in the renderer), and the calls after the first do nothing.
  */
 export const beginningOf = (options: {
   readonly machine: Power
@@ -27,8 +29,11 @@ export const beginningOf = (options: {
   readonly choice: Choice
 }) => {
   const { machine, runScope, mode, ready, lock, base, choice } = options
+  let begun = false
   const begin = (work: Work) =>
     Effect.gen(function* () {
+      if (begun) return
+      begun = true
       const events = yield* EventStream
       yield* machine.hold(runScope, mode._tag === "Plain" ? ready.end : Effect.void)
       const { config, started, scope, spec } = choice

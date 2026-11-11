@@ -26,7 +26,9 @@ export interface Power {
   /**
    * The keep-awake command, started in the run's scope `runScope`, which it closes with, its line
    * in the log, `before` run first, as the run begins: nothing where there is no command, or where
-   * `holdFirst` started it already.
+   * `holdFirst` or an earlier `hold` started it already, so that a run whose beginning is called
+   * more than once (a spec refined in the renderer, then the open questions put there) starts it
+   * once.
    */
   readonly hold: (
     runScope: Scope.Scope,
@@ -34,10 +36,43 @@ export interface Power {
   ) => ReturnType<typeof keepAwake>
   /**
    * The keep-awake command started before the run begins, in `runScope`, as an overnight run does
-   * before its pre-flight: `hold` then starts nothing. Nothing where there is no command.
+   * before its pre-flight: `hold` then starts nothing. Nothing where there is no command, or where
+   * it is started already.
    */
   readonly holdFirst: (runScope: Scope.Scope) => ReturnType<typeof keepAwake>
 }
+
+/** The keep-awake command's hold on the machine: `Power` less the reading. */
+export type Hold = Pick<Power, "keepingAwake" | "runOption" | "hold" | "holdFirst">
+
+/**
+ * The hold of the keep-awake command `awake` plans, run in `repo`: started once per run, by
+ * `holdFirst` or the first `hold` to be called, whichever comes first; the later calls start
+ * nothing, `hold` not running its `before` either.
+ */
+export const holdOf = (awake: KeepAwakePlan, repo: string): Effect.Effect<Hold> =>
+  Effect.gen(function* () {
+    const keepingAwake = yield* SubscriptionRef.make(false)
+    let kept = false
+    const keep = (runScope: Scope.Scope) =>
+      Effect.gen(function* () {
+        if (awake._tag !== "Command") return
+        yield* keepAwake(awake.command, repo, keepingAwake).pipe(Scope.provide(runScope))
+        kept = true
+      })
+    return {
+      keepingAwake,
+      runOption: () =>
+        awake._tag === "Command" ? { keepingAwake: SubscriptionRef.changes(keepingAwake) } : {},
+      hold: (runScope, before = Effect.void) =>
+        Effect.gen(function* () {
+          if (awake._tag !== "Command" || kept) return
+          yield* before
+          yield* keep(runScope)
+        }),
+      holdFirst: (runScope) => Effect.suspend(() => (kept ? Effect.void : keep(runScope))),
+    }
+  })
 
 /**
  * The machine's power as the run `config` describes reads it: the keep-awake command, or the
@@ -64,27 +99,7 @@ export const power = (config: Pick<AppConfigValue, "keepAwake" | "repo">) =>
       ...(lid === null ? [] : [lid]),
       ...(onBattery === null ? [] : [onBattery]),
     ]
-    const keepingAwake = yield* SubscriptionRef.make(false)
-    let kept = false
-    const made: Power = {
-      awake,
-      battery,
-      notes,
-      keepingAwake,
-      runOption: () =>
-        awake._tag === "Command" ? { keepingAwake: SubscriptionRef.changes(keepingAwake) } : {},
-      hold: (runScope, before = Effect.void) =>
-        Effect.gen(function* () {
-          if (awake._tag !== "Command" || kept) return
-          yield* before
-          yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(Scope.provide(runScope))
-        }),
-      holdFirst: (runScope) =>
-        Effect.gen(function* () {
-          if (awake._tag !== "Command") return
-          yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(Scope.provide(runScope))
-          kept = true
-        }),
-    }
+    const hold = yield* holdOf(awake, config.repo)
+    const made: Power = { awake, battery, notes, ...hold }
     return made
   })
