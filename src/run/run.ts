@@ -103,7 +103,7 @@ import { dependentFollowUps, scorecardsEvidence, scorecardsReport } from "../ser
 import { awakeSince } from "../services/Wake.ts"
 import { askedQuestions, readAnswers, takeAnswers } from "./asked.ts"
 import { askedLook } from "./askedLook.ts"
-import { off as auditorOff, followEnds, make as makeAuditor } from "./auditor.ts"
+import { off as auditorOff, followEnds } from "./auditor.ts"
 import {
   AutoAnswer,
   answeredQuestions,
@@ -116,11 +116,8 @@ import { make as makeBlockedWatch } from "./blockedWatch.ts"
 import { clearStaleLocks } from "./branch.ts"
 import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carry.ts"
 import { make as makeChecksGate } from "./checksGate.ts"
-import { closedBranches } from "./closedBranches.ts"
-import { off as criticOff, make as makeCritic } from "./critic.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
 import { hear } from "./drain.ts"
-import { make as makeEarlyChecks } from "./earlyCheck.ts"
 import { make as makeEndOfRun } from "./endOfRun.ts"
 import { removeLeftProbes } from "./environment.ts"
 import { featureRequestHeading } from "./feature.ts"
@@ -146,10 +143,10 @@ import { Load, pressing, watchLoad } from "./load.ts"
 import { watchLogins } from "./login.ts"
 import { make as makeLoop } from "./look.ts"
 import { hasRoom, make as makeMachineGate, type Room } from "./machineGate.ts"
-import { make as makeQueue, type QueueState } from "./mergequeue.ts"
+import type { QueueState } from "./mergequeue.ts"
 import { putBackLeft } from "./mergetrain.ts"
 import type { TicketPhase } from "./phase.ts"
-import { make as makePlaybook, off as playbookOff } from "./playbookRun.ts"
+import { off as playbookOff } from "./playbookRun.ts"
 import { make as makePredictor } from "./predict.ts"
 import { capEvidence } from "./pressureCap.ts"
 import { backoff, failedRead, lasted, type Outage, readDue, sustained } from "./queueOutage.ts"
@@ -179,6 +176,7 @@ export {
 } from "./run/shared.ts"
 
 import { make as makeHolds } from "./run/holds.ts"
+import { make as makeMergeSide } from "./run/mergeSide.ts"
 import { make as makeServices } from "./run/services.ts"
 import {
   causeStop,
@@ -245,94 +243,15 @@ const runFrom = (
       triage,
       limitReached,
       gate,
-      noMore,
       slots,
-      recheckSlot,
       machineFull,
       pressed,
-      machineLoaded,
       pressure,
       disk,
       overnight,
     } = runHolds
-    // Each finished ticket's branch checked early, while its worker's verifier runs, in the check
-    // slot every other check takes (earlyCheck.ts).
-    const early = yield* makeEarlyChecks({
-      repo: config.repo,
-      base,
-      setup: Effect.map(setUps.now, (setup) => setup.command),
-      held: pressure.pressed,
-      loaded: machineLoaded,
-    })
-    // The critic (critic.ts), when the run has organs: told of each merge, it reviews the merges due
-    // one at a time, each in a slot the look's fill left free, with no merge under way and the
-    // memory not pressed (`criticIdle`, set once the scheduler is made). Each review's end wakes
-    // the run, which doesn't end while one runs.
-    const criticIdle = yield* Ref.make<Effect.Effect<boolean>>(Effect.succeed(false))
-    const critic = Option.isNone(organs)
-      ? criticOff
-      : yield* makeCritic({
-          repo: config.repo,
-          idle: Effect.flatten(Ref.get(criticIdle)),
-          done: wakeUp("verdict"),
-        }).pipe(Effect.provideService(Organs, organs.value))
-    // The auditor (auditor.ts), when the run has organs and organs.auditor is on: told of each
-    // ticket whose part in the run ends (followEnds, below), it audits its worker's transcript in
-    // the background. Each audit's end wakes the run, which doesn't end while one waits.
-    const auditor = Option.isNone(organs)
-      ? auditorOff
-      : yield* makeAuditor({ repo: config.repo, done: wakeUp("verdict") }).pipe(
-          Effect.provideService(Organs, organs.value),
-        )
-    // The playbook (playbookRun.ts): what each ticket dispatched is given of it, counted as it ends
-    // (followEnds, below), and, when the run has organs, a reflection every so many ends in the
-    // background. Each reflection's end wakes the run, which doesn't end while one waits.
-    const playbook = yield* makePlaybook({
-      repo: config.repo,
-      organs,
-      done: wakeUp("verdict"),
-    })
-    const queue = yield* makeQueue(
-      {
-        repo: config.repo,
-        base,
-        early,
-        merged: critic.merged,
-        noMore,
-        atReset: usage.atReset,
-        recheckSlot,
-        setUps,
-        // No ticket is checked ahead of its turn while the run holds at the machine's cap, nor while
-        // the memory is pressed.
-        machineFull: Effect.map(
-          Effect.all([machineFull, pressure.pressed]),
-          ([full, hard]) => full || hard,
-        ),
-        loaded: machineLoaded,
-        ...overnight,
-      },
-      (where, defect) =>
-        panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
-    )
-    // The merge that stopped the merges, taken up once, by its watcher or by the end.
-    const mergeStopSeen = yield* Ref.make(false)
-    const mergeStop = (state: QueueState) =>
-      Effect.gen(function* () {
-        const stop = state.stop
-        if (stop === null || (yield* Ref.getAndSet(mergeStopSeen, true))) return
-        yield* showOn(status, "mergesStopped")(true)
-        yield* stopped(
-          stopOfLine(stop, {
-            ticket: stop.ticket,
-            recorded: stop.why === "MERGE_FAILED",
-            held: true,
-          }),
-        )
-      })
-
-    // A closed blocker the run knows nothing of hasn't merged while git finds its work only on its
-    // branch (closedBranches.ts): the holds, WAITS_FOR_MERGE and DEFERRED_FREE all count it so.
-    const branches = yield* closedBranches({ repo: config.repo, base })
+    const merge = yield* makeMergeSide(services, runHolds)
+    const { early, criticIdle, critic, auditor, playbook, queue, mergeStop, branches } = merge
 
     // A ticket's fiber, dispatched or carried over: its work, and the stop it ended with, if any.
     const onTicketLimit = (ticket: TicketId) => (stop: StopReason) =>
