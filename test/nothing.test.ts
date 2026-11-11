@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test"
 import { Console, Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
+import type { Log } from "../src/core/log.ts"
 import * as free from "../src/run/deferredFree.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
-import type { Log } from "../src/run/log.ts"
 import {
   box,
   check,

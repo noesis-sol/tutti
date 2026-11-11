@@ -7,16 +7,6 @@ import { ConfigProvider, Duration, Effect, Exit, Option, Result } from "effect"
 import { Command } from "effect/cli"
 import fc from "fast-check"
 import {
-  AppConfig,
-  type AppConfigValue,
-  defaultSettings,
-  defaultUserConfig,
-  load,
-  resolve,
-  type SetupProblem,
-  type Sources,
-} from "../src/cli/AppConfig.ts"
-import {
   cliFlags,
   count,
   noFlags,
@@ -26,6 +16,14 @@ import {
   runFlags,
   variableOf,
 } from "../src/cli/flags.ts"
+import {
+  defaultSettings,
+  defaultUserConfig,
+  load,
+  resolve,
+  type Sources,
+} from "../src/cli/resolveConfig.ts"
+import { AppConfig, type AppConfigValue, type SetupProblem } from "../src/core/AppConfig.ts"
 import type { Settings } from "../src/project/settings.ts"
 import type { UserConfig } from "../src/project/userConfig.ts"
 import { defaultMachineWorkers, defaultMachineWorkersFrom, runsDir } from "../src/run/machine.ts"

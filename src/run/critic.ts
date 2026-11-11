@@ -30,7 +30,8 @@
 // Off with the settings' organs.critic false, or a run without organs. A quit interrupts the review
 // under way, and those due are dropped.
 import { Cause, Effect, FiberSet, Ref, Result, type Scope } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { causeWhy, detail, type Line, type Log, line, Tag } from "../core/log.ts"
 import {
   conventionFiles,
   conventionsCharacters,
@@ -59,7 +60,6 @@ import { Git, gitWhy, shortHash } from "../services/Git.ts"
 import type { Event, findingDropped, reviewTriggers } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
-import { causeWhy, detail, type Line, type Log, line, Tag } from "./log.ts"
 import { sayer } from "./say.ts"
 import { ranked, type Score, scorecardsEvidence } from "./scorecard.ts"
 

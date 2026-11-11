@@ -13,8 +13,8 @@ import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { coresVariable } from "../src/agent/env.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { defaultSettings } from "../src/cli/AppConfig.ts"
-import { line } from "../src/run/log.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
+import { line } from "../src/core/log.ts"
 import {
   OtherWorkers,
   type OtherWorkersValue,

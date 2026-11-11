@@ -2,10 +2,10 @@
 // record's text is the line, so the log and the event stream can't say it differently, and Log's
 // writeWith keeps another fiber's line from coming between them.
 import { Effect } from "effect"
+import { type Line, Log } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
-import { type Line, Log } from "./log.ts"
 
 /** A record whose text is its log line, as the run writes it. */
 export type Said = Extract<Event, { readonly text: string }> & { readonly text: Line }

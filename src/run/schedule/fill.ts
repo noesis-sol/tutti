@@ -3,6 +3,7 @@
 // loop in named steps: the queue as it is now (lineUp), what holds each ticket in line back
 // (holdsOf), the pick (choose), and the start or the placing of the rest (startOrPlace).
 import { Duration, Effect, Ref } from "effect"
+import { type Line, line } from "../../core/log.ts"
 import { type BeadsError, beadsWhy, type Issue, type TicketId } from "../../services/Beads.ts"
 import { ticketIdProblem } from "../../services/Worktrees.ts"
 import { type Again, retrying } from "../again.ts"
@@ -26,7 +27,6 @@ import {
   waitsOnLinks,
 } from "../holds.ts"
 import type { State } from "../ledger.ts"
-import { type Line, line } from "../log.ts"
 import { type HoldBack, Move, TicketPhase } from "../phase.ts"
 import { footprintOf } from "../predict.ts"
 import type { Filled } from "../schedule.ts"

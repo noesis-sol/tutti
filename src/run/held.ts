@@ -25,10 +25,10 @@
 // permit, spans the move, so a merge's `over` doesn't wait on an offer that waits on the ledger.
 import { Effect, Ref, Semaphore } from "effect"
 import type { MessageUuid } from "../agent/AgentHost.ts"
+import { detail, type Log } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger, showsCard } from "./ledger.ts"
-import { detail, type Log } from "./log.ts"
 import type { TicketPhase } from "./phase.ts"
 import { info } from "./say.ts"
 import { lengthOf, type SteerEnv, sendMessage, steer } from "./steer.ts"

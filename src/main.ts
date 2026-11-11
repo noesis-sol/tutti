@@ -49,7 +49,6 @@ import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
 import { UsageProbe } from "./agent/UsageProbe.ts"
 import { talkHere } from "./answer/talkHere.ts"
-import { AppConfig } from "./cli/AppConfig.ts"
 import {
   checkoutOf,
   mainCheckout,
@@ -60,6 +59,9 @@ import {
 } from "./cli/commands.ts"
 import type { RunFlags } from "./cli/flags.ts"
 import { tuttiVersion } from "./cli/version.ts"
+import { AppConfig } from "./core/AppConfig.ts"
+import { runStarted } from "./core/localTime.ts"
+import { detail, type Line, Log, type Sink } from "./core/log.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
@@ -92,8 +94,6 @@ import { inRenderer } from "./run/inRenderer.ts"
 import { type InterviewScreen, interview, interviewEnding } from "./run/interview.ts"
 import { type KeepAwakePlan, keepAwake, keepAwakePlan, lidNote } from "./run/keepAwake.ts"
 import { Load, liveLoad } from "./run/load.ts"
-import { runStarted } from "./run/localTime.ts"
-import { detail, type Line, Log, type Sink } from "./run/log.ts"
 import { otherRuns, otherWorkers } from "./run/machine.ts"
 import {
   check as checkNothing,

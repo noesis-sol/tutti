@@ -31,7 +31,7 @@ import type {
   SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
-import type { AppConfigValue } from "../cli/AppConfig.ts"
+import type { AppConfigValue } from "../core/AppConfig.ts"
 import {
   askUserQuestionTool,
   checkNote,

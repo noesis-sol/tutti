@@ -22,7 +22,7 @@ import {
 import { queryThrew } from "../src/agent/claudeBinary.ts"
 import { WorkerEnv, workerEnv } from "../src/agent/env.ts"
 import { withStderr } from "../src/agent/sessionProcess.ts"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 
 const key = "sk-ant-test"

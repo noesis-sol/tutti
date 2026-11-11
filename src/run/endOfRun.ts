@@ -9,7 +9,8 @@
 import { Clock, Deferred, Duration, Effect, Result, type SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import type { AutoAnswered } from "../agent/Attention.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, type Line, Log, line } from "../core/log.ts"
 import { type Section, section } from "../organs/evidence.ts"
 import {
   type AutoAnsweredItem,
@@ -35,7 +36,6 @@ import { type FiguresLine, figuresLines, figuresText } from "./figures.ts"
 import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
 import { firstStop, type Stops, stopsLine } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
-import { detail, type Line, Log, line } from "./log.ts"
 import { closedAfter } from "./merge.ts"
 import { finished } from "./notices.ts"
 import { Move, stopsAtEnd, type TicketPhase } from "./phase.ts"

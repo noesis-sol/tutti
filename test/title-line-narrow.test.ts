@@ -3,7 +3,7 @@
 // stays whole, where the line used to keep its left and cut the banners on the right.
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { resetLabel } from "../src/run/localTime.ts"
+import { resetLabel } from "../src/core/localTime.ts"
 import type { Banner, TitleView } from "../src/run/runView.ts"
 import { widthOf } from "../src/ui/line.tsx"
 import { titleSegments } from "../src/ui/TitleLine.tsx"

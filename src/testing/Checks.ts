@@ -3,7 +3,7 @@
 // and runs nothing; only running a command differs. Each kind of check takes its results from its
 // own list, in order; once the list is used up, it passes with nothing said. Every run is recorded.
 import { type Duration, Effect, Layer } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
 import {
   type CheckError,
   type CheckKind,

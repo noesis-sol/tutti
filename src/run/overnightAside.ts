@@ -29,12 +29,12 @@ import { Deferred, Effect, Option, Ref, type Scope } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention, type AttentionRequest, blockedAfter, describe } from "../agent/Attention.ts"
 import { settled } from "../agent/WorkerState.ts"
+import { detail, type Log } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Beads, TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { putAside } from "./aside.ts"
 import type { Ledger } from "./ledger.ts"
-import { detail, type Log } from "./log.ts"
 import type { StartedWorker, StartTicket } from "./start.ts"
 
 /** The stops an overnight run sets a ticket aside for, rather than hold the run. */

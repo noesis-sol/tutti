@@ -4,9 +4,9 @@
 
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
+import { detail, type Log, line } from "../src/core/log.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { detail, type Log, line } from "../src/run/log.ts"
 import { Move } from "../src/run/phase.ts"
 import { info, say, sayer, warn } from "../src/run/say.ts"
 import type { TicketId } from "../src/services/Beads.ts"

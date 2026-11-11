@@ -10,6 +10,7 @@
 // predicting one ticket is PREDICT_FAILED in the log: that ticket keeps its empty footprint, and the
 // queue goes on.
 import { Cause, Effect, FiberSet, Queue, Ref, Result, type Scope } from "effect"
+import { causeWhy, detail, type Line, Log, line, Tag } from "../core/log.ts"
 import { type OrganError, Organs } from "../organs/Organs.ts"
 import { predictFiles } from "../organs/predictor.ts"
 import { Beads, beadsWhy, type Issue, MetadataKey, type TicketId } from "../services/Beads.ts"
@@ -17,7 +18,6 @@ import { Git } from "../services/Git.ts"
 import { RunFibers } from "./fibers.ts"
 import { branchFootprint, type Footprint, isEmpty, ticketFootprint } from "./footprint.ts"
 import { isSolo } from "./holds.ts"
-import { causeWhy, detail, type Line, Log, line, Tag } from "./log.ts"
 import type { RepoFiles } from "./repoFiles.ts"
 import { readVendored } from "./vendored.ts"
 

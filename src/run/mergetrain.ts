@@ -45,7 +45,8 @@ import {
   type Stream,
   SubscriptionRef,
 } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, type Line, Log, line, Tag, ticketLine } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Checks } from "../services/Checks.ts"
 import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
@@ -58,7 +59,6 @@ import { gitReads, onBranch, type Restored, restoreBranch } from "./branch.ts"
 import { Checked, checkOnce, clearUnchecked, failedHow, outputKept } from "./check.ts"
 import { holdingSlot } from "./earlyCheck.ts"
 import { RunFibers } from "./fibers.ts"
-import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import {
   type CheckWatch,
   type FinishedTicket,

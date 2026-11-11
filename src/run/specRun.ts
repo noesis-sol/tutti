@@ -36,7 +36,8 @@ import {
 } from "../agent/breakdown.ts"
 import { type BreakdownState, filedAny } from "../agent/breakdownTools.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { type Arg, type Line, Log, line, Tag } from "../core/log.ts"
 import { dollars } from "../organs/OrganCost.ts"
 import { duration, type OrganLine, type Printer } from "../print/organLine.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -46,7 +47,6 @@ import { writeRunFile } from "../services/Worktrees.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import { exitCodes } from "./holds.ts"
 import { type InterviewScreen, inInterviewView } from "./interview.ts"
-import { type Arg, type Line, Log, line, Tag } from "./log.ts"
 import {
   checkFiled,
   commitSpec,

@@ -13,9 +13,9 @@ import { Console, Effect, Exit, Layer, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { Account, type AccountInfo, type AccountProbe, billingLine } from "../agent/Account.ts"
 import type { Claude } from "../agent/claudeBinary.ts"
+import { AppConfig } from "../core/AppConfig.ts"
 import { onMusl } from "../native/musl.ts"
 import { failures } from "../run/startup.ts"
-import { AppConfig } from "./AppConfig.ts"
 
 /** A command and its arguments. */
 export interface CommandLine {

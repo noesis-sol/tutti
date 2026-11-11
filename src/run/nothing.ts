@@ -6,6 +6,7 @@
 // blockers have merged (DEFERRED_FREE). The run then prints that in a box on the main screen, or
 // as plain lines, and exits 0 without a dashboard, triage, a report or a notification.
 import { Console, Effect, Result } from "effect"
+import { dated, detail, type Line, Log, line } from "../core/log.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import type { Worktrees } from "../services/Worktrees.ts"
@@ -17,7 +18,6 @@ import type { Branches } from "./closedBranches.ts"
 import * as free from "./deferredFree.ts"
 import { EventStream } from "./eventstream.ts"
 import { exitCodes, waitsOnLinks } from "./holds.ts"
-import { dated, detail, type Line, Log, line } from "./log.ts"
 import { say } from "./say.ts"
 import * as scope from "./scope.ts"
 import { endRecord } from "./spending.ts"

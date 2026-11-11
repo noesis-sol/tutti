@@ -9,6 +9,7 @@
 // memory is pressed the optional checks (the early check, the train's checks ahead) start none.
 // pressure_cap false in .tutti/settings.json turns the cap off: the readings are still recorded.
 import { Clock, Effect, Ref, type SubscriptionRef } from "effect"
+import type { Log } from "../core/log.ts"
 import { EventStream } from "./eventstream.ts"
 import { type PressureHold, withPressureHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
@@ -19,7 +20,6 @@ import {
   type Reading,
   swappingPerMinute,
 } from "./load.ts"
-import type { Log } from "./log.ts"
 import type { Room } from "./machineGate.ts"
 import {
   type Cap,

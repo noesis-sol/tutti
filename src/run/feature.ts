@@ -2,7 +2,7 @@
 // <epic> scopes one: AppConfig's ticket the epic, and a spec run's spec path or a feature run's
 // request beside it.
 import { Effect } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { ellipsis } from "../text/marks.ts"
 

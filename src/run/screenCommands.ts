@@ -13,7 +13,7 @@
 import { Effect, Queue, Ref, Result, Semaphore, Stream, SubscriptionRef } from "effect"
 import { Attention } from "../agent/Attention.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
-import type { AppConfig } from "../cli/AppConfig.ts"
+import type { AppConfig } from "../core/AppConfig.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { resolve, type UiCommand } from "./commands.ts"

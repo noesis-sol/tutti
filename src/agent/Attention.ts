@@ -59,15 +59,15 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import type { AnswerWord } from "../core/answerWith.ts"
+import * as log from "../core/log.ts"
+import { Log } from "../core/log.ts"
 import type { AttentionQuestion, Event } from "../run/events.ts"
 import { EventStream } from "../run/eventstream.ts"
-import * as log from "../run/log.ts"
-import { Log } from "../run/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { sleepAwake } from "../services/Wake.ts"
 import { ellipsis } from "../text/marks.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
-import type { AnswerWord } from "./attentionFiles.ts"
 import type { SessionFibers } from "./callbacks.ts"
 import { aboutOf } from "./tools.ts"
 

@@ -9,11 +9,11 @@
 // denied in nobody's name, nobody being there to answer, and the run goes on (tutti-epza.10).
 import { Duration, Effect, Ref, Semaphore, Stream } from "effect"
 import { Attention, type AttentionRequest, overnightDenial } from "../agent/Attention.ts"
+import type { Log } from "../core/log.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import type { EventStream } from "./eventstream.ts"
 import { blockedAt, blockedLifted, blockedStop, blockedTickets, liftBlocked } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
-import type { Log } from "./log.ts"
 import { blockedDenied, blockedStuck, type OvernightAside } from "./overnightAside.ts"
 import { sayer } from "./say.ts"
 import type { Wake } from "./wakes.ts"

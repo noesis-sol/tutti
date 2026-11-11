@@ -24,8 +24,8 @@
 // time: `setting up the full check: bun install · 12s`, then `full check: scripts/check-full.sh ·
 // 1m12s`.
 import { memo, useCallback, useMemo } from "react"
+import { pad } from "../core/localTime.ts"
 import type { FullCheckRun } from "../run/fullcheck.ts"
-import { pad } from "../run/localTime.ts"
 import { activityRows } from "../run/phase.ts"
 import { type Card, isAtWork, type ShownRequest } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"

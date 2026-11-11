@@ -5,12 +5,12 @@
 // that does, that keeping awake can't prevent it.
 import { Duration, Effect, type FileSystem, Stream } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
+import { clock, clockFrom, timestamp } from "../core/localTime.ts"
+import { detail, type Line, Log, Tag, tagged } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { type Sleep, Wake } from "../services/Wake.ts"
 import { tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
-import { clock, clockFrom, timestamp } from "./localTime.ts"
-import { detail, type Line, Log, Tag, tagged } from "./log.ts"
 import { type SleepCause, SleepCauses } from "./sleepCause.ts"
 
 /** How long `ms` is, as the SLEPT line says it: to the second under a minute, else the minute. */

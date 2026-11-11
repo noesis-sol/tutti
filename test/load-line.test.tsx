@@ -9,6 +9,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, Effect, Fiber, SubscriptionRef } from "effect"
 import { WorkerState } from "../src/agent/WorkerState.ts"
+import { line } from "../src/core/log.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import {
@@ -20,7 +21,6 @@ import {
   type Reading,
   unknownMemory,
 } from "../src/run/load.ts"
-import { line } from "../src/run/log.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
 import {

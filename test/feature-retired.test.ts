@@ -9,15 +9,14 @@ import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Option, Result } from "effect"
 import { Command } from "effect/cli"
 import { schemaText } from "../scripts/gen-schemas.ts"
+import { cliFlags, noFlags, type RunFlags, retiredFlags } from "../src/cli/flags.ts"
 import {
-  type AppConfigValue,
   defaultSettings,
   defaultUserConfig,
-  defaultUserFile,
   resolve,
   type Sources,
-} from "../src/cli/AppConfig.ts"
-import { cliFlags, noFlags, type RunFlags, retiredFlags } from "../src/cli/flags.ts"
+} from "../src/cli/resolveConfig.ts"
+import { type AppConfigValue, defaultUserFile } from "../src/core/AppConfig.ts"
 import { organNames } from "../src/organs/Organs.ts"
 import { decodeConfig } from "../src/project/configFile.ts"
 import { Settings, settingsFile } from "../src/project/settings.ts"

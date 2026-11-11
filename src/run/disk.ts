@@ -4,8 +4,9 @@
 // event log grow, and a disk that fills fails the tickets one after another (GIT_FAILED,
 // STATE_UNWRITABLE): held, the workers running go on and merge, and nothing new takes more space.
 // The thresholds are load.ts's, beside its others; the gate is diskGate.ts.
+
+import { type Line, line, Tag, tagged } from "../core/log.ts"
 import { type DiskFree, diskClear, diskFloor } from "./load.ts"
-import { type Line, line, Tag, tagged } from "./log.ts"
 import { gb } from "./processes.ts"
 
 /** The word of the disk hold, on the dashboard's title line while it holds. */

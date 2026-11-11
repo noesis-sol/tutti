@@ -54,7 +54,18 @@
 // (recheck.ts).
 import { Data, Effect, Result } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import {
+  type Arg,
+  branchOn,
+  detail,
+  type Line,
+  Log,
+  line,
+  Tag,
+  tagged,
+  ticketLine,
+} from "../core/log.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
 import {
@@ -123,7 +134,6 @@ import {
   whyHandBacksOff,
 } from "./handback.ts"
 import { type Entry, Ledger } from "./ledger.ts"
-import { type Arg, branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import type { OvernightAside } from "./overnightAside.ts"
 import { Detail, Move } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"

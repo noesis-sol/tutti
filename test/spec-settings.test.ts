@@ -3,14 +3,10 @@
 // are setup problems, and orchestra's spec_timeout and spec_effort imported by init.
 import { describe, expect, test } from "bun:test"
 import { Duration, Option, Result } from "effect"
-import {
-  type AppConfigValue,
-  defaultSettings,
-  defaultUserConfig,
-  resolve,
-} from "../src/cli/AppConfig.ts"
 import { specFormFlags, specInit, specSetupFlags } from "../src/cli/commands.ts"
 import { noFlags, type RunFlagName } from "../src/cli/flags.ts"
+import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/resolveConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { importSettings } from "../src/init/import.ts"
 
 const resolved = (

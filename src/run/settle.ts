@@ -33,6 +33,7 @@ import {
   tasksOnlySince,
   WorkerState,
 } from "../agent/WorkerState.ts"
+import { detail, Log } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
   Beads,
@@ -57,7 +58,6 @@ import { retrying } from "./again.ts"
 import { onBranch, steering } from "./branch.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
-import { detail, Log } from "./log.ts"
 import type { MergeEnv } from "./merge.ts"
 import type { Stuck } from "./overnightAside.ts"
 import { readAgain, readOutlasting } from "./schedule.ts"

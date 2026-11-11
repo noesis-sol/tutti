@@ -38,7 +38,8 @@
 // its line saying why.
 import { Data, Effect, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { branchOn, detail, fixing, Log, line } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
 import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
@@ -59,7 +60,6 @@ import {
 } from "./handback.ts"
 import { usageHolds } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
-import { branchOn, detail, fixing, Log, line } from "./log.ts"
 import {
   checksFailed,
   type FinishedTicket,

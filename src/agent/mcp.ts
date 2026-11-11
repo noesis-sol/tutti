@@ -22,7 +22,7 @@
 import { join, resolve } from "node:path"
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
 import { Config, Effect, FileSystem, Option, Predicate, Result, Schema } from "effect"
-import { SetupProblem } from "../cli/AppConfig.ts"
+import { SetupProblem } from "../core/AppConfig.ts"
 import { accountHome } from "../project/userConfig.ts"
 
 /** The config scopes a name is resolved from, in Claude Code's order. */

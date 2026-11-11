@@ -34,7 +34,8 @@ import {
 } from "effect"
 import { Attention } from "../agent/Attention.ts"
 import { type Item, Transcripts } from "../agent/Transcripts.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { causeWhy, detail, filed, type Line, Log, line, Tag } from "../core/log.ts"
 import { type OrganError, Organs } from "../organs/Organs.ts"
 import { ticketText } from "../organs/predictor.ts"
 import {
@@ -53,7 +54,6 @@ import { allChangeEntries } from "../services/gitStatus.ts"
 import type { EnvironmentHold } from "./environment.ts"
 import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
-import { causeWhy, detail, filed, type Line, Log, line, Tag } from "./log.ts"
 import { attentionLines, attentionSaid } from "./report.ts"
 import { sayer } from "./say.ts"
 

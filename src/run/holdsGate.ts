@@ -4,6 +4,7 @@
 // line and its notice, and beside them the battery's notice (battery.ts). A stop holds the run: said as it comes while tickets still run, unless its
 // line was, and the run is woken to look again.
 import { Effect, Option, SubscriptionRef } from "effect"
+import { hold, type Log } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { EventStream } from "./eventstream.ts"
 import {
@@ -15,7 +16,6 @@ import {
   shownHolds,
 } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
-import { hold, type Log } from "./log.ts"
 import { phaseFacts, type TicketPhase } from "./phase.ts"
 import type { Status } from "./runView.ts"
 import { same } from "./same.ts"

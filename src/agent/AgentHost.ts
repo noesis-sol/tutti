@@ -46,9 +46,9 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import { detail, Log } from "../core/log.ts"
 import type { efforts, WorkerChecks } from "../project/settings.ts"
 import { EventStream } from "../run/eventstream.ts"
-import { detail, Log } from "../run/log.ts"
 import { Spending } from "../run/spending.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Attention } from "./Attention.ts"

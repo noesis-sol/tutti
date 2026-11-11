@@ -4,14 +4,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Effect, Exit, Option, Result } from "effect"
-import {
-  type AppConfigValue,
-  defaultSettings,
-  defaultUserConfig,
-  load,
-  resolve,
-} from "../src/cli/AppConfig.ts"
 import { noFlags, type RunFlagName } from "../src/cli/flags.ts"
+import { defaultSettings, defaultUserConfig, load, resolve } from "../src/cli/resolveConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { live } from "../src/run/startup.ts"
 
 const repo = "/work/project"

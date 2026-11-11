@@ -6,8 +6,8 @@
 // drops the keep-awake badge first, then the auto-answer pill, then the branch and the time, then shortens the usage, and keeps the holds'
 // words longest.
 import { Duration } from "effect"
+import { resetLabel } from "../core/localTime.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { resetLabel } from "../run/localTime.ts"
 import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
 import { marks, separator } from "../text/marks.ts"
 import { firstFitting } from "./fit.ts"

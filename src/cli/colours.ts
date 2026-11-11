@@ -7,6 +7,7 @@
 import { Console, Effect } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { WorkerState } from "../agent/WorkerState.ts"
+import { AppConfig } from "../core/AppConfig.ts"
 import { Finished, TicketPhase } from "../run/phase.ts"
 import {
   type Card,
@@ -39,7 +40,6 @@ import {
   roles,
   type Theme,
 } from "../ui/theme.ts"
-import { AppConfig } from "./AppConfig.ts"
 
 /** What the preview is drawn from. */
 export interface Preview {

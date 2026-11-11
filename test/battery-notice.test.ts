@@ -10,6 +10,7 @@ import { BunServices } from "@effect/platform-bun"
 import { type Duration, Effect, Fiber, Layer, SubscriptionRef } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
+import { line } from "../src/core/log.ts"
 import {
   Battery,
   type BatteryReading,
@@ -24,7 +25,6 @@ import {
 } from "../src/run/battery.ts"
 import { withBattery } from "../src/run/holds.ts"
 import { make as makeHoldsGate } from "../src/run/holdsGate.ts"
-import { line } from "../src/run/log.ts"
 import { notice } from "../src/run/notices.ts"
 import { run } from "../src/run/run.ts"
 import { emptyStatus, type Status } from "../src/run/runView.ts"

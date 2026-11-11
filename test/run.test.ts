@@ -7,6 +7,7 @@ import { Console, Duration, Effect, Exit, Fiber, Queue, type Scope } from "effec
 import { Command } from "effect/cli"
 import { AttentionPoll, requestFile } from "../src/agent/attentionFiles.ts"
 import { planServices, tuttiWith } from "../src/cli/commands.ts"
+import { type Line, line } from "../src/core/log.ts"
 import { gitAgainAfter, gitTries } from "../src/run/branch.ts"
 import type { DrainRequest } from "../src/run/drain.ts"
 import { drainLine, drainWords } from "../src/run/drain.ts"
@@ -20,7 +21,6 @@ import {
   stopOfLine,
   stopsLine,
 } from "../src/run/holds.ts"
-import { type Line, line } from "../src/run/log.ts"
 import { errorStop, type Outcome, panicStop, run } from "../src/run/run.ts"
 import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { Git, GitFailed } from "../src/services/Git.ts"

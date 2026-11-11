@@ -30,6 +30,7 @@
 // then, so its line says a later run takes it up when it is open, and to reopen it when it is in
 // progress, or else to finish it by hand. A ticket bd can't show waits for the next poll.
 import { Clock, Effect, Result } from "effect"
+import { detail, Log, line, Tag, ticketLine } from "../core/log.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
@@ -37,7 +38,6 @@ import type { OpenQuestion } from "../ui/questions.ts"
 import { leaveForReview } from "./aside.ts"
 import { answeredWith } from "./autoAnswer.ts"
 import { Ledger, type State } from "./ledger.ts"
-import { detail, Log, line, Tag, ticketLine } from "./log.ts"
 import { openQuestionOf } from "./overnightQuestions.ts"
 import { Move } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"

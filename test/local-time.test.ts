@@ -1,4 +1,4 @@
-// Times as tutti writes them for people (src/run/localTime.ts): a usage limit's reset says its day
+// Times as tutti writes them for people (src/core/localTime.ts): a usage limit's reset says its day
 // when it isn't today, in the banner, cards, log lines, notification and stop line, the report's
 // span its end date when it differs, and the log's stamp its UTC offset.
 
@@ -7,7 +7,6 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber, SubscriptionRef } from "effect"
-import { interviewStatus } from "../src/run/interview.ts"
 import {
   clock,
   clockFrom,
@@ -17,8 +16,9 @@ import {
   sameDay,
   span,
   stamp,
-} from "../src/run/localTime.ts"
-import { line } from "../src/run/log.ts"
+} from "../src/core/localTime.ts"
+import { line } from "../src/core/log.ts"
+import { interviewStatus } from "../src/run/interview.ts"
 import { compose, ranFrom } from "../src/run/report.ts"
 import { run } from "../src/run/run.ts"
 import { type RunView, stateStatus } from "../src/run/runView.ts"

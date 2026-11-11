@@ -14,8 +14,9 @@
 // row's rowParagraphs. The dashboard's keys and clicks act on it (Dashboard.tsx); a click target
 // names an option by its index, or one of panelTargets.
 // A narrower pane has no panel, and the table its whole width, as before.
+
+import { clock } from "../core/localTime.ts"
 import { afterParts } from "../run/after.ts"
-import { clock } from "../run/localTime.ts"
 import { someFiles } from "../run/merge.ts"
 import {
   isConflict,

@@ -136,7 +136,9 @@ _Add a brief overview of your project architecture_
 ## Conventions & Patterns
 
 - **Layout** follows the spec's Appendix B: `src/text` (the text helpers every layer uses; it
-  imports nothing from the other areas of `src/`), `src/cli`, `src/project`, `src/services`,
+  imports nothing from the other areas of `src/`), `src/core` (the Log and AppConfig services, the
+  clock and `answerWith`, below `src/services`, `src/agent` and `src/run`; it imports values only
+  from `src/text`, `src/native` and Effect), `src/cli`, `src/project`, `src/services`,
   `src/agent`, `src/run`, `src/organs`, `src/ui`, `src/print`, `src/update`; `src/main.ts` is the
   entry point, run with `BunRuntime.runMain`.
 - **Effect services.** Each service is a `Context.Service` with a live layer next to it and a test

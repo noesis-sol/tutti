@@ -31,7 +31,7 @@ import {
   requiresServerName,
 } from "../src/agent/requiresTools.ts"
 import { SessionKind } from "../src/agent/sessionKind.ts"
-import { defaultSettings } from "../src/cli/AppConfig.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import { builtInWorkerPrompt, requiresNote } from "../src/project/prompt.ts"
 import { requiresEnd, requiresStart } from "../src/project/requires.ts"
 import type { Requirement } from "../src/project/settings.ts"

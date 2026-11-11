@@ -18,7 +18,7 @@ import {
   serve,
   writeExclusive,
 } from "../src/agent/attentionFiles.ts"
-import type { Log } from "../src/run/log.ts"
+import type { Log } from "../src/core/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"

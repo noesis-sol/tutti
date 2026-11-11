@@ -12,7 +12,7 @@ import {
   orchestraMemoryVariable,
   shareFileVariable,
 } from "../agent/env.ts"
-import { type AppConfigValue, SetupProblem, workerPromptFile } from "../cli/AppConfig.ts"
+import { type AppConfigValue, SetupProblem, workerPromptFile } from "../core/AppConfig.ts"
 import { settingsFile } from "./settings.ts"
 import builtIn from "./templates/worker-prompt.md" with { type: "text" }
 

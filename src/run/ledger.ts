@@ -21,11 +21,11 @@ import {
   type Stream,
   SubscriptionRef,
 } from "effect"
+import * as log from "../core/log.ts"
+import { Log, Tag } from "../core/log.ts"
 import type { Issue, TicketId } from "../services/Beads.ts"
 import { type Event, type Phases, type TokensByModel, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
-import * as log from "./log.ts"
-import { Log, Tag } from "./log.ts"
 import {
   type Detail,
   type EndingPhase,

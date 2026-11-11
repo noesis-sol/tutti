@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber, Result } from "effect"
+import { line } from "../src/core/log.ts"
 import { type Summary, summary } from "../src/print/summary.ts"
 import { summaryLines } from "../src/run/endOfRun.ts"
 import { decodeLine, type Event } from "../src/run/events.ts"
@@ -21,7 +22,6 @@ import {
   noFigures,
   tokenCount,
 } from "../src/run/figures.ts"
-import { line } from "../src/run/log.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyView, type Row, RowDetail, rowStatus } from "../src/run/runView.ts"

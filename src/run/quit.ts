@@ -27,8 +27,8 @@ import { Duration, Effect, Queue, Ref, Runtime, type Scope, Stream } from "effec
 import { AgentHost } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { settled } from "../agent/WorkerState.ts"
+import { detail, type Line, Log, line } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { detail, type Line, Log, line } from "./log.ts"
 
 /** The signals that quit. */
 export type QuitSignal = "SIGINT" | "SIGTERM" | "SIGHUP"

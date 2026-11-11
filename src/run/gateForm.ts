@@ -10,7 +10,8 @@
 // checks as they are: a hold then files its question as without a terminal.
 import { Effect, type FileSystem, Layer, Result, SubscriptionRef } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, Log, Tag, tagged } from "../core/log.ts"
 import { setChecks } from "../init/setChecks.ts"
 import { type Machine, stepLine } from "../init/steps.ts"
 import type { Scouting } from "../organs/scout.ts"
@@ -24,7 +25,6 @@ import { FormCancelled } from "../ui/questions.ts"
 import { type GateAsk, gateFolderPrefix, type RunnerShown } from "./checksGate.ts"
 import type { EventStream } from "./eventstream.ts"
 import { leftWarning, worktreeWhy } from "./fullcheck.ts"
-import { detail, Log, Tag, tagged } from "./log.ts"
 
 /** The message of the commit a change made in the gate's form is committed with. */
 export const setChecksMessage = "tutti: set the checks"

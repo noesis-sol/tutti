@@ -5,8 +5,8 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { emptyTally, type Tally } from "../src/agent/Attention.ts"
+import * as log from "../src/core/log.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
-import * as log from "../src/run/log.ts"
 import { attentionSaid, talliesLine } from "../src/run/report.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 

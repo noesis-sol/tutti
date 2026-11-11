@@ -11,15 +11,14 @@ import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Effect, Exit, Option, Result } from "effect"
 import { Command } from "effect/cli"
 import { schemaText } from "../scripts/gen-schemas.ts"
+import { cliFlags, noFlags, type RunFlags, retiredFlags } from "../src/cli/flags.ts"
 import {
-  type AppConfigValue,
   defaultSettings,
   defaultUserConfig,
-  defaultUserFile,
   resolve,
   type Sources,
-} from "../src/cli/AppConfig.ts"
-import { cliFlags, noFlags, type RunFlags, retiredFlags } from "../src/cli/flags.ts"
+} from "../src/cli/resolveConfig.ts"
+import { type AppConfigValue, defaultUserFile } from "../src/core/AppConfig.ts"
 import { importSettings } from "../src/init/import.ts"
 import { latestVersion, promptChanges } from "../src/init/templates.ts"
 import { updateTemplates } from "../src/init/update.ts"

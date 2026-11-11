@@ -18,12 +18,7 @@ import {
 import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
 import { Account } from "../agent/Account.ts"
-import {
-  type AnswerWord,
-  answerWords,
-  readRequestFile,
-  requestIdPattern,
-} from "../agent/attentionFiles.ts"
+import { readRequestFile, requestIdPattern } from "../agent/attentionFiles.ts"
 import { ClaudeCode } from "../agent/ClaudeCode.ts"
 import { buildTarget, resolveClaude } from "../agent/claudeBinary.ts"
 import { WorkerEnv, workerEnv } from "../agent/env.ts"
@@ -38,6 +33,9 @@ import {
   type Talker,
   talkAnswer,
 } from "../answer/questions.ts"
+import { AppConfig, SetupProblem } from "../core/AppConfig.ts"
+import { type AnswerWord, answerWords } from "../core/answerWith.ts"
+import { Log } from "../core/log.ts"
 import { scoutCostSteps, scoutSearch } from "../init/checks.ts"
 import {
   type ChecksFlags,
@@ -66,7 +64,6 @@ import {
 } from "../print/initSummary.ts"
 import { maxConcurrent } from "../project/settings.ts"
 import { exitCodes } from "../run/holds.ts"
-import { Log } from "../run/log.ts"
 import { listen } from "../run/quit.ts"
 import { checkGit, findRepository } from "../run/startup.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
@@ -89,7 +86,6 @@ import {
 } from "../ui/theme.ts"
 import { releaseKeys } from "../update/keys.ts"
 import { type Build, githubReleases, update } from "../update/update.ts"
-import { AppConfig, load, loadLenient, SetupProblem, withScheme } from "./AppConfig.ts"
 import { colours } from "./colours.ts"
 import {
   cliFlags,
@@ -104,6 +100,7 @@ import {
 import { login, runInTerminal } from "./login.ts"
 import { playbook, playbookAct, playbookExits } from "./playbook.ts"
 import { requires, requiresExits } from "./requires.ts"
+import { load, loadLenient, withScheme } from "./resolveConfig.ts"
 import { buildKind, tuttiVersion } from "./version.ts"
 
 /** The main checkout of the repository `dir` is in: the first of its worktrees. */

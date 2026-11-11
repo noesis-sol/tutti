@@ -25,7 +25,8 @@ import {
   shareFileVariable,
 } from "../src/agent/env.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { defaultSettings } from "../src/cli/AppConfig.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
+import type { Log } from "../src/core/log.ts"
 import {
   type Kernel,
   memoryFloor,
@@ -38,7 +39,6 @@ import {
   type Reading,
   sample,
 } from "../src/run/load.ts"
-import type { Log } from "../src/run/log.ts"
 import {
   budgetOf,
   changeOf,

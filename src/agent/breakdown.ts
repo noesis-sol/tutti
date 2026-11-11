@@ -41,11 +41,11 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { resetLabel } from "../core/localTime.ts"
+import { Log, Tag, tagged } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import template from "../project/templates/spec-prompt.md" with { type: "text" }
-import { resetLabel } from "../run/localTime.ts"
-import { Log, Tag, tagged } from "../run/log.ts"
 import { countdown } from "../run/runView.ts"
 import { issueLine, type Spec, short, specUpdateFile } from "../run/spec.ts"
 import type { CheckedTree, FiledTree } from "../run/specTree.ts"

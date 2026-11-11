@@ -13,9 +13,9 @@ import {
   type Question,
   recommendedChoices,
 } from "../src/agent/Attention.ts"
+import type { Log } from "../src/core/log.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
-import type { Log } from "../src/run/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"

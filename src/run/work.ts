@@ -27,6 +27,7 @@
 // its worker's turn over, to be resumed when the answer is in.
 import { Clock, Deferred, Effect, Ref, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
+import { detail, type Line, type Log, line, Tag, tagged, ticketLine } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError, beadsWhy, type Status, type TicketId } from "../services/Beads.ts"
 import { type Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
@@ -41,7 +42,6 @@ import type { EventStream } from "./eventstream.ts"
 import { exitCodes, type StopReason, timeLimit } from "./holds.ts"
 import { lastRound } from "./lastRound.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, type Line, type Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import {
   limitStuck,

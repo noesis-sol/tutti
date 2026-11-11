@@ -27,9 +27,9 @@ import {
   WorkerEvent,
   type WorkerState,
 } from "../src/agent/WorkerState.ts"
-import { defaultSettings } from "../src/cli/AppConfig.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
+import type { Log } from "../src/core/log.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
-import type { Log } from "../src/run/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import {
   backgroundCommand,

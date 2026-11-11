@@ -71,11 +71,11 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, Log } from "../core/log.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
 import { readmeName } from "../project/requires.ts"
 import { checkCommands, type WorkerChecks } from "../project/settings.ts"
-import { detail, Log } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
 import { budgetOf, Shares, shareFileOf, shareOf } from "../run/share.ts"
 import type { TicketId } from "../services/Beads.ts"

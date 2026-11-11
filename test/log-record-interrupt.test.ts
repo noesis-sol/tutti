@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, Fiber, type Layer } from "effect"
-import { type Line, Log, type LogFile } from "../src/run/log.ts"
+import { type Line, Log, type LogFile } from "../src/core/log.ts"
 import * as TestLog from "../src/testing/Log.ts"
 
 /** A log file that keeps each write. */

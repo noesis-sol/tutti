@@ -38,7 +38,7 @@ import {
 } from "effect"
 import { Account } from "../agent/Account.ts"
 import { chromeServer, definedServers } from "../agent/mcp.ts"
-import { AppConfig, type AppConfigValue, type SetupProblem } from "../cli/AppConfig.ts"
+import { AppConfig, type AppConfigValue, type SetupProblem } from "../core/AppConfig.ts"
 import type { Scouting } from "../organs/scout.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
 import { setIn } from "../project/jsonText.ts"

@@ -7,11 +7,11 @@
 // workers has finished, so that the slot it freed is filled within seconds.
 import { Effect, type FileSystem, type Scope, type SubscriptionRef } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, Log } from "../core/log.ts"
 import type { EventStream } from "./eventstream.ts"
 import { withMachineHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
-import { detail, Log } from "./log.ts"
 import { holdLine, machinePoll, make as makeMachine, OtherWorkers } from "./machine.ts"
 import { type Status, showOn } from "./runView.ts"
 import { sayer } from "./say.ts"

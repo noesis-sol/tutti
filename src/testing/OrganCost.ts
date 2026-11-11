@@ -2,8 +2,8 @@
 // Log, so a test can read the ORGAN lines. The test layers whose calls cost (Organs, UsageProbe)
 // share the one their scenario has, as the run's organs and probe do (main.ts).
 import { Effect, Layer, Option } from "effect"
+import type { Log } from "../core/log.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
-import type { Log } from "../run/log.ts"
 import { layer as logLayer } from "./Log.ts"
 
 /** OrganCost, with the captured Log it writes to. */

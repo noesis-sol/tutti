@@ -15,7 +15,8 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber, Layer } from "effect"
 import fc from "fast-check"
 import { lexer, type Tokens } from "marked"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
+import type { Line } from "../src/core/log.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
 import {
@@ -24,7 +25,6 @@ import {
   fullCheckEvidence,
   fullCheckReport,
 } from "../src/run/fullcheck.ts"
-import type { Line } from "../src/run/log.ts"
 import { reportsDir } from "../src/run/report.ts"
 import { finish, run } from "../src/run/run.ts"
 import type { TicketId } from "../src/services/Beads.ts"

@@ -20,9 +20,9 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Layer, Stream } from "effect"
 import { AiError, LanguageModel } from "effect/ai"
+import type { Log } from "../core/log.ts"
 import { make, type OrganCallConfig, type Session } from "../organs/AgentSdkLanguageModel.ts"
 import type { OrganCost } from "../organs/OrganCost.ts"
-import type { Log } from "../run/log.ts"
 import { shared } from "./OrganCost.ts"
 
 /** A turn's SDK messages, played as a session would give them. */

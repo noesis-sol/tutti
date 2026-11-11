@@ -10,8 +10,8 @@
 // cutting the line never joins them. Tokens, model calls and the dollars at API prices are not
 // shown in the worker view (tutti-cxgo.6): the run's summary has its own Spent line.
 import type { ContextUsage } from "../../agent/contextUsage.ts"
+import { resetLabel } from "../../core/localTime.ts"
 import { dollarsText, tokenCount } from "../../run/figures.ts"
-import { resetLabel } from "../../run/localTime.ts"
 import type { Resources } from "../../run/resources.ts"
 import type { Usage } from "../../run/runView.ts"
 import { marks, separator } from "../../text/marks.ts"

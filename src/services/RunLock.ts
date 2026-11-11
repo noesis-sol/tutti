@@ -23,6 +23,7 @@
 import { fstatSync, ftruncateSync, readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Context, Effect, Exit, Layer, Option, Schema, Scope, Struct } from "effect"
+import { clock } from "../core/localTime.ts"
 import {
   close,
   flockExclusiveNonBlocking,
@@ -32,7 +33,6 @@ import {
   openUnder,
   unlock,
 } from "../native/libc.ts"
-import { clock } from "../run/localTime.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import { lenientKey, Positive } from "./lenient.ts"
 

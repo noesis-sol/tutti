@@ -17,17 +17,15 @@ import type { ChildProcessSpawner } from "effect/process"
 import { Account, type AccountProbe, billingLine, permissionModeLine } from "../agent/Account.ts"
 import { type Claude, resolveClaude } from "../agent/claudeBinary.ts"
 import { type ChosenServers, chromeServer, resolveServers } from "../agent/mcp.ts"
+import { noFlags, type RunFlags } from "../cli/flags.ts"
+import { defaultSettings, defaultUserConfig, load, resolve } from "../cli/resolveConfig.ts"
 import {
   AppConfig,
   type AppConfigValue,
-  defaultSettings,
-  defaultUserConfig,
-  load,
-  resolve,
   SetupProblem,
   workerPromptFile,
-} from "../cli/AppConfig.ts"
-import { noFlags, type RunFlags } from "../cli/flags.ts"
+} from "../core/AppConfig.ts"
+import { type Line, start, Tag } from "../core/log.ts"
 import { templateNotes } from "../init/templates.ts"
 import { type OrganProvider, organProvider } from "../organs/AnthropicProvider.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -43,7 +41,6 @@ import { schemeNotices } from "../ui/theme.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
 import { featureLine } from "./feature.ts"
 import { keepAwakeNotes } from "./keepAwake.ts"
-import { type Line, start, Tag } from "./log.ts"
 import { aboveCapNote, machineWorkersLabel } from "./machine.ts"
 import { readSpec, type Spec } from "./spec.ts"
 import type { LiveFetch, SpecFetch } from "./specSource.ts"

@@ -17,8 +17,8 @@
 // Code takes about 0.75 s to exit, flushing its telemetry: the probe answers without waiting for
 // that, and the exit is awaited in the background, in the probe's Scope.
 import { Cause, Context, Duration, Effect, Exit, Layer, Predicate, Schema, Scope } from "effect"
-import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
+import { AppConfig, type AppConfigValue } from "../core/AppConfig.ts"
 import type { permissionModes } from "../project/settings.ts"
 import { BilledAs, ClaudeCode } from "./ClaudeCode.ts"
 import { apiKeySet, apiKeyVariable } from "./env.ts"

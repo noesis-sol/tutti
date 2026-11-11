@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect } from "effect"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import {
   type FullChecked,
   fullCheck,

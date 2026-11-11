@@ -4,10 +4,10 @@
 // record. Triage reads them from the worker's transcript instead (src/run/triage.ts).
 import { Effect, Stream } from "effect"
 import { AgentHost, type Compaction } from "../agent/AgentHost.ts"
+import type { Log } from "../core/log.ts"
+import * as log from "../core/log.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import type { Log } from "./log.ts"
-import * as log from "./log.ts"
 import { info } from "./say.ts"
 
 /** Counts and logs `c`; a worker whose ticket the run hasn't taken up (the probe's) is left out. */

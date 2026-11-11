@@ -8,7 +8,8 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber, SubscriptionRef } from "effect"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
+import { line } from "../src/core/log.ts"
 import { fastScript, fullScript } from "../src/init/runners.ts"
 import {
   fingerprint,
@@ -20,7 +21,6 @@ import {
 import { makeCommands } from "../src/run/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { keepDescription, keepQuestion } from "../src/run/gateForm.ts"
-import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"

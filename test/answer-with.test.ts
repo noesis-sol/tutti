@@ -5,14 +5,13 @@ import { Result } from "effect"
 import { type AttentionRequest, answersOf } from "../src/agent/Attention.ts"
 import {
   type AnswerFile,
-  type AnswerWord,
   fit,
   type RequestFile,
   toRequestFile,
 } from "../src/agent/attentionFiles.ts"
 import { howToAnswer } from "../src/answer/answer.ts"
-import { answerWith } from "../src/answer/answerWith.ts"
-import * as log from "../src/run/log.ts"
+import { type AnswerWord, answerWith } from "../src/core/answerWith.ts"
+import * as log from "../src/core/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 
 const base = {

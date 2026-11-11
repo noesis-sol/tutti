@@ -24,7 +24,8 @@
 // must be closed and labelled `unmerged` still, and in the run's scope. fixedLeft asks the same of
 // those before the run starts, so that one of them is something to run.
 import { Deferred, Effect, Option, Ref, Result, type Schema } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { type Log, Tag, ticketLine } from "../core/log.ts"
 import { Beads, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
@@ -34,7 +35,6 @@ import { clearUnchecked } from "./check.ts"
 import type { EventStream } from "./eventstream.ts"
 import type { HandBacks } from "./handback.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
-import { type Log, Tag, ticketLine } from "./log.ts"
 import type { FinishedTicket, MergeOptions, MergeTarget } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Move } from "./phase.ts"

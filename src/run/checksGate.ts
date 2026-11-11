@@ -29,7 +29,8 @@
 import { createHash } from "node:crypto"
 import { Clock, Duration, Effect, Option, Ref, Result, Semaphore } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { type Line, Log, line, Tag, tagged } from "../core/log.ts"
 import { fastRunner, fullRunner, isRunner, runnerCommands, runsNothing } from "../init/runners.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
@@ -62,7 +63,6 @@ import {
 } from "./fullcheck.ts"
 import { type StopReason, soloLabel, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
-import { type Line, Log, line, Tag, tagged } from "./log.ts"
 import { warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
 import { type SetUps, takeSettings } from "./setup.ts"

@@ -15,12 +15,12 @@
 // (carry.ts).
 import { Effect, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
+import { detail, type Line, line } from "../core/log.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { type Commit, Git, gitWhy, shortHash } from "../services/Git.ts"
 import { branchOf, Worktrees } from "../services/Worktrees.ts"
 import type { HandBacks } from "./handback.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
-import { detail, type Line, line } from "./log.ts"
 import {
   type Cleanup,
   cleanupFailed,

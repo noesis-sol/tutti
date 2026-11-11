@@ -1,6 +1,8 @@
 // How to answer a request with `tutti answer` (§ 7.6): the one text the log's PERMISSION and
 // QUESTION lines and `tutti answer`'s listing give, so each says what `fit` takes.
-import type { AnswerWord } from "../agent/attentionFiles.ts"
+/** The answers `tutti answer` gives, as it spells them. */
+export const answerWords = ["allow", "allow-run", "deny"] as const
+export type AnswerWord = (typeof answerWords)[number]
 
 /** What says how a request is answered. */
 export interface Answerable {

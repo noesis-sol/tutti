@@ -8,8 +8,8 @@ import { describe, expect, test } from "bun:test"
 import { PassThrough } from "node:stream"
 import { Effect, Exit, Layer, Option } from "effect"
 import fc from "fast-check"
+import type { Log } from "../src/core/log.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import type { Log } from "../src/run/log.ts"
 import {
   openQuestions,
   type Put,

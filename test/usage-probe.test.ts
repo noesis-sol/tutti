@@ -22,8 +22,8 @@ import {
   probeOrgan,
   UsageProbe,
 } from "../src/agent/UsageProbe.ts"
+import { resetLabel } from "../src/core/localTime.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { resetLabel } from "../src/run/localTime.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
 import { resetText } from "../src/run/told.ts"

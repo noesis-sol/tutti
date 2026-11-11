@@ -9,9 +9,9 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Console, Effect, Exit } from "effect"
 import { Command } from "effect/cli"
-import { defaultSettings, load, loadLenient } from "../src/cli/AppConfig.ts"
 import { planServices, tuttiWith } from "../src/cli/commands.ts"
 import { noFlags } from "../src/cli/flags.ts"
+import { defaultSettings, load, loadLenient } from "../src/cli/resolveConfig.ts"
 
 /** A project whose settings are `settings`, and a user config folder with `user` in its config. */
 const projectWith = (settings: object, user?: object) => {

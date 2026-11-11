@@ -23,6 +23,8 @@ import type { AttentionRequest } from "../agent/Attention.ts"
 import type { ContextUsage } from "../agent/contextUsage.ts"
 import type { LatestAction } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
+import { resetLabel } from "../core/localTime.ts"
+import { Tag } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Issue, TicketId } from "../services/Beads.ts"
 import { shortHash } from "../services/Git.ts"
@@ -41,8 +43,6 @@ import {
   showsCard,
 } from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
-import { resetLabel } from "./localTime.ts"
-import { Tag } from "./log.ts"
 import type { CheckAhead } from "./mergetrain.ts"
 import { asideOvernight } from "./overnightAside.ts"
 import {

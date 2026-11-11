@@ -5,6 +5,7 @@
 // so the maintainer decides. One deferred until a later date (bd defer --until) was deferred on
 // purpose, with a time to look again, and isn't listed until that time has come.
 import { Clock, Effect, Result } from "effect"
+import { detail, Log, line } from "../core/log.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import { shellWord } from "../services/exec.ts"
 import { Git } from "../services/Git.ts"
@@ -13,7 +14,6 @@ import { branchOf, Worktrees } from "../services/Worktrees.ts"
 import type { Carried } from "./carry.ts"
 import { asking, type Branches, type ClosedBranches } from "./closedBranches.ts"
 import type { EventStream } from "./eventstream.ts"
-import { detail, Log, line } from "./log.ts"
 import { info } from "./say.ts"
 import { descendants, excludedTypes, type Filter } from "./scope.ts"
 

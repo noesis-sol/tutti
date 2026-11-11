@@ -35,7 +35,9 @@ import {
   Semaphore,
 } from "effect"
 import { Transcripts } from "../agent/Transcripts.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { timestamp } from "../core/localTime.ts"
+import { causeWhy, detail, type Line, type Log, line, Tag } from "../core/log.ts"
 import { footprintText, transcriptText } from "../organs/auditor.ts"
 import { type OrganError, Organs } from "../organs/Organs.ts"
 import { ticketText } from "../organs/predictor.ts"
@@ -55,8 +57,6 @@ import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import type { Footprint } from "./footprint.ts"
 import { isGlob } from "./glob.ts"
-import { timestamp } from "./localTime.ts"
-import { causeWhy, detail, type Line, type Log, line, Tag } from "./log.ts"
 import {
   addLesson,
   type Candidate,

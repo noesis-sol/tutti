@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { Effect, Exit, Fiber, Layer, Queue, Result, type Scope, SubscriptionRef } from "effect"
 import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import { Attention } from "../src/agent/Attention.ts"
+import { line } from "../src/core/log.ts"
 import { resolve, UiCommand } from "../src/run/commands.ts"
 import {
   type Entry,
@@ -21,7 +22,6 @@ import {
   type State,
   showsCard,
 } from "../src/run/ledger.ts"
-import { line } from "../src/run/log.ts"
 import { Move, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import {

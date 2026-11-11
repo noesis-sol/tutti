@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs"
 import { Exit, Option } from "effect"
 import fc from "fast-check"
 import { type SchemaName, schemaFile, schemas, schemaText } from "../scripts/gen-schemas.ts"
+import { timestamp } from "../src/core/localTime.ts"
 import { decodeConfig, formatDuration, parseDuration } from "../src/project/configFile.ts"
 import { retiredSettings, Settings } from "../src/project/settings.ts"
 import { kinds } from "../src/run/events.ts"
-import { timestamp } from "../src/run/localTime.ts"
 
 interface JsonSchema {
   readonly properties?: Record<string, JsonSchema>

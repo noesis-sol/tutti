@@ -9,10 +9,10 @@
 // doesn't promise them again.
 import { Effect } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
+import { type Line, type Log, line } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import { type Line, type Log, line } from "./log.ts"
 import { dropRechecks, type Rechecks } from "./recheck.ts"
 import { say } from "./say.ts"
 

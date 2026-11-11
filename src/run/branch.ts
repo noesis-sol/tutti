@@ -5,6 +5,7 @@
 // branch, clean or the base not moved. And restoreBranch, which puts a ticket's branch back where it
 // was, as each of them does when its own step can't go on.
 import { Data, Duration, Effect, Result } from "effect"
+import { detail, Log, line, Tag } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
   Git,
@@ -17,7 +18,6 @@ import {
 import { trackedChanges } from "../services/gitStatus.ts"
 import { type Again, retrying } from "./again.ts"
 import type { EventStream } from "./eventstream.ts"
-import { detail, Log, line, Tag } from "./log.ts"
 import type { FinishedTicket, MergeTarget } from "./merge.ts"
 import { warn } from "./say.ts"
 

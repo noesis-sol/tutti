@@ -9,9 +9,9 @@
 // and the run goes on all the same. While the command holds, the title line says so (§ 7.2). The
 // START block also says when keeping awake is off, and of a retired --keep-awake (`keepAwakeNotes`).
 import { Duration, Effect, SubscriptionRef } from "effect"
-import type { AppConfigValue } from "../cli/AppConfig.ts"
+import type { AppConfigValue } from "../core/AppConfig.ts"
+import { type Line, Log, line } from "../core/log.ts"
 import { type Command, exec, showCommand } from "../services/exec.ts"
-import { type Line, Log, line } from "./log.ts"
 
 /** A command that keeps the machine awake while it goes. */
 export type AwakeCommand = Pick<Command, "command" | "args">

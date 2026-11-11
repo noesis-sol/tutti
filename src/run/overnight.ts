@@ -26,7 +26,9 @@ import {
   defaultUsageLimitWait,
   overnightDenyAfter,
   workerPromptFile,
-} from "../cli/AppConfig.ts"
+} from "../core/AppConfig.ts"
+import { resetLabel } from "../core/localTime.ts"
+import { Log, line } from "../core/log.ts"
 import { templateNotes } from "../init/templates.ts"
 import { updateTemplates } from "../init/update.ts"
 import { O } from "../native/libc.ts"
@@ -46,8 +48,6 @@ import type { BatteryReading } from "./battery.ts"
 import { howFailed, saidOf } from "./check.ts"
 import { type KeepAwakePlan, lidNote } from "./keepAwake.ts"
 import { busyLoad, type Kernel } from "./load.ts"
-import { resetLabel } from "./localTime.ts"
-import { Log, line } from "./log.ts"
 import { type Registration, workersCount } from "./machine.ts"
 import {
   gb,

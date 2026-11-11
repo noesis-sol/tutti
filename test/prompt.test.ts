@@ -5,14 +5,9 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Option, Result } from "effect"
 import fc from "fast-check"
-import {
-  type AppConfigValue,
-  defaultSettings,
-  defaultUserConfig,
-  resolve,
-  type SetupProblem,
-} from "../src/cli/AppConfig.ts"
 import { noFlags } from "../src/cli/flags.ts"
+import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/resolveConfig.ts"
+import type { AppConfigValue, SetupProblem } from "../src/core/AppConfig.ts"
 import {
   askUserQuestionTool,
   builtInWorkerPrompt,

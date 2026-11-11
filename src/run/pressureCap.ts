@@ -11,8 +11,9 @@
 // run's own checks keep it high. Like a stop, a lowered cap never interrupts a worker: it only
 // keeps the run from dispatching or resuming until fewer workers run than it allows
 // (pressureGate.ts, HOLD: PRESSURE). The times and steps are load.ts's, beside its thresholds.
+
+import { type Line, line, Tag, tagged } from "../core/log.ts"
 import { criticalStep, pressureLowerAfter, pressureRaiseAfter, type Reading } from "./load.ts"
-import { type Line, line, Tag, tagged } from "./log.ts"
 
 /** The word of the hold at the pressure cap, on the dashboard's title line while it holds. */
 export const holdWord = "PRESSURE"

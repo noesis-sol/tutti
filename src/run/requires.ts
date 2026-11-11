@@ -14,12 +14,12 @@
 import { join } from "node:path"
 import { Duration, Effect } from "effect"
 import { BranchEnv } from "../agent/env.ts"
+import { detail, line, Tag } from "../core/log.ts"
 import { O } from "../native/libc.ts"
 import { appliesOn, requireLogName } from "../project/requires.ts"
 import { type Requirement, settingsFile } from "../project/settings.ts"
 import { exec } from "../services/exec.ts"
 import { openRunFile, runFolder } from "../services/Worktrees.ts"
-import { detail, line, Tag } from "./log.ts"
 import { sayer } from "./say.ts"
 
 /** How long each check may run: it only looks, so it is short. */

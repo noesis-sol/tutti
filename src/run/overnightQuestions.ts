@@ -16,6 +16,7 @@
 // question again.
 import { Console, type Duration, Effect, Option, Result } from "effect"
 import { type TalkEnd, talkLeftWhy } from "../agent/answerTalk.ts"
+import { Log, line } from "../core/log.ts"
 import {
   Beads,
   type BeadsError,
@@ -29,7 +30,6 @@ import type { OpenQuestion, QuestionAt, Reply } from "../ui/questions.ts"
 import { answerLimit, notAskedText, unansweredText, within } from "./answerLimit.ts"
 import { recordAnswer, recordWhy } from "./answerQuestion.ts"
 import { exitCodes } from "./holds.ts"
-import { Log, line } from "./log.ts"
 import { checklistLine, type Say } from "./overnight.ts"
 import { joinAnd } from "./processes.ts"
 import { descendants } from "./scope.ts"

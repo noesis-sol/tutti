@@ -3,12 +3,12 @@
 // (queue.ts). Each operation of the scheduler takes it, so what one reads or changes is in its
 // signature.
 import { Effect, type FiberSet, Queue, Ref, type Scope, Semaphore } from "effect"
+import { Log } from "../../core/log.ts"
 import { Beads, type TicketId } from "../../services/Beads.ts"
 import { EventStream } from "../eventstream.ts"
 import { RunFibers } from "../fibers.ts"
 import { type Gate, openGate } from "../holds.ts"
 import { Ledger } from "../ledger.ts"
-import { Log } from "../log.ts"
 import { type Sayer, sayer } from "../say.ts"
 import type { Options } from "../schedule.ts"
 import type { Filter } from "../scope.ts"

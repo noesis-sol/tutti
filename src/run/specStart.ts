@@ -4,8 +4,8 @@
 // start's breakdown followed as the run goes: one that fails stops the run, whose exit code is then
 // the breakdown's, and one the run's end cut short is stopped with it.
 import { Effect, Option, Result, type Scope, type SubscriptionRef } from "effect"
-import type { AppConfigValue } from "../cli/AppConfig.ts"
 import { type RunFlags, runFlags } from "../cli/flags.ts"
+import type { AppConfigValue } from "../core/AppConfig.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { Holder, LockFailed } from "../services/RunLock.ts"
 import type { Spec } from "./spec.ts"

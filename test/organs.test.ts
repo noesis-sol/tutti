@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { Duration, Effect, Fiber, Layer, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
+import type { Log } from "../src/core/log.ts"
 import {
   escapeEvidence,
   evidenceRule,
@@ -23,7 +24,6 @@ import {
   organNames,
   skippedLine,
 } from "../src/organs/Organs.ts"
-import type { Log } from "../src/run/log.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import {

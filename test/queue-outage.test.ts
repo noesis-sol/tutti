@@ -8,8 +8,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Clock, Duration, Effect, Fiber, Layer } from "effect"
 import { TestClock } from "effect/testing"
+import { line } from "../src/core/log.ts"
 import { retrying } from "../src/run/again.ts"
-import { line } from "../src/run/log.ts"
 import {
   backoff,
   failedRead,

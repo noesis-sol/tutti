@@ -6,7 +6,7 @@
 // or as lines (plain/forms.ts) when the terminal can't show one: TERM=dumb, or fewer than 256
 // colours. A cancelled question ends the run before it started, exit 130.
 import { Console, type Context, Effect, type FileSystem, Result } from "effect"
-import type { AppConfigValue } from "../cli/AppConfig.ts"
+import type { AppConfigValue } from "../core/AppConfig.ts"
 import { Beads } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import type { OutputMode, TtyValue } from "../services/Tty.ts"

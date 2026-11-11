@@ -16,7 +16,7 @@ import {
   workerVariables,
 } from "../src/agent/env.ts"
 import { makeRequiresTools } from "../src/agent/requiresTools.ts"
-import { defaultSettings } from "../src/cli/AppConfig.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import { checkRequires } from "../src/run/requires.ts"
 import { Checks } from "../src/services/Checks.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"

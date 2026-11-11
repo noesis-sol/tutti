@@ -15,8 +15,8 @@
 // result's startup_failure_reason, which ends the worker. A start that fails says why as
 // startFailure words it.
 import { type Cause, Effect, Exit, Option, Ref, Result, Schema } from "effect"
-import type { SetupProblem } from "../cli/AppConfig.ts"
-import { detail, type Line, type Log, line } from "../run/log.ts"
+import type { SetupProblem } from "../core/AppConfig.ts"
+import { detail, type Line, type Log, line } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { type Billing, type PermissionModeInEffect, permissionModeLine } from "./Account.ts"
 import { type ChosenServers, checkInit, checkStatus } from "./mcp.ts"

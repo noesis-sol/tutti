@@ -22,7 +22,6 @@ import { Attention, type AttentionRequest, denialMessage } from "../src/agent/At
 import {
   type AnswerFile,
   answerFile,
-  answerWords,
   attentionFolder,
   encodeFile,
   fit,
@@ -49,9 +48,10 @@ import {
   showJson,
 } from "../src/answer/answer.ts"
 import { CommandFailed, planServices, tuttiWith } from "../src/cli/commands.ts"
+import { answerWords } from "../src/core/answerWith.ts"
+import type { Log } from "../src/core/log.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
-import type { Log } from "../src/run/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"

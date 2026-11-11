@@ -11,13 +11,13 @@
 // found not on the base is asked of again too once its branch is on another commit or gone. The
 // first time a blocker is found so, CLOSED_UNMERGED says once how to clear it.
 import { Effect, Result } from "effect"
+import { type Line, type Log, Tag, ticketLine } from "../core/log.ts"
 import type { Dependency, TicketId } from "../services/Beads.ts"
 import { Git, type GitError, gitWhy } from "../services/Git.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { asksGit } from "./holds.ts"
 import type { State } from "./ledger.ts"
-import { type Line, type Log, Tag, ticketLine } from "./log.ts"
 import { warn } from "./say.ts"
 
 /** Where the run's tickets merge: the main checkout and the base branch. */

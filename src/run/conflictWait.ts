@@ -18,7 +18,8 @@
 // the queue's footprint off (§ 8.4), or a branch git can't say the files of. A branch checked ahead of
 // its turn (mergetrain.ts) is read at the commit its worker left, without the branch ahead's commits.
 import { Duration, Effect, Fiber, FiberSet, Ref, Result, type Scope } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, Log } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
@@ -26,7 +27,6 @@ import { Store } from "../services/Store.ts"
 import { aheadKey, rebasedAheadOf } from "./ahead.ts"
 import { RunFibers } from "./fibers.ts"
 import { nfc, settingsGlobMatch } from "./glob.ts"
-import { detail, Log } from "./log.ts"
 import type { FinishedTicket, MergeTarget } from "./merge.ts"
 import type { QueueState } from "./mergequeue.ts"
 import { fileList } from "./setup.ts"

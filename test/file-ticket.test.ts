@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Result, SubscriptionRef } from "effect"
 import fc from "fast-check"
+import { line } from "../src/core/log.ts"
 import { resolve, UiCommand } from "../src/run/commands.ts"
 import {
   descriptionOf,
@@ -15,7 +16,6 @@ import {
   titleLimit,
   titleOf,
 } from "../src/run/fileTicket.ts"
-import { line } from "../src/run/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"

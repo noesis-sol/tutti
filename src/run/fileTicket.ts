@@ -10,11 +10,11 @@
 // and where it was written; it was discovered from the finished ticket. The log has the FILED line,
 // with the new ticket's ID, never the text, as a MESSAGE line has only its length.
 import { Data, Effect, SubscriptionRef } from "effect"
+import * as log from "../core/log.ts"
+import { Log } from "../core/log.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { ellipsis } from "../text/marks.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
-import * as log from "./log.ts"
-import { Log } from "./log.ts"
 
 /** How a filing went: the ticket bd created, or why it didn't. */
 export type FileOutcome = Data.TaggedEnum<{

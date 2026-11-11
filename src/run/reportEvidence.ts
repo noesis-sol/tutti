@@ -5,6 +5,7 @@
 // the reviewer tells a failure in a ticket's own code from one elsewhere, without sending you to the
 // log; from the second it names the work the run left for a later one.
 import { Effect, Result } from "effect"
+import { branchOn } from "../core/log.ts"
 import { type Section, section } from "../organs/evidence.ts"
 import {
   type Beads,
@@ -18,7 +19,6 @@ import { Git, shortHash } from "../services/Git.ts"
 import { oneLine } from "../text/oneLine.ts"
 import { failedHow } from "./check.ts"
 import type { Entry } from "./ledger.ts"
-import { branchOn } from "./log.ts"
 import type { FinishedTicket, MergeTarget } from "./merge.ts"
 import { foldersOf, type Rechecks } from "./recheck.ts"
 import { descendants } from "./scope.ts"

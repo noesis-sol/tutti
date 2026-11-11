@@ -7,6 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, SubscriptionRef } from "effect"
+import type { Log } from "../src/core/log.ts"
 import {
   type AwakeCommand,
   awakeCommandOf,
@@ -14,7 +15,6 @@ import {
   keepAwakePlan,
   keepingAwakeLine,
 } from "../src/run/keepAwake.ts"
-import type { Log } from "../src/run/log.ts"
 import { ProcessGroups } from "../src/services/exec.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 

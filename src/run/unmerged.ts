@@ -16,13 +16,13 @@
 // the phase the run that left it saved, Blocked or Review, would stay there for good. A run that
 // finds one merged by hand while it goes on forgets it so too (handMerged.ts).
 import { Effect, Result } from "effect"
+import { detail, type Line, type Log, line, Tag, ticketLine } from "../core/log.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { type Commit, Git, isHash, shortHash } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import type { MergeTarget } from "./merge.ts"
 import { info, warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"

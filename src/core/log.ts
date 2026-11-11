@@ -10,11 +10,11 @@
 import { writeSync } from "node:fs"
 import { dirname } from "node:path"
 import { Cause, Clock, Console, Context, Effect, Layer, Result, Semaphore } from "effect"
-import type { AnswerWord } from "../agent/attentionFiles.ts"
-import { answerWith } from "../answer/answerWith.ts"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
+import type { AnswerWord } from "./answerWith.ts"
+import { answerWith } from "./answerWith.ts"
 import { stamp } from "./localTime.ts"
 
 /** Where the log is, below the repository. */

@@ -3,10 +3,10 @@
 
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Stream } from "effect"
+import { Log } from "../src/core/log.ts"
 import { dropNothingDone } from "../src/run/aside.ts"
 import { EventStream } from "../src/run/eventstream.ts"
 import { noFigures } from "../src/run/figures.ts"
-import { Log } from "../src/run/log.ts"
 import { Trash } from "../src/run/trash.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { GitFailed } from "../src/services/Git.ts"

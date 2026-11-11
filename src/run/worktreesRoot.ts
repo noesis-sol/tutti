@@ -26,7 +26,7 @@
 import { createHash } from "node:crypto"
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path"
 import { Config, Effect, FileSystem, Option, Result } from "effect"
-import type { AppConfigValue } from "../cli/AppConfig.ts"
+import type { AppConfigValue } from "../core/AppConfig.ts"
 import { currentHome, fromHome } from "../project/userConfig.ts"
 import { Git } from "../services/Git.ts"
 import { parseState, readStateText, type State, statePath, writeState } from "../services/Store.ts"

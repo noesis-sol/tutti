@@ -2,7 +2,7 @@
 // memory, dated with Effect's Clock (so TestClock sets their time) and printed to stdout when the
 // sink says so, as live. `texts` gives them without their time, for a test to compare.
 import { Effect, type Layer } from "effect"
-import { Log, type Sink } from "../run/log.ts"
+import { Log, type Sink } from "../core/log.ts"
 
 /** A captured log, its lines also printed when `sink` is stdout. */
 export const layer = (options: { readonly sink?: Sink } = {}): Layer.Layer<Log> =>

@@ -30,7 +30,7 @@ import {
   workerEnv,
 } from "../src/agent/env.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { defaultSettings } from "../src/cli/AppConfig.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import { checkNote, coresNote } from "../src/project/prompt.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"

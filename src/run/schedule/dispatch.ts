@@ -2,10 +2,10 @@
 // carried over (carry), a ticket checked once more (recheckSlot), and whether a dispatch may start
 // (mayStart).
 import { Effect, Ref, Result } from "effect"
+import { detail, type Line, line } from "../../core/log.ts"
 import type { Issue, TicketId } from "../../services/Beads.ts"
 import { type Footprint, showFootprint } from "../footprint.ts"
 import { isSolo, takesBack, takesNew } from "../holds.ts"
-import { detail, type Line, line } from "../log.ts"
 import { Move, TicketPhase } from "../phase.ts"
 import { footprintOf } from "../predict.ts"
 import type { Said as SaidRecord } from "../say.ts"

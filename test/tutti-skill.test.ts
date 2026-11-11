@@ -7,8 +7,8 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { RequestFile } from "../src/agent/attentionFiles.ts"
+import * as log from "../src/core/log.ts"
 import { stopCodes } from "../src/run/holds.ts"
-import * as log from "../src/run/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 
 // Each --help starts tutti as a bun process, which bun's 5 s default fails when other checks run

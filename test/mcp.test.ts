@@ -22,7 +22,7 @@ import {
   notGivenProblem,
   resolveServers,
 } from "../src/agent/mcp.ts"
-import type { SetupProblem } from "../src/cli/AppConfig.ts"
+import type { SetupProblem } from "../src/core/AppConfig.ts"
 
 const fixtures = join(import.meta.dir, "fixtures", "mcp")
 

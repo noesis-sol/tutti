@@ -14,8 +14,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, type FileSystem, Layer, Result } from "effect"
-import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/AppConfig.ts"
 import { noFlags } from "../src/cli/flags.ts"
+import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/resolveConfig.ts"
 import {
   findRoot,
   oldDefaultRoot,

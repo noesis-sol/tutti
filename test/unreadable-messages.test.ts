@@ -24,7 +24,7 @@ import {
   WorkerEvent,
   type WorkerState,
 } from "../src/agent/WorkerState.ts"
-import { defaultSettings } from "../src/cli/AppConfig.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import { Spending } from "../src/run/spending.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"

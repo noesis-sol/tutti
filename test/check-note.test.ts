@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { workerOptions } from "../src/agent/options.ts"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { checkNote, requiresNote, usageLimitNote, workerCheckLog } from "../src/project/prompt.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"

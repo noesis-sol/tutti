@@ -27,7 +27,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk"
 import { Data, Effect, Option, Ref, Schema, type Scope, Stream, SubscriptionRef } from "effect"
 import { z } from "zod"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
 import template from "../project/templates/answer-talk-prompt.md" with { type: "text" }
 import {
   Beads,

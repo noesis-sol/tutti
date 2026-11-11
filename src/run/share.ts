@@ -23,6 +23,7 @@ import { join } from "node:path"
 import { Clock, Context, Effect, type FileSystem, Layer, Ref } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { coreShare, mebibyte, memoryShare, mergeWeight, sharers } from "../agent/env.ts"
+import { type Line, type Log, line, tagged } from "../core/log.ts"
 import { makeFoldersUnder, writeFileUnder } from "../native/libc.ts"
 import { runFolder } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -34,7 +35,6 @@ import {
   type Reading,
   sample,
 } from "./load.ts"
-import { type Line, type Log, line, tagged } from "./log.ts"
 import { sayer } from "./say.ts"
 
 /** A check's figures of the machine: its cores, and its memory in MiB. */

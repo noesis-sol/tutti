@@ -49,6 +49,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import { Tag } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Git, type Sha } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
@@ -67,7 +68,6 @@ import {
 import { mergedByHand as handMerged } from "./handMerged.ts"
 import { type Held, makeHeld } from "./held.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
-import { Tag } from "./log.ts"
 import {
   closeUnchanged,
   type FinishedTicket,

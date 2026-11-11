@@ -12,12 +12,8 @@ import {
   SettingsUnreadable,
 } from "../src/agent/Account.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
-import {
-  type AppConfig,
-  type AppConfigValue,
-  defaultSettings,
-  SetupProblem,
-} from "../src/cli/AppConfig.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
+import { type AppConfig, type AppConfigValue, SetupProblem } from "../src/core/AppConfig.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { keepAwakeNotes } from "../src/run/keepAwake.ts"
 import {

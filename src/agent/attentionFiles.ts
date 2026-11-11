@@ -32,6 +32,10 @@ import {
   Semaphore,
   Stream,
 } from "effect"
+import { answerWords } from "../core/answerWith.ts"
+import { timestamp } from "../core/localTime.ts"
+import * as log from "../core/log.ts"
+import { Log } from "../core/log.ts"
 import {
   close,
   LibcError,
@@ -42,9 +46,6 @@ import {
   type PathRefused,
   SymlinkRefused,
 } from "../native/libc.ts"
-import { timestamp } from "../run/localTime.ts"
-import * as log from "../run/log.ts"
-import { Log } from "../run/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { sanitize } from "../text/sanitize.ts"
 import { type Answer, Attention, type AttentionRequest, answersOf } from "./Attention.ts"
@@ -83,10 +84,6 @@ export const AttentionPoll = Context.Reference<Duration.Duration>(
 
 /** The version of the files' format this tutti writes and reads. */
 export const fileVersion = 1
-
-/** The answers `tutti answer` gives, as it spells them. */
-export const answerWords = ["allow", "allow-run", "deny"] as const
-export type AnswerWord = (typeof answerWords)[number]
 
 const optional = Schema.optionalKey
 

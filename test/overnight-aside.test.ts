@@ -14,7 +14,7 @@ import {
   permissionResult,
   tuttiDenialMessage,
 } from "../src/agent/Attention.ts"
-import { answered, line } from "../src/run/log.ts"
+import { answered, line } from "../src/core/log.ts"
 import {
   asideLine,
   asideNote,

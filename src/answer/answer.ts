@@ -8,7 +8,6 @@
 import { Duration, Effect, Result, Schema } from "effect"
 import {
   type AnswerFile,
-  type AnswerWord,
   answerFile,
   describeFile,
   encodeFile,
@@ -24,9 +23,10 @@ import {
   takeRefusal,
   writeExclusive,
 } from "../agent/attentionFiles.ts"
+import type { AnswerWord } from "../core/answerWith.ts"
+import { answerWith } from "../core/answerWith.ts"
 import { terminalSafe } from "../run/events.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
-import { answerWith } from "./answerWith.ts"
 
 /** How long `tutti answer` waits for the run to take an answer (§ 4.5). */
 export const takeWithin: Duration.Duration = Duration.seconds(10)

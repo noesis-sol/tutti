@@ -2,7 +2,7 @@
 // (noticeOf: sanitised, and none when AppConfig's `notify` is off), for a test to read through
 // Captured.
 import { Context, Effect, Layer, Ref } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
 import { Notifier, noticeOf } from "../services/Notifier.ts"
 
 /** The notices the test layer captured, for a test to look at. */

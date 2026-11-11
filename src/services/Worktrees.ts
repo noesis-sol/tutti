@@ -33,6 +33,7 @@ import { readSync, writeSync } from "node:fs"
 import { basename, join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Option, Result, Schema, type Scope } from "effect"
 import type { PlatformError } from "effect/PlatformError"
+import { detail, Log } from "../core/log.ts"
 import {
   close,
   type LibcError,
@@ -43,7 +44,6 @@ import {
   type PathRefused,
   SymlinkRefused,
 } from "../native/libc.ts"
-import { detail, Log } from "../run/log.ts"
 import { writeFileAtomic } from "./atomicFile.ts"
 import type { TicketId } from "./Beads.ts"
 import {

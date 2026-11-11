@@ -17,6 +17,7 @@
 //
 // orchestra has no such option: a departure on purpose (spec § 8.2).
 import { Context, Duration, Effect, Ref, Result } from "effect"
+import { type Line, type Log, line, Tag, ticketLine } from "../core/log.ts"
 import {
   Beads,
   beadsWhy,
@@ -32,7 +33,6 @@ import { awakeSince } from "../services/Wake.ts"
 import { type AskedLook, answeredIn, shownIn, stillOpen } from "./asked.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import { type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import { about } from "./notices.ts"
 import { say, warn } from "./say.ts"
 

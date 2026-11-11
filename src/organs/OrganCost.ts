@@ -6,8 +6,8 @@
 // tokens no result reports: it is recorded as a call of unknown cost, with the time it ran. So is
 // a call that answered through a provider that reports no price (AnthropicProvider's).
 import { Context, Effect, Layer, Option, Ref } from "effect"
+import { type Line, Log, line, Tag } from "../core/log.ts"
 import { EventStream } from "../run/eventstream.ts"
-import { type Line, Log, line, Tag } from "../run/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 
 /** One organ call's cost, from its session's last result. */

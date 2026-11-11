@@ -29,7 +29,8 @@ import {
   type Schema,
   type Scope,
 } from "effect"
-import type { AppConfig } from "../cli/AppConfig.ts"
+import type { AppConfig } from "../core/AppConfig.ts"
+import { detail, type Line, Log, line, Tag, ticketLine } from "../core/log.ts"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
@@ -50,7 +51,6 @@ import { noteWritten } from "./checkWrote.ts"
 import { type checkSuites, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { keepFailedOutput } from "./keptChecks.ts"
-import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { warn } from "./say.ts"
 
 /** How a ticket's merge check went. */

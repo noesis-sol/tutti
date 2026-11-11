@@ -12,6 +12,7 @@ import { availableParallelism, tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, Duration, Effect, Fiber, Layer, Schema, SubscriptionRef } from "effect"
 import { TestClock } from "effect/testing"
+import { line } from "../src/core/log.ts"
 import { Settings } from "../src/project/settings.ts"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import { noHolds, shownHolds, withPressureHold } from "../src/run/holds.ts"
@@ -24,7 +25,6 @@ import {
   pressureRaiseAfter,
   type Reading,
 } from "../src/run/load.ts"
-import { line } from "../src/run/log.ts"
 import {
   type Cap,
   capAt,

@@ -19,7 +19,7 @@ import {
   workerOptions,
 } from "../src/agent/options.ts"
 import { unusedTools } from "../src/agent/unusedTools.ts"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { checkNote, requiresNote, usageLimitNote } from "../src/project/prompt.ts"
 import { permissionModes } from "../src/project/settings.ts"
 import type { TicketId } from "../src/services/Beads.ts"

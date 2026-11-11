@@ -20,7 +20,8 @@
 // and those queued are dropped.
 import { Cause, Effect, FiberSet, Queue, Ref, Result, type Scope, Stream } from "effect"
 import { type Item, Transcripts } from "../agent/Transcripts.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { causeWhy, detail, type Line, type Log, line, Tag } from "../core/log.ts"
 import {
   audit,
   auditOf,
@@ -37,7 +38,6 @@ import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import type { State } from "./ledger.ts"
-import { causeWhy, detail, type Line, type Log, line, Tag } from "./log.ts"
 import { factsOf, type TicketOutcome } from "./phase.ts"
 import { sayer } from "./say.ts"
 import { auditWords } from "./scorecard.ts"

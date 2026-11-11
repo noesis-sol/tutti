@@ -5,7 +5,7 @@ import { basename, dirname, join } from "node:path"
 import { Console, Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
-import { stamp } from "../src/run/localTime.ts"
+import { stamp } from "../src/core/localTime.ts"
 import {
   allowedByRule,
   answered,
@@ -33,7 +33,7 @@ import {
   usageLimitLifted,
   usageWarning,
   type Written,
-} from "../src/run/log.ts"
+} from "../src/core/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { layer as capturedLayer, texts } from "../src/testing/Log.ts"
 

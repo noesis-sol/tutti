@@ -4,8 +4,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Exit, Fiber, Queue, Ref, type Scope } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
-import type { Line } from "../src/run/log.ts"
-import { line } from "../src/run/log.ts"
+import type { Line } from "../src/core/log.ts"
+import { line } from "../src/core/log.ts"
 import {
   atOnceText,
   catchSignals,

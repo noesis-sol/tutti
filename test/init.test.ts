@@ -21,8 +21,8 @@ import {
   type AccountProbe,
   UntrustedCheckout,
 } from "../src/agent/Account.ts"
-import type { AppConfig } from "../src/cli/AppConfig.ts"
 import { readInitFlags } from "../src/cli/commands.ts"
+import type { AppConfig } from "../src/core/AppConfig.ts"
 import { readConcurrency } from "../src/init/form.ts"
 import {
   type InitFlags,

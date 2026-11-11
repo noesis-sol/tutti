@@ -11,7 +11,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Option } from "effect"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { ProbeAnswer } from "../src/agent/UsageProbe.ts"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { makePrinter } from "../src/print/organLine.ts"
 import { unknownKernel } from "../src/run/load.ts"
 import {

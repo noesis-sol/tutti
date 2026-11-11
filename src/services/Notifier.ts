@@ -17,8 +17,8 @@
 import { basename } from "node:path"
 import { Context, Duration, Effect, FiberSet, type FileSystem, Layer } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
-import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
-import { Log, Tag, tagged } from "../run/log.ts"
+import { AppConfig, type AppConfigValue } from "../core/AppConfig.ts"
+import { Log, Tag, tagged } from "../core/log.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import {
   type Command,

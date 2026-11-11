@@ -9,10 +9,10 @@
 import { fstatSync, readdirSync, readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Effect, Result } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, Log } from "../core/log.ts"
 import { close, makeFoldersUnder, O, openUnder, removeUnder } from "../native/libc.ts"
 import { runFolder, ticketIdProblem } from "../services/Worktrees.ts"
-import { detail, Log } from "./log.ts"
 
 /** How much of a ticket's failed checks' output is kept. */
 export const KeptOutputs = {

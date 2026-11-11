@@ -17,8 +17,8 @@ import {
   windowsOf,
   withFigures,
 } from "../src/agent/UsageLimits.ts"
+import { line } from "../src/core/log.ts"
 import { emptyState } from "../src/run/ledger.ts"
-import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import {
   type Banner,

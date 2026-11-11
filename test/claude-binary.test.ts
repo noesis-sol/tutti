@@ -26,7 +26,7 @@ import {
   supportedRange,
   versionWarning,
 } from "../src/agent/claudeBinary.ts"
-import { AppConfig } from "../src/cli/AppConfig.ts"
+import { AppConfig } from "../src/core/AppConfig.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { check, type Started, type StartupFailed } from "../src/run/startup.ts"
 import * as TestAccount from "../src/testing/Account.ts"

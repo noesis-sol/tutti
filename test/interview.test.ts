@@ -45,8 +45,9 @@ import {
   type WorkerCallbacks,
 } from "../src/agent/options.ts"
 import { serverName, ticketLine } from "../src/agent/ticketTools.ts"
-import { type AppConfig, defaultSettings } from "../src/cli/AppConfig.ts"
-import type { Log } from "../src/run/log.ts"
+import { defaultSettings } from "../src/cli/resolveConfig.ts"
+import type { AppConfig } from "../src/core/AppConfig.ts"
+import type { Log } from "../src/core/log.ts"
 import type { Beads, TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
 import {

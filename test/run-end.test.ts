@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { Tag } from "../src/run/log.ts"
+import { Tag } from "../src/core/log.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { decide, End, endOfRunBox, type Look, type Snapshot, whatsLeft } from "../src/run/runEnd.ts"
 import type { TicketId } from "../src/services/Beads.ts"

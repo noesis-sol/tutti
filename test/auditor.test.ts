@@ -7,6 +7,7 @@ import { Duration, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { AiError } from "effect/ai"
 import fc from "fast-check"
 import { type Item, Transcripts } from "../src/agent/Transcripts.ts"
+import { line } from "../src/core/log.ts"
 import {
   type AuditorAnswer,
   auditOf,
@@ -35,7 +36,6 @@ import {
 } from "../src/run/auditor.ts"
 import { auditItems, EventRecord } from "../src/run/events.ts"
 import { type Entry, emptyState, type State } from "../src/run/ledger.ts"
-import { line } from "../src/run/log.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
 import {

@@ -9,6 +9,7 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { type Duration, Effect, Fiber, Layer } from "effect"
 import { TestClock } from "effect/testing"
+import { line } from "../src/core/log.ts"
 import {
   Battery,
   type BatteryReading,
@@ -16,7 +17,6 @@ import {
   batteryLine,
   watchBattery,
 } from "../src/run/battery.ts"
-import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"

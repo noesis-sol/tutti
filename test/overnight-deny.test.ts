@@ -20,7 +20,8 @@ import {
   overnightDenial,
   tuttiDenialMessage,
 } from "../src/agent/Attention.ts"
-import { overnightDenyAfter } from "../src/cli/AppConfig.ts"
+import { overnightDenyAfter } from "../src/core/AppConfig.ts"
+import { line } from "../src/core/log.ts"
 import {
   askRulesCheck,
   askRulesOf,
@@ -32,7 +33,6 @@ import { make as makeBlockedWatch } from "../src/run/blockedWatch.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { blockedTickets } from "../src/run/holds.ts"
 import { make as makeHoldsGate } from "../src/run/holdsGate.ts"
-import { line } from "../src/run/log.ts"
 import { make as makeOvernightAside } from "../src/run/overnightAside.ts"
 import { run } from "../src/run/run.ts"
 import { emptyStatus, type Status } from "../src/run/runView.ts"

@@ -7,12 +7,12 @@
 // fill its slots. Held with nothing running, the run waits rather than end on the tickets it held
 // back (runEnd.ts's Look). A disk that can't be read changes nothing.
 import { Effect, Ref } from "effect"
+import type { Log } from "../core/log.ts"
 import { diskLow, holdLine, liftedLine } from "./disk.ts"
 import type { EventStream } from "./eventstream.ts"
 import { withDiskHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
 import type { DiskFree, Reading } from "./load.ts"
-import type { Log } from "./log.ts"
 import type { Room } from "./machineGate.ts"
 import { sayer } from "./say.ts"
 

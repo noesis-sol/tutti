@@ -15,10 +15,10 @@ import fc from "fast-check"
 import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
+import type { Log } from "../src/core/log.ts"
 import { makeCommands, offer, resolve, UiCommand } from "../src/run/commands.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { emptyState, emptyTallies, Ledger, type State } from "../src/run/ledger.ts"
-import type { Log } from "../src/run/log.ts"
 import { Detail, Move, type TicketPhase } from "../src/run/phase.ts"
 import {
   emptyStatus,

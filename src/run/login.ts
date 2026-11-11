@@ -16,10 +16,10 @@
 import { Effect, type Schema, type Scope, Stream } from "effect"
 import { loginRefusedText } from "../agent/Account.ts"
 import { AgentHost } from "../agent/AgentHost.ts"
+import { type Line, line } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { type StopReason, stopFor } from "./holds.ts"
-import { type Line, line } from "./log.ts"
 
 /** The metadata key of the texts a turn refused for the login was to tell its worker. */
 export const retellKey = "login_refused_told"

@@ -9,7 +9,7 @@ import {
   type AccountProbeFailed,
   type Initialization,
 } from "../agent/Account.ts"
-import type { AppConfigValue } from "../cli/AppConfig.ts"
+import type { AppConfigValue } from "../core/AppConfig.ts"
 import * as TestAppConfig from "./AppConfig.ts"
 
 /** What a session logged in to a subscription says, in auto mode, with `overrides`. */

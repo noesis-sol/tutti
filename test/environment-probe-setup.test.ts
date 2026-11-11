@@ -7,13 +7,13 @@ import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber } from "effect"
+import { line } from "../src/core/log.ts"
 import {
   probeFile,
   probeFolderPrefix,
   probeSetupLogName,
   probeWorker,
 } from "../src/run/environment.ts"
-import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"

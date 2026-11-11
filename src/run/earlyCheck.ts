@@ -46,7 +46,8 @@ import {
   Stream,
 } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { type Line, type Log, line, ticketLine } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
 import {
@@ -74,7 +75,6 @@ import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { leftWarning, removeLeftWorktrees, worktreeWhy } from "./fullcheck.ts"
 import { Ledger } from "./ledger.ts"
-import { type Line, type Log, line, ticketLine } from "./log.ts"
 import { say, warn } from "./say.ts"
 import { median } from "./scorecard.ts"
 

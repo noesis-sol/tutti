@@ -7,6 +7,7 @@ import { Duration, Effect, Layer, Schedule, Schema, Stream } from "effect"
 import { type AiError, LanguageModel, Prompt } from "effect/ai"
 import fc from "fast-check"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
+import type { Log } from "../src/core/log.ts"
 import {
   layer,
   OrganCall,
@@ -16,7 +17,6 @@ import {
   toTurn,
 } from "../src/organs/AgentSdkLanguageModel.ts"
 import { costLine, OrganCost } from "../src/organs/OrganCost.ts"
-import type { Log } from "../src/run/log.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"

@@ -41,6 +41,7 @@
 // records (queue.ts), placing and holding (place.ts), starting a ticket in a slot (dispatch.ts),
 // and the fill, with what it reads once (fill.ts, reads.ts). `make` assembles them.
 import { Effect, FiberSet, type FileSystem, Queue, Ref, type Scope } from "effect"
+import type { Log } from "../core/log.ts"
 import type { Beads, BeadsError, Issue, TicketId } from "../services/Beads.ts"
 import { Git, type Sha } from "../services/Git.ts"
 import { branchFolder, branchOf } from "../services/Worktrees.ts"
@@ -52,7 +53,6 @@ import type { RunFibers } from "./fibers.ts"
 import { type Footprint, worktreeChanges } from "./footprint.ts"
 import type { Gate } from "./holds.ts"
 import type { Ledger } from "./ledger.ts"
-import type { Log } from "./log.ts"
 import type { Room } from "./machineGate.ts"
 import { type Mentions, readMentions, type Sources } from "./overlap.ts"
 import type { RunPlaybook } from "./playbookRun.ts"

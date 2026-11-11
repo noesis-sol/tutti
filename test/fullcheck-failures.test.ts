@@ -15,10 +15,10 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect } from "effect"
-import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfigValue } from "../src/core/AppConfig.ts"
+import { logFile } from "../src/core/log.ts"
 import { PathRefused } from "../src/native/libc.ts"
 import { type FullChecked, fullCheck, fullCheckLabel } from "../src/run/fullcheck.ts"
-import { logFile } from "../src/run/log.ts"
 import {
   Beads,
   BeadsFailed,

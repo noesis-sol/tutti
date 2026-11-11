@@ -58,7 +58,8 @@ import {
 import { type AgentGone, AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { blockedAfter } from "../agent/Attention.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
 import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
@@ -81,7 +82,6 @@ import { holdingSlot } from "./earlyCheck.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { loadEvery } from "./load.ts"
-import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "./log.ts"
 import {
   type FinishedTicket,
   type MergeEnv,

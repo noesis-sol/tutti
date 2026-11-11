@@ -2,10 +2,10 @@
 // aside for an ID that can't name a worktree (setAside), and the issues of the tickets running or
 // past their work, read from bd as the scheduler needs them (withIssues, known).
 import { Effect, Ref, Result } from "effect"
+import { detail, type Line } from "../../core/log.ts"
 import { beadsWhy, type Issue, type TicketId } from "../../services/Beads.ts"
 import { isSolo } from "../holds.ts"
 import type { State } from "../ledger.ts"
-import { detail, type Line } from "../log.ts"
 import { type HoldBack, Move, TicketPhase } from "../phase.ts"
 import { recorded, soloNow } from "./queue.ts"
 import { current, mergingIn, type Slots } from "./slots.ts"

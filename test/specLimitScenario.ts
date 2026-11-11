@@ -6,8 +6,8 @@ import { join } from "node:path"
 import { Deferred, type Duration, Effect, Fiber, Layer, Option } from "effect"
 import { TestClock } from "effect/testing"
 import { breakdownWorker } from "../src/agent/breakdown.ts"
+import type { Log } from "../src/core/log.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import type { Log } from "../src/run/log.ts"
 import { specRun } from "../src/run/specRun.ts"
 import {
   apiErrorResult,

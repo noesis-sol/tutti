@@ -49,7 +49,8 @@
 // state's own stamp, which is this run's once it has written; and it has ended, whatever runs
 // under its PID now, as this run holds the run lock (§ 9.2).
 import { Clock, Effect, FileSystem, Result } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { detail, type Line, Log, line } from "../core/log.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { type PhaseName, Store, type TicketRecord, ticketsIn } from "../services/Store.ts"
@@ -60,7 +61,6 @@ import { leavesPart } from "./autoAnswer.ts"
 import { handedBackOf, uncheckedKey, uncheckedOf } from "./check.ts"
 import { byHand, removedText } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, type Line, Log, line } from "./log.ts"
 import { retellKey, retellText, toldOf } from "./login.ts"
 import { removeMerged } from "./merge.ts"
 import { asideOvernight } from "./overnightAside.ts"

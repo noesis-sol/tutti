@@ -26,10 +26,10 @@ import {
   type Scope,
   Stream,
 } from "effect"
+import { timestamp } from "../core/localTime.ts"
+import { denier, unknownDenier } from "../core/log.ts"
 import { close, LibcError, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { terminalSafe } from "../run/events.ts"
-import { timestamp } from "../run/localTime.ts"
-import { denier, unknownDenier } from "../run/log.ts"
 import { runFolder, ticketIdProblem } from "../services/Worktrees.ts"
 import { ellipsis } from "../text/marks.ts"
 import { aboutOf } from "./tools.ts"

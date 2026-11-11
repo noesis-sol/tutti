@@ -23,12 +23,12 @@
 import { Clock, Duration, Effect, FiberSet, Ref, type Scope, Semaphore } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { UsageProbe } from "../agent/UsageProbe.ts"
+import { detail, type Line, Log, Tag, tagged } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, type Line, Log, Tag, tagged } from "./log.ts"
 import { type Refused, refusedLine, retellKey, saveTold } from "./login.ts"
 
 /** The check's word, on its banner and its lines. */

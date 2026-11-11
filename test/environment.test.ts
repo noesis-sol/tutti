@@ -5,7 +5,8 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber, Layer, Ref } from "effect"
 import { noServers } from "../src/agent/mcp.ts"
 import { workerOptions } from "../src/agent/options.ts"
-import { AppConfig } from "../src/cli/AppConfig.ts"
+import { AppConfig } from "../src/core/AppConfig.ts"
+import { line } from "../src/core/log.ts"
 import {
   make as makeHold,
   probeFile,
@@ -15,7 +16,6 @@ import {
 } from "../src/run/environment.ts"
 import type { StopReason } from "../src/run/holds.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyStatus, emptyView, project } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"

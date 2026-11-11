@@ -5,8 +5,8 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Attention } from "../src/agent/Attention.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import { tasksOnlySince, WorkerState } from "../src/agent/WorkerState.ts"
+import type { Log } from "../src/core/log.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
-import type { Log } from "../src/run/log.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import {
   backgroundCommand,

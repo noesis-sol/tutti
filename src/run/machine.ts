@@ -27,11 +27,11 @@ import {
   Semaphore,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
+import { detail, type Line, Tag, tagged } from "../core/log.ts"
 import { writeFileAtomic } from "../services/atomicFile.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
 import { lenientKey, Positive } from "../services/lenient.ts"
 import { processAlive } from "../services/processTree.ts"
-import { detail, type Line, Tag, tagged } from "./log.ts"
 
 /** The variable naming the folder the machine's runs register in; `off` registers the run nowhere. */
 export const runsDirVariable = "ORCHESTRA_RUNS_DIR"

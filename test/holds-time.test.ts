@@ -8,6 +8,7 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber, SubscriptionRef } from "effect"
 import * as fc from "fast-check"
 import { Attention, type AttentionRequest, blockedAfter } from "../src/agent/Attention.ts"
+import { line } from "../src/core/log.ts"
 import {
   addStop,
   blockedAt,
@@ -20,7 +21,6 @@ import {
   stopFor,
   stopsLine,
 } from "../src/run/holds.ts"
-import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import type { RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"

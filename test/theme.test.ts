@@ -7,8 +7,8 @@ import { TextAttributes } from "@opentui/core"
 import { ConfigProvider, Effect, Option, Result } from "effect"
 import fc from "fast-check"
 import { schemaText } from "../scripts/gen-schemas.ts"
-import { load } from "../src/cli/AppConfig.ts"
 import { noFlags } from "../src/cli/flags.ts"
+import { load } from "../src/cli/resolveConfig.ts"
 import {
   ansiOf,
   appearanceOf,

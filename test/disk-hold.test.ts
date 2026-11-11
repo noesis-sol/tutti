@@ -10,6 +10,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber, Layer, Ref, SubscriptionRef } from "effect"
 import { TestClock } from "effect/testing"
+import { type Log, line } from "../src/core/log.ts"
 import { diskLow, gigabytes, holdLine, liftedLine } from "../src/run/disk.ts"
 import { make as makeDiskGate } from "../src/run/diskGate.ts"
 import { noHolds, shownHolds, withDiskHold } from "../src/run/holds.ts"
@@ -24,7 +25,6 @@ import {
   type Reading,
   sample,
 } from "../src/run/load.ts"
-import { type Log, line } from "../src/run/log.ts"
 import { gb } from "../src/run/processes.ts"
 import { run } from "../src/run/run.ts"
 import { type Look, whatsLeft } from "../src/run/runEnd.ts"

@@ -5,7 +5,6 @@ import { existsSync } from "node:fs"
 import { Console, Effect, Exit, Layer } from "effect"
 import { Account, SettingsUnreadable } from "../src/agent/Account.ts"
 import type { Claude } from "../src/agent/claudeBinary.ts"
-import { AppConfig } from "../src/cli/AppConfig.ts"
 import {
   accountLine,
   type CommandLine,
@@ -16,6 +15,7 @@ import {
   loginReport,
   sdkClaudes,
 } from "../src/cli/login.ts"
+import { AppConfig } from "../src/core/AppConfig.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 

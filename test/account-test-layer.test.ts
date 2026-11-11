@@ -11,7 +11,7 @@ import {
   SettingsUnreadable,
   UntrustedCheckout,
 } from "../src/agent/Account.ts"
-import type { AppConfig, AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { AppConfig, AppConfigValue } from "../src/core/AppConfig.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 

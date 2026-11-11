@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Console, Deferred, Effect, Fiber } from "effect"
-import { type Line, Log, type LogFile } from "../src/run/log.ts"
+import { type Line, Log, type LogFile } from "../src/core/log.ts"
 
 /** A console that keeps what is logged to it, as stdout would show it. */
 const capturingConsole = () => {

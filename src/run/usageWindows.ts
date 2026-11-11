@@ -10,9 +10,9 @@
 // kept too, for the worker view's estimate of a ticket's share of it (§ 7.5, resources.ts).
 import { Effect, FiberSet, Ref, type Scope, Stream } from "effect"
 import { UsageLimits, type Windows } from "../agent/UsageLimits.ts"
+import { timestamp } from "../core/localTime.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
-import { timestamp } from "./localTime.ts"
 import type { UsageWindow } from "./runView.ts"
 
 /** The windows the title line shows: those with a figure, in the order first reported. */
