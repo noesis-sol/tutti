@@ -16,9 +16,9 @@ import {
   showQuestions,
 } from "../src/answer/questions.ts"
 import type { Log } from "../src/core/log.ts"
-import { latestVersion, promptChanges } from "../src/init/templates.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { orchestra } from "../src/project/scheme.ts"
+import { latestVersion, promptChanges } from "../src/project/templateVersions.ts"
 import { decisionSection, recordAnswer, withDecision } from "../src/run/answerQuestion.ts"
 import { resolve, UiCommand } from "../src/run/commands.ts"
 import { emptyState } from "../src/run/ledger.ts"

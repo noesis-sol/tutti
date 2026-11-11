@@ -9,9 +9,14 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Effect, Exit } from "effect"
-import { skillPath, skillText, testWork } from "../src/init/checks.ts"
+import { testWork } from "../src/init/checks.ts"
 import { type InitForm, init } from "../src/init/init.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
+import { updateLines, updateNext, updateTemplates } from "../src/init/update.ts"
+import { readConfigFile } from "../src/project/configFile.ts"
+import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import { Settings } from "../src/project/settings.ts"
+import { skillPath, skillText } from "../src/project/templateFiles.ts"
 import {
   currentTemplates,
   latestVersion,
@@ -20,11 +25,7 @@ import {
   sections,
   skillChanges,
   templateNotes,
-} from "../src/init/templates.ts"
-import { updateLines, updateNext, updateTemplates } from "../src/init/update.ts"
-import { readConfigFile } from "../src/project/configFile.ts"
-import { builtInWorkerPrompt } from "../src/project/prompt.ts"
-import { Settings } from "../src/project/settings.ts"
+} from "../src/project/templateVersions.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"

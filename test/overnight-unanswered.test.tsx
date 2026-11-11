@@ -11,6 +11,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Fiber, Layer, Option } from "effect"
 import { noServersNote } from "../src/agent/mcp.ts"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
+import { updateTemplates } from "../src/init/update.ts"
 import { makePrinter } from "../src/print/organLine.ts"
 import { orchestra } from "../src/project/scheme.ts"
 import { answerLimit, clockOf, countdownText, leavesOpen } from "../src/run/answerLimit.ts"
@@ -139,6 +140,7 @@ const runPreflight = async (
     Effect.gen(function* () {
       const cleared: Cleared = yield* preflight({
         started: startedOf(config),
+        update: updateTemplates,
         night: quietNight,
         say: { ...printer, theme },
         ask: Option.some(ask),

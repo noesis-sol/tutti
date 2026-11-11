@@ -8,9 +8,10 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer } from "effect"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { templateNotes } from "../src/init/templates.ts"
+import { updateTemplates } from "../src/init/update.ts"
 import { readConfigFile } from "../src/project/configFile.ts"
 import { Settings } from "../src/project/settings.ts"
+import { templateNotes } from "../src/project/templateVersions.ts"
 import { updateAndCommit, updateTemplatesMessage } from "../src/run/overnight.ts"
 import type { Started } from "../src/run/startup.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"
@@ -54,7 +55,11 @@ slow.describe("the templates fix", () => {
       const git = Git.layer().pipe(Layer.provideMerge(GitWriter.layer))
       const after = await run(
         (
-          updateAndCommit(started) as Effect.Effect<Started, string, Git | BunServices.BunServices>
+          updateAndCommit(started, updateTemplates) as Effect.Effect<
+            Started,
+            string,
+            Git | BunServices.BunServices
+          >
         ).pipe(Effect.provide(git)),
       )
       // One commit on main, holding the files the update rewrote, and nothing left uncommitted.

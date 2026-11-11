@@ -12,22 +12,22 @@ import { Clock, Effect, FileSystem, Option } from "effect"
 import { AtomicWriter, writeFileAtomic } from "../core/atomicFile.ts"
 import { setIn } from "../project/jsonText.ts"
 import { settingsFile } from "../project/settings.ts"
-import { RunLock } from "../services/RunLock.ts"
-import { skillPath, skillText, verifierFor, verifierPath } from "./checks.ts"
-import { readSettingsJson, refused, workerPromptPath } from "./init.ts"
-import { commitStaged, staging } from "./staged.ts"
-import { joinAnd, type Step, step, stepLine } from "./steps.ts"
+import { skillPath, skillText, verifierPath } from "../project/templateFiles.ts"
 import {
-  currentPrompt,
   currentTemplates,
   type OutdatedTemplate,
   outdatedTemplates,
   ownVerifier,
   sectionNames,
   type Templates,
-  unifiedDiff,
-  updated,
-} from "./templates.ts"
+} from "../project/templateVersions.ts"
+import { RunLock } from "../services/RunLock.ts"
+import { joinAnd } from "../text/joinAnd.ts"
+import { verifierFor } from "./checks.ts"
+import { readSettingsJson, refused, workerPromptPath } from "./init.ts"
+import { commitStaged, staging } from "./staged.ts"
+import { type Step, step, stepLine } from "./steps.ts"
+import { currentPrompt, unifiedDiff, updated } from "./templates.ts"
 
 /** A file `tutti init --update` rewrote: its text before and after. */
 export interface TemplateUpdate {

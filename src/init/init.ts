@@ -59,11 +59,19 @@ import {
 } from "../project/runners.ts"
 import { schemeNotices } from "../project/scheme.ts"
 import { maxConcurrent, Settings, settingsFile } from "../project/settings.ts"
+import { usesVerifier, verifierPath } from "../project/templateFiles.ts"
 import settingsTemplate from "../project/templates/settings.json" with { type: "json" }
 import gitignoreTemplate from "../project/templates/tutti-gitignore" with { type: "text" }
+import {
+  currentTemplates,
+  keptNote,
+  outdatedTemplates,
+  type Templates,
+} from "../project/templateVersions.ts"
 import { settingsGlobMatch } from "../run/glob.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { RunLock } from "../services/RunLock.ts"
+import { joinAnd } from "../text/joinAnd.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import type { FormCancelled } from "../ui/questions.ts"
 import {
@@ -82,8 +90,6 @@ import {
   skillState,
   suiteLines,
   testWork,
-  usesVerifier,
-  verifierPath,
 } from "./checks.ts"
 import {
   findOrchestra,
@@ -95,8 +101,7 @@ import {
 } from "./import.ts"
 import { readmeSteps, requiresSteps } from "./requires.ts"
 import { commitStaged, staging } from "./staged.ts"
-import { joinAnd, type Machine, runSteps, type Step, step, stepLine } from "./steps.ts"
-import { currentTemplates, keptNote, outdatedTemplates, type Templates } from "./templates.ts"
+import { type Machine, runSteps, type Step, step, stepLine } from "./steps.ts"
 import {
   applyPrefix,
   applyUnion,

@@ -3,8 +3,9 @@
 // touches, builds on the earlier rounds' findings, and passes Bash no timeout where a worker's
 // settings raised Bash's default.
 import { describe, expect, test } from "bun:test"
-import { verifierSection, verifierText } from "../src/init/checks.ts"
+import { verifierText } from "../src/init/checks.ts"
 import { fastRunner, fullRunner } from "../src/project/runners.ts"
+import { verifierSection } from "../src/project/templateFiles.ts"
 
 const agent = verifierText([], ["scripts/check.sh"], ["npx playwright test"])
 

@@ -7,16 +7,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Effect, Exit, Layer } from "effect"
-import {
-  type ChecksAnswers,
-  type ChecksQuestions,
-  scoutSearch,
-  verifierPath,
-  verifierSection,
-} from "../src/init/checks.ts"
+import { type ChecksAnswers, type ChecksQuestions, scoutSearch } from "../src/init/checks.ts"
 import { type InitFlags, type InitForm, type InitSummary, init } from "../src/init/init.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
+import { verifierPath, verifierSection } from "../src/project/templateFiles.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"

@@ -28,17 +28,17 @@ import {
 } from "../core/AppConfig.ts"
 import { duration, resetLabel } from "../core/localTime.ts"
 import { Log, line } from "../core/log.ts"
-import { templateNotes } from "../init/templates.ts"
-import { updateTemplates } from "../init/update.ts"
 import { O } from "../native/libc.ts"
 import { UsageProbe } from "../organs/UsageProbe.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt } from "../project/prompt.ts"
+import { templateNotes } from "../project/templateVersions.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import { type CheckError, Checks } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
 import { type Registration, workersCount } from "../services/machine.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
+import { joinAnd } from "../text/joinAnd.ts"
 import { marks } from "../text/marks.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
@@ -48,15 +48,7 @@ import type { BatteryReading } from "./battery.ts"
 import { howFailed, saidOf } from "./check.ts"
 import { type KeepAwakePlan, lidNote } from "./keepAwake.ts"
 import { busyLoad, type Kernel } from "./load.ts"
-import {
-  gb,
-  heaviest,
-  joinAnd,
-  largeVMs,
-  memoryGB,
-  type NamedProcess,
-  vmMemory,
-} from "./processes.ts"
+import { gb, heaviest, largeVMs, memoryGB, type NamedProcess, vmMemory } from "./processes.ts"
 import { descendants, ready } from "./scope.ts"
 import type { Started } from "./startup.ts"
 import { limitName } from "./usageLimit.ts"
@@ -81,6 +73,19 @@ export interface Found {
   readonly text: string
   readonly fix?: Fix
 }
+
+/**
+ * Brings the project's worker prompt, verifier and create-check-suite skill up to date as tutti
+ * init --update does (src/init/update.ts's updateTemplates): the steps it took, each naming what
+ * to commit. main.ts gives it to the pre-flight, as init is above the run.
+ */
+export type UpdateTemplates = (
+  repo: string,
+) => Effect.Effect<
+  { readonly steps: ReadonlyArray<{ readonly commit?: ReadonlyArray<string> | undefined }> },
+  { readonly message: string },
+  Env
+>
 
 /** What the checks read of the machine, given by main.ts, or by a test. */
 export interface Night {
@@ -539,14 +544,17 @@ export const batteryCheck = (
  * changed on the branch the main checkout has checked out, the run's base: the run won't start on
  * uncommitted changes, and its workers then follow the prompt committed, read again.
  */
-export const updateAndCommit = (started: Started): Effect.Effect<Started, string, Env> =>
+export const updateAndCommit = (
+  started: Started,
+  update: UpdateTemplates,
+): Effect.Effect<Started, string, Env> =>
   Effect.gen(function* () {
     const { config } = started
     const git = yield* Git
     // The START block's notes of them, which the update takes.
     const own = config.prompt !== resolve(config.repo, workerPromptFile)
     const notes = new Set(yield* templateNotes(config.repo, config.settings.templates, !own))
-    const updated = yield* updateTemplates(config.repo).pipe(
+    const updated = yield* update(config.repo).pipe(
       Effect.mapError((error) => oneLine(error.message)),
     )
     const paths = [...new Set(updated.steps.flatMap((step) => step.commit ?? []))]
@@ -579,7 +587,7 @@ export const updateAndCommit = (started: Started): Effect.Effect<Started, string
  * The worker prompt or verifier older than tutti's templates, which the workers would follow all
  * night: a warning, offering to bring them up to date and commit that.
  */
-export const templatesCheck = (started: Started) =>
+export const templatesCheck = (started: Started, update: UpdateTemplates) =>
   Effect.gen(function* () {
     const { config, base } = started
     const own = config.prompt !== resolve(config.repo, workerPromptFile)
@@ -594,7 +602,7 @@ export const templatesCheck = (started: Started) =>
     return warned(notes.map((note) => note.replace(/^templates: /, "")).join("; "), {
       question: `Bring them up to date as tutti init --update does, and commit that on ${base}?`,
       done: `the worker prompt and the verifier are up to date with tutti's templates, committed on ${base} (git show reads the change)`,
-      apply: updateAndCommit,
+      apply: (started) => updateAndCommit(started, update),
     })
   })
 
@@ -796,7 +804,13 @@ export const baseCheck = (started: Started, say: Say) =>
  * Every check of the pre-flight, in the checklist's order, the merge check on the base last; `puts`
  * whether the open questions are put to you before the first ticket.
  */
-export const checks = (started: Started, night: Night, say: Say, puts: boolean) =>
+export const checks = (
+  started: Started,
+  night: Night,
+  say: Say,
+  puts: boolean,
+  update: UpdateTemplates,
+) =>
   Effect.gen(function* () {
     const { config, account } = started
     const usage = yield* say.organ("Asking the account whether it is at its usage limit…")
@@ -821,7 +835,7 @@ export const checks = (started: Started, night: Night, say: Say, puts: boolean) 
       loadCheck(yield* night.kernel, processes),
       vmCheck(processes),
       batteryCheck(night.battery, night.platform),
-      yield* templatesCheck(started),
+      yield* templatesCheck(started, update),
       yield* readyCheck(config, puts),
       yield* baseCheck(started, say),
     ] satisfies ReadonlyArray<Found>
@@ -883,12 +897,14 @@ export const preflight = (options: {
   readonly puts: boolean
   readonly force: boolean
   readonly limit?: Duration.Duration
+  /** Brings the templates up to date, for the templates check's fix. */
+  readonly update: UpdateTemplates
 }): Effect.Effect<Cleared, never, Env> =>
   Effect.gen(function* () {
     const { night, say, force } = options
     const limit = options.limit ?? answerLimit
     const logs = yield* Log
-    const found = yield* checks(options.started, night, say, options.puts)
+    const found = yield* checks(options.started, night, say, options.puts, options.update)
     yield* say.say(headline(found))
     yield* say.print(found.map((each) => checklistLine(each, say.theme)).join("\n"))
     yield* logs.write(

@@ -8,7 +8,8 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Clock, Duration, Effect, Exit, Fiber, Ref, type Scope } from "effect"
-import { askedLook, takeAnswers } from "../src/run/asked.ts"
+import { takeAnswers } from "../src/run/asked.ts"
+import { askedLook } from "../src/run/askedLook.ts"
 import {
   AutoAnswer,
   type AutoAnswering,

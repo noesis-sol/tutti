@@ -6,6 +6,7 @@
 import { Effect } from "effect"
 import type { Scouting } from "../organs/scout.ts"
 import { fastRunner, fullRunner } from "../project/runners.ts"
+import { skillDir } from "../project/templateFiles.ts"
 import type { FormCancelled } from "../ui/questions.ts"
 import {
   type ChecksAnswers,
@@ -20,7 +21,6 @@ import {
   type Scouted,
   type ScoutResult,
   settleScout,
-  skillDir,
   suiteLabel,
   verifierDescription,
 } from "./checks.ts"

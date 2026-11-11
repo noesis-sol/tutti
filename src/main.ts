@@ -70,6 +70,7 @@ import { AppConfig } from "./core/AppConfig.ts"
 import { BranchEnv, branchEnv, WorkerEnv, workerEnv } from "./core/env.ts"
 import { runStarted } from "./core/localTime.ts"
 import { detail, type Line, Log, type Sink } from "./core/log.ts"
+import { updateTemplates } from "./init/update.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { Organs } from "./organs/Organs.ts"
 import { UsageProbe } from "./organs/UsageProbe.ts"
@@ -390,6 +391,7 @@ const overnight = (
     const ran = yield* Effect.result(
       preflight({
         started,
+        update: updateTemplates,
         night: {
           platform: process.platform,
           cores: availableParallelism(),

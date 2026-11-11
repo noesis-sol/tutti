@@ -17,17 +17,23 @@ import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Cause, ConfigProvider, Effect, Exit, Option } from "effect"
 import { readInitFlags } from "../src/cli/commands.ts"
+import { verifierText } from "../src/init/checks.ts"
+import { type InitFlags, type InitForm, type InitSummary, init } from "../src/init/init.ts"
+import { type Machine, stepLine } from "../src/init/steps.ts"
+import { currentPrompt, unifiedDiff, updated } from "../src/init/templates.ts"
+import { initUpdate, updateLines, updateNext, updateTemplates } from "../src/init/update.ts"
+import { readConfigFile } from "../src/project/configFile.ts"
+import { builtInWorkerPrompt, withSuites } from "../src/project/prompt.ts"
+import { fastScript, fullScript } from "../src/project/runners.ts"
+import { Settings } from "../src/project/settings.ts"
 import {
   skillText,
   suitesIntro,
   verifierPath,
   verifierSection,
-  verifierText,
-} from "../src/init/checks.ts"
-import { type InitFlags, type InitForm, type InitSummary, init } from "../src/init/init.ts"
-import { type Machine, stepLine } from "../src/init/steps.ts"
+} from "../src/project/templateFiles.ts"
+import verifierTemplate from "../src/project/templates/verifier.md" with { type: "text" }
 import {
-  currentPrompt,
   currentTemplates,
   latestVersion,
   promptChanges,
@@ -35,16 +41,8 @@ import {
   skillChanges,
   type TemplateChange,
   templateNotes,
-  unifiedDiff,
-  updated,
   verifierChanges,
-} from "../src/init/templates.ts"
-import { initUpdate, updateLines, updateNext, updateTemplates } from "../src/init/update.ts"
-import { readConfigFile } from "../src/project/configFile.ts"
-import { builtInWorkerPrompt, withSuites } from "../src/project/prompt.ts"
-import { fastScript, fullScript } from "../src/project/runners.ts"
-import { Settings } from "../src/project/settings.ts"
-import verifierTemplate from "../src/project/templates/verifier.md" with { type: "text" }
+} from "../src/project/templateVersions.ts"
 import { check } from "../src/run/startup.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"

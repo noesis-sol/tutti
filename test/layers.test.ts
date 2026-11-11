@@ -60,16 +60,6 @@ export const exceptions: ReadonlyArray<Exception> = [
     to: "print",
     why: "the run prints its report on the main screen after the renderer (§ 7.1)",
   },
-  {
-    from: "run/startup.ts",
-    to: "init",
-    why: "the template notes, until tutti-u3b3.4 moves them below the run",
-  },
-  {
-    from: "run/overnight.ts",
-    to: "init",
-    why: "the template notes and update, until tutti-u3b3.4 moves them below the run",
-  },
 ]
 
 /** The area of a module: its first folder under src/, or the file itself at src/'s top. */

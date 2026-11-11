@@ -7,16 +7,16 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
-import { verifierPath } from "../src/init/checks.ts"
 import { stepLine } from "../src/init/steps.ts"
+import { updateNext, updateTemplates } from "../src/init/update.ts"
+import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import { verifierPath } from "../src/project/templateFiles.ts"
 import {
   currentTemplates,
   latestVersion,
   ownVerifier,
   promptChanges,
-} from "../src/init/templates.ts"
-import { updateNext, updateTemplates } from "../src/init/update.ts"
-import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+} from "../src/project/templateVersions.ts"
 
 /** A subagent of the project's own named verifier. */
 const ownVerifierText = `---

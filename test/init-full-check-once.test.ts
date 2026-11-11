@@ -21,7 +21,6 @@ import {
   scoutSearch,
   settleScout,
   suiteLabel,
-  verifierPath,
   verifierText,
 } from "../src/init/checks.ts"
 import { fullChecklistDescription } from "../src/init/form.ts"
@@ -32,6 +31,7 @@ import { Organs } from "../src/organs/Organs.ts"
 import { type Scouting, type Suite as ScoutSuite, tidy } from "../src/organs/scout.ts"
 import { fullScript, runnerCommands, type Suite } from "../src/project/runners.ts"
 import { orchestra } from "../src/project/scheme.ts"
+import { verifierPath } from "../src/project/templateFiles.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"

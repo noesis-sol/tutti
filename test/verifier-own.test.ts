@@ -8,18 +8,19 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
-import { verifierPath, verifierText } from "../src/init/checks.ts"
+import { verifierText } from "../src/init/checks.ts"
+import { updateTemplates } from "../src/init/update.ts"
+import { readConfigFile } from "../src/project/configFile.ts"
+import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import { Settings } from "../src/project/settings.ts"
+import { verifierPath } from "../src/project/templateFiles.ts"
 import {
   latestVersion,
   promptChanges,
   sections,
   templateNotes,
   verifierOpening,
-} from "../src/init/templates.ts"
-import { updateTemplates } from "../src/init/update.ts"
-import { readConfigFile } from "../src/project/configFile.ts"
-import { builtInWorkerPrompt } from "../src/project/prompt.ts"
-import { Settings } from "../src/project/settings.ts"
+} from "../src/project/templateVersions.ts"
 
 /** A subagent of the project's own named verifier, with a Rules section as tutti's has. */
 const ownVerifier = `---

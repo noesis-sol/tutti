@@ -31,7 +31,7 @@ import {
 import type { EventStream } from "../services/EventStream.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { awakeSince } from "../services/Wake.ts"
-import { type AskedLook, answeredIn, shownIn, stillOpen } from "./asked.ts"
+import { type AskedLook, answeredIn, shownIn, stillOpen } from "./askedLook.ts"
 import { Ledger } from "./ledger.ts"
 import { about } from "./notices.ts"
 import { say, warn } from "./say.ts"

@@ -113,7 +113,8 @@ import { dependentFollowUps, scorecardsEvidence, scorecardsReport } from "../ser
 import { outputMode, Tty } from "../services/Tty.ts"
 import { awakeSince } from "../services/Wake.ts"
 import { make as makeApiOutage } from "./apiOutage.ts"
-import { askedLook, askedQuestions, readAnswers, takeAnswers } from "./asked.ts"
+import { askedQuestions, readAnswers, takeAnswers } from "./asked.ts"
+import { askedLook } from "./askedLook.ts"
 import { off as auditorOff, followEnds, make as makeAuditor } from "./auditor.ts"
 import {
   AutoAnswer,

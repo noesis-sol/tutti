@@ -6,6 +6,7 @@ import { statfs } from "node:fs/promises"
 import { basename, dirname } from "node:path"
 import { Effect } from "effect"
 import { exec, TimeLimit } from "../services/exec.ts"
+import { joinAnd } from "../text/joinAnd.ts"
 
 /** One process of a listing, with its name: the base name of its executable. */
 export interface NamedProcess {
@@ -116,10 +117,6 @@ export const vmApps: Readonly<Record<string, string>> = {
   gvproxy: "Podman",
   UTM: "UTM",
 }
-
-/** `a`, `a and b`, `a, b and c`. */
-export const joinAnd = (items: ReadonlyArray<string>): string =>
-  items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`
 
 /**
  * Each virtual machine among `all` holding more than vmMemory, and whose it is where the listing

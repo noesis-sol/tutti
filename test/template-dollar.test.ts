@@ -2,7 +2,7 @@
 // into the worker prompt and the verifier exactly as written, and --update leaves them as they are.
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { suiteLines, verifierSection, verifierText } from "../src/init/checks.ts"
+import { suiteLines, verifierText } from "../src/init/checks.ts"
 import { currentPrompt } from "../src/init/templates.ts"
 import {
   builtInWorkerPrompt,
@@ -11,6 +11,7 @@ import {
   withSuites,
 } from "../src/project/prompt.ts"
 import type { Suite } from "../src/project/runners.ts"
+import { verifierSection } from "../src/project/templateFiles.ts"
 
 const port = "PORT=$((3000 + $$ % 100)) bun test"
 

@@ -3,8 +3,8 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import fc from "fast-check"
-import { latestVersion, promptChanges } from "../src/init/templates.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import { latestVersion, promptChanges } from "../src/project/templateVersions.ts"
 import {
   decodeIssue,
   maintainerOnly,

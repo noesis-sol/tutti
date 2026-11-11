@@ -15,7 +15,7 @@ import {
   writeSynced,
   writeTarget,
 } from "../core/atomicFile.ts"
-import { joinAnd } from "./steps.ts"
+import { joinAnd } from "../text/joinAnd.ts"
 
 /** A file the setup writes: where, what, and its mode where the setup gives one. */
 export interface StagedWrite {

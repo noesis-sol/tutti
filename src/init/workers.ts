@@ -37,8 +37,9 @@ import { TimeLimit } from "../services/exec.ts"
 import { lenientKey } from "../services/lenient.ts"
 import { readStateText, stateFile } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
+import { joinAnd } from "../text/joinAnd.ts"
 import type { PrefixQuestion } from "./checks.ts"
-import { joinAnd, type Machine, type Step, step } from "./steps.ts"
+import { type Machine, type Step, step } from "./steps.ts"
 
 /** What the Workers step asks, each question null where a flag answered it or it isn't asked. */
 export interface WorkersQuestions {

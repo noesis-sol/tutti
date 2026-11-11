@@ -148,10 +148,6 @@ export const marks: Record<StepKind, string> = {
 export const stepLine = (each: Step): string =>
   `${marks[each.kind]} ${sanitizeLine(each.label)}${each.detail === "" ? "" : `  ${sanitizeLine(each.detail)}`}`
 
-/** Lists items as a sentence does: "a", "a and b", "a, b and c". */
-export const joinAnd = (items: ReadonlyArray<string>): string =>
-  items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`
-
 /** How a command failed: why, and the last lines of its output, where a command says what went wrong. */
 export const failure = (what: string, why: string, output: string): string => {
   const lines = output

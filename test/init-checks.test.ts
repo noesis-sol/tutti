@@ -30,13 +30,9 @@ import {
   scoutSkipped,
   settleScout,
   setUpTestsTitle,
-  skillPath,
-  skillText,
   suiteLabel,
   testsEpicTitle,
   testWorkLabel,
-  verifierPath,
-  verifierSection,
 } from "../src/init/checks.ts"
 import {
   cancelledLine,
@@ -52,6 +48,12 @@ import { Organs } from "../src/organs/Organs.ts"
 import type { Scouting, Suite as ScoutSuite } from "../src/organs/scout.ts"
 import { fastScript, runnerCommands } from "../src/project/runners.ts"
 import { orchestra } from "../src/project/scheme.ts"
+import {
+  skillPath,
+  skillText,
+  verifierPath,
+  verifierSection,
+} from "../src/project/templateFiles.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"

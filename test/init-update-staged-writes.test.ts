@@ -17,9 +17,9 @@ import { dirname, join, relative } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, FileSystem, Layer } from "effect"
 import { type PlatformError, systemError } from "effect/PlatformError"
-import { skillPath, verifierPath } from "../src/init/checks.ts"
 import { SetupNotWritten } from "../src/init/staged.ts"
 import { updateTemplates } from "../src/init/update.ts"
+import { skillPath, verifierPath } from "../src/project/templateFiles.ts"
 
 const fixture = (name: string): string =>
   readFileSync(join(import.meta.dir, "fixtures", "templates", name), "utf8")
