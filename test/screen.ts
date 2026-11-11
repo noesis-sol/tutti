@@ -300,16 +300,23 @@ export const boxesIn = (screen: Screen): ReadonlyArray<BoxShown> => {
 
 /**
  * The innermost box whose borders or lines say `text`: the worker view's `Ticket` box by its title,
- * the key help by its `Keys`; throws where there is none.
+ * the key help by its `Keys`; throws where there is none. A box another is drawn over, its top
+ * border crossed by that box's side, has the other's lines where its own were (the dashboard's
+ * totals strip under the row's box), so one whose border is whole comes first.
  */
 export const boxWith = (screen: Screen, text: string): BoxShown => {
+  const lines = screenLines(screen)
   const says = (box: BoxShown) =>
     [...box.head, ...box.foot, ...box.lines].some((each) => each.includes(text))
   const area = (box: BoxShown) =>
     ((box.bottom ?? box.top + box.lines.length) - box.top) * (box.right - box.left)
+  const crossed = (box: BoxShown) =>
+    Array.from(lines[box.top] ?? "")
+      .slice(box.left + 1, box.right)
+      .some((char) => sides.has(char))
   const box = boxesIn(screen)
     .filter(says)
-    .sort((a, b) => area(a) - area(b))[0]
+    .sort((a, b) => Number(crossed(a)) - Number(crossed(b)) || area(a) - area(b))[0]
   if (box === undefined) {
     throw new Error(`no box says ${text} on the screen:\n${screenLines(screen).join("\n")}`)
   }

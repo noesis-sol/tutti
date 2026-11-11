@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The row's box (`Enter` on a done or set-aside row, titled `Ticket`) leaves the dashboard a margin above and below, two lines each in a pane of 30 lines or more, one from 20 lines, none under, and is four fifths of the pane wide, at most 110 columns and at least the 72 it had: in a 182×40 pane it took the whole height, its top border over the title line, and 72 columns, about two fifths of the pane, with the rest of the ticket to scroll through. It stays as tall as the margins allow whatever the ticket's length, so it still doesn't jump as bd answers; the answer form, the questions box and the other modals keep their widths (§ 7.2; `rowBoxWidth`, `rowBoxMargin` in `src/ui/RowBox.tsx`; `test/row-box-size.test.tsx`; tutti-9g4c).
+
 ## [0.8.0] - 2026-11-10
 
 - `DEFERRED_FREE` names a deferred ticket's worktree left detached whose branch is gone too (a worker's `git checkout --detach` then `git branch -D`): the worktree's HEAD alone is counted for commits beyond the base, where `git log <base>..tutti/<id>` failed without the branch and left the worktree unreported, and the cleanup command removes the worktree alone, as `git branch -d` of a missing branch fails (`src/run/deferredFree.ts`; `test/deferred-free-branch-gone.test.ts`; tutti-v6w1).

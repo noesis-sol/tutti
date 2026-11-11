@@ -1,7 +1,8 @@
 // A row's box (Box.Row, § 7.2, tutti-149z.3, tutti-149z.9), which Enter opens on a row with no worker
 // view to go to, one done or set aside, or on any row with no need in a pane with no panel: over the
-// dashboard, the pane's whole height and up to the answer form's width, the whole ticket and how it
-// went, where the panel can only say what happened last. Under the top border (TicketHead's, `Ticket`
+// dashboard, as tall as the pane allows within a margin of its lines above and below (boxMargin), and
+// four fifths of the pane wide up to boxWidest (rowBoxWidth), the whole ticket and how it went, where
+// the panel can only say what happened last. Under the top border (TicketHead's, `Ticket`
 // and its type and priority), in a scrollbox: what the panel says of the row (rowParagraphs); the
 // whole ticket, drawn with <markdown> as the worker view's is (wholeTicket), read again with bd show
 // as the box opens so that notes added during the run show, what RunView has until bd answers, and
@@ -23,7 +24,6 @@ import { sizeWords } from "../run/scorecard.ts"
 import { type Peer, type PeerMedian, peerMedian } from "../run/ticketStats.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { arrowKeys, marks } from "../text/marks.ts"
-import { formWidth } from "./AnswerForm.tsx"
 import { elapsed } from "./Card.tsx"
 import { type Command, isOn, useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
@@ -54,6 +54,49 @@ const nameWidth = 13
 
 /** The narrowest a box gets, its frame included. */
 const leastWidth = 8
+
+/**
+ * The box's share of the pane's width: it shows a whole ticket, so it is wider than the other
+ * frames, four fifths of the pane, where the answer form and the modals keep their own widths.
+ */
+export const boxShare = 4 / 5
+
+/**
+ * The widest the box gets, its frame included: about 106 columns of text, past which a
+ * paragraph's lines are too long to read.
+ */
+export const boxWidest = 110
+
+/**
+ * The box's width where four fifths of the pane is less: the answer form's, as it had (tutti-9g4c),
+ * so that a pane of 90 columns or fewer keeps the box it had.
+ */
+export const boxBaseWidth = 72
+
+/**
+ * How wide the box is in a pane `width` wide: four fifths of the pane up to boxWidest and at least
+ * boxBaseWidth, within boxMargin of the pane's sides, as the other frames are (110 at 182 columns,
+ * 96 at 120, 80 at 100, 72 at 80, the pane's width less the margins under 76).
+ */
+export const rowBoxWidth = (width: number): number =>
+  boxWidth(width, {
+    max: Math.max(Math.min(Math.floor(width * boxShare), boxWidest), boxBaseWidth),
+    least: leastWidth,
+  })
+
+/**
+ * The dashboard's lines left above the box and as many below, from the pane's height up: two from
+ * 30 lines, one from 20, none under, where every line counts. The box is as tall as that allows,
+ * whatever the ticket's length, so it doesn't jump as bd answers.
+ */
+export const boxMargins: ReadonlyArray<{ readonly from: number; readonly lines: number }> = [
+  { from: 30, lines: 2 },
+  { from: 20, lines: 1 },
+]
+
+/** The lines the box leaves to the dashboard above it, and below, in a pane `height` lines tall. */
+export const rowBoxMargin = (height: number): number =>
+  boxMargins.find(({ from }) => height >= from)?.lines ?? 0
 
 const outcomeWords: { readonly [O in TicketOutcome]: string } = {
   merged: "merged",
@@ -237,7 +280,7 @@ export const RowBox = ({ ticket }: { readonly ticket: TicketId }) => {
   if (row === undefined) return null
 
   const frame = theme.look("frame")
-  const outer = boxWidth(width, { max: formWidth, least: leastWidth })
+  const outer = rowBoxWidth(width)
   const inner = frameInner(outer)
   const head = rowParagraphs(row, theme).flatMap((each) => wrap([each], inner, { long: "line" }))
   const stats = statsLines(row, peers, theme, inner, now)
@@ -252,9 +295,9 @@ export const RowBox = ({ ticket }: { readonly ticket: TicketId }) => {
     separatorOf(theme),
     inner,
   )
-  // The pane's whole height, however short the ticket: <markdown> lays out more lines than it has
-  // as written (a table's rules), and the box doesn't jump as bd answers.
-  const lines = Math.max(height - keys.length - 2, 1)
+  // As tall as the pane allows within its margins, however short the ticket: <markdown> lays out
+  // more lines than it has as written (a table's rules), and the box doesn't jump as bd answers.
+  const lines = Math.max(height - 2 * rowBoxMargin(height) - keys.length - 2, 1)
   const boxHeight = lines + keys.length + 2
   // Counted as it is drawn, from the scrollbox as it is then, so that scrolling changes no state.
   const bottom = function (this: Renderable, buffer: OptimizedBuffer) {

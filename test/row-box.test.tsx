@@ -358,7 +358,7 @@ describe("scrolling", () => {
   })
 
   // <markdown> lays a table out in more lines than it has as written.
-  test("it takes the pane's whole height, whatever the ticket, a table's lines all reachable", async () => {
+  test("it is as tall as its margins allow, whatever the ticket, a table's lines all reachable", async () => {
     const rows = Array.from({ length: 12 }, (_, i) => `| ${i} | value ${i} |`).join("\n")
     const table = `Before.\n\n| key | value |\n|---|---|\n${rows}\n\nAfter.`
     for (const issue of [issueOf("Short."), issueOf(table)]) {
@@ -379,8 +379,11 @@ describe("scrolling", () => {
           await press(rendered, "enter", "enter")
           const box = await rendered.capture()
           const lines = box.chars.trimEnd().split("\n")
-          expect(lines[0]).toContain("╭─ Ticket")
-          expect(lines[59]).toContain("╯")
+          // Two lines of margin above and below in a pane of 60 lines (rowBoxMargin).
+          expect(lines[1]).not.toContain("╭─ Ticket")
+          expect(lines[2]).toContain("╭─ Ticket")
+          expect(lines[57]).toContain("╯")
+          expect(lines[58] ?? "").not.toContain("╯")
           if (has(box, "Reverts")) return
           for (let i = 0; i < 5; i++) await press(rendered, "pagedown")
           expect(has(await rendered.capture(), "Reverts")).toBe(true)
