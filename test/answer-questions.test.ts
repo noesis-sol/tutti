@@ -18,6 +18,7 @@ import {
 import type { Log } from "../src/core/log.ts"
 import { latestVersion, promptChanges } from "../src/init/templates.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { decisionSection, recordAnswer, withDecision } from "../src/run/answerQuestion.ts"
 import { resolve, UiCommand } from "../src/run/commands.ts"
 import { emptyState } from "../src/run/ledger.ts"
@@ -27,7 +28,7 @@ import type { Beads, TicketId } from "../src/services/Beads.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import type { OpenQuestion } from "../src/ui/questions.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, {
   appearance: "dark",

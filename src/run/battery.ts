@@ -16,9 +16,9 @@
 import { Context, Duration, Effect, FileSystem } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { type Line, Log, Tag, tagged } from "../core/log.ts"
+import { EventStream } from "../services/EventStream.ts"
 import { exec } from "../services/exec.ts"
 import { sleepAwake, timeoutAwake } from "../services/Wake.ts"
-import { EventStream } from "./eventstream.ts"
 
 /** What the battery says: its charge, in percent, and whether the machine draws on it. */
 export interface BatteryReading {

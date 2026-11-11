@@ -16,20 +16,19 @@
 //   carried on (no `spec_sha256`, set last of all, so the breakdown that filed it didn't finish);
 // - updateFile: what an update's breakdown reads, the spec's diff and the tree, a line an issue;
 // - checkFiled: the tree as bd has it once the breakdown is over, and what is amiss in it, its
-//   shape among the rest (src/plan/shape.ts).
+//   shape among the rest (src/run/shape.ts).
 //
-// The breakdown itself is src/agent/breakdown.ts.
+// The breakdown itself is src/run/breakdown.ts.
 import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { Data, Effect, FileSystem, Option, Result } from "effect"
-import { compareIds, existingLinks } from "../plan/plan.ts"
-import { narrowWarning, shapeOf } from "../plan/shape.ts"
 import { planCycle } from "../project/planFile.ts"
 import { Beads, type BeadsError, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, type GitError, type Sha } from "../services/Git.ts"
 import { runFolder } from "../services/Worktrees.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
+import { compareIds, existingLinks, narrowWarning, shapeOf } from "./shape.ts"
 import {
   fetchSpecLive,
   isSpecUrl,

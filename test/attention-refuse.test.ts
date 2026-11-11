@@ -27,8 +27,8 @@ import {
   writeExclusive,
 } from "../src/agent/attentionFiles.ts"
 import type { Log } from "../src/core/log.ts"
-import type { EventStream } from "../src/run/eventstream.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import type { EventStream } from "../src/services/EventStream.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"

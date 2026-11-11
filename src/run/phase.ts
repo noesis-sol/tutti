@@ -6,8 +6,6 @@
 // ledger, RunView, the log, the event stream and the report read it.
 import { Data, Result, Schema } from "effect"
 import type { TicketId } from "../services/Beads.ts"
-import type { Mark } from "../text/marks.ts"
-import type { Shown, Tone } from "../ui/tone.ts"
 import {
   type endingPhases,
   type Kind,
@@ -16,7 +14,9 @@ import {
   type phaseSeconds,
   type queuePhases,
   type ticketOutcomes,
-} from "./events.ts"
+} from "../services/events.ts"
+import type { Mark } from "../text/marks.ts"
+import type { Shown, Tone } from "../ui/tone.ts"
 
 /** A variant with no fields. */
 type Empty = Record<never, never>

@@ -29,11 +29,11 @@
 // shows each part, so that what moved stays in sight.
 
 import { timestamp } from "../core/localTime.ts"
-import { HumanLabel, type Issue } from "../services/Beads.ts"
-import type { Commit } from "../services/Git.ts"
-import { ticketIdProblem } from "../services/Worktrees.ts"
 import { escapeMarkdown, sanitizeLine } from "../text/sanitize.ts"
+import { HumanLabel, type Issue } from "./Beads.ts"
 import type { AuditItemName, Event, verdicts } from "./events.ts"
+import type { Commit } from "./Git.ts"
+import { ticketIdProblem } from "./Worktrees.ts"
 
 type Verdict = (typeof verdicts)[number]
 

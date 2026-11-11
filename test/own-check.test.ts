@@ -16,7 +16,6 @@ import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { type ChecksAnswers, suiteLines, suitesIntro, verifierSection } from "../src/init/checks.ts"
 import { importSettings } from "../src/init/import.ts"
 import { type InitForm, init } from "../src/init/init.ts"
-import type { Suite } from "../src/init/runners.ts"
 import { stepLine } from "../src/init/steps.ts"
 import { decodeConfig } from "../src/project/configFile.ts"
 import {
@@ -26,6 +25,7 @@ import {
   usageLimitNote,
   withSuites,
 } from "../src/project/prompt.ts"
+import type { Suite } from "../src/project/runners.ts"
 import { checkCommands, Settings } from "../src/project/settings.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import type { TicketId } from "../src/services/Beads.ts"

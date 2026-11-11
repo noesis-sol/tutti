@@ -31,8 +31,14 @@ import { Clock, Duration, Effect, Option, Ref, Result, Semaphore } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../core/AppConfig.ts"
 import { type Line, Log, line, Tag, tagged } from "../core/log.ts"
-import { fastRunner, fullRunner, isRunner, runnerCommands, runsNothing } from "../init/runners.ts"
 import { formatDuration } from "../project/configFile.ts"
+import {
+  fastRunner,
+  fullRunner,
+  isRunner,
+  runnerCommands,
+  runsNothing,
+} from "../project/runners.ts"
 import {
   Beads,
   beadsWhy,
@@ -48,12 +54,12 @@ import {
   type RunChecks,
   setupLogName,
 } from "../services/Checks.ts"
+import { EventStream } from "../services/EventStream.ts"
+import { type checksGateOutcomes, type GateRan, tenths } from "../services/events.ts"
 import { Git, type Sha, shortHash } from "../services/Git.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { flakyWarnings, howFailed, outputTo, recorded } from "./check.ts"
 import { type EarlyChecks, holdingSlot } from "./earlyCheck.ts"
-import { type checksGateOutcomes, type GateRan, tenths } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
 import {
   type FullCheckRun,
   keepRunOutput,

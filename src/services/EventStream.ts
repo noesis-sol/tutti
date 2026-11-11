@@ -14,10 +14,10 @@ import { fstatSync, readSync, writeSync } from "node:fs"
 import { Clock, Context, Effect, Layer, Result, type Stream, SubscriptionRef } from "effect"
 import { timestamp } from "../core/localTime.ts"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
-import { runFolder } from "../services/Worktrees.ts"
 import { type Event, type EventRecord, encodeLine, version } from "./events.ts"
 import { addRecord, type Figures, noFigures, scoreAfter } from "./figures.ts"
 import { noScoring, type Scoring } from "./scorecard.ts"
+import { runFolder } from "./Worktrees.ts"
 
 /** The event stream's file, relative to the main checkout's top level (§ 9.1). */
 export const eventsFile = ".tutti/run/events.jsonl"

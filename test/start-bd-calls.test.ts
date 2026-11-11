@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
-import { ticketCount } from "../src/run/choose.ts"
+import { ticketCount } from "../src/cli/choose.ts"
 import * as free from "../src/run/deferredFree.ts"
 import { check, heldAtStart, noHolds, type Options } from "../src/run/nothing.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"

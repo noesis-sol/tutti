@@ -7,9 +7,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { PassThrough } from "node:stream"
 import { Effect, Exit } from "effect"
-import { askLines } from "../src/run/choose.ts"
+import { askLines } from "../src/cli/choose.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type SpecAsk, TicketCount, Work } from "../src/ui/questions.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
 

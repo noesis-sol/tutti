@@ -12,27 +12,18 @@ import type { AutoAnswered } from "../agent/Attention.ts"
 import { AppConfig } from "../core/AppConfig.ts"
 import { detail, type Line, Log, line } from "../core/log.ts"
 import { type Section, section } from "../organs/evidence.ts"
-import {
-  type AutoAnsweredItem,
-  autoAnsweredHeading,
-  autoAnsweredTexts,
-  checksGateLabel,
-  Ending,
-  type Summary,
-} from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
 import { Checks } from "../services/Checks.ts"
+import { EventStream } from "../services/EventStream.ts"
+import { type FiguresLine, figuresLines, figuresText } from "../services/figures.ts"
 import { Git } from "../services/Git.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { marks } from "../text/marks.ts"
-import { windowLabel } from "../ui/TitleLine.tsx"
 import { answeredQuestions } from "./autoAnswer.ts"
 import { saveAsked, saveLeft } from "./carry.ts"
 import { drainedLine } from "./drain.ts"
-import { EventStream } from "./eventstream.ts"
-import { type FiguresLine, figuresLines, figuresText } from "./figures.ts"
 import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
 import { firstStop, type Stops, stopsLine } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
@@ -41,11 +32,27 @@ import { finished } from "./notices.ts"
 import { Move, stopsAtEnd, type TicketPhase } from "./phase.ts"
 import { quittingText } from "./quit.ts"
 import { Quitting, quitStop } from "./quitting.ts"
-import { emptyStatus, project, type Row, type Status, showOn, type Totals } from "./runView.ts"
+import {
+  emptyStatus,
+  project,
+  type Row,
+  type Status,
+  showOn,
+  type Totals,
+  windowLabel,
+} from "./runView.ts"
 import { sayer } from "./say.ts"
 import type { Scheduler } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type SetUps, setupWaiting, setupWaitsPart } from "./setup.ts"
+import {
+  type AutoAnsweredItem,
+  autoAnsweredHeading,
+  autoAnsweredTexts,
+  checksGateLabel,
+  Ending,
+  type Summary,
+} from "./summary.ts"
 import { labelAtEnd } from "./unmerged.ts"
 import { neverHanded, type UsageLimitHold } from "./usageLimit.ts"
 import type { WorkEnv } from "./work.ts"

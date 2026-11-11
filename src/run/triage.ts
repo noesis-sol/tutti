@@ -49,10 +49,10 @@ import {
   type Verdict,
 } from "../organs/triage.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import { Git, gitWhy, shortHash } from "../services/Git.ts"
 import { allChangeEntries } from "../services/gitStatus.ts"
 import type { EnvironmentHold } from "./environment.ts"
-import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { attentionLines, attentionSaid } from "./report.ts"
 import { sayer } from "./say.ts"

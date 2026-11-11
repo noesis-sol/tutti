@@ -14,10 +14,10 @@ import {
   branchEnv,
   workerEnv,
   workerVariables,
-} from "../src/agent/env.ts"
-import { makeRequiresTools } from "../src/agent/requiresTools.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
+} from "../src/core/env.ts"
 import { checkRequires } from "../src/run/requires.ts"
+import { makeRequiresTools } from "../src/run/requiresTools.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import { Checks } from "../src/services/Checks.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { testEnv, withVariable } from "./env.ts"

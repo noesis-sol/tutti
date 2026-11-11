@@ -20,11 +20,11 @@ import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { deniedShownFor, Transcripts } from "../src/agent/Transcripts.ts"
 import type { WorkerState } from "../src/agent/WorkerState.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import { Log } from "../src/core/log.ts"
-import type { Denied, EventRecord } from "../src/run/events.ts"
-import type { EventStream } from "../src/run/eventstream.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import type { EventStream } from "../src/services/EventStream.ts"
+import type { Denied, EventRecord } from "../src/services/events.ts"
 import {
   assistantText,
   deniedTool,

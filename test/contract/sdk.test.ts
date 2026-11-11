@@ -48,7 +48,6 @@ import { AgentHost, AgentStartFailed, MessageUuid, userMessage } from "../../src
 import { layer as liveLayer } from "../../src/agent/AgentHostLive.ts"
 import { Attention, type AttentionRequest, type Policy } from "../../src/agent/Attention.ts"
 import { ClaudeCode, queuedControls } from "../../src/agent/ClaudeCode.ts"
-import { paneVariable, workerEnv } from "../../src/agent/env.ts"
 import type { ChosenServers } from "../../src/agent/mcp.ts"
 import { noServersNote } from "../../src/agent/mcp.ts"
 import { type SessionStart, workerOptions } from "../../src/agent/options.ts"
@@ -56,11 +55,12 @@ import { read } from "../../src/agent/reading.ts"
 import type { Transcripts } from "../../src/agent/Transcripts.ts"
 import { windowsOf } from "../../src/agent/UsageLimits.ts"
 import { initial, step, WorkerEvent, type WorkerState } from "../../src/agent/WorkerState.ts"
-import { defaultSettings } from "../../src/cli/resolveConfig.ts"
+import { paneVariable, workerEnv } from "../../src/core/env.ts"
 import type { Log } from "../../src/core/log.ts"
 import type { permissionModes } from "../../src/project/settings.ts"
-import type { EventStream } from "../../src/run/eventstream.ts"
+import { defaultSettings } from "../../src/run/resolveConfig.ts"
 import type { TicketId } from "../../src/services/Beads.ts"
+import type { EventStream } from "../../src/services/EventStream.ts"
 import { appConfig, layer as configLayer } from "../../src/testing/AppConfig.ts"
 import { allowAll, layer as attentionLayer, waitForTest } from "../../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../../src/testing/EventStream.ts"
@@ -1118,7 +1118,7 @@ live.describe("Agent SDK contract: resume", () => {
   )
 })
 
-// What Spending (src/run/spending.ts) relies on for each turn's share (§ 10): total_cost_usd and
+// What Spending (src/services/Spending.ts) relies on for each turn's share (§ 10): total_cost_usd and
 // modelUsage are the query's running totals, so a second turn's are above the first's, while
 // num_turns is the turn's own; and a resumed session goes on from the totals its transcript saved.
 live.describe("Agent SDK contract: a result's cost is the session's running total", () => {

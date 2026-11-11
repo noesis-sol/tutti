@@ -18,7 +18,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Result } from "effect"
 import { decodeItem } from "../src/agent/Transcripts.ts"
-import { decodeLine } from "../src/run/events.ts"
+import { decodeLine } from "../src/services/events.ts"
 import { machineWhich, testEnv } from "./env.ts"
 
 const doc = readFileSync(join(import.meta.dir, "../docs/analytics.md"), "utf8")

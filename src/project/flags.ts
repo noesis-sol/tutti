@@ -10,9 +10,9 @@
 
 import { Duration, Option, Result } from "effect"
 import { Flag } from "effect/cli"
-import { parseDuration } from "../project/configFile.ts"
-import { efforts, maxConcurrent } from "../project/settings.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { parseDuration } from "./configFile.ts"
+import { efforts, maxConcurrent } from "./settings.ts"
 
 /** Reads a flag's or a variable's text: its value, or what is wrong with it, after "--name ". */
 export type Reader<A> = (text: string) => Result.Result<A, string>

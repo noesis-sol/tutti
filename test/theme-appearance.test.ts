@@ -8,14 +8,12 @@ import { BunServices } from "@effect/platform-bun"
 import { Effect, Fiber, Option } from "effect"
 import { TestClock } from "effect/testing"
 import {
-  backgroundQueryLimit,
   type LoadedScheme,
   loadScheme,
   orchestra,
-  queryAppearance,
   type SchemeFolders,
-  type TerminalStreams,
-} from "../src/ui/theme.ts"
+} from "../src/project/scheme.ts"
+import { backgroundQueryLimit, queryAppearance, type TerminalStreams } from "../src/ui/theme.ts"
 
 const query = "\x1b]11;?\x07\x1b[c"
 const deviceAttributes = "\x1b[?62;22c"

@@ -1,9 +1,10 @@
 // The start question's keys that arrive in one read (§ 7.1): each sees the ones before it, so Downs
 // and Enter together choose what Down moved to, not what was highlighted when the read began.
 import { expect, test } from "bun:test"
+import { orchestra } from "../src/project/scheme.ts"
 import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { withRender } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 

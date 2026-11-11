@@ -1,4 +1,4 @@
-// writeFileAtomic (src/services/atomicFile.ts), the one way tutti writes a file whole: through a
+// writeFileAtomic (src/core/atomicFile.ts), the one way tutti writes a file whole: through a
 // link to the file it points at, keeping the file's mode, by a temporary file of its own beside it,
 // synced and renamed over it, and removed where it fails. Then the writers built on it: the
 // user's ~/.claude.json staying a link as markTrusted marks a checkout trusted, .gitattributes left
@@ -21,11 +21,11 @@ import { BunFileSystem } from "@effect/platform-bun"
 import { Effect, Exit, FileSystem } from "effect"
 import { type PlatformError, systemError } from "effect/PlatformError"
 import fc from "fast-check"
+import { AtomicWriter, writeFileAtomic } from "../src/core/atomicFile.ts"
 import { staging } from "../src/init/staged.ts"
 import type { Machine } from "../src/init/steps.ts"
 import { applyUnion, markTrusted } from "../src/init/workers.ts"
 import { writeReadmeRequires } from "../src/project/requires.ts"
-import { AtomicWriter, writeFileAtomic } from "../src/services/atomicFile.ts"
 
 const tempDir = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-atomic-")))
 

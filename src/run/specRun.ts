@@ -1,6 +1,6 @@
 // A spec run's start (§ 4.14), once the startup checks have passed and the run holds its lock: the
 // spec committed, the tree an earlier run filed for it looked up, then, as its state says, the run
-// carried on, nothing to run, or the breakdown (src/agent/breakdown.ts), headless or with the user
+// carried on, nothing to run, or the breakdown (src/run/breakdown.ts), headless or with the user
 // in the Interview view (--refine), after which the tree is checked and the root epic marked as
 // filed for this version of the spec, last of all. The run is then scoped to the root epic, as
 // --ticket <root epic> scopes one.
@@ -8,7 +8,7 @@
 // Each step that stops the run says why on stderr and in the log, a SPEC line, and gives the exit
 // code: 2 for a breakdown that failed, ran out of time, filed no tree or a tree the run can't take,
 // or two root epics; 8 for one at the account's usage limit that resets too late or at an unknown
-// time (src/agent/breakdown.ts waits for one that doesn't); 4 when git or bd failed; 0 when the spec
+// time (src/run/breakdown.ts waits for one that doesn't); 4 when git or bd failed; 0 when the spec
 // is built already, or a refinement was left with nothing filed; 130 when Ctrl+C stopped it. What
 // was filed stays filed: the same command carries on from it.
 import {
@@ -27,24 +27,26 @@ import {
 } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import type { Attention } from "../agent/Attention.ts"
+import type { Transcripts } from "../agent/Transcripts.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { duration } from "../core/localTime.ts"
+import { type Arg, type Line, Log, line, Tag } from "../core/log.ts"
+import type { OrganLine, Printer } from "../print/organLine.ts"
+import { formatDuration } from "../project/configFile.ts"
+import { type Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
+import type { Git, GitError } from "../services/Git.ts"
+import { dollars } from "../services/OrganCost.ts"
+import { nothingSpent, Spending, type Spent } from "../services/Spending.ts"
+import { writeRunFile } from "../services/Worktrees.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import {
   type Breakdown,
   type BreakdownEnd,
   BreakdownMode,
   type BreakdownStart,
   startBreakdown,
-} from "../agent/breakdown.ts"
-import { type BreakdownState, filedAny } from "../agent/breakdownTools.ts"
-import type { Transcripts } from "../agent/Transcripts.ts"
-import { AppConfig } from "../core/AppConfig.ts"
-import { type Arg, type Line, Log, line, Tag } from "../core/log.ts"
-import { dollars } from "../organs/OrganCost.ts"
-import { duration, type OrganLine, type Printer } from "../print/organLine.ts"
-import { formatDuration } from "../project/configFile.ts"
-import { type Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
-import type { Git, GitError } from "../services/Git.ts"
-import { writeRunFile } from "../services/Worktrees.ts"
-import { sanitizeLine } from "../text/sanitize.ts"
+} from "./breakdown.ts"
+import { type BreakdownState, filedAny } from "./breakdownTools.ts"
 import { exitCodes } from "./holds.ts"
 import { type InterviewScreen, inInterviewView } from "./interview.ts"
 import {
@@ -63,7 +65,6 @@ import {
   twoRootsProblem,
   updateText,
 } from "./spec.ts"
-import { nothingSpent, Spending, type Spent } from "./spending.ts"
 
 /** A SPEC line of the log: `SPEC: committed <path> (sha256 …)`. */
 export const specLine = (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>): Line =>

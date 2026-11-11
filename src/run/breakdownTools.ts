@@ -21,9 +21,13 @@ import {
 } from "@anthropic-ai/claude-agent-sdk"
 import { Data, Effect, Result, SubscriptionRef } from "effect"
 import { z } from "zod"
+import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "../agent/callbacks.ts"
+import { readTools, serverName } from "../agent/ticketTools.ts"
 import { checkFiles, priorities } from "../project/planFile.ts"
-import { soloLabel } from "../run/holds.ts"
-import { type Spec, SpecMetadata, specIssues } from "../run/spec.ts"
+import { Beads, beadsWhy, type Issue, MetadataKey, type TicketId } from "../services/Beads.ts"
+import { Git } from "../services/Git.ts"
+import { soloLabel } from "./holds.ts"
+import { type Spec, SpecMetadata, specIssues } from "./spec.ts"
 import {
   type CheckedTree,
   checkTree,
@@ -32,11 +36,7 @@ import {
   type KnownIssue,
   type TreeFilingStopped,
   treeTypes,
-} from "../run/specTree.ts"
-import { Beads, beadsWhy, type Issue, MetadataKey, type TicketId } from "../services/Beads.ts"
-import { Git } from "../services/Git.ts"
-import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "./callbacks.ts"
-import { readTools, serverName } from "./ticketTools.ts"
+} from "./specTree.ts"
 
 /** The names of a breakdown's own tools. */
 export const breakdownToolNames = [

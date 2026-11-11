@@ -25,7 +25,7 @@ import {
 } from "../agent/attentionFiles.ts"
 import type { AnswerWord } from "../core/answerWith.ts"
 import { answerWith } from "../core/answerWith.ts"
-import { terminalSafe } from "../run/events.ts"
+import { terminalSafe } from "../services/events.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 
 /** How long `tutti answer` waits for the run to take an answer (§ 4.5). */

@@ -31,19 +31,19 @@ import {
   severeOptions,
   triggerOf,
 } from "../src/run/critic.ts"
-import { EventStream } from "../src/run/eventstream.ts"
-import { titleLimit } from "../src/run/fileTicket.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
-import type { Score } from "../src/run/scorecard.ts"
 import { Beads, HumanLabel, type Issue, type TicketId } from "../src/services/Beads.ts"
+import { EventStream } from "../src/services/EventStream.ts"
 import { Git } from "../src/services/Git.ts"
+import type { Score } from "../src/services/scorecard.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { Repository } from "../src/testing/Git.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
+import { titleLimit } from "../src/text/oneLine.ts"
 import { backlog, expectLog, scenario } from "./harness.ts"
 
 const finding = (fields: Partial<CriticAnswer["findings"][number]> = {}) => ({

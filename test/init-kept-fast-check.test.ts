@@ -24,15 +24,15 @@ import {
   settleScout,
 } from "../src/init/checks.ts"
 import { type InitForm, type InitSummary, init } from "../src/init/init.ts"
+import { type Machine, stepLine } from "../src/init/steps.ts"
+import { Organs } from "../src/organs/Organs.ts"
 import {
   checksNothing,
   fastScript,
   fullScript,
   runnerCommands,
   runsNothing,
-} from "../src/init/runners.ts"
-import { type Machine, stepLine } from "../src/init/steps.ts"
-import { Organs } from "../src/organs/Organs.ts"
+} from "../src/project/runners.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"

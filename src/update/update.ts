@@ -23,14 +23,9 @@ import { createHash, verify } from "node:crypto"
 import { dirname, isAbsolute, join } from "node:path"
 import { Duration, Effect, FileSystem, Option, Predicate, Result, Schema, type Scope } from "effect"
 import { PlatformError } from "effect/PlatformError"
-import { onOff } from "../cli/flags.ts"
+import { syncFolder, temporaryBeside, writeFileAtomic, writeSynced } from "../core/atomicFile.ts"
+import { onOff } from "../project/flags.ts"
 import { homeFolder } from "../project/userConfig.ts"
-import {
-  syncFolder,
-  temporaryBeside,
-  writeFileAtomic,
-  writeSynced,
-} from "../services/atomicFile.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
 import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../text/sanitize.ts"

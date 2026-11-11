@@ -10,9 +10,16 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber, Result } from "effect"
 import { line } from "../src/core/log.ts"
-import { type Summary, summary } from "../src/print/summary.ts"
+import { summary } from "../src/print/summary.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { summaryLines } from "../src/run/endOfRun.ts"
-import { decodeLine, type Event } from "../src/run/events.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
+import { type Outcome, run } from "../src/run/run.ts"
+import { emptyView, type Row, RowDetail, rowStatus, windowLabel } from "../src/run/runView.ts"
+import type { Summary } from "../src/run/summary.ts"
+import { noStats } from "../src/run/ticketStats.ts"
+import type { TicketId } from "../src/services/Beads.ts"
+import { decodeLine, type Event } from "../src/services/events.ts"
 import {
   addRecord,
   type Figures,
@@ -21,16 +28,10 @@ import {
   median,
   noFigures,
   tokenCount,
-} from "../src/run/figures.ts"
-import { Finished, TicketPhase } from "../src/run/phase.ts"
-import { type Outcome, run } from "../src/run/run.ts"
-import { emptyView, type Row, RowDetail, rowStatus } from "../src/run/runView.ts"
-import { noStats } from "../src/run/ticketStats.ts"
-import type { TicketId } from "../src/services/Beads.ts"
+} from "../src/services/figures.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
-import { windowLabel } from "../src/ui/TitleLine.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { machineWhich, testEnv } from "./env.ts"
 import { backlog, expectExitCode, expectLog, type Ran, scenario, type World } from "./harness.ts"
 

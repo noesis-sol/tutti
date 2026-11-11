@@ -3,8 +3,8 @@
 
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { encodeLine, tenths } from "../src/run/events.ts"
-import { stamp } from "../src/run/eventstream.ts"
+import { stamp } from "../src/services/EventStream.ts"
+import { encodeLine, tenths } from "../src/services/events.ts"
 
 describe("tenths", () => {
   test("rounds milliseconds to a tenth of a second", () => {

@@ -8,6 +8,13 @@ import { Console, Effect } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../core/AppConfig.ts"
+import {
+  backgroundRoles,
+  type Colour,
+  type LoadedScheme,
+  type Role,
+  roles,
+} from "../project/scheme.ts"
 import { Finished, TicketPhase } from "../run/phase.ts"
 import {
   type Card,
@@ -30,14 +37,9 @@ import { ticketsLines } from "../ui/TicketsTable.tsx"
 import {
   type Appearance,
   appearanceOf,
-  backgroundRoles,
-  type Colour,
   type ColourDepth,
-  type LoadedScheme,
   makeTheme,
   outputAppearance,
-  type Role,
-  roles,
   type Theme,
 } from "../ui/theme.ts"
 

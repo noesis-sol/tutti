@@ -3,13 +3,14 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { orchestra } from "../src/project/scheme.ts"
 import { separator } from "../src/text/marks.ts"
 import { type Segments, sectionLabel, seg } from "../src/ui/line.tsx"
 import { needsListLabel } from "../src/ui/NeedsList.tsx"
 import { needsLines, upNextLines } from "../src/ui/SidePanel.tsx"
 import { labelIndent } from "../src/ui/spacing.ts"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 

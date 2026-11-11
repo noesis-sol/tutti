@@ -4,8 +4,8 @@
 import { Effect } from "effect"
 import { type Line, Log } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
-import type { Event } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
+import { EventStream } from "../services/EventStream.ts"
+import type { Event } from "../services/events.ts"
 
 /** A record whose text is its log line, as the run writes it. */
 export type Said = Extract<Event, { readonly text: string }> & { readonly text: Line }

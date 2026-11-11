@@ -17,9 +17,9 @@ import {
   readInitialization,
   SettingsUnreadable,
 } from "../src/agent/Account.ts"
-import { apiKeySet, probeEnv, workerEnv, workerVariables } from "../src/agent/env.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
+import { apiKeySet, probeEnv, workerEnv, workerVariables } from "../src/core/env.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { testEnv } from "./env.ts"
 import { live } from "./gates.ts"

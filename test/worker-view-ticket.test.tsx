@@ -11,6 +11,7 @@ import { Effect, Exit, Queue, Scope } from "effect"
 import fc from "fast-check"
 import { Transcripts, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -30,7 +31,7 @@ import {
   proseOf,
   wholeTicket,
 } from "../src/ui/TicketHead.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { transcriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"

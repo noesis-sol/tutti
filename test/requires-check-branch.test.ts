@@ -1,5 +1,5 @@
 // requires_check runs only the main checkout's entries, in the main checkout (§ 4.11,
-// src/agent/requiresTools.ts's checkIn): an entry the worker's branch adds or changes is the
+// src/run/requiresTools.ts's checkIn): an entry the worker's branch adds or changes is the
 // worker's to write, so its commands are given back to run with Bash, where the permission mode
 // sees them, rather than run by tutti behind a permission request that shows only their names.
 import { describe, expect, test } from "bun:test"
@@ -9,8 +9,8 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
 import fc from "fast-check"
-import { checkIn, makeRequiresTools, yoursToRun } from "../src/agent/requiresTools.ts"
 import type { Requirement } from "../src/project/settings.ts"
+import { checkIn, makeRequiresTools, yoursToRun } from "../src/run/requiresTools.ts"
 import { openFibers } from "./fibers.ts"
 
 const run = <A, E>(effect: Effect.Effect<A, E, BunServices.BunServices>) =>

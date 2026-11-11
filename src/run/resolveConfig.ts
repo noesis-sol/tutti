@@ -27,17 +27,6 @@ import {
   workerPromptFile,
 } from "../core/AppConfig.ts"
 import { type ConfigFileInvalid, type ConfigProblem, decodeConfig } from "../project/configFile.ts"
-import { readSettings, retiredOrganNotes, Settings, settingsFile } from "../project/settings.ts"
-import { currentHome, readUserConfig, UserConfig, userConfigShown } from "../project/userConfig.ts"
-import {
-  defaultMachineWorkers,
-  defaultMachineWorkersFrom,
-  orchestraMachineWorkersVariable,
-  runsDir,
-  runsDirVariables,
-} from "../run/machine.ts"
-import { findRoot, oldDefaultRoot, plainRoot, within } from "../run/worktreesRoot.ts"
-import { loadScheme, orchestraLoaded, schemeFolders } from "../ui/theme.ts"
 import {
   oneOf,
   type Reader,
@@ -48,7 +37,18 @@ import {
   type RunFlags,
   retiredFlags,
   runFlags,
-} from "./flags.ts"
+} from "../project/flags.ts"
+import { loadScheme, orchestraLoaded, schemeFolders } from "../project/scheme.ts"
+import { readSettings, retiredOrganNotes, Settings, settingsFile } from "../project/settings.ts"
+import { currentHome, readUserConfig, UserConfig, userConfigShown } from "../project/userConfig.ts"
+import {
+  defaultMachineWorkers,
+  defaultMachineWorkersFrom,
+  orchestraMachineWorkersVariable,
+  runsDir,
+  runsDirVariables,
+} from "../services/machine.ts"
+import { findRoot, oldDefaultRoot, plainRoot, within } from "./worktreesRoot.ts"
 
 /** What a run's configuration is resolved from. */
 export interface Sources {

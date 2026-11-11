@@ -1,5 +1,5 @@
 // What --overnight's pre-flight reads of the machine from files and the kernel (tutti-kkb.46): the
-// other runs registered in the machine's folder of runs, those gone left out (src/run/machine.ts's
+// other runs registered in the machine's folder of runs, those gone left out (src/services/machine.ts's
 // otherRuns), and the free disk where the worktrees will go (src/run/processes.ts's freeDisk).
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs"
@@ -7,8 +7,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit } from "effect"
-import { otherRuns, Processes, type Registration, writeRegistration } from "../src/run/machine.ts"
 import { freeDisk } from "../src/run/processes.ts"
+import {
+  otherRuns,
+  Processes,
+  type Registration,
+  writeRegistration,
+} from "../src/services/machine.ts"
 
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-overnight-machine-")))
 

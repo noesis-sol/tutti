@@ -14,14 +14,12 @@ import fc from "fast-check"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { Transcripts } from "../src/agent/Transcripts.ts"
 import { settled } from "../src/agent/WorkerState.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { makePrinter } from "../src/print/organLine.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { recorded } from "../src/run/check.ts"
-import type { EventRecord } from "../src/run/events.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import { finish, run } from "../src/run/run.ts"
-import { endRecord, nothingSpent, Spending, shareOf, type Totals } from "../src/run/spending.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import {
   type CheckError,
@@ -29,13 +27,22 @@ import {
   CheckNotRun,
   type CheckResult,
 } from "../src/services/Checks.ts"
+import type { EventRecord } from "../src/services/events.ts"
 import { Git } from "../src/services/Git.ts"
+import { OrganCost } from "../src/services/OrganCost.ts"
+import {
+  endRecord,
+  nothingSpent,
+  Spending,
+  shareOf,
+  type Totals,
+} from "../src/services/Spending.ts"
 import { bash, result, tool, turn } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as appConfigLayer } from "../src/testing/AppConfig.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as spendingLayer } from "../src/testing/Spending.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { backlog, scenario, type World } from "./harness.ts"
 
 const model = "claude-opus-5-5"

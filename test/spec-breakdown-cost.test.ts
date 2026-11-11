@@ -3,12 +3,12 @@
 // that its session gave no result; its turns recorded as the workers' are, so the run's end record
 // counts them.
 import { describe, expect, test } from "bun:test"
-import { breakdownWorker } from "../src/agent/breakdown.ts"
 import type { ToolAnswer } from "../src/agent/callbacks.ts"
+import { breakdownWorker } from "../src/run/breakdown.ts"
 import { exitCodes } from "../src/run/holds.ts"
 import { SpecOutcome, spentLine } from "../src/run/specRun.ts"
-import { nothingSpent } from "../src/run/spending.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { nothingSpent } from "../src/services/Spending.ts"
 import { result, Step, sessionState, tool, wait } from "../src/testing/AgentHost.ts"
 import { breakdownInit, type Calls, call, rootInput, scenario, ticket } from "./specScenario.ts"
 

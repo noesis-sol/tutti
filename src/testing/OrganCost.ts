@@ -3,7 +3,7 @@
 // share the one their scenario has, as the run's organs and probe do (main.ts).
 import { Effect, Layer, Option } from "effect"
 import type { Log } from "../core/log.ts"
-import { OrganCost } from "../organs/OrganCost.ts"
+import { OrganCost } from "../services/OrganCost.ts"
 import { layer as logLayer } from "./Log.ts"
 
 /** OrganCost, with the captured Log it writes to. */

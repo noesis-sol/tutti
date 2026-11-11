@@ -3,14 +3,8 @@ import { Effect } from "effect"
 import fc from "fast-check"
 import { printReport, renderMarkdown } from "../src/print/markdown.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import {
-  type Appearance,
-  makeTheme,
-  orchestra,
-  printedTheme,
-  roles,
-  styleNames,
-} from "../src/ui/theme.ts"
+import { orchestra, roles } from "../src/project/scheme.ts"
+import { type Appearance, makeTheme, printedTheme, styleNames } from "../src/ui/theme.ts"
 
 const themeOf = (appearance: Appearance, styled: boolean) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false, styled })

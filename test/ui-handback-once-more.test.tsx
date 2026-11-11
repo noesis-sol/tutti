@@ -3,6 +3,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue, Result } from "effect"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, resolve, UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -14,7 +15,7 @@ import { settle } from "../src/ui/attentionKeys.ts"
 import { dashboardCommands } from "../src/ui/Dashboard.tsx"
 import { commandFor, hintOf } from "../src/ui/keyCommands.ts"
 import { needsLines } from "../src/ui/SidePanel.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   emptyTranscript,
   followed,

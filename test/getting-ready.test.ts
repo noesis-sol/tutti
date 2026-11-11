@@ -1,4 +1,4 @@
-// The line a run draws while it gets ready (src/run/gettingReady.ts, § 7.1): drawn on a terminal
+// The line a run draws while it gets ready (src/print/gettingReady.ts, § 7.1): drawn on a terminal
 // after frameInterval with the step under way, erased with nothing left when it ends, nothing
 // drawn for a start sooner than that, off a terminal or on a dumb one, erased by an interrupt;
 // the embedded Claude Code's extraction under it; and a run that can't start saying why once it
@@ -8,10 +8,11 @@ import { Console, Effect, Fiber } from "effect"
 import { TestClock } from "effect/testing"
 import { resolveWith, type Sources } from "../src/agent/claudeBinary.ts"
 import { cannotStart } from "../src/main.ts"
+import { gettingReady, readySteps } from "../src/print/gettingReady.ts"
 import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
-import { gettingReady, readySteps } from "../src/run/gettingReady.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 /** A terminal that keeps what is written to it, in order, with what else the test notes. */
 const terminal = (tty = true) => {

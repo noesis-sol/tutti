@@ -1,4 +1,4 @@
-// A worker's own requires tools (§ 4.11, src/agent/requiresTools.ts): requires_check checks and
+// A worker's own requires tools (§ 4.11, src/run/requiresTools.ts): requires_check checks and
 // installs the list in the worker's worktree, requires_readme writes that README's section, both
 // on tutti's in-process MCP server, which each worker's session gets beside workers.mcp_servers
 // (the live AgentHost's ownServer), and which the requires note names in place of the shell command.
@@ -21,20 +21,24 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { type ChosenServers, checkInit, hasOwn, noServersNote, withOwn } from "../src/agent/mcp.ts"
-import { allowRequiresReadme, type WorkerCallbacks, workerOptions } from "../src/agent/options.ts"
 import {
-  checkIn,
-  makeRequiresTools,
+  allowRequiresReadme,
   qualifiedRequiresTool,
-  readmeIn,
-  requiresServerFor,
   requiresServerName,
-} from "../src/agent/requiresTools.ts"
+  type WorkerCallbacks,
+  workerOptions,
+} from "../src/agent/options.ts"
 import { SessionKind } from "../src/agent/sessionKind.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import { builtInWorkerPrompt, requiresNote } from "../src/project/prompt.ts"
 import { requiresEnd, requiresStart } from "../src/project/requires.ts"
 import type { Requirement } from "../src/project/settings.ts"
+import {
+  checkIn,
+  makeRequiresTools,
+  readmeIn,
+  requiresServerFor,
+} from "../src/run/requiresTools.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"

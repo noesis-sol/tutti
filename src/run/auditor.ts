@@ -35,12 +35,12 @@ import {
 import { type OrganError, Organs } from "../organs/Organs.ts"
 import { ticketText } from "../organs/predictor.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
-import type { EventStream } from "./eventstream.ts"
+import type { EventStream } from "../services/EventStream.ts"
+import { auditWords } from "../services/scorecard.ts"
 import { RunFibers } from "./fibers.ts"
 import type { State } from "./ledger.ts"
 import { factsOf, type TicketOutcome } from "./phase.ts"
 import { sayer } from "./say.ts"
-import { auditWords } from "./scorecard.ts"
 
 /** A ticket whose part in the run ended. */
 export interface Ended {

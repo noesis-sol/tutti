@@ -20,8 +20,8 @@ import {
   providerVariable,
 } from "../src/organs/AnthropicProvider.ts"
 import { section } from "../src/organs/evidence.ts"
-import { OrganCost, unknownCostLine } from "../src/organs/OrganCost.ts"
 import { make, type Organ, Organs } from "../src/organs/Organs.ts"
+import { OrganCost, unknownCostLine } from "../src/services/OrganCost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"

@@ -1,4 +1,4 @@
-// --machine-workers (src/run/machine.ts, run.ts; orchestra 0.8.5's orchestra-3vy1): a run sharing
+// --machine-workers (src/services/machine.ts, run.ts; orchestra 0.8.5's orchestra-3vy1): a run sharing
 // its folder of runs with another holds a free slot while the workers across them are at the cap,
 // saying HOLD: MACHINE once, and fills it within seconds of one of the other run's finishing. A
 // run with none of its own running never waits, and a registration whose run is gone counts no
@@ -16,13 +16,13 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber, Option, Result } from "effect"
-import { noFlags, type RunFlagName } from "../src/cli/flags.ts"
-import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/resolveConfig.ts"
 import { line } from "../src/core/log.ts"
-import { type ProcessCheck, Processes } from "../src/run/machine.ts"
+import { noFlags, type RunFlagName } from "../src/project/flags.ts"
+import { defaultSettings, defaultUserConfig, resolve } from "../src/run/resolveConfig.ts"
 import { run } from "../src/run/run.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
+import { type ProcessCheck, Processes } from "../src/services/machine.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { Backlog } from "../src/testing/Beads.ts"

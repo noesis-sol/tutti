@@ -8,7 +8,7 @@
 // tags may carry instructions the user didn't write. The ID is drawn again while the text holds it,
 // so no text in it can close the block early.
 import { Effect } from "effect"
-import { evidenceId } from "../organs/evidence.ts"
+import { evidenceId } from "../core/evidenceId.ts"
 import type { TicketId } from "../services/Beads.ts"
 import type { WorkerState } from "./WorkerState.ts"
 

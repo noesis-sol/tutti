@@ -7,6 +7,7 @@ import { type CliRenderer, TextAttributes, type TextareaRenderable } from "@open
 import { createTestRenderer } from "@opentui/core/testing"
 import { Effect, Exit, Option, Queue, Scope } from "effect"
 import fc from "fast-check"
+import { orchestra } from "../src/project/scheme.ts"
 import { makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
@@ -37,7 +38,7 @@ import {
   toastLife,
   toastsShown,
 } from "../src/ui/Toasts.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { pressEscape, type Rendered, withRender } from "./render.ts"
 

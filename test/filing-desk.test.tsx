@@ -7,6 +7,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Queue } from "effect"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { FileOutcome, type TicketFiling } from "../src/run/fileTicket.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
@@ -18,7 +19,7 @@ import { Root } from "../src/ui/App.tsx"
 import { fileWords, finishedWords } from "../src/ui/Composer.tsx"
 import { makeFilingDesk } from "../src/ui/filingDesk.tsx"
 import { makeToasts, type ToastStore } from "../src/ui/Toasts.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   emptyTranscript,
   type OpenTranscript,

@@ -12,9 +12,8 @@
 // is dropped; two findings alike are one. When it is asked, and what becomes of its findings, is
 // run/critic.ts's.
 import { Effect, Schema } from "effect"
-import { titleOf } from "../run/fileTicket.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { oneLine } from "../text/oneLine.ts"
+import { oneLine, titleOf } from "../text/oneLine.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import { type InputPart, section } from "./evidence.ts"
 import { make, type OrganError, Organs } from "./Organs.ts"

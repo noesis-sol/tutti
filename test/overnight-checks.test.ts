@@ -6,11 +6,9 @@ import { Duration, Effect, Schema } from "effect"
 import type { AccountProbe } from "../src/agent/Account.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
-import { Start, version } from "../src/run/events.ts"
 import type { KeepAwakePlan } from "../src/run/keepAwake.ts"
 import { lidNote } from "../src/run/keepAwake.ts"
 import { type Kernel, unknownKernel } from "../src/run/load.ts"
-import type { Registration } from "../src/run/machine.ts"
 import {
   batteryCheck,
   concurrencyCheck,
@@ -39,6 +37,8 @@ import {
 } from "../src/run/processes.ts"
 import { type Started, startBlock } from "../src/run/startup.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
+import { Start, version } from "../src/services/events.ts"
+import type { Registration } from "../src/services/machine.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 

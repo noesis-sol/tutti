@@ -14,7 +14,7 @@ import {
   temporaryBeside,
   writeSynced,
   writeTarget,
-} from "../services/atomicFile.ts"
+} from "../core/atomicFile.ts"
 import { joinAnd } from "./steps.ts"
 
 /** A file the setup writes: where, what, and its mode where the setup gives one. */

@@ -8,7 +8,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer, Result } from "effect"
-import { specAsk } from "../src/run/choose.ts"
+import { specAsk } from "../src/cli/choose.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import {
   fetchOnce,
   fetchSpec,
@@ -20,7 +21,7 @@ import { type Answer, layer as httpLayer } from "../src/testing/HttpClient.ts"
 import { browserRowsShown, specFilesOnly } from "../src/ui/FileBrowser.tsx"
 import { type SpecAsk, TicketCount, Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })

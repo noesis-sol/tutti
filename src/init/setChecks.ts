@@ -17,9 +17,10 @@
 // for you, the files to commit among it.
 import { join } from "node:path"
 import { Clock, Deferred, type Duration, Effect, FileSystem, type Scope } from "effect"
+import { AtomicWriter } from "../core/atomicFile.ts"
 import type { Scouting } from "../organs/scout.ts"
+import { fastRunner, fullRunner } from "../project/runners.ts"
 import { settingsFile } from "../project/settings.ts"
-import { AtomicWriter } from "../services/atomicFile.ts"
 import { RunLock } from "../services/RunLock.ts"
 import {
   applySkill,
@@ -44,7 +45,6 @@ import {
   writeRunners,
   writeSettings,
 } from "./init.ts"
-import { fastRunner, fullRunner } from "./runners.ts"
 import { commitStaged, staging } from "./staged.ts"
 import { type Machine, runSteps, type Step } from "./steps.ts"
 

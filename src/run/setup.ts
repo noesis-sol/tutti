@@ -49,6 +49,7 @@ import { decodeConfig, formatDuration, parseConfigJson } from "../project/config
 import { type Requirement, Settings, settingsFile } from "../project/settings.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { Checks, type RunChecks, setupLogName } from "../services/Checks.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import { Git, type Sha, type StatusEntry } from "../services/Git.ts"
 import { checkoutTrackedChanges } from "../services/gitStatus.ts"
 import { Store, ticketsIn } from "../services/Store.ts"
@@ -70,7 +71,6 @@ import {
   recordedKeeping,
 } from "./check.ts"
 import { noteWritten } from "./checkWrote.ts"
-import type { EventStream } from "./eventstream.ts"
 import { settingsGlobMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
 import type { FinishedTicket, MergeOptions, MergeTarget } from "./merge.ts"

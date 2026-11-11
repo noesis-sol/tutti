@@ -11,9 +11,9 @@
 // shown in the worker view (tutti-cxgo.6): the run's summary has its own Spent line.
 import type { ContextUsage } from "../../agent/contextUsage.ts"
 import { resetLabel } from "../../core/localTime.ts"
-import { dollarsText, tokenCount } from "../../run/figures.ts"
 import type { Resources } from "../../run/resources.ts"
 import type { Usage } from "../../run/runView.ts"
+import { dollarsText, tokenCount } from "../../services/figures.ts"
 import { marks, separator } from "../../text/marks.ts"
 import { sanitizeLine } from "../../text/sanitize.ts"
 import { elapsed } from "../Card.tsx"

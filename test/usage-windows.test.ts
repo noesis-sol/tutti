@@ -18,6 +18,7 @@ import {
   withFigures,
 } from "../src/agent/UsageLimits.ts"
 import { line } from "../src/core/log.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { emptyState } from "../src/run/ledger.ts"
 import { run } from "../src/run/run.ts"
 import {
@@ -27,14 +28,15 @@ import {
   project,
   type RunView,
   type TitleView,
+  windowLabel,
 } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, emit, type SessionScript } from "../src/testing/AgentHost.ts"
 import { widthOf } from "../src/ui/line.tsx"
-import { gauge, titleSegments, windowLabel } from "../src/ui/TitleLine.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { gauge, titleSegments } from "../src/ui/TitleLine.tsx"
+import { makeTheme } from "../src/ui/theme.ts"
 import { advance, backlog, expectExitCode, expectPhases, scenario } from "./harness.ts"
 
 setDefaultTimeout(30_000)

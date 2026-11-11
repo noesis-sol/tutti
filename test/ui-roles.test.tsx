@@ -14,6 +14,7 @@ import { type ReactNode, useEffect } from "react"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra, type Role, roles, type Scheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, type WindDown } from "../src/run/ledger.ts"
 import {
@@ -32,15 +33,7 @@ import { App, Root } from "../src/ui/App.tsx"
 import { useInput } from "../src/ui/keys.ts"
 import { TicketCount } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
-import {
-  type Appearance,
-  makeTheme,
-  orchestra,
-  type Role,
-  roles,
-  type Scheme,
-  type Theme,
-} from "../src/ui/theme.ts"
+import { type Appearance, makeTheme, type Theme } from "../src/ui/theme.ts"
 import {
   emptyTranscript,
   type OpenTranscript,

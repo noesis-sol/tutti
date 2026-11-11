@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { summary } from "../src/print/summary.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { summaryLines } from "../src/run/endOfRun.ts"
 import { emptyStatus, emptyView, project } from "../src/run/runView.ts"
 import type { Spec } from "../src/run/spec.ts"
@@ -12,7 +13,7 @@ import type { TicketId } from "../src/services/Beads.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
 

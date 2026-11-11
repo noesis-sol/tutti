@@ -5,7 +5,7 @@
 import { describe, expect } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Fiber, Layer, SubscriptionRef } from "effect"
-import { fastScript, fullScript } from "../src/init/runners.ts"
+import { fastScript, fullScript } from "../src/project/runners.ts"
 import { type GateAsk, gateFolderPrefix } from "../src/run/checksGate.ts"
 import { keepQuestion, makeGateAsk, noScout, setChecksMessage } from "../src/run/gateForm.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"

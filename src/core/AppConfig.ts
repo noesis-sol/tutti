@@ -1,4 +1,4 @@
-// AppConfig (§ 3.3): a run's configuration, resolved once into one value by src/cli/resolveConfig.ts
+// AppConfig (§ 3.3): a run's configuration, resolved once into one value by src/run/resolveConfig.ts
 // from its flags, its TUTTI_* variables, the user config (§ 8.5), the project's settings (§ 8.4)
 // and its defaults. The service, its value and the defaults every layer reads live here, below
 // the layers that read them; the resolver, which reads the flags, the files and the colour
@@ -6,10 +6,10 @@
 
 import { join } from "node:path"
 import { Context, Duration, Schema } from "effect"
-import type { billings } from "../cli/flags.ts"
+import type { billings } from "../project/flags.ts"
+import type { LoadedScheme } from "../project/scheme.ts"
 import type { Settings } from "../project/settings.ts"
 import type { TicketId } from "../services/Beads.ts"
-import type { LoadedScheme } from "../ui/theme.ts"
 
 /** Every problem with a run's flags, variables, user config and settings, each a sentence. */
 export class SetupProblem extends Schema.TaggedError<SetupProblem>()("SetupProblem", {
@@ -96,14 +96,14 @@ export interface AppConfigValue {
    */
   readonly worktreesDefault: boolean
   /**
-   * The folder the machine's tutti and orchestra runs register in (src/run/machine.ts), as
+   * The folder the machine's tutti and orchestra runs register in (src/services/machine.ts), as
    * orchestra finds it from ORCHESTRA_RUNS_DIR, HOME and XDG_CACHE_HOME; null for none.
    */
   readonly runs: string | null
   /**
    * The most workers across the machine's runs, this one's included, before a ticket starts; 0 for
    * no cap. --machine-workers, TUTTI_MACHINE_WORKERS, ORCHESTRA_MACHINE_WORKERS, else half the
-   * cores, at least 2 (src/run/machine.ts's defaultMachineWorkers).
+   * cores, at least 2 (src/services/machine.ts's defaultMachineWorkers).
    */
   readonly machineWorkers: number
   /**
@@ -123,7 +123,7 @@ export interface AppConfigValue {
    */
   readonly keepAwakeOffBy: string | null
   /**
-   * What the START block says of each retired flag given (src/cli/flags.ts's retiredFlags) but a
+   * What the START block says of each retired flag given (src/project/flags.ts's retiredFlags) but a
    * refused one, which is a problem, once each, naming the flag, or its variable where the flag
    * isn't given: none is read. Then each retired organ key the settings or the user config still
    * has (src/project/settings.ts's retiredOrganKeys), naming its file.

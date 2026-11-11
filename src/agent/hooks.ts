@@ -24,8 +24,8 @@ import type {
   PreCompactHookInput,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Data, Effect, FiberSet, Predicate } from "effect"
-import type { verdicts } from "../run/events.ts"
 import type { TicketId } from "../services/Beads.ts"
+import type { verdicts } from "../services/events.ts"
 import type { SessionFibers } from "./callbacks.ts"
 
 /** The hook events a worker's activity comes from. */

@@ -1,4 +1,4 @@
-// The machine's runs (src/run/machine.ts, orchestra 0.8.5's machine.go): each run registers in a
+// The machine's runs (src/services/machine.ts, orchestra 0.8.5's machine.go): each run registers in a
 // folder the machine's tutti and orchestra runs share, says once of each other run that it is going
 // (SHARED_MACHINE), and ignores, and removes, a registration whose run is gone. Two runs in these
 // tests are two registrations in one folder, as two loops in one process would be.
@@ -28,7 +28,7 @@ import {
   startSlack,
   startsKept,
   writeRegistration,
-} from "../src/run/machine.ts"
+} from "../src/services/machine.ts"
 
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-shared-machine-")))
 

@@ -17,8 +17,6 @@ import type { ChildProcessSpawner } from "effect/process"
 import { Account, type AccountProbe, billingLine, permissionModeLine } from "../agent/Account.ts"
 import { type Claude, resolveClaude } from "../agent/claudeBinary.ts"
 import { type ChosenServers, chromeServer, resolveServers } from "../agent/mcp.ts"
-import { noFlags, type RunFlags } from "../cli/flags.ts"
-import { defaultSettings, defaultUserConfig, load, resolve } from "../cli/resolveConfig.ts"
 import {
   AppConfig,
   type AppConfigValue,
@@ -29,19 +27,21 @@ import { type Line, start, Tag } from "../core/log.ts"
 import { templateNotes } from "../init/templates.ts"
 import { type OrganProvider, organProvider } from "../organs/AnthropicProvider.ts"
 import { formatDuration } from "../project/configFile.ts"
+import { noFlags, type RunFlags } from "../project/flags.ts"
 import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
 import { readmeStaleLine } from "../project/requires.ts"
+import { schemeNotices } from "../project/scheme.ts"
 import { retiredIn, settingsFile } from "../project/settings.ts"
 import { Beads, type BeadsError, HumanLabel, type TicketId } from "../services/Beads.ts"
 import { Git, gitTooOld } from "../services/Git.ts"
 import { checkoutTrackedChanges } from "../services/gitStatus.ts"
 import { lenientKey } from "../services/lenient.ts"
+import { aboveCapNote, machineWorkersLabel } from "../services/machine.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
-import { schemeNotices } from "../ui/theme.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
 import { featureLine } from "./feature.ts"
 import { keepAwakeNotes } from "./keepAwake.ts"
-import { aboveCapNote, machineWorkersLabel } from "./machine.ts"
+import { defaultSettings, defaultUserConfig, load, resolve } from "./resolveConfig.ts"
 import { readSpec, type Spec } from "./spec.ts"
 import type { LiveFetch, SpecFetch } from "./specSource.ts"
 import { readVendoredNote } from "./vendored.ts"
@@ -540,7 +540,7 @@ export const check = <R>(checking: Checking<R>) =>
 
 /**
  * The checks as a run makes them: the flags' configuration, bd, and the Agent SDK's probe; the
- * embedded Claude Code extracted under `unpacking` (src/run/gettingReady.ts).
+ * embedded Claude Code extracted under `unpacking` (src/print/gettingReady.ts).
  */
 export const live = (
   cwd: string,

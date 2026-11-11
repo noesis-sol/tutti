@@ -6,9 +6,10 @@
 // start shows nothing. Only a terminal that isn't dumb gets it. The appearance is read later, so
 // the line is drawn in styles that don't depend on it: the terminal's own colour, the time faint.
 import { Effect } from "effect"
-import { makePrinter, type Out } from "../print/organLine.ts"
+import { orchestra } from "../project/scheme.ts"
 import { frameInterval } from "../ui/spinner.ts"
-import { makeTheme, orchestra } from "../ui/theme.ts"
+import { makeTheme } from "../ui/theme.ts"
+import { makePrinter, type Out } from "./organLine.ts"
 
 /** The steps the line names, in plain words, as the dashboard's are. */
 export const readySteps = {

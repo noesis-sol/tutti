@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { PassThrough } from "node:stream"
 import { Effect, Exit, Option } from "effect"
+import { orchestra } from "../src/project/scheme.ts"
 import {
   confirm,
   type LineIO,
@@ -13,7 +14,7 @@ import {
   text,
 } from "../src/ui/plain/forms.ts"
 import { TicketCount, type Work } from "../src/ui/questions.ts"
-import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
+import { makeTheme, type Theme } from "../src/ui/theme.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
 const plainTheme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })

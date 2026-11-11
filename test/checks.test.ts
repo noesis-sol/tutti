@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Fiber, Layer } from "effect"
 import fc from "fast-check"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import {
   boundLines,
   CheckFailed,

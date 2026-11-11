@@ -48,9 +48,9 @@ import {
 } from "effect"
 import { detail, Log } from "../core/log.ts"
 import type { efforts, WorkerChecks } from "../project/settings.ts"
-import { EventStream } from "../run/eventstream.ts"
-import { Spending } from "../run/spending.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { EventStream } from "../services/EventStream.ts"
+import { Spending } from "../services/Spending.ts"
 import { Attention } from "./Attention.ts"
 import type { ContextUsage } from "./contextUsage.ts"
 import { noRounds, roundStep, type VerifierRounds, verifierEvent } from "./hooks.ts"
@@ -452,7 +452,7 @@ export const makeWorkers = (
     const log = yield* Log
     const usage = yield* Effect.serviceOption(UsageLimits)
     const spending = yield* Effect.serviceOption(Spending)
-    // The verifier rounds' records, for the tickets' scorecards (src/run/scorecard.ts).
+    // The verifier rounds' records, for the tickets' scorecards (src/services/scorecard.ts).
     const events = yield* Effect.serviceOption(EventStream)
 
     const late = (ticket: TicketId) => {

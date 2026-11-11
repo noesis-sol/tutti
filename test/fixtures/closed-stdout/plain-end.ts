@@ -5,8 +5,9 @@
 // closed pipe. Its scope's finalizer, the lock's release, writes <dir>/released. It exits 3.
 import { Console, Effect } from "effect"
 import { guardOutput, makePrinter, stdout } from "../../../src/print/organLine.ts"
+import { orchestra } from "../../../src/project/scheme.ts"
 import { runMain } from "../../../src/run/quit.ts"
-import { makeTheme, orchestra } from "../../../src/ui/theme.ts"
+import { makeTheme } from "../../../src/ui/theme.ts"
 
 const dir = process.argv[2]
 if (dir === undefined) throw new Error("usage: plain-end.ts <dir>")

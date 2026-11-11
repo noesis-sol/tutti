@@ -3,6 +3,7 @@
 // list at the next one, with no `h` to send a stale hand-back; its need changing redraws the box.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
@@ -12,7 +13,7 @@ import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 

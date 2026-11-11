@@ -33,6 +33,7 @@ import * as log from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Beads, TicketId } from "../services/Beads.ts"
 import type { Checks } from "../services/Checks.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import {
   type Commit,
   type Git,
@@ -57,7 +58,6 @@ import { retrying } from "./again.ts"
 import { type Aside, type AsideTicket, putAside } from "./aside.ts"
 import { gitAgain, gitTries } from "./branch.ts"
 import { howFailed, outputKept } from "./check.ts"
-import type { EventStream } from "./eventstream.ts"
 import type { Ledger } from "./ledger.ts"
 import { withoutTold } from "./login.ts"
 import { asideOvernight, overnightWhy } from "./overnightAside.ts"

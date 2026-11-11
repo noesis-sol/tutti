@@ -56,12 +56,12 @@ import {
   MetadataKey,
   type TicketId,
 } from "../services/Beads.ts"
+import { EventStream } from "../services/EventStream.ts"
+import type { Event, findingDropped, reviewTriggers } from "../services/events.ts"
 import { Git, gitWhy, shortHash } from "../services/Git.ts"
-import type { Event, findingDropped, reviewTriggers } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
+import { ranked, type Score, scorecardsEvidence } from "../services/scorecard.ts"
 import { RunFibers } from "./fibers.ts"
 import { sayer } from "./say.ts"
-import { ranked, type Score, scorecardsEvidence } from "./scorecard.ts"
 
 export type Trigger = (typeof reviewTriggers)[number]
 type Dropped = (typeof findingDropped)[number]

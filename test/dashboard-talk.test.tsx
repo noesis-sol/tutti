@@ -10,6 +10,7 @@ import { talkLeftWhy } from "../src/agent/answerTalk.ts"
 import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { talkLeaveAbout, talkLeaveQuestion, talkName } from "../src/run/answerTalk.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { interviewCard, interviewView } from "../src/run/interview.ts"
@@ -21,7 +22,7 @@ import { Root } from "../src/ui/App.tsx"
 import { Box } from "../src/ui/keys.ts"
 import { newsToast, readingText, returnTo } from "../src/ui/QuestionsBox.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   emptyTranscript,
   type OpenTranscript,

@@ -11,7 +11,7 @@
 import { createRequire } from "node:module"
 import { Console, Effect, Exit, Layer, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { Account, type AccountInfo, type AccountProbe, billingLine } from "../agent/Account.ts"
+import { Account, type AccountProbe, accountLine, billingLine } from "../agent/Account.ts"
 import type { Claude } from "../agent/claudeBinary.ts"
 import { AppConfig } from "../core/AppConfig.ts"
 import { onMusl } from "../native/musl.ts"
@@ -107,14 +107,6 @@ export const runInTerminal = (line: CommandLine) =>
       (error) => new LoginFailed({ problems: [`couldn't run ${line.command}: ${error.message}`] }),
     ),
   )
-
-/** The account's line: `account: <email>, <organization>, <plan>`, each where Claude Code says it. */
-export const accountLine = (account: AccountInfo): string => {
-  const known = [account.email, account.organization, account.subscriptionType].filter(
-    (part) => part !== null,
-  )
-  return `account: ${known.length === 0 ? "no claude.ai account" : known.join(", ")}`
-}
 
 /** What tutti login prints once the probe has run: the account and its billing. */
 export const loginReport = (probe: AccountProbe): ReadonlyArray<string> => [

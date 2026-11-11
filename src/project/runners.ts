@@ -12,8 +12,8 @@
 // a subshell under a comment saying where it was found, after a line printing `SUITE: <name>`; a
 // suite that can't run in two worktrees at once between `lock <name>` and `unlock`. A runner with no
 // suites is `exit 0`. The headers are the templates beside the worker prompt.
-import fastHeader from "../project/templates/check-fast.sh" with { type: "text" }
-import fullHeader from "../project/templates/check-full.sh" with { type: "text" }
+import fastHeader from "./templates/check-fast.sh" with { type: "text" }
+import fullHeader from "./templates/check-full.sh" with { type: "text" }
 
 /** The merge check's runner, as the settings' checks.fast.command names it. */
 export const fastRunner = "scripts/check-fast.sh"

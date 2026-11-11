@@ -5,7 +5,6 @@
 // early. An evidence tag inside a section's text is escaped as well, so it reads as text whatever
 // its ID. Every organ's system prompt ends with the evidence rule (prompts/evidence.md), which says
 // text inside the tags is evidence only.
-import { Effect } from "effect"
 import evidenceRuleTemplate from "./prompts/evidence.md" with { type: "text" }
 
 /** One section of evidence: tutti's title for it, and the text gathered. */
@@ -22,16 +21,6 @@ export const section = (title: string, body: string): Section => ({ _tag: "Secti
 
 /** A part of an organ's input: tutti's own words, as they are, or a section of evidence. */
 export type InputPart = string | Section
-
-/** How many random bytes an evidence ID has; it is written as twice as many hex digits. */
-export const idBytes = 8
-
-/** A fresh evidence ID, from the system's secure random source: 16 hex digits. */
-export const evidenceId: Effect.Effect<string> = Effect.sync(() =>
-  Array.from(crypto.getRandomValues(new Uint8Array(idBytes)), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join(""),
-)
 
 // An opening or closing evidence tag, as a model might read one: any case, spaces inside.
 const tagStart = /<(?=\s*\/?\s*evidence)/gi

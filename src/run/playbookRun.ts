@@ -49,11 +49,12 @@ import {
   type TicketEvidence,
 } from "../organs/reflector.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
+import { EventStream } from "../services/EventStream.ts"
+import type { DispatchPlaybook, Event, reflectionTriggers } from "../services/events.ts"
 import { Git } from "../services/Git.ts"
+import { ranked, type Score, type Scoring, scorecardsEvidence } from "../services/scorecard.ts"
 import { ensurePlaybookExcluded } from "../services/Worktrees.ts"
 import { allItems, type Ended } from "./auditor.ts"
-import type { DispatchPlaybook, Event, reflectionTriggers } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import type { Footprint } from "./footprint.ts"
 import { isGlob } from "./glob.ts"
@@ -78,7 +79,6 @@ import {
   versionOf,
 } from "./playbook.ts"
 import { sayer } from "./say.ts"
-import { ranked, type Score, type Scoring, scorecardsEvidence } from "./scorecard.ts"
 
 const FileSystemService = FileSystem.FileSystem
 

@@ -27,11 +27,11 @@ import {
   Semaphore,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
+import { writeFileAtomic } from "../core/atomicFile.ts"
 import { detail, type Line, Tag, tagged } from "../core/log.ts"
-import { writeFileAtomic } from "../services/atomicFile.ts"
-import { exec, TimeLimit } from "../services/exec.ts"
-import { lenientKey, Positive } from "../services/lenient.ts"
-import { processAlive } from "../services/processTree.ts"
+import { exec, TimeLimit } from "./exec.ts"
+import { lenientKey, Positive } from "./lenient.ts"
+import { processAlive } from "./processTree.ts"
 
 /** The variable naming the folder the machine's runs register in; `off` registers the run nowhere. */
 export const runsDirVariable = "ORCHESTRA_RUNS_DIR"
@@ -233,7 +233,7 @@ export interface Machine {
 
 /**
  * The workers running in the machine's other runs, as the run last read them (Machine.others), for
- * each worker's share of the cores as it starts (src/agent/env.ts's coreShare, AgentHostLive): the
+ * each worker's share of the cores as it starts (src/core/env.ts's coreShare, AgentHostLive): the
  * run sets it each time it reads them, and a worker keeps the share it started with, as orchestra
  * 0.9.0's do. With them, the other runs' processes (Machine.runs), whose checks' memory the
  * checks' budget counts (share.ts' budgetOf).

@@ -11,7 +11,6 @@ import { type AiError, LanguageModel, type Prompt } from "effect/ai"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
-import { ProbeAnswer, probeOrgan, UsageProbe } from "../src/agent/UsageProbe.ts"
 import type { Log } from "../src/core/log.ts"
 import {
   limitOf,
@@ -19,8 +18,9 @@ import {
   OrganCall,
   subtypeOf,
 } from "../src/organs/AgentSdkLanguageModel.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { make, Organs, refusalOf } from "../src/organs/Organs.ts"
+import { ProbeAnswer, probeOrgan, UsageProbe } from "../src/organs/UsageProbe.ts"
+import { OrganCost } from "../src/services/OrganCost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import {

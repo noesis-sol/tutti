@@ -4,8 +4,9 @@
 // its dot.
 import { describe, expect, test } from "bun:test"
 import { importOffer, importSettings, offerDescription } from "../src/init/import.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Asking, emptyScreen, InitView } from "../src/ui/InitForm.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { renderFrame } from "./render.ts"
 
 const dark = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })

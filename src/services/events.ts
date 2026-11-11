@@ -7,7 +7,7 @@
 // Readers read the kinds and fields they know and skip the rest: a record decodes with its unknown
 // keys dropped, and one of an unknown kind doesn't decode.
 import { Result, Schema } from "effect"
-import { billings } from "../cli/flags.ts"
+import { billings } from "../project/flags.ts"
 
 /** The records' version, `v` in each. */
 export const version = 1
@@ -684,7 +684,7 @@ export const ScoreAudit = Schema.Struct({
 })
 
 /**
- * A ticket's scorecard (src/run/scorecard.ts), written after each of its `ticket_end` records,
+ * A ticket's scorecard (src/services/scorecard.ts), written after each of its `ticket_end` records,
  * computed from the run's records about it so far: its last `score` in a run gives its whole, as
  * its last `ticket_end` does. tutti's own.
  */
@@ -723,7 +723,7 @@ export const Score = Schema.Struct({
 })
 
 /**
- * Something came of a ticket after it ended, for its scorecard (src/run/scorecard.ts): a ticket
+ * Something came of a ticket after it ended, for its scorecard (src/services/scorecard.ts): a ticket
  * filed against it was taken up (`follow_up`), or a commit merged reverted it (`revert`). tutti's
  * own.
  */

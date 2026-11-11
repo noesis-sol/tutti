@@ -3,10 +3,9 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
 import { Console, Effect, Exit, Layer } from "effect"
-import { Account, SettingsUnreadable } from "../src/agent/Account.ts"
+import { Account, accountLine, SettingsUnreadable } from "../src/agent/Account.ts"
 import type { Claude } from "../src/agent/claudeBinary.ts"
 import {
-  accountLine,
   type CommandLine,
   embeddedClaude,
   type LoginFailed,

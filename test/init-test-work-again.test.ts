@@ -19,9 +19,9 @@ import {
   testWorkLabel,
 } from "../src/init/checks.ts"
 import { type InitForm, init } from "../src/init/init.ts"
-import type { Suite } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
+import type { Suite } from "../src/project/runners.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"

@@ -22,12 +22,12 @@
 // at once, as before.
 import { Clock, Duration, Effect, FiberSet, Ref, type Scope, Semaphore } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
-import { UsageProbe } from "../agent/UsageProbe.ts"
 import { detail, type Line, Log, Tag, tagged } from "../core/log.ts"
+import { UsageProbe } from "../organs/UsageProbe.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { EventStream } from "../services/EventStream.ts"
 import { Store } from "../services/Store.ts"
-import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { type Refused, refusedLine, retellKey, saveTold } from "./login.ts"
 

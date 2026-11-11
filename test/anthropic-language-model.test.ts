@@ -21,10 +21,10 @@ import {
   providerVariable,
 } from "../src/organs/AnthropicProvider.ts"
 import { section } from "../src/organs/evidence.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { make, type Organ, Organs } from "../src/organs/Organs.ts"
-import type { EventRecord } from "../src/run/events.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import type { EventRecord } from "../src/services/events.ts"
+import { OrganCost } from "../src/services/OrganCost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { texts } from "../src/testing/Log.ts"

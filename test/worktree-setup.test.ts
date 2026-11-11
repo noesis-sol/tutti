@@ -20,6 +20,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber } from "effect"
 import { line } from "../src/core/log.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { probeFile, probeWorker } from "../src/run/environment.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { countsUnder, Move, TicketPhase, WaitFor } from "../src/run/phase.ts"
@@ -49,7 +50,7 @@ import { type Script as ChecksScript, passed } from "../src/testing/Checks.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import { totalsLine } from "../src/ui/Totals.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import {
   advance,
   backlog,

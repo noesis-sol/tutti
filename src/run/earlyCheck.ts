@@ -57,9 +57,12 @@ import {
   checksNow,
   setupLogName,
 } from "../services/Checks.ts"
+import type { EventStream } from "../services/EventStream.ts"
+import { tenths } from "../services/events.ts"
 import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
+import { median } from "../services/scorecard.ts"
 import { sleepAwake } from "../services/Wake.ts"
 import { branchOf, Worktrees } from "../services/Worktrees.ts"
 import {
@@ -70,13 +73,10 @@ import {
   outputTo,
   recordedKeeping,
 } from "./check.ts"
-import { tenths } from "./events.ts"
-import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { leftWarning, removeLeftWorktrees, worktreeWhy } from "./fullcheck.ts"
 import { Ledger } from "./ledger.ts"
 import { say, warn } from "./say.ts"
-import { median } from "./scorecard.ts"
 
 /** How the early check's worktrees' folder names start, under the worktrees' folder. */
 export const earlyFolderPrefix = "early-check-"

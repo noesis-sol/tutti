@@ -2,10 +2,10 @@
 // events.jsonl and back, as a script would read it, so one that doesn't fit its schema fails the
 // test that emitted it. Time comes from Effect's Clock, so TestClock moves it.
 import { Clock, Context, Effect, Layer, Ref, Result, SubscriptionRef } from "effect"
-import { decodeLine, type Event, type EventRecord, encodeLine } from "../run/events.ts"
-import { EventStream, stamp } from "../run/eventstream.ts"
-import { addRecord, type Figures, noFigures, scoreAfter } from "../run/figures.ts"
-import { noScoring } from "../run/scorecard.ts"
+import { EventStream, stamp } from "../services/EventStream.ts"
+import { decodeLine, type Event, type EventRecord, encodeLine } from "../services/events.ts"
+import { addRecord, type Figures, noFigures, scoreAfter } from "../services/figures.ts"
+import { noScoring } from "../services/scorecard.ts"
 
 /** The records the test layer captured, for a test to look at. */
 export class Captured extends Context.Service<

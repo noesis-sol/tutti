@@ -54,7 +54,7 @@ import { turnLimit } from "../agent/reading.ts"
 import { organCloseLimit } from "../agent/sessionProcess.ts"
 import { endedOnLimit } from "../agent/UsageLimits.ts"
 import type { TicketId } from "../services/Beads.ts"
-import { type Cost, OrganCost } from "./OrganCost.ts"
+import { type Cost, OrganCost } from "../services/OrganCost.ts"
 
 const module = "AgentSdkLanguageModel"
 

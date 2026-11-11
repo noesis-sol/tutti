@@ -133,7 +133,7 @@ export interface Sources<R> {
   readonly copied: (file: string) => string | null
   /** A real file with the embedded one's content: `extractFromBunfs`, its argument if it fails. */
   readonly extract: (file: string) => string
-  /** Runs an extraction, with the run's getting-ready line saying so (src/run/gettingReady.ts). */
+  /** Runs an extraction, with the run's getting-ready line saying so (src/print/gettingReady.ts). */
   readonly unpacking: (extracting: Effect.Effect<string>) => Effect.Effect<string>
   /** Keeps the extracted copy at a path in use, and removes other versions' stale copies. */
   readonly tidy: (path: string) => void

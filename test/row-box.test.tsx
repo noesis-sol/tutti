@@ -5,21 +5,28 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Queue, Stream } from "effect"
 import fc from "fast-check"
 import { clock } from "../src/core/localTime.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands } from "../src/run/commands.ts"
-import { EventStream } from "../src/run/eventstream.ts"
 import { type Entry, emptyTallies, newAccount } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
-import { noScoring, type Score, type Scoring, scoreStep, sizeWords } from "../src/run/scorecard.ts"
 import { Screen } from "../src/run/screen.ts"
-import { nothingSpent, type Spent, type Sums } from "../src/run/spending.ts"
 import { peerMedian, peersOf, statsOf } from "../src/run/ticketStats.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
+import { EventStream } from "../src/services/EventStream.ts"
+import { nothingSpent, type Spent, type Sums } from "../src/services/Spending.ts"
+import {
+  noScoring,
+  type Score,
+  type Scoring,
+  scoreStep,
+  sizeWords,
+} from "../src/services/scorecard.ts"
 import * as TestStream from "../src/testing/EventStream.ts"
 import { Root } from "../src/ui/App.tsx"
 import { widthOf } from "../src/ui/line.tsx"
 import { statsLines } from "../src/ui/RowBox.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 

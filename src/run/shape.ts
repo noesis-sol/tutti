@@ -5,7 +5,52 @@
 // of a narrow tree from it (narrowWarning, § 4.14 'Checked'): the run goes on all the same.
 import type { Issue, TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
-import { compareIds, type Link } from "./plan.ts"
+
+/** A blocks link: `blocked` waits for `blocker` (bd dep add <blocked> <blocker>). */
+export interface Link {
+  readonly blocker: TicketId
+  readonly blocked: TicketId
+  /** What both touch, for a proposed link. */
+  readonly why: string
+}
+
+const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+
+/** A part of an ID without its leading zeros, and whether it is a number. */
+const idNumber = (part: string): readonly [string, boolean] =>
+  /^[0-9]+$/.test(part) ? [part.replace(/^0+/, ""), true] : [part, false]
+
+/**
+ * Orders ticket IDs as text, except that the numbers between their dots, the subticket numbers bd
+ * gives an epic's children, compare as numbers: e.2 before e.10. A number goes before text in the
+ * same place, and IDs that differ only in leading zeros fall back to text, so the order is total.
+ */
+export const compareIds = (a: string, b: string): number => {
+  const as = a.split(".")
+  const bs = b.split(".")
+  for (let i = 0; i < Math.min(as.length, bs.length); i++) {
+    const [x, xNum] = idNumber(as[i] ?? "")
+    const [y, yNum] = idNumber(bs[i] ?? "")
+    const c =
+      xNum && yNum
+        ? x.length - y.length || compareText(x, y)
+        : xNum
+          ? -1
+          : yNum
+            ? 1
+            : compareText(x, y)
+    if (c !== 0) return Math.sign(c)
+  }
+  return Math.sign(as.length - bs.length) || compareText(a, b)
+}
+
+/** The blocks links among the issues' dependencies, as bd list gives them. */
+export const existingLinks = (issues: ReadonlyArray<Issue>): ReadonlyArray<Link> =>
+  issues.flatMap((issue) =>
+    issue.dependencies
+      .filter((dependency) => dependency.type === "blocks" && dependency.id !== "")
+      .map((dependency) => ({ blocker: dependency.id, blocked: issue.id, why: "" })),
+  )
 
 /** How many open tickets must wait directly on a ticket for the shape to name it a hub. */
 export const hubHolds = 3

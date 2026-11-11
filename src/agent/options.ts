@@ -50,10 +50,19 @@ import type { SessionSpec } from "./ClaudeCode.ts"
 import type { SessionFibers } from "./callbacks.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
 import { type ChosenServers, chromeArgs, hasOwn, mcpServers } from "./mcp.ts"
-import { qualifiedRequiresTool, requiresServerName } from "./requiresTools.ts"
 import { Transcripts } from "./Transcripts.ts"
 import { serverName } from "./ticketTools.ts"
 import { deniedTools } from "./unusedTools.ts"
+
+/** The worker's server's name, tutti's own: its tools are `mcp__tutti__<name>` to Claude Code. */
+export const requiresServerName = serverName
+
+/** The names of a worker's requires tools. */
+export const requiresToolNames = ["requires_check", "requires_readme"] as const
+
+/** A worker's requires tool `name` as Claude Code names it. */
+export const qualifiedRequiresTool = (name: (typeof requiresToolNames)[number]): string =>
+  `mcp__${requiresServerName}__${name}`
 
 /** How a worker's session starts: a new one with the ID tutti drew, or a saved one resumed. */
 export type SessionStart =

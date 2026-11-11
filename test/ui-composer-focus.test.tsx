@@ -12,6 +12,7 @@ import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { interviewCard, interviewView } from "../src/run/interview.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
@@ -22,7 +23,7 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { InterviewContext } from "../src/ui/InterviewView.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   emptyTranscript,
   type OpenTranscript,

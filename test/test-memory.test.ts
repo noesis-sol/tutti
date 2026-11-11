@@ -25,7 +25,7 @@ import {
   testProcesses,
   warnHold,
 } from "../scripts/test.ts"
-import { mebibyte } from "../src/agent/env.ts"
+import { mebibyte } from "../src/core/env.ts"
 import { parseProcesses } from "../src/run/load.ts"
 import { testEnv } from "./env.ts"
 

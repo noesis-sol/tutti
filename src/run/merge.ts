@@ -68,6 +68,7 @@ import {
 } from "../core/log.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
+import { EventStream } from "../services/EventStream.ts"
 import {
   Git,
   type GitError,
@@ -78,6 +79,7 @@ import {
 } from "../services/Git.ts"
 import { allChanges, checkoutTrackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
+import { revertsIn } from "../services/scorecard.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
 import { aheadKey, clearAhead, rebasedAheadOf } from "./ahead.ts"
@@ -121,7 +123,6 @@ import {
 import { writtenOnly } from "./checkWrote.ts"
 import type { MergedWork } from "./critic.ts"
 import type { EarlyChecks } from "./earlyCheck.ts"
-import { EventStream } from "./eventstream.ts"
 import {
   type AtReset,
   type HandBacks,
@@ -140,7 +141,6 @@ import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
 import { info, type Said } from "./say.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
-import { revertsIn } from "./scorecard.ts"
 import { shownChanges } from "./settle.ts"
 import { fileList, type SetUps, setUp } from "./setup.ts"
 import { forgetConflictHead, keepConflictHead } from "./takenBack.ts"

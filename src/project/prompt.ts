@@ -5,14 +5,14 @@
 // since the workers don't get the tool.
 import { isAbsolute, join, relative, resolve, sep } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
+import { type AppConfigValue, SetupProblem, workerPromptFile } from "../core/AppConfig.ts"
 import {
   coresVariable,
   memoryVariable,
   orchestraCoresVariable,
   orchestraMemoryVariable,
   shareFileVariable,
-} from "../agent/env.ts"
-import { type AppConfigValue, SetupProblem, workerPromptFile } from "../core/AppConfig.ts"
+} from "../core/env.ts"
 import { settingsFile } from "./settings.ts"
 import builtIn from "./templates/worker-prompt.md" with { type: "text" }
 
@@ -105,7 +105,7 @@ export const checkNote = (command: string | null): string =>
 
 /**
  * The check note's last sentences: a worker's environment gives it its share of the machine's
- * cores (src/agent/env.ts's coreVariables), for its checks to keep to, as orchestra 0.9.0's does,
+ * cores (src/core/env.ts's coreVariables), for its checks to keep to, as orchestra 0.9.0's does,
  * and of the memory checks may use (memoryVariables), and names the file tutti keeps the share
  * in as it changes (src/run/share.ts).
  */
@@ -132,7 +132,7 @@ export const requiresRule = "never by hand outside the list"
  * `prompt`, that says so already (requiresRule), as tutti's template does since its version 6, is
  * told only what the list has. Where the main checkout has a README.md (`readme`), a worker that
  * changes the list is asked to write the README's section on what to install from it again, in the
- * same commit. A worker given tutti's requires tools (`tools`, src/agent/requiresTools.ts) is told
+ * same commit. A worker given tutti's requires tools (`tools`, src/run/requiresTools.ts) is told
  * to check and install with requires_check, which gives back an entry the branch adds or changes
  * for it to run with Bash, and to write the README's section with
  * requires_readme; one without them, to run tutti requires --readme.

@@ -9,12 +9,13 @@
 // Each takes plain props: the view's state is transcriptView.ts's.
 import { RGBA } from "@opentui/core"
 import { memo, type ReactNode } from "react"
+import type { Role } from "../../project/scheme.ts"
 import { ellipsis, marks } from "../../text/marks.ts"
 import { sanitize } from "../../text/sanitize.ts"
 import { clickable } from "../click.ts"
 import { cut, frameInner, Line, padded, type Segments, seg, widthOf, wrap } from "../line.tsx"
 import { asideGap, fieldGap, unpointed, wordSpace } from "../spacing.ts"
-import type { Role, Theme } from "../theme.ts"
+import type { Theme } from "../theme.ts"
 import {
   type Entry,
   expansionOf,

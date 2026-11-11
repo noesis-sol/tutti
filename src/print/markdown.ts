@@ -9,9 +9,10 @@
 // as `&#x1b;` becomes a control character only once it is decoded.
 import type { Effect } from "effect"
 import { lexer, type Token, type Tokens } from "marked"
+import type { Role } from "../project/scheme.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import { wrap as lineWrap, type Piece } from "../ui/line.tsx"
-import type { Role, Theme } from "../ui/theme.ts"
+import type { Theme } from "../ui/theme.ts"
 import type { Printer } from "./organLine.ts"
 
 /** How a piece of text is drawn: tutti's attributes and a role's colour. */

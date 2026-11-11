@@ -1,4 +1,4 @@
-// The getting-ready line on a real terminal (src/run/gettingReady.ts, § 7.1): `bun src/main.ts` on
+// The getting-ready line on a real terminal (src/print/gettingReady.ts, § 7.1): `bun src/main.ts` on
 // a pseudo-terminal, inside a repository on real git set up with nothing to run, with a fake bd and
 // a fake Claude Code (test/fixtures/fake-claude/claude.ts, behind --claude). On each path of the
 // run's start the line is drawn while the checks go and is erased, with nothing left, before the

@@ -7,6 +7,7 @@
 import { Data, Duration, Effect, Result } from "effect"
 import { detail, Log, line, Tag } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import {
   Git,
   type GitError,
@@ -17,7 +18,6 @@ import {
 } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { type Again, retrying } from "./again.ts"
-import type { EventStream } from "./eventstream.ts"
 import type { FinishedTicket, MergeTarget } from "./merge.ts"
 import { warn } from "./say.ts"
 

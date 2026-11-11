@@ -1,10 +1,11 @@
 // The totals strip's triage note (§ 7.2): ` · ◆ n triaged` after Set aside's label where the strip
 // has room for it, ` · ◆ n` where it hasn't, then none, before the totals go on one line.
 import { describe, expect, test } from "bun:test"
+import { orchestra } from "../src/project/scheme.ts"
 import { emptyView, type Totals } from "../src/run/runView.ts"
 import type { Segments } from "../src/ui/line.tsx"
 import { totalsLines, totalsStrip } from "../src/ui/Totals.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 

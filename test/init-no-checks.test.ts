@@ -28,9 +28,10 @@ import {
   setChecksLater,
 } from "../src/init/init.ts"
 import { lineForm } from "../src/init/lineForm.ts"
-import { fastScript, fullScript } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
+import { fastScript, fullScript } from "../src/project/runners.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -38,7 +39,7 @@ import * as TestBeads from "../src/testing/Beads.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 /** A temp repository (its top and git folder) and a home folder. */
 const newProject = () => {

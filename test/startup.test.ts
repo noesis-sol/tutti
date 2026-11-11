@@ -12,10 +12,10 @@ import {
   SettingsUnreadable,
 } from "../src/agent/Account.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import { type AppConfig, type AppConfigValue, SetupProblem } from "../src/core/AppConfig.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { keepAwakeNotes } from "../src/run/keepAwake.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import {
   check,
   exitSetup,

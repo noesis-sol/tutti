@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { childrenMark, highMark, type MemoryRun, testProcesses } from "../scripts/test.ts"
-import { mebibyte } from "../src/agent/env.ts"
+import { mebibyte } from "../src/core/env.ts"
 
 const run = (peak: number, children: number, slow: boolean): MemoryRun => ({
   at: "2026-11-08T10:00:00.000Z",

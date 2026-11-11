@@ -16,7 +16,6 @@ import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { read } from "../src/agent/reading.ts"
 import { rateLimitOf } from "../src/agent/UsageLimits.ts"
-import { answerOf } from "../src/agent/UsageProbe.ts"
 import {
   initial,
   step,
@@ -24,9 +23,10 @@ import {
   WorkerEvent,
   type WorkerState,
 } from "../src/agent/WorkerState.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
-import { Spending } from "../src/run/spending.ts"
+import { answerOf } from "../src/organs/UsageProbe.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { Spending } from "../src/services/Spending.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"

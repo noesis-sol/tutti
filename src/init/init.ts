@@ -39,20 +39,33 @@ import {
 import { Account } from "../agent/Account.ts"
 import { chromeServer, definedServers } from "../agent/mcp.ts"
 import { AppConfig, type AppConfigValue, type SetupProblem } from "../core/AppConfig.ts"
+import { AtomicWriter, writeFileAtomic } from "../core/atomicFile.ts"
 import type { Scouting } from "../organs/scout.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
 import { setIn } from "../project/jsonText.ts"
 import { builtInWorkerPrompt, withSuites } from "../project/prompt.ts"
+import {
+  checkScript,
+  checksNothing,
+  fastRunner,
+  fastScript,
+  fullRunner,
+  fullScript,
+  isRunner,
+  runnerSuites,
+  runsNothing,
+  type Suite,
+  withoutRunners,
+} from "../project/runners.ts"
+import { schemeNotices } from "../project/scheme.ts"
 import { maxConcurrent, Settings, settingsFile } from "../project/settings.ts"
 import settingsTemplate from "../project/templates/settings.json" with { type: "json" }
 import gitignoreTemplate from "../project/templates/tutti-gitignore" with { type: "text" }
 import { settingsGlobMatch } from "../run/glob.ts"
-import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import type { FormCancelled } from "../ui/questions.ts"
-import { schemeNotices } from "../ui/theme.ts"
 import {
   applySkill,
   applyVerifier,
@@ -81,19 +94,6 @@ import {
   promptChangeSteps,
 } from "./import.ts"
 import { readmeSteps, requiresSteps } from "./requires.ts"
-import {
-  checkScript,
-  checksNothing,
-  fastRunner,
-  fastScript,
-  fullRunner,
-  fullScript,
-  isRunner,
-  runnerSuites,
-  runsNothing,
-  type Suite,
-  withoutRunners,
-} from "./runners.ts"
 import { commitStaged, staging } from "./staged.ts"
 import { joinAnd, type Machine, runSteps, type Step, step, stepLine } from "./steps.ts"
 import { currentTemplates, keptNote, outdatedTemplates, type Templates } from "./templates.ts"

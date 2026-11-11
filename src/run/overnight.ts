@@ -20,24 +20,24 @@ import { join, resolve } from "node:path"
 import { Clock, Duration, Effect, type FileSystem, Option, Result } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import type { AccountProbe } from "../agent/Account.ts"
-import { UsageProbe } from "../agent/UsageProbe.ts"
 import {
   type AppConfigValue,
   defaultUsageLimitWait,
   overnightDenyAfter,
   workerPromptFile,
 } from "../core/AppConfig.ts"
-import { resetLabel } from "../core/localTime.ts"
+import { duration, resetLabel } from "../core/localTime.ts"
 import { Log, line } from "../core/log.ts"
 import { templateNotes } from "../init/templates.ts"
 import { updateTemplates } from "../init/update.ts"
 import { O } from "../native/libc.ts"
-import { duration } from "../print/organLine.ts"
+import { UsageProbe } from "../organs/UsageProbe.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt } from "../project/prompt.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import { type CheckError, Checks } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
+import { type Registration, workersCount } from "../services/machine.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { marks } from "../text/marks.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
@@ -48,7 +48,6 @@ import type { BatteryReading } from "./battery.ts"
 import { howFailed, saidOf } from "./check.ts"
 import { type KeepAwakePlan, lidNote } from "./keepAwake.ts"
 import { busyLoad, type Kernel } from "./load.ts"
-import { type Registration, workersCount } from "./machine.ts"
 import {
   gb,
   heaviest,

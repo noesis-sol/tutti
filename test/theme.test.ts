@@ -7,24 +7,26 @@ import { TextAttributes } from "@opentui/core"
 import { ConfigProvider, Effect, Option, Result } from "effect"
 import fc from "fast-check"
 import { schemaText } from "../scripts/gen-schemas.ts"
-import { noFlags } from "../src/cli/flags.ts"
-import { load } from "../src/cli/resolveConfig.ts"
+import { noFlags } from "../src/project/flags.ts"
 import {
-  ansiOf,
-  appearanceOf,
   type Colour,
   type LoadedScheme,
   loadScheme,
-  makeTheme,
   orchestra,
-  outputAppearance,
-  parseBackgroundReply,
   parseColour,
-  queryAppearance,
   type Role,
   roles,
   type SchemeFolders,
   schemeNotices,
+} from "../src/project/scheme.ts"
+import { load } from "../src/run/resolveConfig.ts"
+import {
+  ansiOf,
+  appearanceOf,
+  makeTheme,
+  outputAppearance,
+  parseBackgroundReply,
+  queryAppearance,
   styleNames,
 } from "../src/ui/theme.ts"
 

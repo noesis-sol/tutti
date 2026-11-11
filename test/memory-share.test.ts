@@ -1,6 +1,6 @@
 // Each worker's checks get a share of the machine's memory beside their cores (tutti-epza.18): the
 // budget from the load readings (src/run/share.ts' budgetOf), divided among the workers allowed,
-// the other runs', a part each, and the merge check, mergeWeight parts (src/agent/env.ts'
+// the other runs', a part each, and the merge check, mergeWeight parts (src/core/env.ts'
 // memoryShare, tutti-k4if.3), at least a floor; kept live in .tutti/run/share.json, rewritten as the
 // cap or the readings move it, and named in each worker's environment (TUTTI_SHARE_FILE) beside
 // TUTTI_MEMORY_MB.
@@ -14,24 +14,23 @@ import fc from "fast-check"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
+import { noServersNote } from "../src/agent/mcp.ts"
 import {
   mebibyte,
+  memoryFloor,
+  memoryReserve,
   memoryShare,
+  memoryStep,
   memoryVariable,
   memoryVariables,
   mergeWeight,
   orchestraMemoryVariable,
   sharedEnv,
   shareFileVariable,
-} from "../src/agent/env.ts"
-import { noServersNote } from "../src/agent/mcp.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
+} from "../src/core/env.ts"
 import type { Log } from "../src/core/log.ts"
 import {
   type Kernel,
-  memoryFloor,
-  memoryReserve,
-  memoryStep,
   newSampler,
   parseDarwin,
   parseLinux,
@@ -39,25 +38,28 @@ import {
   type Reading,
   sample,
 } from "../src/run/load.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import {
-  budgetOf,
   changeOf,
-  type Division,
-  gigabytes,
   type Kept,
   makeShareKeeper,
+  shareChangeLine,
+  shareNote,
+} from "../src/run/share.ts"
+import type { TicketId } from "../src/services/Beads.ts"
+import {
+  budgetOf,
+  type Division,
+  gigabytes,
   mergeShareFile,
   type Share,
   Shares,
-  shareChangeLine,
   shareFile,
   shareFileOf,
   shareLine,
-  shareNote,
   shareOf,
   shares,
-} from "../src/run/share.ts"
-import type { TicketId } from "../src/services/Beads.ts"
+} from "../src/services/share.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"

@@ -9,10 +9,10 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Deferred, Effect, Fiber } from "effect"
 import fc from "fast-check"
+import { memoryReserve } from "../src/core/env.ts"
 import {
   type Kernel,
   type LoadSource,
-  memoryReserve,
   newSampler,
   othersChecks,
   parseProcesses,
@@ -26,8 +26,8 @@ import {
   otherWorkers,
   type ProcessCheck,
   Processes,
-} from "../src/run/machine.ts"
-import { budgetOf } from "../src/run/share.ts"
+} from "../src/services/machine.ts"
+import { budgetOf } from "../src/services/share.ts"
 
 const gb = 1024 ** 3
 const kb = 1024

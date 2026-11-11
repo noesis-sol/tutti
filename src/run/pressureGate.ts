@@ -10,7 +10,7 @@
 // pressure_cap false in .tutti/settings.json turns the cap off: the readings are still recorded.
 import { Clock, Effect, Ref, type SubscriptionRef } from "effect"
 import type { Log } from "../core/log.ts"
-import { EventStream } from "./eventstream.ts"
+import { EventStream } from "../services/EventStream.ts"
 import { type PressureHold, withPressureHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
 import {

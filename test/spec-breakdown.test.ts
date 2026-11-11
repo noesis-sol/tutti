@@ -8,6 +8,10 @@ import { join } from "node:path"
 import type { CanUseTool, OnElicitation } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Duration, Effect, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
+import type { ToolAnswer } from "../src/agent/callbacks.ts"
+import { interviewWorker } from "../src/agent/inView.ts"
+import { interviewOptions, type WorkerCallbacks } from "../src/agent/options.ts"
+import { serverName } from "../src/agent/ticketTools.ts"
 import {
   type Breakdown,
   BreakdownEnd,
@@ -18,12 +22,8 @@ import {
   breakdownWorker,
   renderPrompt,
   startBreakdown,
-} from "../src/agent/breakdown.ts"
-import { qualifiedBreakdownTools } from "../src/agent/breakdownTools.ts"
-import type { ToolAnswer } from "../src/agent/callbacks.ts"
-import { interviewWorker } from "../src/agent/inView.ts"
-import { interviewOptions, type WorkerCallbacks } from "../src/agent/options.ts"
-import { serverName } from "../src/agent/ticketTools.ts"
+} from "../src/run/breakdown.ts"
+import { qualifiedBreakdownTools } from "../src/run/breakdownTools.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { init, result, sessionState, tool, wait } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"

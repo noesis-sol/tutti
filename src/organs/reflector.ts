@@ -8,8 +8,8 @@
 // keeps the first so many on one line each, and the gate (run/playbook.ts) decides what comes of
 // them. When it is asked is run/playbookRun.ts's.
 import { Effect, Schema } from "effect"
-import { LessonEvidence, lessonKinds } from "../run/events.ts"
 import type { Candidate } from "../run/playbook.ts"
+import { LessonEvidence, lessonKinds } from "../services/events.ts"
 import { oneLine } from "../text/oneLine.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import { type InputPart, section } from "./evidence.ts"

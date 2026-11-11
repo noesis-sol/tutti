@@ -5,7 +5,7 @@
 import { Effect, type FiberSet, Queue, Ref, type Scope, Semaphore } from "effect"
 import { Log } from "../../core/log.ts"
 import { Beads, type TicketId } from "../../services/Beads.ts"
-import { EventStream } from "../eventstream.ts"
+import { EventStream } from "../../services/EventStream.ts"
 import { RunFibers } from "../fibers.ts"
 import { type Gate, openGate } from "../holds.ts"
 import { Ledger } from "../ledger.ts"

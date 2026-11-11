@@ -2,7 +2,7 @@
 // `started`: local time with its offset, as each event's `time` is, and still read by the lock.
 import { describe, expect, test } from "bun:test"
 import { runStarted } from "../src/core/localTime.ts"
-import { stamp } from "../src/run/eventstream.ts"
+import { stamp } from "../src/services/EventStream.ts"
 import { AlreadyRunning } from "../src/services/RunLock.ts"
 import { withVariable } from "./env.ts"
 

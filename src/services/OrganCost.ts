@@ -7,8 +7,8 @@
 // a call that answered through a provider that reports no price (AnthropicProvider's).
 import { Context, Effect, Layer, Option, Ref } from "effect"
 import { type Line, Log, line, Tag } from "../core/log.ts"
-import { EventStream } from "../run/eventstream.ts"
-import type { TicketId } from "../services/Beads.ts"
+import type { TicketId } from "./Beads.ts"
+import { EventStream } from "./EventStream.ts"
 
 /** One organ call's cost, from its session's last result. */
 export interface Cost {

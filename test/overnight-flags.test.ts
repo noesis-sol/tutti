@@ -3,10 +3,10 @@
 // which its own flag overrides, and goes with neither --feature nor a --force-overnight of its own; --overnight-free-disk is the free disk its pre-flight wants.
 import { describe, expect, test } from "bun:test"
 import { Duration, Option, Result } from "effect"
-import { noFlags, type RunFlagName, type RunFlags } from "../src/cli/flags.ts"
-import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/resolveConfig.ts"
+import { asking } from "../src/cli/choose.ts"
 import { type AppConfigValue, defaultOvernightFreeDisk } from "../src/core/AppConfig.ts"
-import { asking } from "../src/run/choose.ts"
+import { noFlags, type RunFlagName, type RunFlags } from "../src/project/flags.ts"
+import { defaultSettings, defaultUserConfig, resolve } from "../src/run/resolveConfig.ts"
 
 const flagsOf = (given: Partial<Record<RunFlagName, string>>): RunFlags => ({
   ...noFlags,

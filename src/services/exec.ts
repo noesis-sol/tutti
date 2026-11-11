@@ -32,7 +32,7 @@ import {
 } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { withoutGitLocal } from "./gitEnv.ts"
+import { withoutGitLocal } from "../core/gitEnv.ts"
 import { descendantGroups, killTree, ownGroup, processAlive, processTable } from "./processTree.ts"
 import { startReaper, stopReaper } from "./reaper.ts"
 import { sleepAwake, sleepAwakeUnloaded } from "./Wake.ts"
@@ -151,7 +151,7 @@ export interface Command {
   readonly cwd?: string
   /**
    * The environment the command starts from, in place of tutti's own: that of a command run on a
-   * branch's behalf (src/agent/env.ts's BranchEnv). Either goes without git's local variables
+   * branch's behalf (src/core/env.ts's BranchEnv). Either goes without git's local variables
    * (gitEnv.ts).
    */
   readonly baseEnv?: Readonly<Record<string, string>>

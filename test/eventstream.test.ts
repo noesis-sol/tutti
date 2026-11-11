@@ -13,6 +13,7 @@ import { Arbitrary, Effect, Layer, Result } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { timestamp } from "../src/core/localTime.ts"
+import { EventStream, eventsFile, notRecorded } from "../src/services/EventStream.ts"
 import {
   decodeLine,
   type Event,
@@ -20,8 +21,7 @@ import {
   encodeLine,
   type Kind,
   kinds,
-} from "../src/run/events.ts"
-import { EventStream, eventsFile, notRecorded } from "../src/run/eventstream.ts"
+} from "../src/services/events.ts"
 import { Captured, layer as capturedLayer, testRun } from "../src/testing/EventStream.ts"
 
 const run = "2026-10-02T09:12:03.98+02:00"

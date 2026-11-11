@@ -5,9 +5,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, type Duration, Effect, Fiber, Layer, Option } from "effect"
 import { TestClock } from "effect/testing"
-import { breakdownWorker } from "../src/agent/breakdown.ts"
 import type { Log } from "../src/core/log.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
+import { orchestra } from "../src/project/scheme.ts"
+import { breakdownWorker } from "../src/run/breakdown.ts"
 import { specRun } from "../src/run/specRun.ts"
 import {
   apiErrorResult,
@@ -20,7 +21,7 @@ import {
   wait,
 } from "../src/testing/AgentHost.ts"
 import { texts } from "../src/testing/Log.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { breakdownInit, type Calls, specLayers, specOf } from "./specScenario.ts"
 
 // TestClock starts at the epoch, so a limit resetting at 3600 (seconds, as the API says it) resets

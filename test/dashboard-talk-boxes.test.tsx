@@ -10,6 +10,7 @@ import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { talkLeaveAbout, talkLeaveQuestion, talkName } from "../src/run/answerTalk.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { interviewCard, interviewView } from "../src/run/interview.ts"
@@ -19,7 +20,7 @@ import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { reasonQuestion } from "../src/ui/AttentionCard.tsx"
 import { settle, staleToast } from "../src/ui/attentionKeys.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   emptyTranscript,
   type OpenTranscript,

@@ -13,12 +13,11 @@ import {
   fileTicket,
   filingsKept,
   type TicketFiling,
-  titleLimit,
-  titleOf,
 } from "../src/run/fileTicket.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { titleLimit, titleOf } from "../src/text/oneLine.ts"
 
 const filingsRef = (start: ReadonlyArray<TicketFiling> = []) =>
   SubscriptionRef.make<ReadonlyArray<TicketFiling>>(start)

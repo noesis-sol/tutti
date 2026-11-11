@@ -13,7 +13,7 @@
 // the requirements among what the machine needs, and `tutti requires` prints each one's state.
 import { join } from "node:path"
 import { Duration, Effect } from "effect"
-import { BranchEnv } from "../agent/env.ts"
+import { BranchEnv } from "../core/env.ts"
 import { detail, line, Tag } from "../core/log.ts"
 import { O } from "../native/libc.ts"
 import { appliesOn, requireLogName } from "../project/requires.ts"

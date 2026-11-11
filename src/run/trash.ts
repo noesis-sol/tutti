@@ -15,9 +15,9 @@ import { Context, Effect, FiberSet, Layer, Result } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { detail, Log, Tag, ticketLine } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import { processCount, Strays } from "../services/Strays.ts"
 import { Worktrees } from "../services/Worktrees.ts"
-import type { EventStream } from "./eventstream.ts"
 import { sayer } from "./say.ts"
 
 export class Trash extends Context.Service<

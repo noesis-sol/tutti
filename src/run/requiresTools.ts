@@ -28,6 +28,8 @@ import {
 import { Effect, type FileSystem } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { z } from "zod"
+import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "../agent/callbacks.ts"
+import { requiresServerName } from "../agent/options.ts"
 import {
   appliesOn,
   readmeName,
@@ -36,25 +38,7 @@ import {
   writeReadmeRequires,
 } from "../project/requires.ts"
 import { type Requirement, readSettings, settingsFile } from "../project/settings.ts"
-import {
-  checkRequires,
-  missingOf,
-  type RequireResult,
-  sameRequires,
-  says,
-} from "../run/requires.ts"
-import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "./callbacks.ts"
-import { serverName } from "./ticketTools.ts"
-
-/** The worker's server's name, tutti's own: its tools are `mcp__tutti__<name>` to Claude Code. */
-export const requiresServerName = serverName
-
-/** The names of a worker's requires tools. */
-export const requiresToolNames = ["requires_check", "requires_readme"] as const
-
-/** A worker's requires tool `name` as Claude Code names it. */
-export const qualifiedRequiresTool = (name: (typeof requiresToolNames)[number]): string =>
-  `mcp__${requiresServerName}__${name}`
+import { checkRequires, missingOf, type RequireResult, sameRequires, says } from "./requires.ts"
 
 /** The services a worker's requires tools run with: the commands', and the files'. */
 export type RequiresToolsServices = ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem

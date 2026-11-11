@@ -24,12 +24,13 @@ import {
   serverNotes,
   type WorkersQuestions,
 } from "../src/init/workers.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const chromeKeys = [
   "claudeInChromeDefaultEnabled",

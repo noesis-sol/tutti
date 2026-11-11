@@ -5,9 +5,8 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Option, Result } from "effect"
 import fc from "fast-check"
-import { noFlags } from "../src/cli/flags.ts"
-import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/resolveConfig.ts"
 import type { AppConfigValue, SetupProblem } from "../src/core/AppConfig.ts"
+import { noFlags } from "../src/project/flags.ts"
 import {
   askUserQuestionTool,
   builtInWorkerPrompt,
@@ -16,6 +15,7 @@ import {
   type WorkerPrompt,
   withoutAskUserQuestion,
 } from "../src/project/prompt.ts"
+import { defaultSettings, defaultUserConfig, resolve } from "../src/run/resolveConfig.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 
 const project = (prompt?: string): string => {

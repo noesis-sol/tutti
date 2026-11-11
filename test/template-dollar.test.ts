@@ -3,7 +3,6 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { suiteLines, verifierSection, verifierText } from "../src/init/checks.ts"
-import type { Suite } from "../src/init/runners.ts"
 import { currentPrompt } from "../src/init/templates.ts"
 import {
   builtInWorkerPrompt,
@@ -11,6 +10,7 @@ import {
   unknownSuitesLines,
   withSuites,
 } from "../src/project/prompt.ts"
+import type { Suite } from "../src/project/runners.ts"
 
 const port = "PORT=$((3000 + $$ % 100)) bun test"
 

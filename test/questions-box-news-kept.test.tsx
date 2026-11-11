@@ -3,6 +3,7 @@
 // fallen off them, the box still puts the questions left, and doesn't go back to reading them.
 import { expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -13,7 +14,7 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
 import { readingText } from "../src/ui/QuestionsBox.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 

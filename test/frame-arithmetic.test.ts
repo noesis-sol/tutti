@@ -3,6 +3,7 @@
 // line of a frame is exactly as wide as they say, and neither width goes below its least.
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
+import { orchestra } from "../src/project/scheme.ts"
 import {
   boxed,
   boxMargin,
@@ -17,7 +18,7 @@ import {
   seg,
   widthOf,
 } from "../src/ui/line.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
 const frame = theme.look("frame")

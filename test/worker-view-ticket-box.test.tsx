@@ -6,12 +6,13 @@
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
 import fc from "fast-check"
+import { orchestra, type Role } from "../src/project/scheme.ts"
 import { type TicketText, ticketText } from "../src/run/runView.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { sanitizeLine } from "../src/text/sanitize.ts"
 import { plainFg, type Segments, widthOf } from "../src/ui/line.tsx"
 import { badgeLabel, badgesOf, priorityLook, ticketEdge, typeRole } from "../src/ui/TicketHead.tsx"
-import { makeTheme, orchestra, type Role } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 const light = makeTheme(orchestra, { appearance: "light", depth: "truecolor", noColor: false })

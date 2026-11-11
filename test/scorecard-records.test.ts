@@ -1,4 +1,4 @@
-// The records a ticket's scorecard is made from, as the run writes them (src/run/scorecard.ts): its
+// The records a ticket's scorecard is made from, as the run writes them (src/services/scorecard.ts): its
 // footprint's size on its dispatch, a follow-up's score_update as the run takes it up, a revert's as
 // a merge brings it, and the live stream's score after each ticket_end, in the file.
 import { describe, expect, test } from "bun:test"
@@ -7,10 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Exit, Fiber, Layer, type Scope } from "effect"
 import { TestClock } from "effect/testing"
-import { decodeLine, type EventRecord } from "../src/run/events.ts"
-import { EventStream, eventsFile } from "../src/run/eventstream.ts"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
-import { figuresText } from "../src/run/figures.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
@@ -19,6 +16,9 @@ import { repoFiles } from "../src/run/repoFiles.ts"
 import { run } from "../src/run/run.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
+import { EventStream, eventsFile } from "../src/services/EventStream.ts"
+import { decodeLine, type EventRecord } from "../src/services/events.ts"
+import { figuresText } from "../src/services/figures.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"

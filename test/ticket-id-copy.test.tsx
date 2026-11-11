@@ -5,6 +5,7 @@
 // you` row outside its ID still opens the questions box.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -15,7 +16,7 @@ import { Root } from "../src/ui/App.tsx"
 import { type Clipboard, copiedLife, copiedToast, copyFailedToast } from "../src/ui/clipboard.ts"
 import type { OpenQuestion } from "../src/ui/questions.ts"
 import { copiedCell, ticketsLines } from "../src/ui/TicketsTable.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, type Interval } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 

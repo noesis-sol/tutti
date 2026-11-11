@@ -6,8 +6,6 @@ import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { type InputPart, renderInput, type Section, section } from "../src/organs/evidence.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
-import { Ending } from "../src/print/summary.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import {
@@ -23,7 +21,9 @@ import {
   runSections,
   showConcurrency,
 } from "../src/run/report.ts"
+import { Ending } from "../src/run/summary.ts"
 import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
+import { OrganCost } from "../src/services/OrganCost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"

@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Option } from "effect"
 import { TalkEnd, talkLeftWhy } from "../src/agent/answerTalk.ts"
 import { makePrinter } from "../src/print/organLine.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import {
   openQuestions,
   type Put,
@@ -16,7 +17,7 @@ import * as TestBeads from "../src/testing/Beads.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { OpenQuestionForm } from "../src/ui/OpenQuestion.tsx"
 import { choicesOf, FormCancelled, type OpenQuestion, type Reply } from "../src/ui/questions.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { idleFrame, withRender } from "./render.ts"
 
 const theme = makeTheme(orchestra, {

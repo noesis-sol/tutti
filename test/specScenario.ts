@@ -7,15 +7,16 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Deferred, Duration, Effect, Layer, Option } from "effect"
-import { breakdownWorker } from "../src/agent/breakdown.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import type { ToolAnswer } from "../src/agent/callbacks.ts"
 import { serverName } from "../src/agent/ticketTools.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
+import { orchestra } from "../src/project/scheme.ts"
+import { breakdownWorker } from "../src/run/breakdown.ts"
 import type { Spec } from "../src/run/spec.ts"
 import type { SpecOutcome } from "../src/run/specRun.ts"
 import { specRun } from "../src/run/specRun.ts"
-import { endRecord } from "../src/run/spending.ts"
+import { endRecord } from "../src/services/Spending.ts"
 import {
   init,
   Recording,
@@ -33,7 +34,7 @@ import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as spendingLayer } from "../src/testing/Spending.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 export const specText = "# Shop\n\n## Listing\n\nList the items.\n"
 export const sha = (text: string) => createHash("sha256").update(text).digest("hex")

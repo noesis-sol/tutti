@@ -21,7 +21,6 @@ import { Account } from "../agent/Account.ts"
 import { readRequestFile, requestIdPattern } from "../agent/attentionFiles.ts"
 import { ClaudeCode } from "../agent/ClaudeCode.ts"
 import { buildTarget, resolveClaude } from "../agent/claudeBinary.ts"
-import { WorkerEnv, workerEnv } from "../agent/env.ts"
 import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import {
@@ -35,6 +34,7 @@ import {
 } from "../answer/questions.ts"
 import { AppConfig, SetupProblem } from "../core/AppConfig.ts"
 import { type AnswerWord, answerWords } from "../core/answerWith.ts"
+import { WorkerEnv, workerEnv } from "../core/env.ts"
 import { Log } from "../core/log.ts"
 import { scoutCostSteps, scoutSearch } from "../init/checks.ts"
 import {
@@ -52,7 +52,6 @@ import { InitFailed, InitStopped, liveMachine, type Step, stepLine } from "../in
 import { initUpdate, updateLines } from "../init/update.ts"
 import { parseMcpNames } from "../init/workers.ts"
 import { layer as languageModelLayer } from "../organs/AgentSdkLanguageModel.ts"
-import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
 import { plan } from "../plan/plan.ts"
 import {
@@ -62,12 +61,25 @@ import {
   initStoppedLine,
   initSummary,
 } from "../print/initSummary.ts"
+import {
+  cliFlags,
+  count,
+  noFlags,
+  onOff,
+  positiveTime,
+  type Reader,
+  type RunFlags,
+  runFlags,
+} from "../project/flags.ts"
+import { orchestraLoaded } from "../project/scheme.ts"
 import { maxConcurrent } from "../project/settings.ts"
 import { exitCodes } from "../run/holds.ts"
 import { listen } from "../run/quit.ts"
+import { load, loadLenient, withScheme } from "../run/resolveConfig.ts"
 import { checkGit, findRepository } from "../run/startup.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
+import { OrganCost } from "../services/OrganCost.ts"
 import { RunLock } from "../services/RunLock.ts"
 import * as Tty from "../services/Tty.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
@@ -80,27 +92,15 @@ import {
   type Appearance,
   appearanceOf,
   makeTheme,
-  orchestraLoaded,
   outputAppearance,
   type Theme,
 } from "../ui/theme.ts"
 import { releaseKeys } from "../update/keys.ts"
 import { type Build, githubReleases, update } from "../update/update.ts"
 import { colours } from "./colours.ts"
-import {
-  cliFlags,
-  count,
-  noFlags,
-  onOff,
-  positiveTime,
-  type Reader,
-  type RunFlags,
-  runFlags,
-} from "./flags.ts"
 import { login, runInTerminal } from "./login.ts"
 import { playbook, playbookAct, playbookExits } from "./playbook.ts"
 import { requires, requiresExits } from "./requires.ts"
-import { load, loadLenient, withScheme } from "./resolveConfig.ts"
 import { buildKind, tuttiVersion } from "./version.ts"
 
 /** The main checkout of the repository `dir` is in: the first of its worktrees. */

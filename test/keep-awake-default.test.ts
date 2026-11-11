@@ -11,23 +11,23 @@ import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Effect, Exit, Option, Result } from "effect"
 import { Command } from "effect/cli"
 import { schemaText } from "../scripts/gen-schemas.ts"
-import { cliFlags, noFlags, type RunFlags, retiredFlags } from "../src/cli/flags.ts"
-import {
-  defaultSettings,
-  defaultUserConfig,
-  resolve,
-  type Sources,
-} from "../src/cli/resolveConfig.ts"
 import { type AppConfigValue, defaultUserFile } from "../src/core/AppConfig.ts"
 import { importSettings } from "../src/init/import.ts"
 import { latestVersion, promptChanges } from "../src/init/templates.ts"
 import { updateTemplates } from "../src/init/update.ts"
 import { decodeConfig } from "../src/project/configFile.ts"
+import { cliFlags, noFlags, type RunFlags, retiredFlags } from "../src/project/flags.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { Settings } from "../src/project/settings.ts"
 import settingsTemplate from "../src/project/templates/settings.json" with { type: "json" }
 import { UserConfig, userConfigShown } from "../src/project/userConfig.ts"
 import { keepAwakeNotes } from "../src/run/keepAwake.ts"
+import {
+  defaultSettings,
+  defaultUserConfig,
+  resolve,
+  type Sources,
+} from "../src/run/resolveConfig.ts"
 
 const root = join(import.meta.dir, "..")
 

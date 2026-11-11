@@ -41,36 +41,36 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import { AppConfig } from "../core/AppConfig.ts"
-import { resetLabel } from "../core/localTime.ts"
-import { Log, Tag, tagged } from "../core/log.ts"
-import { formatDuration } from "../project/configFile.ts"
-import template from "../project/templates/spec-prompt.md" with { type: "text" }
-import { countdown } from "../run/runView.ts"
-import { issueLine, type Spec, short, specUpdateFile } from "../run/spec.ts"
-import type { CheckedTree, FiledTree } from "../run/specTree.ts"
-import { liftAfter, retryEvery } from "../run/usageLimit.ts"
-import type { Beads, Issue, TicketId } from "../services/Beads.ts"
-import type { Git } from "../services/Git.ts"
-import { runFolder, writeRunFile } from "../services/Worktrees.ts"
-import { loginRefusedText } from "./Account.ts"
+import { loginRefusedText } from "../agent/Account.ts"
 import {
   type AgentGone,
   AgentHost,
   AgentStartFailed,
   type MessageUuid,
   stoppedForSetup,
-} from "./AgentHost.ts"
+} from "../agent/AgentHost.ts"
+import { sessionFibers } from "../agent/callbacks.ts"
+import { interviewWorker, leadAndPasted } from "../agent/inView.ts"
+import { SessionKind } from "../agent/sessionKind.ts"
+import type { WorkerState } from "../agent/WorkerState.ts"
+import { AppConfig } from "../core/AppConfig.ts"
+import { resetLabel } from "../core/localTime.ts"
+import { Log, Tag, tagged } from "../core/log.ts"
+import { formatDuration } from "../project/configFile.ts"
+import template from "../project/templates/spec-prompt.md" with { type: "text" }
+import type { Beads, Issue, TicketId } from "../services/Beads.ts"
+import type { Git } from "../services/Git.ts"
+import { runFolder, writeRunFile } from "../services/Worktrees.ts"
 import {
   type BreakdownState,
   type BreakdownTools,
   makeBreakdownTools,
   qualifiedBreakdownTools,
 } from "./breakdownTools.ts"
-import { sessionFibers } from "./callbacks.ts"
-import { interviewWorker, leadAndPasted } from "./inView.ts"
-import { SessionKind } from "./sessionKind.ts"
-import type { WorkerState } from "./WorkerState.ts"
+import { countdown } from "./runView.ts"
+import { issueLine, type Spec, short, specUpdateFile } from "./spec.ts"
+import type { CheckedTree, FiledTree } from "./specTree.ts"
+import { liftAfter, retryEvery } from "./usageLimit.ts"
 
 /** The name AgentHost knows a headless breakdown's session by. */
 export const breakdownWorker = "tutti-breakdown" as TicketId

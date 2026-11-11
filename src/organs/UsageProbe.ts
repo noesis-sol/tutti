@@ -28,12 +28,12 @@ import {
   type Scope,
   Stream,
 } from "effect"
-import { costOf, organOptions } from "../organs/AgentSdkLanguageModel.ts"
-import { OrganCost } from "../organs/OrganCost.ts"
-import { BilledAs, ClaudeCode } from "./ClaudeCode.ts"
-import { turnLimit } from "./reading.ts"
-import { organCloseLimit } from "./sessionProcess.ts"
-import { endedOnLimit } from "./UsageLimits.ts"
+import { BilledAs, ClaudeCode } from "../agent/ClaudeCode.ts"
+import { turnLimit } from "../agent/reading.ts"
+import { organCloseLimit } from "../agent/sessionProcess.ts"
+import { endedOnLimit } from "../agent/UsageLimits.ts"
+import { OrganCost } from "../services/OrganCost.ts"
+import { costOf, organOptions } from "./AgentSdkLanguageModel.ts"
 
 /** What the account answered the probe. Times are epoch milliseconds. */
 export type ProbeAnswer = Data.TaggedEnum<{

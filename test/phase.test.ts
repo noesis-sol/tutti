@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Result } from "effect"
 import fc from "fast-check"
-import { phaseNames } from "../src/run/events.ts"
 import {
   countsUnder,
   Detail,
@@ -21,6 +20,7 @@ import {
   WaitFor,
 } from "../src/run/phase.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { phaseNames } from "../src/services/events.ts"
 
 const {
   Queued,

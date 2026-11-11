@@ -8,8 +8,8 @@
 // back (runEnd.ts's Look). A disk that can't be read changes nothing.
 import { Effect, Ref } from "effect"
 import type { Log } from "../core/log.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import { diskLow, holdLine, liftedLine } from "./disk.ts"
-import type { EventStream } from "./eventstream.ts"
 import { withDiskHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
 import type { DiskFree, Reading } from "./load.ts"

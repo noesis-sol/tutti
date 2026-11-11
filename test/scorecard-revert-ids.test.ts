@@ -1,10 +1,10 @@
-// A revert's ticket IDs (src/run/scorecard.ts' revertsIn): bd's IDs whose prefix has hyphens of its
+// A revert's ticket IDs (src/services/scorecard.ts' revertsIn): bd's IDs whose prefix has hyphens of its
 // own, as a project named my-app gets (`my-app-a3f2`), are read as well as single-hyphen ones, so a
 // merged revert of such a ticket goes on its scorecard; anything tutti couldn't run as a ticket isn't.
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { revertsIn } from "../src/run/scorecard.ts"
 import type { Sha } from "../src/services/Git.ts"
+import { revertsIn } from "../src/services/scorecard.ts"
 import { ticketIdProblem } from "../src/services/Worktrees.ts"
 
 const commit = (subject: string) => ({ hash: "abcdef1234" as Sha, subject })

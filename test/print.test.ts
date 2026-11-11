@@ -4,13 +4,15 @@ import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { decodeReferences, renderMarkdown, ruleWidth } from "../src/print/markdown.ts"
 import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
-import { closing, Ending, printSummary, type Summary, summary } from "../src/print/summary.ts"
+import { closing, printSummary, summary } from "../src/print/summary.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { attentionOf, emptyView, type Row, RowDetail, rowStatus } from "../src/run/runView.ts"
+import { Ending, type Summary } from "../src/run/summary.ts"
 import { noStats } from "../src/run/ticketStats.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
-import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
+import { makeTheme, type Theme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 const noColour = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })

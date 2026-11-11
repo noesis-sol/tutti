@@ -33,8 +33,8 @@ import {
   type Refusal,
   writeFileUnder,
 } from "../native/libc.ts"
-import { phaseNames } from "../run/events.ts"
 import type { TicketId } from "./Beads.ts"
+import { phaseNames } from "./events.ts"
 
 /** The carry-over file, relative to the project's top (§ 9.1). */
 export const stateFile = join(".tutti", "run", "state.json")

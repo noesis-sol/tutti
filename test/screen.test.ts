@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { WorkerState } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
@@ -13,7 +14,7 @@ import { cardLines, compactLines } from "../src/ui/Card.tsx"
 import { hintLines, hintSegments } from "../src/ui/Hint.tsx"
 import { upNextLines } from "../src/ui/SidePanel.tsx"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { windDownSegments } from "../src/ui/WindDown.tsx"
 import {
   boxLine,

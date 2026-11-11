@@ -9,10 +9,10 @@ import { Effect, type FileSystem, type Scope, type SubscriptionRef } from "effec
 import type { ChildProcessSpawner } from "effect/process"
 import { AppConfig } from "../core/AppConfig.ts"
 import { detail, Log } from "../core/log.ts"
-import type { EventStream } from "./eventstream.ts"
+import type { EventStream } from "../services/EventStream.ts"
+import { holdLine, machinePoll, make as makeMachine, OtherWorkers } from "../services/machine.ts"
 import { withMachineHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
-import { holdLine, machinePoll, make as makeMachine, OtherWorkers } from "./machine.ts"
 import { type Status, showOn } from "./runView.ts"
 import { sayer } from "./say.ts"
 

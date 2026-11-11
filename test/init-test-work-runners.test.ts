@@ -20,9 +20,9 @@ import {
   testWork,
 } from "../src/init/checks.ts"
 import { type InitForm, init } from "../src/init/init.ts"
-import { fastScript, fullScript, type Suite } from "../src/init/runners.ts"
 import type { Machine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
+import { fastScript, fullScript, type Suite } from "../src/project/runners.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"

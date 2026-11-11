@@ -10,9 +10,10 @@ import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Option } from "effect"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { ProbeAnswer } from "../src/agent/UsageProbe.ts"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
+import { ProbeAnswer } from "../src/organs/UsageProbe.ts"
 import { makePrinter } from "../src/print/organLine.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { unknownKernel } from "../src/run/load.ts"
 import {
   type Ask,
@@ -32,7 +33,7 @@ import * as TestGit from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { Probed, layer as probeLayer, type Scripted } from "../src/testing/UsageProbe.ts"
 import * as TestWorktrees from "../src/testing/Worktrees.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, {
   appearance: "dark",

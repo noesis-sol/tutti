@@ -34,10 +34,12 @@ import {
   followEnds,
   make as makeAuditor,
 } from "../src/run/auditor.ts"
-import { auditItems, EventRecord } from "../src/run/events.ts"
 import { type Entry, emptyState, type State } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
+import { auditItems, EventRecord } from "../src/services/events.ts"
+import { Git } from "../src/services/Git.ts"
 import {
   noScoring,
   type Score,
@@ -46,9 +48,7 @@ import {
   scorecardsReport,
   scoreOf,
   scoreStep,
-} from "../src/run/scorecard.ts"
-import type { TicketId } from "../src/services/Beads.ts"
-import { Git } from "../src/services/Git.ts"
+} from "../src/services/scorecard.ts"
 import { bash, result, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"

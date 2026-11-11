@@ -10,7 +10,7 @@ import { ConfigProvider, Console, Effect, Exit } from "effect"
 import { Command } from "effect/cli"
 import { previewLines } from "../src/cli/colours.ts"
 import { planServices, tuttiWith } from "../src/cli/commands.ts"
-import { type LoadedScheme, loadScheme, orchestra, roles } from "../src/ui/theme.ts"
+import { type LoadedScheme, loadScheme, orchestra, roles } from "../src/project/scheme.ts"
 import { hintFrom, rowsIn } from "./screen.ts"
 
 const dusk = {

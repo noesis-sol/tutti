@@ -23,15 +23,15 @@ import {
 import {
   type AccountError,
   type AccountProbe,
+  accountLine,
   billingLine,
   permissionModeLine,
   UntrustedCheckout,
 } from "../agent/Account.ts"
 import { chromeServer } from "../agent/mcp.ts"
-import { accountLine } from "../cli/login.ts"
+import { writeFileAtomic } from "../core/atomicFile.ts"
 import { unmergedLabel } from "../run/scope.ts"
 import { memoryEstimate } from "../run/startup.ts"
-import { writeFileAtomic } from "../services/atomicFile.ts"
 import { Beads, bdPayload, beadsWhy } from "../services/Beads.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { lenientKey } from "../services/lenient.ts"

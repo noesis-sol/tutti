@@ -9,12 +9,12 @@ import { dirname, join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit } from "effect"
 import { initFlags } from "../src/cli/commands.ts"
-import { runFlags } from "../src/cli/flags.ts"
 import { decodeConfig } from "../src/project/configFile.ts"
+import { runFlags } from "../src/project/flags.ts"
+import { loadScheme, roles } from "../src/project/scheme.ts"
 import { Settings } from "../src/project/settings.ts"
 import { UserConfig } from "../src/project/userConfig.ts"
-import { kinds } from "../src/run/events.ts"
-import { loadScheme, roles } from "../src/ui/theme.ts"
+import { kinds } from "../src/services/events.ts"
 
 const top = join(import.meta.dir, "..")
 const guides = [

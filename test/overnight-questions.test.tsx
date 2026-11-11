@@ -10,6 +10,7 @@ import { Effect, Exit, Layer, Option } from "effect"
 import fc from "fast-check"
 import type { Log } from "../src/core/log.ts"
 import { makePrinter } from "../src/print/organLine.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import {
   openQuestions,
   type Put,
@@ -24,7 +25,7 @@ import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { OpenQuestionForm } from "../src/ui/OpenQuestion.tsx"
 import { type LineIO, openQuestion, streamInput } from "../src/ui/plain/forms.ts"
 import { choicesOf, FormCancelled, type OpenQuestion, type Reply } from "../src/ui/questions.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { idleFrame, pressEscape, withRender } from "./render.ts"
 
 const theme = makeTheme(orchestra, {

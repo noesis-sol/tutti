@@ -97,3 +97,12 @@ export const reportName = (started: number): string => {
   const t = new Date(started)
   return `${date(started)}-${pad(t.getHours())}${pad(t.getMinutes())}${pad(t.getSeconds())}.md`
 }
+
+/** A step's time on its final line: `12s`, `1m04s`, `1h02m03s`. */
+export const duration = (millis: number): string => {
+  const s = Math.floor(Math.max(0, millis) / 1000)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  if (s >= 3600) return `${Math.floor(s / 3600)}h${pad(Math.floor(s / 60) % 60)}m${pad(s % 60)}s`
+  if (s >= 60) return `${Math.floor(s / 60)}m${pad(s % 60)}s`
+  return `${s}s`
+}

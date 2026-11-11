@@ -14,10 +14,11 @@ import fc from "fast-check"
 import { act } from "react"
 import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
-import { Answer, type BreakdownState, type BreakdownTools } from "../src/agent/breakdownTools.ts"
 import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
+import { Answer, type BreakdownState, type BreakdownTools } from "../src/run/breakdownTools.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { exitCodes } from "../src/run/holds.ts"
 import {
@@ -61,7 +62,7 @@ import { interviewScreen, Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { InterviewContext, leaveAbout, leaveQuestion } from "../src/ui/InterviewView.tsx"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   emptyTranscript,
   followed,

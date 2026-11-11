@@ -16,15 +16,9 @@
 // test-work tickets, labelled tutti-tests as orchestra labels its own orchestra-tests.
 import { join } from "node:path"
 import { Duration, Effect, FileSystem, Option } from "effect"
-import { dollars, type Total } from "../organs/OrganCost.ts"
+import { writeFileAtomic } from "../core/atomicFile.ts"
 import type { OrganError, Organs } from "../organs/Organs.ts"
 import { type Scouting, type Suite as ScoutSuite, scoutChecks } from "../organs/scout.ts"
-import skillTemplate from "../project/templates/create-check-suite.md" with { type: "text" }
-import verifierTemplate from "../project/templates/verifier.md" with { type: "text" }
-import { soloLabel } from "../run/holds.ts"
-import { writeFileAtomic } from "../services/atomicFile.ts"
-import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
-import { sanitizeLine } from "../text/sanitize.ts"
 import {
   checkScript,
   fastRunner,
@@ -37,7 +31,13 @@ import {
   runsRunner,
   type Suite,
   withoutRunners,
-} from "./runners.ts"
+} from "../project/runners.ts"
+import skillTemplate from "../project/templates/create-check-suite.md" with { type: "text" }
+import verifierTemplate from "../project/templates/verifier.md" with { type: "text" }
+import { soloLabel } from "../run/holds.ts"
+import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
+import { dollars, type Total } from "../services/OrganCost.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
 import { type Step, step } from "./steps.ts"
 import type { Consent } from "./workers.ts"
 

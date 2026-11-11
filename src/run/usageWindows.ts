@@ -11,7 +11,7 @@
 import { Effect, FiberSet, Ref, type Scope, Stream } from "effect"
 import { UsageLimits, type Windows } from "../agent/UsageLimits.ts"
 import { timestamp } from "../core/localTime.ts"
-import { EventStream } from "./eventstream.ts"
+import { EventStream } from "../services/EventStream.ts"
 import { RunFibers } from "./fibers.ts"
 import type { UsageWindow } from "./runView.ts"
 

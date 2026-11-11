@@ -2,9 +2,10 @@
 // chose New feature are the description's, and those after Shift+Tab are the select's, though
 // React hasn't drawn either step yet.
 import { expect, test } from "bun:test"
+import { orchestra } from "../src/project/scheme.ts"
 import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { type Rendered, withRender } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 

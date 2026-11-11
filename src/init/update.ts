@@ -9,9 +9,9 @@
 // into.
 import { join } from "node:path"
 import { Clock, Effect, FileSystem, Option } from "effect"
+import { AtomicWriter, writeFileAtomic } from "../core/atomicFile.ts"
 import { setIn } from "../project/jsonText.ts"
 import { settingsFile } from "../project/settings.ts"
-import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { skillPath, skillText, verifierFor, verifierPath } from "./checks.ts"
 import { readSettingsJson, refused, workerPromptPath } from "./init.ts"

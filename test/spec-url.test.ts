@@ -12,7 +12,6 @@ import { Effect, Fiber, Layer, Result } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { Start } from "../src/run/events.ts"
 import { commitSpec, readSpec, type Spec, sourceOf } from "../src/run/spec.ts"
 import {
   copyName,
@@ -26,6 +25,7 @@ import {
   specUrl,
 } from "../src/run/specSource.ts"
 import { type Started, startBlock } from "../src/run/startup.ts"
+import { Start } from "../src/services/events.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"

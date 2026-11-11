@@ -5,12 +5,13 @@
 
 import { describe, expect, test } from "bun:test"
 import { WorkerState } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Entry, emptyTallies, type State } from "../src/run/ledger.ts"
 import { type Activity, activities, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { type Mark, marks } from "../src/text/marks.ts"
-import { makeTheme, orchestra, type StyleName } from "../src/ui/theme.ts"
+import { makeTheme, type StyleName } from "../src/ui/theme.ts"
 import { lookOf, motionTones } from "../src/ui/tone.ts"
 import { workersDoing } from "./activity.ts"
 

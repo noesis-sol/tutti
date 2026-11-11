@@ -41,8 +41,8 @@ import {
   Stream,
 } from "effect"
 import { AppConfig, type AppConfigValue } from "../core/AppConfig.ts"
+import { probeEnv, sharedEnv, WorkerEnv } from "../core/env.ts"
 import { queryThrew } from "./claudeBinary.ts"
-import { probeEnv, sharedEnv, WorkerEnv } from "./env.ts"
 import { stderrKept, withSessionProcess, withStderr } from "./sessionProcess.ts"
 
 /**

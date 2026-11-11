@@ -8,9 +8,9 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit } from "effect"
 import { read, turnLimit } from "../src/agent/reading.ts"
 import { endedOnLimit, noTurnLimit } from "../src/agent/UsageLimits.ts"
-import { answerOf, ProbeAnswer } from "../src/agent/UsageProbe.ts"
 import { initial, step, WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 import { outcome } from "../src/organs/AgentSdkLanguageModel.ts"
+import { answerOf, ProbeAnswer } from "../src/organs/UsageProbe.ts"
 
 const fixture = (name: string): ReadonlyArray<SDKMessage> =>
   readFileSync(resolve(import.meta.dir, "fixtures/usage-limit", name), "utf8")

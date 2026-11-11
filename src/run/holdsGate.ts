@@ -6,7 +6,7 @@
 import { Effect, Option, SubscriptionRef } from "effect"
 import { hold, type Log } from "../core/log.ts"
 import type { TicketId } from "../services/Beads.ts"
-import type { EventStream } from "./eventstream.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import {
   noHolds,
   type RunHolds,

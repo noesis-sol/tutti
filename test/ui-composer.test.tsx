@@ -13,6 +13,7 @@ import fc from "fast-check"
 import { AgentHost, type MessageUuid } from "../src/agent/AgentHost.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -27,7 +28,7 @@ import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { composerPlaceholder, interruptWords, takenIn } from "../src/ui/Composer.tsx"
 import { fieldTakes } from "../src/ui/keys.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   appended,
   emptyTranscript,

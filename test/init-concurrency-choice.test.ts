@@ -13,8 +13,9 @@ import {
 } from "../src/init/form.ts"
 import { lineForm } from "../src/init/lineForm.ts"
 import type { WorkersQuestions } from "../src/init/workers.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const plain = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
 

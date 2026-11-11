@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import type { InputRenderable } from "@opentui/core"
 import { useRef, useState } from "react"
+import { orchestra } from "../src/project/scheme.ts"
 import {
   type Asking,
   checklistCommands,
@@ -22,7 +23,7 @@ import {
   type Step,
   startCommands,
 } from "../src/ui/StartQuestion.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { type Frame, withRender } from "./render.ts"
 import { fieldActions, noSpecAsk } from "./specAsk.ts"
 

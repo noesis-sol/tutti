@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
+import { orchestra } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { type Card, emptyView } from "../src/run/runView.ts"
@@ -12,7 +13,7 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { Cards, layoutOf } from "../src/ui/Card.tsx"
 import { clickable } from "../src/ui/click.ts"
 import { Line, seg } from "../src/ui/line.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, ShellContext, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Rendered, withRender } from "./render.ts"
 

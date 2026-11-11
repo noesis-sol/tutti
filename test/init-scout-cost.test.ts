@@ -8,9 +8,10 @@ import { scoutCostSteps } from "../src/init/checks.ts"
 import { cancelledLine, summaryLines } from "../src/init/init.ts"
 import { InitFailed, InitStopped, step } from "../src/init/steps.ts"
 import { costOf } from "../src/organs/AgentSdkLanguageModel.ts"
-import { noCost, OrganCost, type Total } from "../src/organs/OrganCost.ts"
+import { orchestra } from "../src/project/scheme.ts"
+import { noCost, OrganCost, type Total } from "../src/services/OrganCost.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 /** A result of the scout's session, as the Agent SDK ends it: `subtype` and its cost. */
 const result = (subtype: string, costUsd: number): SDKResultMessage =>

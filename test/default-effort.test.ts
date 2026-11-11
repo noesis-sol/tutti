@@ -9,11 +9,11 @@ import {
   type WorkerCallbacks,
   workerOptions,
 } from "../src/agent/options.ts"
-import { noFlags } from "../src/cli/flags.ts"
-import { defaultSettings, defaultUserConfig, resolve } from "../src/cli/resolveConfig.ts"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { decodeConfig } from "../src/project/configFile.ts"
+import { noFlags } from "../src/project/flags.ts"
 import { efforts, Settings } from "../src/project/settings.ts"
+import { defaultSettings, defaultUserConfig, resolve } from "../src/run/resolveConfig.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 

@@ -8,10 +8,8 @@
 // size like this one's (peerMedian), rather than the scorecard's, kept from as its ticket ended, as
 // that has no turns or tokens and a ticket that ended first would have none. The box works it out
 // as it is drawn, so that the view doesn't for every row at each look.
-import { sanitizeLine } from "../text/sanitize.ts"
-import type { Entry } from "./ledger.ts"
-import { factsOf, type PhaseSeconds, type TicketOutcome } from "./phase.ts"
-import { allTokens } from "./resources.ts"
+
+import type { Spent, Sums } from "../services/Spending.ts"
 import {
   median,
   type Score,
@@ -20,8 +18,11 @@ import {
   sizeClass,
   tallyOf,
   verifierOf,
-} from "./scorecard.ts"
-import type { Spent, Sums } from "./spending.ts"
+} from "../services/scorecard.ts"
+import { sanitizeLine } from "../text/sanitize.ts"
+import type { Entry } from "./ledger.ts"
+import { factsOf, type PhaseSeconds, type TicketOutcome } from "./phase.ts"
+import { allTokens } from "./resources.ts"
 
 /** A ticket's figures, as its row's box shows them. Times are seconds but those said to be times. */
 export interface TicketStats {

@@ -2,10 +2,11 @@
 // the load line under it keeps one at its left (` ▶ …`), in every form it falls back to.
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
+import { orchestra } from "../src/project/scheme.ts"
 import type { Banner, TitleView } from "../src/run/runView.ts"
 import { widthOf } from "../src/ui/line.tsx"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 

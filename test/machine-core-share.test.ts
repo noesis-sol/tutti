@@ -11,20 +11,20 @@ import { Deferred, Duration, Effect, Fiber, Layer, Ref, Schedule } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
-import { coresVariable } from "../src/agent/env.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
+import { coresVariable } from "../src/core/env.ts"
 import { line } from "../src/core/log.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
+import { run } from "../src/run/run.ts"
+import type { TicketId } from "../src/services/Beads.ts"
+import { Git } from "../src/services/Git.ts"
 import {
   OtherWorkers,
   type OtherWorkersValue,
   otherWorkers,
   type ProcessCheck,
   Processes,
-} from "../src/run/machine.ts"
-import { run } from "../src/run/run.ts"
-import type { TicketId } from "../src/services/Beads.ts"
-import { Git } from "../src/services/Git.ts"
+} from "../src/services/machine.ts"
 import { bash, result, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"

@@ -5,6 +5,7 @@
 // words and their order are the same in both, so both are asked from here.
 import { Effect } from "effect"
 import type { Scouting } from "../organs/scout.ts"
+import { fastRunner, fullRunner } from "../project/runners.ts"
 import type { FormCancelled } from "../ui/questions.ts"
 import {
   type ChecksAnswers,
@@ -25,7 +26,6 @@ import {
 } from "./checks.ts"
 import { offerDescription } from "./import.ts"
 import type { InitForm } from "./init.ts"
-import { fastRunner, fullRunner } from "./runners.ts"
 import {
   concurrencyNote,
   normalPrefix,

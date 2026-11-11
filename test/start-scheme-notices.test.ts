@@ -2,11 +2,11 @@
 // a line per notice (§ 7.11).
 import { describe, expect, test } from "bun:test"
 import { noServersNote } from "../src/agent/mcp.ts"
+import { type LoadedScheme, orchestra } from "../src/project/scheme.ts"
 import type { Started } from "../src/run/startup.ts"
 import { orchestraWarning, startBlock } from "../src/run/startup.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
-import { type LoadedScheme, orchestra } from "../src/ui/theme.ts"
 
 const started = (scheme: LoadedScheme, warnings: ReadonlyArray<string> = []): Started => ({
   config: TestAppConfig.appConfig({ scheme }, "/work/project"),

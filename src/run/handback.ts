@@ -63,6 +63,7 @@ import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "../cor
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
 import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import { Git, type GitError, gitWhy, givenHash, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
@@ -79,7 +80,6 @@ import {
 import type { Carried } from "./checkback.ts"
 import { leftUntracked } from "./checkWrote.ts"
 import { holdingSlot } from "./earlyCheck.ts"
-import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { loadEvery } from "./load.ts"
 import {

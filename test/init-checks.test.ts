@@ -47,10 +47,11 @@ import {
   summaryLines,
 } from "../src/init/init.ts"
 import { lineForm, readTicked } from "../src/init/lineForm.ts"
-import { fastScript, runnerCommands } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import type { Scouting, Suite as ScoutSuite } from "../src/organs/scout.ts"
+import { fastScript, runnerCommands } from "../src/project/runners.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
@@ -60,7 +61,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
 import { FormCancelled } from "../src/ui/questions.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 /** A temp repository (its top and git folder) and a home folder. */
 const newProject = () => {

@@ -11,9 +11,9 @@
 // that takes time.
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Context, Effect, Layer, Ref, Stream } from "effect"
-import { ProbeAnswer, type ProbeSession, probeWith, UsageProbe } from "../agent/UsageProbe.ts"
 import type { Log } from "../core/log.ts"
-import type { OrganCost } from "../organs/OrganCost.ts"
+import { ProbeAnswer, type ProbeSession, probeWith, UsageProbe } from "../organs/UsageProbe.ts"
+import type { OrganCost } from "../services/OrganCost.ts"
 import { shared } from "./OrganCost.ts"
 
 /** The probes asked of the test layer, for a test to look at. */

@@ -44,8 +44,6 @@ import {
   writeFileUnder,
 } from "../native/libc.ts"
 import { alike } from "../organs/critic.ts"
-import { oneLine } from "../text/oneLine.ts"
-import { escapeMarkdown, sanitizeLine } from "../text/sanitize.ts"
 import {
   Count,
   type DispatchPlaybook,
@@ -53,10 +51,12 @@ import {
   lessonKinds,
   type lessonRefusals,
   lessonRetired,
-} from "./events.ts"
+} from "../services/events.ts"
+import type { Score } from "../services/scorecard.ts"
+import { oneLine } from "../text/oneLine.ts"
+import { escapeMarkdown, sanitizeLine } from "../text/sanitize.ts"
 import type { Footprint } from "./footprint.ts"
 import { globHolds, globsMeet, isGlob } from "./glob.ts"
-import type { Score } from "./scorecard.ts"
 
 /** The playbook's file, relative to the main checkout's top level. */
 export const playbookFile = ".tutti/playbook.jsonl"

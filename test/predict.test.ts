@@ -13,8 +13,6 @@ import {
   predictor,
   predictorInput,
 } from "../src/organs/predictor.ts"
-import type { EventRecord } from "../src/run/events.ts"
-import type { EventStream } from "../src/run/eventstream.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { showFootprint } from "../src/run/footprint.ts"
 import { Ledger } from "../src/run/ledger.ts"
@@ -22,6 +20,8 @@ import { footprintOf, make as makePredictor, type Predictor } from "../src/run/p
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make, type Scheduler } from "../src/run/schedule.ts"
 import type { Beads, Issue, TicketId } from "../src/services/Beads.ts"
+import type { EventStream } from "../src/services/EventStream.ts"
+import type { EventRecord } from "../src/services/events.ts"
 import type { Git } from "../src/services/Git.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"

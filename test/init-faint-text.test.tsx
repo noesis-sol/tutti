@@ -5,8 +5,9 @@ import { describe, expect, test } from "bun:test"
 import { type RGBA, TextAttributes } from "@opentui/core"
 import { stepNames } from "../src/init/form.ts"
 import { initHeader, initSummary } from "../src/print/initSummary.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { InitView } from "../src/ui/InitForm.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { type Frame, renderFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>

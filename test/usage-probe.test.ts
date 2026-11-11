@@ -15,14 +15,14 @@ import { Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import fc from "fast-check"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { reportOf, UsageLimits } from "../src/agent/UsageLimits.ts"
+import { resetLabel } from "../src/core/localTime.ts"
 import {
   answerOf,
   ProbeAnswer,
   probeModel,
   probeOrgan,
   UsageProbe,
-} from "../src/agent/UsageProbe.ts"
-import { resetLabel } from "../src/core/localTime.ts"
+} from "../src/organs/UsageProbe.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"

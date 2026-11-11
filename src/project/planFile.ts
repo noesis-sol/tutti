@@ -1,5 +1,5 @@
 // What a breakdown's tickets are checked against (§ 4.14, src/run/specTree.ts and
-// src/agent/breakdownTools.ts): the types and priorities a ticket can have, a cycle of blocked-by
+// src/run/breakdownTools.ts): the types and priorities a ticket can have, a cycle of blocked-by
 // links among tickets, and each ticket's files, kept where they can be the repository's.
 import { posix } from "node:path"
 

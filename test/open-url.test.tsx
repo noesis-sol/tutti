@@ -11,6 +11,7 @@ import { Duration, Effect, Queue } from "effect"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -32,7 +33,7 @@ import {
   urlCopiedToast,
   urlFailedToast,
 } from "../src/ui/openUrl.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Rendered, withRender } from "./render.ts"
 

@@ -14,11 +14,10 @@ import { reportName } from "../src/core/localTime.ts"
 import * as log from "../src/core/log.ts"
 import { Log } from "../src/core/log.ts"
 import { section } from "../src/organs/evidence.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { OrganHold, Organs } from "../src/organs/Organs.ts"
 import { reviewer } from "../src/organs/reviewer.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { Ending } from "../src/print/summary.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import {
@@ -29,7 +28,9 @@ import {
   steeredInRun,
   type talliesLine,
 } from "../src/run/report.ts"
+import { Ending } from "../src/run/summary.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { OrganCost } from "../src/services/OrganCost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { type Seed as BeadsSeed, layer as beadsLayer } from "../src/testing/Beads.ts"
@@ -37,7 +38,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as gitLayer, Repository } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { openFibers } from "./fibers.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })

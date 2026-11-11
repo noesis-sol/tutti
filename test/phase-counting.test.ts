@@ -5,7 +5,6 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Result } from "effect"
 import { TestClock } from "effect/testing"
-import { endingPhases, phaseNames, queuePhases } from "../src/run/events.ts"
 import { holdsWorker, keepsWorker, Ledger } from "../src/run/ledger.ts"
 import { finished } from "../src/run/notices.ts"
 import {
@@ -25,6 +24,7 @@ import {
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
 import { lifetime } from "../src/run/sessions.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { endingPhases, phaseNames, queuePhases } from "../src/services/events.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { marks } from "../src/text/marks.ts"
 

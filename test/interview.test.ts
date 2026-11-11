@@ -1,5 +1,5 @@
 // New feature's interview, the session side (§ 4.10): the breakdown's session in its feature mode
-// (src/agent/breakdown.ts's startFeature), its options, its instructions, its first message, its
+// (src/run/breakdown.ts's startFeature), its options, its instructions, its first message, its
 // tools filing a feature's tree, and its end.
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
@@ -20,21 +20,6 @@ import {
 import fc from "fast-check"
 import { AgentHost, type Session } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
-import {
-  BreakdownEnd,
-  breakdownBuiltins,
-  featureLead,
-  featureMessage,
-  featurePrompt,
-  featureRequestFile,
-  startFeature,
-} from "../src/agent/breakdown.ts"
-import {
-  type BreakdownTools,
-  filedAny,
-  makeBreakdownTools,
-  qualifiedBreakdownTools,
-} from "../src/agent/breakdownTools.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { interviewWorker, pasted } from "../src/agent/inView.ts"
 import type { ChosenServers } from "../src/agent/mcp.ts"
@@ -45,9 +30,24 @@ import {
   type WorkerCallbacks,
 } from "../src/agent/options.ts"
 import { serverName, ticketLine } from "../src/agent/ticketTools.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
 import type { AppConfig } from "../src/core/AppConfig.ts"
 import type { Log } from "../src/core/log.ts"
+import {
+  BreakdownEnd,
+  breakdownBuiltins,
+  featureLead,
+  featureMessage,
+  featurePrompt,
+  featureRequestFile,
+  startFeature,
+} from "../src/run/breakdown.ts"
+import {
+  type BreakdownTools,
+  filedAny,
+  makeBreakdownTools,
+  qualifiedBreakdownTools,
+} from "../src/run/breakdownTools.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import type { Beads, TicketId } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
 import {

@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { Effect, Result } from "effect"
-import { decodeLine, type Event, encodeLine } from "../src/run/events.ts"
-import { EventStream, eventsFile, stamp } from "../src/run/eventstream.ts"
+import { EventStream, eventsFile, stamp } from "../src/services/EventStream.ts"
+import { decodeLine, type Event, encodeLine } from "../src/services/events.ts"
 
 const run = "2026-10-02T09:12:03.98+02:00"
 

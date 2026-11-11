@@ -9,17 +9,10 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { TextAttributes } from "@opentui/core"
 import { Effect } from "effect"
+import { loadScheme, orchestra, type Role, roles, type Scheme } from "../src/project/scheme.ts"
 import type { Banner, TitleView } from "../src/run/runView.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
-import {
-  type Appearance,
-  loadScheme,
-  makeTheme,
-  orchestra,
-  type Role,
-  roles,
-  type Scheme,
-} from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 
 const title: TitleView = {
   version: "0.1.0",

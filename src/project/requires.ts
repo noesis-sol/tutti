@@ -7,7 +7,7 @@
 // start says when it differs (README_STALE).
 import { join } from "node:path"
 import { Effect, FileSystem } from "effect"
-import { writeFileAtomic } from "../services/atomicFile.ts"
+import { writeFileAtomic } from "../core/atomicFile.ts"
 import { type Requirement, settingsFile } from "./settings.ts"
 
 /** Whether `r` applies on the operating system `platform` (process.platform). */

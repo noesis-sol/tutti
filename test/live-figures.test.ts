@@ -14,14 +14,14 @@ import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { settled } from "../src/agent/WorkerState.ts"
 import { line } from "../src/core/log.ts"
-import type { EventRecord } from "../src/run/events.ts"
-import { inputPrice, weighted } from "../src/run/prices.ts"
 import type { Resources } from "../src/run/resources.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
-import { nothingSpent, Spending, type Sums, showSums } from "../src/run/spending.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import type { EventRecord } from "../src/services/events.ts"
 import { Git } from "../src/services/Git.ts"
+import { inputPrice, weighted } from "../src/services/prices.ts"
+import { nothingSpent, Spending, type Sums, showSums } from "../src/services/Spending.ts"
 import {
   claimsAndCloses,
   context,

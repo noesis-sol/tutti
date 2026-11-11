@@ -30,10 +30,10 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import { noCost, OrganCost } from "../organs/OrganCost.ts"
-import type { TicketId } from "../services/Beads.ts"
+import type { TicketId } from "./Beads.ts"
+import { EventStream } from "./EventStream.ts"
 import type { Event, Tokens, TokensByModel } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
+import { noCost, OrganCost } from "./OrganCost.ts"
 import { inputPrice, weighted } from "./prices.ts"
 
 /** What turns spent, added up. */

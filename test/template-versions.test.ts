@@ -25,7 +25,6 @@ import {
   verifierText,
 } from "../src/init/checks.ts"
 import { type InitFlags, type InitForm, type InitSummary, init } from "../src/init/init.ts"
-import { fastScript, fullScript } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import {
   currentPrompt,
@@ -43,6 +42,7 @@ import {
 import { initUpdate, updateLines, updateNext, updateTemplates } from "../src/init/update.ts"
 import { readConfigFile } from "../src/project/configFile.ts"
 import { builtInWorkerPrompt, withSuites } from "../src/project/prompt.ts"
+import { fastScript, fullScript } from "../src/project/runners.ts"
 import { Settings } from "../src/project/settings.ts"
 import verifierTemplate from "../src/project/templates/verifier.md" with { type: "text" }
 import { check } from "../src/run/startup.ts"

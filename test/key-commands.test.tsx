@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Option, Queue } from "effect"
 import fc from "fast-check"
+import { orchestra } from "../src/project/scheme.ts"
 import { makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
@@ -19,7 +20,7 @@ import {
   hintOf,
   keysOf,
 } from "../src/ui/keyCommands.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { workerViewCommands } from "../src/ui/WorkerView.tsx"
 import { withRender } from "./render.ts"

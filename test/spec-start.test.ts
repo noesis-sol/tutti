@@ -8,11 +8,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Deferred, Duration, Effect, Layer, Option, SubscriptionRef } from "effect"
-import { breakdownWorker } from "../src/agent/breakdown.ts"
 import type { ToolAnswer } from "../src/agent/callbacks.ts"
-import type { RunFlags } from "../src/cli/flags.ts"
 import { AppConfig } from "../src/core/AppConfig.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
+import type { RunFlags } from "../src/project/flags.ts"
+import { orchestra } from "../src/project/scheme.ts"
+import { breakdownWorker } from "../src/run/breakdown.ts"
 import { scopedTo } from "../src/run/feature.ts"
 import { exitCodes } from "../src/run/holds.ts"
 import { settingUpLine } from "../src/run/specSetup.ts"
@@ -30,7 +31,7 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import {
   breakdownInit,
   type Calls,

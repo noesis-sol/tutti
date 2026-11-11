@@ -5,10 +5,10 @@
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Schema } from "effect"
+import { ColourScheme } from "../src/project/scheme.ts"
 import { retiredOrganKeys, retiredSettings, Settings } from "../src/project/settings.ts"
 import { UserConfig } from "../src/project/userConfig.ts"
-import { EventRecord } from "../src/run/events.ts"
-import { ColourScheme } from "../src/ui/theme.ts"
+import { EventRecord } from "../src/services/events.ts"
 
 /** Where the published files are found, as `$schema` names them. */
 const published = "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema"

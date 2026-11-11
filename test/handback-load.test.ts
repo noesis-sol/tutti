@@ -12,11 +12,11 @@ import { join } from "node:path"
 import { Effect, Fiber } from "effect"
 import { line } from "../src/core/log.ts"
 import { type Kernel, type Levels, Load, type LoadSource, pressing } from "../src/run/load.ts"
-import { type ProcessCheck, Processes } from "../src/run/machine.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
+import { type ProcessCheck, Processes } from "../src/services/machine.ts"
 import {
   awaitInterrupt,
   bash,

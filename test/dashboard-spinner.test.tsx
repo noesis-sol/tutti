@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -13,7 +14,7 @@ import { emptyStatus, project, type RunView, type Waiting } from "../src/run/run
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   external,
   type Interval,

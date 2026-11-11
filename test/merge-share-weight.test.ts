@@ -8,9 +8,9 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { childrenMark, highMark, memoryShareOf, testProcesses } from "../scripts/test.ts"
-import { checkShareEnv, mebibyte, mergeWeight } from "../src/agent/env.ts"
-import { memoryFloor } from "../src/run/load.ts"
-import { type Budget, shareNote, shareOf } from "../src/run/share.ts"
+import { checkShareEnv, mebibyte, memoryFloor, mergeWeight } from "../src/core/env.ts"
+import { shareNote } from "../src/run/share.ts"
+import { type Budget, shareOf } from "../src/services/share.ts"
 
 const gb = 1024 ** 3
 

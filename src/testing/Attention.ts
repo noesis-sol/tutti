@@ -11,7 +11,7 @@ import {
   type Policy,
 } from "../agent/Attention.ts"
 import type { Log } from "../core/log.ts"
-import type { EventStream } from "../run/eventstream.ts"
+import type { EventStream } from "../services/EventStream.ts"
 
 /** Leaves every request open, for the test to answer. */
 export const waitForTest: Policy = () => undefined

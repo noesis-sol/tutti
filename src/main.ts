@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // tutti's entry point: the command line (src/cli/commands.ts), and a bare `tutti`'s run (§ 5): the
-// startup checks (exit 2), the run lock (§ 9.2), the start question (src/run/choose.ts), then the
+// startup checks (exit 2), the run lock (§ 9.2), the start question (src/cli/choose.ts), then the
 // run (src/run/run.ts) on a ManagedRuntime of the live layers, which is disposed of, and the lock
 // released, once the run's scope has closed. When Tty says the terminal can draw the dashboard,
 // the run asks the start question and shows the dashboard in the command's one OpenTUI renderer
@@ -42,36 +42,10 @@ import { Account } from "./agent/Account.ts"
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
 import { ClaudeCode } from "./agent/ClaudeCode.ts"
-import { BranchEnv, branchEnv, WorkerEnv, workerEnv } from "./agent/env.ts"
 import { interviewWorker } from "./agent/inView.ts"
-import { requiresServerFor } from "./agent/requiresTools.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
-import { UsageProbe } from "./agent/UsageProbe.ts"
 import { talkHere } from "./answer/talkHere.ts"
-import {
-  checkoutOf,
-  mainCheckout,
-  planServices,
-  setUpForSpec,
-  thisBuildKind,
-  tuttiWith,
-} from "./cli/commands.ts"
-import type { RunFlags } from "./cli/flags.ts"
-import { tuttiVersion } from "./cli/version.ts"
-import { AppConfig } from "./core/AppConfig.ts"
-import { runStarted } from "./core/localTime.ts"
-import { detail, type Line, Log, type Sink } from "./core/log.ts"
-import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
-import { OrganCost } from "./organs/OrganCost.ts"
-import { Organs } from "./organs/Organs.ts"
-import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
-import { screenOut } from "./print/screenOut.ts"
-import { currentHome } from "./project/userConfig.ts"
-import { talkQuestion } from "./run/answerTalk.ts"
-import { claudeUserSettingsFile } from "./run/askRules.ts"
-import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
-import { carriedTickets } from "./run/carry.ts"
 import {
   asking,
   askLines,
@@ -82,26 +56,46 @@ import {
   specAsk,
   takeSpec,
   ticketCount,
-} from "./run/choose.ts"
+} from "./cli/choose.ts"
+import {
+  checkoutOf,
+  mainCheckout,
+  planServices,
+  setUpForSpec,
+  thisBuildKind,
+  tuttiWith,
+} from "./cli/commands.ts"
+import { tuttiVersion } from "./cli/version.ts"
+import { AppConfig } from "./core/AppConfig.ts"
+import { BranchEnv, branchEnv, WorkerEnv, workerEnv } from "./core/env.ts"
+import { runStarted } from "./core/localTime.ts"
+import { detail, type Line, Log, type Sink } from "./core/log.ts"
+import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
+import { Organs } from "./organs/Organs.ts"
+import { UsageProbe } from "./organs/UsageProbe.ts"
+import { type GettingReady, gettingReady, readySteps } from "./print/gettingReady.ts"
+import { endWith, type Output, themeStyles } from "./print/nothing.ts"
+import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
+import { screenOut } from "./print/screenOut.ts"
+import type { RunFlags } from "./project/flags.ts"
+import { currentHome } from "./project/userConfig.ts"
+import { talkQuestion } from "./run/answerTalk.ts"
+import { claudeUserSettingsFile } from "./run/askRules.ts"
+import { Battery, type BatteryReading, batteryNote, liveBattery } from "./run/battery.ts"
+import { carriedTickets } from "./run/carry.ts"
 import { startBranches } from "./run/closedBranches.ts"
 import type { DrainRequest } from "./run/drain.ts"
-import { EventStream } from "./run/eventstream.ts"
 import { scopedTo } from "./run/feature.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
-import { type GettingReady, gettingReady, readySteps } from "./run/gettingReady.ts"
 import { exitCodes } from "./run/holds.ts"
 import { inRenderer } from "./run/inRenderer.ts"
 import { type InterviewScreen, interview, interviewEnding } from "./run/interview.ts"
 import { type KeepAwakePlan, keepAwake, keepAwakePlan, lidNote } from "./run/keepAwake.ts"
 import { Load, liveLoad } from "./run/load.ts"
-import { otherRuns, otherWorkers } from "./run/machine.ts"
 import {
   check as checkNothing,
-  endWith,
   heldAtStart,
   type Options as NothingOptions,
-  type Output,
-  themeStyles,
 } from "./run/nothing.ts"
 import { notifying } from "./run/notices.ts"
 import { type Ask, preflight, refusal } from "./run/overnight.ts"
@@ -121,12 +115,12 @@ import {
   quitBy,
   runMain,
 } from "./run/quit.ts"
+import { requiresServerFor } from "./run/requiresTools.ts"
 import { finish, run } from "./run/run.ts"
-import { shares, startShareNote } from "./run/share.ts"
+import { startShareNote } from "./run/share.ts"
 import { liveSleepCauses, SleepCauses } from "./run/sleepCause.ts"
 import { fetchOnce, fetchSpecLive, type LiveFetch } from "./run/specSource.ts"
 import { setUpFromFlags, specStart } from "./run/specStart.ts"
-import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { fixedLeft } from "./run/takenBack.ts"
 import { layer as trashLayer } from "./run/trash.ts"
@@ -135,12 +129,17 @@ import { organHold } from "./run/usageLimit.ts"
 import { claudeProjects, readyRoot } from "./run/worktreesRoot.ts"
 import { Beads, beadsWhy, type TicketId } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
+import { EventStream } from "./services/EventStream.ts"
 import { Git, GitWriter } from "./services/Git.ts"
+import { otherRuns, otherWorkers } from "./services/machine.ts"
 import { layer as notifierLayer } from "./services/Notifier.ts"
+import { OrganCost } from "./services/OrganCost.ts"
 import { whichOnPath } from "./services/onPath.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
+import { endRecord, Spending } from "./services/Spending.ts"
 import { Store } from "./services/Store.ts"
 import { layer as straysLayer } from "./services/Strays.ts"
+import { shares } from "./services/share.ts"
 import { TimeMachine } from "./services/TimeMachine.ts"
 import {
   outputMode,
@@ -462,7 +461,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       suspend: () => Queue.offerUnsafe(suspends, undefined),
     })
     // What the environment says of the terminal; then the line saying what tutti is doing until
-    // the first thing it draws (src/run/gettingReady.ts), gone with the run's scope at the latest.
+    // the first thing it draws (src/print/gettingReady.ts), gone with the run's scope at the latest.
     const terminal = yield* Effect.provide(
       Effect.gen(function* () {
         return yield* Tty

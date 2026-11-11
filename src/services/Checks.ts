@@ -27,14 +27,14 @@ import {
   Schema,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
-import { BranchEnv, type CheckShare, checkShareEnv } from "../agent/env.ts"
 import { AppConfig } from "../core/AppConfig.ts"
+import { BranchEnv, type CheckShare, checkShareEnv } from "../core/env.ts"
 import { detail, Log } from "../core/log.ts"
 import type { Settings } from "../project/settings.ts"
-import { mergeShareFileOf, Shares } from "../run/share.ts"
 import { ellipsis } from "../text/marks.ts"
 import { exec } from "./exec.ts"
 import { processCount, Strays } from "./Strays.ts"
+import { mergeShareFileOf, Shares } from "./share.ts"
 
 export const checkKinds = ["setup", "fast", "full"] as const
 export type CheckKind = (typeof checkKinds)[number]

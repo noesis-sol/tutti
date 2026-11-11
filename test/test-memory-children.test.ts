@@ -13,7 +13,7 @@ import {
   recordRun,
   testProcesses,
 } from "../scripts/test.ts"
-import { mebibyte } from "../src/agent/env.ts"
+import { mebibyte } from "../src/core/env.ts"
 
 const gb = 1024 ** 3
 

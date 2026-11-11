@@ -4,9 +4,10 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import fc from "fast-check"
+import { orchestra } from "../src/project/scheme.ts"
 import { separator } from "../src/text/marks.ts"
 import { joined, type Segments, seg, separatorOf } from "../src/ui/line.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
 

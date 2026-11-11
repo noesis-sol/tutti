@@ -76,9 +76,9 @@ import { detail, Log } from "../core/log.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
 import { readmeName } from "../project/requires.ts"
 import { checkCommands, type WorkerChecks } from "../project/settings.ts"
-import { OtherWorkers } from "../run/machine.ts"
-import { budgetOf, Shares, shareFileOf, shareOf } from "../run/share.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { OtherWorkers } from "../services/machine.ts"
+import { budgetOf, Shares, shareFileOf, shareOf } from "../services/share.ts"
 import { timeoutAwake } from "../services/Wake.ts"
 import type { AccountProbe } from "./Account.ts"
 import {
@@ -109,13 +109,13 @@ import { type ChosenServers, withOwn } from "./mcp.ts"
 import {
   changingNotes,
   interviewOptions,
+  requiresServerName,
   type SessionStart,
   type WorkerCallbacks,
   workerCallbacks,
   workerOptions,
 } from "./options.ts"
 import { capabilitiesOf } from "./reading.ts"
-import { requiresServerName } from "./requiresTools.ts"
 import {
   cancelQueuedCapability,
   isLaunchFailure,

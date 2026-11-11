@@ -54,7 +54,6 @@ import {
 } from "effect"
 import { type AgentGone, AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { type RateLimit, UsageLimits, type Waiting } from "../agent/UsageLimits.ts"
-import { type ProbeAnswer, UsageProbe } from "../agent/UsageProbe.ts"
 import { AppConfig } from "../core/AppConfig.ts"
 import { resetLabel, timestamp } from "../core/localTime.ts"
 import {
@@ -69,11 +68,12 @@ import {
   usageWarning,
 } from "../core/log.ts"
 import { OrganHold } from "../organs/Organs.ts"
+import { type ProbeAnswer, UsageProbe } from "../organs/UsageProbe.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { EventStream } from "../services/EventStream.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
-import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { type AtReset, type HandBackMode, handedWords } from "./handback.ts"
 import { type StopReason, stopFor } from "./holds.ts"

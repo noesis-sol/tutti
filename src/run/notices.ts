@@ -9,10 +9,10 @@
 // question --auto-answer answers at once (`auto_answering`), already answered as the notice shows;
 // with a time it notifies, so you can answer first.
 import { Clock, Duration, Effect, Layer } from "effect"
+import { EventStream } from "../services/EventStream.ts"
+import type { Event } from "../services/events.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { oneLine } from "../text/oneLine.ts"
-import type { Event } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
 import { type PhaseTag, phaseFacts } from "./phase.ts"
 
 /** How many characters of a title or reason a notice gives, cut with `…`: the log has the rest. */

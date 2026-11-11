@@ -20,6 +20,7 @@ import {
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
+import { noServersNote } from "../src/agent/mcp.ts"
 import {
   coreShare,
   coresVariable,
@@ -28,10 +29,9 @@ import {
   probeEnv,
   setsParallel,
   workerEnv,
-} from "../src/agent/env.ts"
-import { noServersNote } from "../src/agent/mcp.ts"
-import { defaultSettings } from "../src/cli/resolveConfig.ts"
+} from "../src/core/env.ts"
 import { checkNote, coresNote } from "../src/project/prompt.ts"
+import { defaultSettings } from "../src/run/resolveConfig.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"

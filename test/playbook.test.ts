@@ -53,8 +53,8 @@ import {
   versionOf,
   weakensChecks,
 } from "../src/run/playbook.ts"
-import type { Score } from "../src/run/scorecard.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import type { Score } from "../src/services/scorecard.ts"
 import { ensurePlaybookExcluded, playbookExcludeEntry } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { sanitizeLine } from "../src/text/sanitize.ts"

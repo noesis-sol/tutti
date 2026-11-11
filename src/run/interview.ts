@@ -2,7 +2,7 @@
 // talks the feature through in the Interview view, in the command's one renderer, and the run then
 // goes on as the interview ends. The view is the screen's (ui/InterviewView.tsx, mounted by the
 // InterviewScreen main gives); this drives it: it starts the breakdown's session in its feature mode
-// (agent/breakdown.ts's startFeature), shows the view one card's RunView (the session's state and
+// (run/breakdown.ts's startFeature), shows the view one card's RunView (the session's state and
 // its open requests) and the session's transcript, and does what the view's commands ask: an answer
 // to a request goes to Attention, a message from the composer to the session, and leaving, which
 // the view has asked about first (`End the interview? Nothing has been filed.`, unless the session
@@ -28,8 +28,6 @@ import {
 } from "effect"
 import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { Attention, type AttentionRequest } from "../agent/Attention.ts"
-import { startFeature } from "../agent/breakdown.ts"
-import { type Answer, type BreakdownState, filedAny } from "../agent/breakdownTools.ts"
 import { interviewWorker } from "../agent/inView.ts"
 import { Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
@@ -38,6 +36,8 @@ import { Log, line } from "../core/log.ts"
 import { type Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
+import { startFeature } from "./breakdown.ts"
+import { type Answer, type BreakdownState, filedAny } from "./breakdownTools.ts"
 import { makeCommands, type UiCommand } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
 import { exitCodes } from "./holds.ts"

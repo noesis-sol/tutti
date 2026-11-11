@@ -19,6 +19,7 @@ import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import type { Line } from "../src/core/log.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import {
   type FullChecked,
   fullCheckEnd,
@@ -39,7 +40,7 @@ import {
   type Scripted,
 } from "../src/testing/Checks.ts"
 import { layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { backlog, expectLog, type Ran, scenario, type World } from "./harness.ts"
 
 const fullCommand = "scripts/check-full.sh"

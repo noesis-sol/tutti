@@ -8,9 +8,9 @@ import type { ChildProcessSpawner } from "effect/process"
 import { clock, clockFrom, timestamp } from "../core/localTime.ts"
 import { detail, type Line, Log, Tag, tagged } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
+import { EventStream } from "../services/EventStream.ts"
+import { tenths } from "../services/events.ts"
 import { type Sleep, Wake } from "../services/Wake.ts"
-import { tenths } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
 import { type SleepCause, SleepCauses } from "./sleepCause.ts"
 
 /** How long `ms` is, as the SLEPT line says it: to the second under a minute, else the minute. */

@@ -5,11 +5,12 @@
 
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
+import { orchestra } from "../src/project/scheme.ts"
 import { emptyView, type Totals } from "../src/run/runView.ts"
 import { boxed, boxSides, framed, frameEdge, type Segments, seg } from "../src/ui/line.tsx"
 import { boxPad } from "../src/ui/spacing.ts"
 import { totalsLines, totalsStrip } from "../src/ui/Totals.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { boxesIn, boxLine, boxWith, insideOf, screenLines, tableCells, totalsIn } from "./screen.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })

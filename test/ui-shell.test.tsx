@@ -8,6 +8,7 @@ import { testRender } from "@opentui/react/test-utils"
 import { Effect, Exit, Option, Queue, Scope, Stream, SubscriptionRef } from "effect"
 import { act, type ReactNode, useEffect } from "react"
 import { line } from "../src/core/log.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { makeCommands, UiCommand } from "../src/run/commands.ts"
 import { run } from "../src/run/run.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
@@ -23,7 +24,7 @@ import {
   repaintFully,
   themeModeLimit,
 } from "../src/ui/renderer.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   bridge,
   type External,

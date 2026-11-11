@@ -14,8 +14,8 @@ import { apiKeyProblem, setupLine, skippedLine } from "../src/agent/sessionCheck
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import type { Log } from "../src/core/log.ts"
-import type { EventStream } from "../src/run/eventstream.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import type { EventStream } from "../src/services/EventStream.ts"
 import {
   emit,
   layer as hostLayer,

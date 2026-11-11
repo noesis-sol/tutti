@@ -9,8 +9,9 @@ import {
 } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { createContext, useContext, useEffect, useMemo } from "react"
+import type { Role } from "../../project/scheme.ts"
 import { plainFg } from "../line.tsx"
-import type { Role, Theme } from "../theme.ts"
+import type { Theme } from "../theme.ts"
 
 /** The Markdown and code styles, from the theme's roles (§ 7.11 "Markdown"). */
 export interface Looks {

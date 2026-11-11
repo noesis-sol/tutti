@@ -4,6 +4,7 @@
 // that finds bd has the question closed says so plainly and brings nothing back.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
+import { orchestra } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -15,7 +16,7 @@ import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { answersAfter } from "../src/ui/Dashboard.tsx"
 import { newsToast } from "../src/ui/QuestionsBox.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 

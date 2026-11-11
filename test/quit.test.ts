@@ -6,6 +6,7 @@ import { Duration, Effect, Exit, Fiber, Queue, Ref, type Scope } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Line } from "../src/core/log.ts"
 import { line } from "../src/core/log.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import {
   atOnceText,
   catchSignals,
@@ -43,7 +44,7 @@ import type { Scripted } from "../src/testing/Checks.ts"
 import { Repository } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import {
   advance,
   backlog,

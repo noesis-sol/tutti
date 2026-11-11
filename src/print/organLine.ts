@@ -5,6 +5,7 @@
 // how long it took. It is drawn from a fiber rather than by a renderer, so the terminal stays out
 // of raw mode and Ctrl+C comes as a signal. What is printed while it is drawn goes above it.
 import { Clock, Effect, Fiber } from "effect"
+import { duration } from "../core/localTime.ts"
 import { marks } from "../text/marks.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import { frameInterval, spinnerFrames } from "../ui/spinner.ts"
@@ -86,15 +87,6 @@ export const clock = (millis: number): string => {
   return s >= 3600
     ? `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`
     : `${Math.floor(s / 60)}:${pad(s % 60)}`
-}
-
-/** A step's time on its final line: `12s`, `1m04s`, `1h02m03s`. */
-export const duration = (millis: number): string => {
-  const s = Math.floor(Math.max(0, millis) / 1000)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  if (s >= 3600) return `${Math.floor(s / 3600)}h${pad(Math.floor(s / 60) % 60)}m${pad(s % 60)}s`
-  if (s >= 60) return `${Math.floor(s / 60)}m${pad(s % 60)}s`
-  return `${s}s`
 }
 
 /** The width a spinner line is cut to: the terminal's, else 80, less a column so it never wraps. */

@@ -7,12 +7,13 @@ import { Effect } from "effect"
 import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { interviewCard, interviewView } from "../src/run/interview.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { InterviewContext } from "../src/ui/InterviewView.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import {
   emptyTranscript,
   type OpenTranscript,

@@ -33,13 +33,13 @@ import {
   checksNow,
   setupLogName,
 } from "../services/Checks.ts"
+import { EventStream } from "../services/EventStream.ts"
+import type { fullCheckOutcomes } from "../services/events.ts"
 import { Git, type GitError, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { ellipsis } from "../text/marks.ts"
 import { escapeMarkdown, sanitizeLine } from "../text/sanitize.ts"
 import { flakyWarnings, howFailed, outputTo, recorded, saidOf } from "./check.ts"
-import type { fullCheckOutcomes } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
 import type { TicketPhase } from "./phase.ts"
 import { say, warn } from "./say.ts"
 

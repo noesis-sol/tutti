@@ -1,4 +1,4 @@
-// --machine-workers' default (src/run/machine.ts, src/cli/resolveConfig.ts, src/run/startup.ts;
+// --machine-workers' default (src/services/machine.ts, src/run/resolveConfig.ts, src/run/startup.ts;
 // orchestra 0.9.3's DefaultMachineWorkers): a run caps the workers across the machine's runs at half
 // the cores, at least 2, unless --machine-workers, TUTTI_MACHINE_WORKERS or orchestra's
 // ORCHESTRA_MACHINE_WORKERS gives it, 0 for no cap. The START line says the cap and what gave it,
@@ -11,16 +11,16 @@ import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Effect, Exit, Option, Result } from "effect"
 import fc from "fast-check"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { noFlags, type RunFlagName } from "../src/cli/flags.ts"
-import { defaultSettings, defaultUserConfig, load, resolve } from "../src/cli/resolveConfig.ts"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
+import { noFlags, type RunFlagName } from "../src/project/flags.ts"
+import { defaultSettings, defaultUserConfig, load, resolve } from "../src/run/resolveConfig.ts"
+import { type Started, startBlock } from "../src/run/startup.ts"
 import {
   aboveCapNote,
   defaultMachineWorkers,
   defaultMachineWorkersFrom,
   machineWorkersLabel,
-} from "../src/run/machine.ts"
-import { type Started, startBlock } from "../src/run/startup.ts"
+} from "../src/services/machine.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 

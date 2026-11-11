@@ -18,10 +18,10 @@ import type { Resources } from "../src/run/resources.ts"
 import { allTokens, noSums, resourcesOf, windowShare } from "../src/run/resources.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
-import { Spending, type Sums } from "../src/run/spending.ts"
 import { riseStep } from "../src/run/usageWindows.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
+import { Spending, type Sums } from "../src/services/Spending.ts"
 import {
   claimsAndCloses,
   context,

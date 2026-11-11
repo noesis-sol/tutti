@@ -3,16 +3,15 @@
 // whole of tutti's own, adds tutti's variables, and then keeps or removes ANTHROPIC_API_KEY: the
 // key outranks a subscription login and would bill the API without a word. It leaves out the
 // variables naming the terminal pane tutti runs in, and those of a Claude Code session tutti was
-// started from, which its sessions don't own, and git's local variables (src/services/gitEnv.ts),
+// started from, which its sessions don't own, and git's local variables (src/core/gitEnv.ts),
 // which would have a worker's git act on another repository than its worktree's. What tutti runs
 // on a branch's behalf, the setup, the checks and the requires list's commands, gets the same
 // environment but tutti's variables (branchEnv), so a check run by tutti sees what it saw run by
 // the worker.
 import { Context, Duration } from "effect"
 import pkg from "../../package.json" with { type: "json" }
-import type { billings } from "../cli/flags.ts"
-import { memoryFloor } from "../run/load.ts"
-import { gitLocalVariable } from "../services/gitEnv.ts"
+import type { billings } from "../project/flags.ts"
+import { gitLocalVariable } from "./gitEnv.ts"
 
 /** The variable that holds an Anthropic API key. */
 export const apiKeyVariable = "ANTHROPIC_API_KEY"
@@ -116,6 +115,14 @@ export const orchestraMemoryVariable = "ORCHESTRA_MEMORY_MB"
 
 /** The variable naming the file tutti keeps a worker's current share in (src/run/share.ts). */
 export const shareFileVariable = "TUTTI_SHARE_FILE"
+
+// The checks' memory share (src/services/share.ts, src/run/share.ts): tune it here.
+/** The memory the budget leaves for the machine to breathe in, beside what the checks may take. */
+export const memoryReserve = 2 * 1024 ** 3
+/** The least memory share a check gets, however short the machine: enough to run one process. */
+export const memoryFloor = 1024 ** 3
+/** How far the memory share moves before the share is changed, on readings alone. */
+export const memoryStep = 512 * 1024 ** 2
 
 /**
  * The parts of the memory budget the merge check gets where a worker's checks get one, and its

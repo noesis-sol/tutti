@@ -52,14 +52,6 @@ export const criticalStep = 2
 /** How often a load record goes into events.jsonl when nothing it says has changed. */
 export const loadRecordEvery = 60_000
 
-// The checks' memory share (share.ts): tune it here.
-/** The memory the budget leaves for the machine to breathe in, beside what the checks may take. */
-export const memoryReserve = 2 * 1024 ** 3
-/** The least memory share a check gets, however short the machine: enough to run one process. */
-export const memoryFloor = 1024 ** 3
-/** How far the memory share moves before the share is changed, on readings alone. */
-export const memoryStep = 512 * 1024 ** 2
-
 // The disk hold's thresholds (diskGate.ts): tune them here.
 /** The free disk where the worktrees go under which no ticket starts or resumes (HOLD: DISK): room
  * for a worktree or two with their dependencies, the transcripts and the event log, whatever

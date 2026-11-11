@@ -7,6 +7,11 @@
 // colours. A cancelled question ends the run before it started, exit 130.
 import { Console, type Context, Effect, type FileSystem, Result } from "effect"
 import type { AppConfigValue } from "../core/AppConfig.ts"
+import { exitCodes } from "../run/holds.ts"
+import * as nothing from "../run/nothing.ts"
+import * as scope from "../run/scope.ts"
+import { fetchUrlSpec, readSpec, type Spec } from "../run/spec.ts"
+import type { LiveFetch, SpecFetch } from "../run/specSource.ts"
 import { Beads } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import type { OutputMode, TtyValue } from "../services/Tty.ts"
@@ -21,11 +26,6 @@ import {
   type Work,
 } from "../ui/questions.ts"
 import type { Theme } from "../ui/theme.ts"
-import { exitCodes } from "./holds.ts"
-import * as nothing from "./nothing.ts"
-import * as scope from "./scope.ts"
-import { fetchUrlSpec, readSpec, type Spec } from "./spec.ts"
-import type { LiveFetch, SpecFetch } from "./specSource.ts"
 
 /** How the run asks the start question: in the renderer, as lines, or not at all. */
 export type Asking = "renderer" | "lines" | "no"

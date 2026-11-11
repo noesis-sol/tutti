@@ -1,4 +1,4 @@
-// Scorecards (src/run/scorecard.ts): every ticket_end the EventStream writes is followed by its
+// Scorecards (src/services/scorecard.ts): every ticket_end the EventStream writes is followed by its
 // ticket's score, computed from the records before it; property tests over arbitrary event
 // sequences check each part against the records counted directly, the ranking and the report's
 // table, and the readers of a worker's and the verifier's text (a revert's subject, a verdict).
@@ -7,9 +7,11 @@ import type { HookInput } from "@anthropic-ai/claude-agent-sdk"
 import { Arbitrary, Effect, Result } from "effect"
 import fc from "fast-check"
 import { VerifierEvent, verdictOf, verifierEvent } from "../src/agent/hooks.ts"
-import { decodeLine, type Event, type EventRecord, kinds } from "../src/run/events.ts"
-import { EventStream } from "../src/run/eventstream.ts"
-import { addRecord, noFigures, scoreAfter, scoresParts } from "../src/run/figures.ts"
+import type { DependencyType, Issue, TicketId } from "../src/services/Beads.ts"
+import { EventStream } from "../src/services/EventStream.ts"
+import { decodeLine, type Event, type EventRecord, kinds } from "../src/services/events.ts"
+import { addRecord, noFigures, scoreAfter, scoresParts } from "../src/services/figures.ts"
+import type { Sha } from "../src/services/Git.ts"
 import {
   badness,
   dependentFollowUps,
@@ -24,9 +26,7 @@ import {
   scoreStep,
   shownEach,
   sizeClass,
-} from "../src/run/scorecard.ts"
-import type { DependencyType, Issue, TicketId } from "../src/services/Beads.ts"
-import type { Sha } from "../src/services/Git.ts"
+} from "../src/services/scorecard.ts"
 import { Captured, layer as capturedLayer } from "../src/testing/EventStream.ts"
 
 const tickets = ["t-1", "t-2", "t-3"] as const

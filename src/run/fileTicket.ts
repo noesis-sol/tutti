@@ -13,8 +13,7 @@ import { Data, Effect, SubscriptionRef } from "effect"
 import * as log from "../core/log.ts"
 import { Log } from "../core/log.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
-import { ellipsis } from "../text/marks.ts"
-import { sanitizeLine } from "../text/sanitize.ts"
+import { titleOf } from "../text/oneLine.ts"
 
 /** How a filing went: the ticket bd created, or why it didn't. */
 export type FileOutcome = Data.TaggedEnum<{
@@ -34,20 +33,6 @@ export interface TicketFiling {
 
 /** The most filings the screen keeps: the view waits only on its latest. */
 export const filingsKept = 16
-
-/** The longest a filed ticket's title is, as tutti's own tickets' titles. */
-export const titleLimit = 60
-
-/** A filed ticket's title: `text`'s first line that isn't blank, cut to `titleLimit` with `…`. */
-export const titleOf = (text: string): string => {
-  const first = sanitizeLine(text.split("\n").find((line) => line.trim() !== "") ?? "")
-    .replace(/\s+/g, " ")
-    .trim()
-  const chars = [...first]
-  if (chars.length <= titleLimit) return first
-  const cutTo = chars.slice(0, titleLimit - 1).join("")
-  return `${cutTo.trimEnd()}${ellipsis}`
-}
 
 /** A filed ticket's description: the whole `text`, and where it was written. */
 export const descriptionOf = (text: string, from: string): string =>

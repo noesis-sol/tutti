@@ -28,6 +28,8 @@ import { Tag } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Issue, TicketId } from "../services/Beads.ts"
 import { shortHash } from "../services/Git.ts"
+import type { Sums } from "../services/Spending.ts"
+import { noScoring, type Scoring } from "../services/scorecard.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
 import type { Motion, Shown, Tone } from "../ui/tone.ts"
@@ -56,8 +58,6 @@ import {
 } from "./phase.ts"
 import { noSums, type Resources, resourcesOf } from "./resources.ts"
 import { keep, keepAll, same } from "./same.ts"
-import { noScoring, type Scoring } from "./scorecard.ts"
-import type { Sums } from "./spending.ts"
 import { type Peer, peersOf, statsOf, type TicketStats } from "./ticketStats.ts"
 
 /** A hold on the run, for its banner: `BLOCKED`, `USAGE_LIMIT` with its reset, … */
@@ -93,6 +93,21 @@ export interface UsageWindow {
   readonly name: string
   readonly utilization: number
   readonly resetsAt: number | null
+}
+
+/**
+ * A window's name as the title line says it, in Claude Desktop's words: `Current usage` for
+ * `five_hour`, `This week` for `seven_day`, and a model's weekly window with the model's name,
+ * `This week (Opus)` for `seven_day_opus`. Any other name is the SDK's, its underscores spaces.
+ */
+export const windowLabel = (name: string): string => {
+  if (name === "five_hour") return "Current usage"
+  if (name === "seven_day") return "This week"
+  const model = /^seven_day_(.+)$/.exec(name)?.[1]
+  if (model !== undefined) {
+    return `This week (${model.charAt(0).toUpperCase()}${model.slice(1).replaceAll("_", " ")})`
+  }
+  return name.replaceAll("_", " ")
 }
 
 /** The solo ticket (§ 5): running alone, or next, with no new ticket starting until it runs. */

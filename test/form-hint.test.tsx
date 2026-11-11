@@ -3,12 +3,13 @@
 // lighter than bubbles'.
 import { describe, expect, test } from "bun:test"
 import type { RGBA } from "@opentui/core"
+import { orchestra, type Role } from "../src/project/scheme.ts"
 import { formHintSegments } from "../src/ui/Form.tsx"
 import { scoutCommands } from "../src/ui/InitForm.tsx"
 import { hintOf } from "../src/ui/keyCommands.ts"
 import { TicketCount } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
-import { type Appearance, makeTheme, orchestra, type Role } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { withRender } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 

@@ -10,9 +10,9 @@
 // limits do. It overstates while the account is used beside the run, which tutti can't see.
 import type { ContextUsage } from "../agent/contextUsage.ts"
 import type { TicketId } from "../services/Beads.ts"
-import type { TokensByModel } from "./events.ts"
+import type { TokensByModel } from "../services/events.ts"
 // Types alone from spending.ts: the UI reads this module, and Spending's needs the EventStream's.
-import type { Spent, Sums } from "./spending.ts"
+import type { Spent, Sums } from "../services/Spending.ts"
 
 /** Nothing spent: a ticket whose worker has had no result yet. */
 const nothing: Spent = { costUsd: 0, turns: 0, results: 0, tokens: {} }

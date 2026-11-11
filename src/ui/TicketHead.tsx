@@ -19,6 +19,7 @@
 // runView.ts's ticketText); the links' IDs and the labels are escaped for the Markdown.
 import type { OptimizedBuffer, Renderable, ScrollBoxRenderable } from "@opentui/core"
 import { type RefObject, useMemo, useRef, useState } from "react"
+import type { Role } from "../project/scheme.ts"
 import { UiCommand } from "../run/commands.ts"
 import type { TicketLink, TicketText } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
@@ -44,7 +45,7 @@ import {
   wrapText,
 } from "./line.tsx"
 import { keyGap, namePad } from "./spacing.ts"
-import type { Role, Theme } from "./theme.ts"
+import type { Theme } from "./theme.ts"
 import { useCommand, useTheme } from "./useRunView.ts"
 import type { Looks } from "./worker/Looks.tsx"
 

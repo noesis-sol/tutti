@@ -7,6 +7,7 @@ import { rateLimitOf, UsageLimits } from "../src/agent/UsageLimits.ts"
 import { resetLabel } from "../src/core/localTime.ts"
 import { line } from "../src/core/log.ts"
 import { OrganHold } from "../src/organs/Organs.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { run } from "../src/run/run.ts"
 import { countdown, type RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
@@ -30,7 +31,7 @@ import { appConfig } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { Reported, scripted, layer as usageLayer } from "../src/testing/UsageLimits.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import {
   advance,
   backlog,

@@ -6,7 +6,7 @@ import { Effect, Stream } from "effect"
 import { AgentHost, type Compaction } from "../agent/AgentHost.ts"
 import type { Log } from "../core/log.ts"
 import * as log from "../core/log.ts"
-import type { EventStream } from "./eventstream.ts"
+import type { EventStream } from "../services/EventStream.ts"
 import { Ledger } from "./ledger.ts"
 import { info } from "./say.ts"
 

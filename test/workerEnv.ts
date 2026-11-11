@@ -1,8 +1,8 @@
-// The run's WorkerEnv (src/agent/env.ts) for a test's ClaudeCode layer, which main.ts sets as a run
+// The run's WorkerEnv (src/core/env.ts) for a test's ClaudeCode layer, which main.ts sets as a run
 // starts: workers' environment made from `env`.
 import { Layer } from "effect"
-import { WorkerEnv, workerEnv } from "../src/agent/env.ts"
-import type { billings } from "../src/cli/flags.ts"
+import { WorkerEnv, workerEnv } from "../src/core/env.ts"
+import type { billings } from "../src/project/flags.ts"
 
 /** WorkerEnv made from `env`, with a subscription login unless told otherwise, billed to it. */
 export const workersIn = (

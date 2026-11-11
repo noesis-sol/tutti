@@ -24,8 +24,9 @@ import {
 import * as log from "../core/log.ts"
 import { Log, Tag } from "../core/log.ts"
 import type { Issue, TicketId } from "../services/Beads.ts"
-import { type Event, type Phases, type TokensByModel, tenths } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
+import { EventStream } from "../services/EventStream.ts"
+import { type Event, type Phases, type TokensByModel, tenths } from "../services/events.ts"
+import { nothingSpent, Spending, type Spent } from "../services/Spending.ts"
 import {
   type Detail,
   type EndingPhase,
@@ -45,7 +46,6 @@ import {
   waitShown,
 } from "./phase.ts"
 import type { Said } from "./say.ts"
-import { nothingSpent, Spending, type Spent } from "./spending.ts"
 
 /**
  * What the ledger counts for each ticket, for triage and the reviewer. Its attention requests,

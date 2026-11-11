@@ -33,7 +33,6 @@ import {
   type TrustOffer,
 } from "../src/init/init.ts"
 import { readServers } from "../src/init/lineForm.ts"
-import { fastScript, fullScript, isRunner, runsRunner, suiteMarker } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import {
   concurrencyNote,
@@ -46,6 +45,13 @@ import {
 } from "../src/init/workers.ts"
 import { readConfigFile } from "../src/project/configFile.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import {
+  fastScript,
+  fullScript,
+  isRunner,
+  runsRunner,
+  suiteMarker,
+} from "../src/project/runners.ts"
 import { Settings } from "../src/project/settings.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"

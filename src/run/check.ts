@@ -44,12 +44,12 @@ import {
   OutputBounds,
   type RunOptions,
 } from "../services/Checks.ts"
+import { EventStream } from "../services/EventStream.ts"
+import { type checkSuites, tenths } from "../services/events.ts"
 import { type Git, Sha, type StatusEntry } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { noteWritten } from "./checkWrote.ts"
-import { type checkSuites, tenths } from "./events.ts"
-import { EventStream } from "./eventstream.ts"
 import { keepFailedOutput } from "./keptChecks.ts"
 import { warn } from "./say.ts"
 

@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
+import { orchestra } from "../src/project/scheme.ts"
 import type { Resources } from "../src/run/resources.ts"
 import type { Usage } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -14,7 +15,7 @@ import { fitParts } from "../src/ui/fit.ts"
 import { workerMemory } from "../src/ui/LoadLine.tsx"
 import { type Segments, seg } from "../src/ui/line.tsx"
 import { fieldGap } from "../src/ui/spacing.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { contextLook, type FigureInputs, figureParts, shareText } from "../src/ui/worker/figures.ts"
 
 const themeOf = (appearance: Appearance) =>

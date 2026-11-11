@@ -9,8 +9,8 @@ import { join } from "node:path"
 import { BunFileSystem } from "@effect/platform-bun"
 import { Effect, Exit, type FileSystem, type Layer, Result, type Schema } from "effect"
 import fc from "fast-check"
-import { phaseNames } from "../src/run/events.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import { phaseNames } from "../src/services/events.ts"
 import {
   commit,
   emptyState,

@@ -1,9 +1,10 @@
 // The start question on a screen too short for it (tutti-lfii): each of its lines is one the form
 // draws on a tall screen, none drawn over another; the select gives up its top lines first.
 import { describe, expect, test } from "bun:test"
+import { orchestra } from "../src/project/scheme.ts"
 import { TicketCount } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { type Size, withRender } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 

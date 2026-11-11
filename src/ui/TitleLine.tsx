@@ -8,7 +8,13 @@
 import { Duration } from "effect"
 import { resetLabel } from "../core/localTime.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
+import {
+  type Banner,
+  countdown,
+  type TitleView,
+  type UsageWindow,
+  windowLabel,
+} from "../run/runView.ts"
 import { marks, separator } from "../text/marks.ts"
 import { firstFitting } from "./fit.ts"
 import { cut, Line, type Segment, type Segments, seg, separatorOf, widthOf } from "./line.tsx"
@@ -68,21 +74,6 @@ const bannerText = (
 
 /** How many cells a window's gauge has. */
 const gaugeCells = 8
-
-/**
- * A window's name as the title line says it, in Claude Desktop's words: `Current usage` for
- * `five_hour`, `This week` for `seven_day`, and a model's weekly window with the model's name,
- * `This week (Opus)` for `seven_day_opus`. Any other name is the SDK's, its underscores spaces.
- */
-export const windowLabel = (name: string): string => {
-  if (name === "five_hour") return "Current usage"
-  if (name === "seven_day") return "This week"
-  const model = /^seven_day_(.+)$/.exec(name)?.[1]
-  if (model !== undefined) {
-    return `This week (${model.charAt(0).toUpperCase()}${model.slice(1).replaceAll("_", " ")})`
-  }
-  return name.replaceAll("_", " ")
-}
 
 /** `━───────` for 17%: a cell for each eighth, to the nearest. */
 export const gauge = (utilization: number): string => {

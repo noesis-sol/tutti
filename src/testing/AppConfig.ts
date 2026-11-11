@@ -3,10 +3,10 @@
 // testSettings, a project's naming only its merge check), and with the rest of `overrides` laid over
 // it.
 import { Layer, Result } from "effect"
-import { noFlags } from "../cli/flags.ts"
-import { defaultSettings, defaultUserConfig, resolve } from "../cli/resolveConfig.ts"
 import { AppConfig, type AppConfigValue } from "../core/AppConfig.ts"
+import { noFlags } from "../project/flags.ts"
 import type { Settings } from "../project/settings.ts"
+import { defaultSettings, defaultUserConfig, resolve } from "../run/resolveConfig.ts"
 
 /** The machine's cores the test configuration has, so that its default --machine-workers is 5. */
 export const testCores = 10

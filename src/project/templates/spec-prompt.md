@@ -5,7 +5,7 @@ the project's main checkout: headless (tutti --spec <file>), with nobody there, 
 always with the user. They are orchestra's spec-prompt.md, adapted to tutti's tools: the session
 has no Bash, and files the tree with tutti's own file_root and file_breakdown.
 Lines `{{#if <flag>}}`, `{{#if not <flag>}}`, `{{else}}` and `{{/if}}` keep or drop what is between
-them (src/agent/breakdown.ts's renderPrompt): `refine` for a breakdown with the user, `update` for
+them (src/run/breakdown.ts's renderPrompt): `refine` for a breakdown with the user, `update` for
 one that updates the tree filed for an earlier version of the spec, and `feature`, always with
 `refine` and never with `update`, for a feature talked through with the user, its description given
 as text rather than as a spec.

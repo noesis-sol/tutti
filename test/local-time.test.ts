@@ -18,6 +18,7 @@ import {
   stamp,
 } from "../src/core/localTime.ts"
 import { line } from "../src/core/log.ts"
+import { orchestra } from "../src/project/scheme.ts"
 import { interviewStatus } from "../src/run/interview.ts"
 import { compose, ranFrom } from "../src/run/report.ts"
 import { run } from "../src/run/run.ts"
@@ -30,7 +31,7 @@ import { claimsAndCloses, hitsUsageLimit, type SessionScript } from "../src/test
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { withVariable } from "./env.ts"
 import {
   advance,

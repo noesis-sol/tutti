@@ -6,6 +6,7 @@ import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Duration, Effect, Exit, Option, Result } from "effect"
 import { Command } from "effect/cli"
 import fc from "fast-check"
+import { AppConfig, type AppConfigValue, type SetupProblem } from "../src/core/AppConfig.ts"
 import {
   cliFlags,
   count,
@@ -15,18 +16,21 @@ import {
   type RunFlags,
   runFlags,
   variableOf,
-} from "../src/cli/flags.ts"
+} from "../src/project/flags.ts"
+import type { Settings } from "../src/project/settings.ts"
+import type { UserConfig } from "../src/project/userConfig.ts"
 import {
   defaultSettings,
   defaultUserConfig,
   load,
   resolve,
   type Sources,
-} from "../src/cli/resolveConfig.ts"
-import { AppConfig, type AppConfigValue, type SetupProblem } from "../src/core/AppConfig.ts"
-import type { Settings } from "../src/project/settings.ts"
-import type { UserConfig } from "../src/project/userConfig.ts"
-import { defaultMachineWorkers, defaultMachineWorkersFrom, runsDir } from "../src/run/machine.ts"
+} from "../src/run/resolveConfig.ts"
+import {
+  defaultMachineWorkers,
+  defaultMachineWorkersFrom,
+  runsDir,
+} from "../src/services/machine.ts"
 import { appConfig, layer as testLayer } from "../src/testing/AppConfig.ts"
 
 const repo = "/work/project"
@@ -604,7 +608,7 @@ describe("the live layer", () => {
     const dirs = setUp(undefined, undefined)
     const exit = await loadIn(dirs, noFlags)
     if (Exit.isFailure(exit)) throw new Error(`${exit.cause}`)
-    // The folder of runs is orchestra's in HOME's cache folder (src/run/machine.ts).
+    // The folder of runs is orchestra's in HOME's cache folder (src/services/machine.ts).
     const runs = runsDir((name) => (name === "HOME" ? "/nowhere" : undefined))
     // The live layer counts this machine's cores for the default cap, where appConfig takes
     // testCores (10): CI's runners have 2 (2026-10-22).

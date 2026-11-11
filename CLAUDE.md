@@ -135,12 +135,15 @@ _Add a brief overview of your project architecture_
 
 ## Conventions & Patterns
 
-- **Layout** follows the spec's Appendix B: `src/text` (the text helpers every layer uses; it
-  imports nothing from the other areas of `src/`), `src/core` (the Log and AppConfig services, the
-  clock and `answerWith`, below `src/services`, `src/agent` and `src/run`; it imports values only
-  from `src/text`, `src/native` and Effect), `src/cli`, `src/project`, `src/services`,
-  `src/agent`, `src/run`, `src/organs`, `src/ui`, `src/print`, `src/update`; `src/main.ts` is the
-  entry point, run with `BunRuntime.runMain`.
+- **Layout** follows the spec's Appendix B, in layers that import values from their own layer and
+  those below, never from one above (`test/layers.test.ts` checks it, with its few exceptions and
+  their reasons): `src/text` (the text helpers every layer uses; it imports nothing from the other
+  areas of `src/`), `src/core` (the Log and AppConfig services, the clock, `answerWith`, the
+  environment of what tutti starts and a check's share of the machine; it imports values only from
+  `src/text`, `src/native` and Effect) and `src/native`; then `src/project`; `src/services`;
+  `src/agent`; `src/organs`; `src/run`; `src/ui`, `src/print`, `src/answer`, `src/plan`,
+  `src/init` and `src/update`; `src/cli`; `src/main.ts` is the entry point, run with
+  `BunRuntime.runMain`. `src/testing` holds the services' test layers, outside the layers.
 - **Effect services.** Each service is a `Context.Service` with a live layer next to it and a test
   layer under `src/testing/`, one file per service. Tests and whole-run scenarios use the test layers.
 - **Errors** are tagged errors defined with `Schema.TaggedError`, not thrown exceptions.

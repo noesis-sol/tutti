@@ -30,13 +30,13 @@ import {
   workerSettingsFiles,
 } from "../src/run/askRules.ts"
 import { make as makeBlockedWatch } from "../src/run/blockedWatch.ts"
-import type { EventRecord } from "../src/run/events.ts"
 import { blockedTickets } from "../src/run/holds.ts"
 import { make as makeHoldsGate } from "../src/run/holdsGate.ts"
 import { make as makeOvernightAside } from "../src/run/overnightAside.ts"
 import { run } from "../src/run/run.ts"
 import { emptyStatus, type Status } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
+import type { EventRecord } from "../src/services/events.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,

@@ -16,7 +16,7 @@ import {
   subtypeOf,
   toTurn,
 } from "../src/organs/AgentSdkLanguageModel.ts"
-import { costLine, OrganCost } from "../src/organs/OrganCost.ts"
+import { costLine, OrganCost } from "../src/services/OrganCost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"

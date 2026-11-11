@@ -83,15 +83,15 @@ import { basename, delimiter, dirname, join, resolve } from "node:path"
 import {
   coresVariable,
   mebibyte,
+  memoryReserve,
   memoryVariable,
   orchestraMemoryVariable,
   paneVariable,
   sessionVariable,
   shareFileVariable,
-} from "../src/agent/env.ts"
+} from "../src/core/env.ts"
 import {
   below,
-  memoryReserve,
   type Pressure,
   type Processes,
   parseLinux,

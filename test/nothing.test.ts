@@ -3,23 +3,26 @@ import { Console, Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import type { Log } from "../src/core/log.ts"
-import * as free from "../src/run/deferredFree.ts"
-import type { EventStream } from "../src/run/eventstream.ts"
 import {
   box,
+  lines,
+  noStyles,
+  nothingToRun,
+  plainLines,
+  themeStyles,
+} from "../src/print/nothing.ts"
+import { orchestra } from "../src/project/scheme.ts"
+import * as free from "../src/run/deferredFree.ts"
+import {
   check,
   type HoldKind,
-  lines,
   make,
   type NothingToRun,
   noHolds,
-  noStyles,
-  nothingToRun,
   type Options,
-  plainLines,
-  themeStyles,
 } from "../src/run/nothing.ts"
 import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
+import type { EventStream } from "../src/services/EventStream.ts"
 import { Git, type GitWriter } from "../src/services/Git.ts"
 import type { Worktrees } from "../src/services/Worktrees.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -28,7 +31,7 @@ import { layer as gitLayer, Repository } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as worktreesLayer } from "../src/testing/Worktrees.ts"
 import { boxPad } from "../src/ui/spacing.ts"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { makeTheme } from "../src/ui/theme.ts"
 import { type BoxShown, boxesIn, boxWith } from "./screen.ts"
 
 // The message a run with nothing to run shows, in a box on a terminal and as plain lines otherwise,

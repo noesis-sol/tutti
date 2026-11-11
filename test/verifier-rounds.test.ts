@@ -4,7 +4,7 @@
 // settings raised Bash's default.
 import { describe, expect, test } from "bun:test"
 import { verifierSection, verifierText } from "../src/init/checks.ts"
-import { fastRunner, fullRunner } from "../src/init/runners.ts"
+import { fastRunner, fullRunner } from "../src/project/runners.ts"
 
 const agent = verifierText([], ["scripts/check.sh"], ["npx playwright test"])
 
