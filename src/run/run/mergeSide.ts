@@ -35,7 +35,7 @@ export interface MergeSide {
 /** The run's merge side, made over `services` and `holds`, in the run's scope. */
 export const make = (
   services: Pick<Services, "config" | "base" | "status" | "wakeUp" | "holds">,
-  holds: Pick<
+  runHolds: Pick<
     Holds,
     | "panicked"
     | "setUps"
@@ -63,7 +63,7 @@ export const make = (
       machineLoaded,
       pressure,
       overnight,
-    } = holds
+    } = runHolds
     // Each finished ticket's branch checked early, while its worker's verifier runs, in the check
     // slot every other check takes (earlyCheck.ts).
     const early = yield* makeEarlyChecks({

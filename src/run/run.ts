@@ -64,7 +64,6 @@
 // BLOCKED (blockedWatch.ts), the loop that looks at the run until nothing is left (look.ts),
 // quitting (quitting.ts) and the end's steps (endOfRun.ts).
 import { availableParallelism } from "node:os"
-import { join } from "node:path"
 import {
   Clock,
   Deferred,
@@ -77,22 +76,16 @@ import {
   Ref,
   Result,
   type Scope,
-  Semaphore,
   Stream,
   SubscriptionRef,
 } from "effect"
-import type { ChildProcessSpawner } from "effect/process"
 import { AppConfig } from "../core/AppConfig.ts"
 import { line, tagged } from "../core/log.ts"
-import { scoutSearch } from "../init/checks.ts"
-import { liveMachine } from "../init/steps.ts"
 import { section } from "../organs/evidence.ts"
 import { Organs } from "../organs/Organs.ts"
 import { printSummary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { checkCommands, scriptedChecks } from "../project/settings.ts"
-import { beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
-import { checksNow } from "../services/Checks.ts"
+import { beadsWhy, type TicketId } from "../services/Beads.ts"
 import { EventStream } from "../services/EventStream.ts"
 import { earlyEvidence } from "../services/figures.ts"
 import { OtherWorkers } from "../services/machine.ts"
@@ -115,24 +108,19 @@ import { Battery, watchBattery } from "./battery.ts"
 import { make as makeBlockedWatch } from "./blockedWatch.ts"
 import { clearStaleLocks } from "./branch.ts"
 import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carry.ts"
-import { make as makeChecksGate } from "./checksGate.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
 import { hear } from "./drain.ts"
 import { make as makeEndOfRun } from "./endOfRun.ts"
 import { removeLeftProbes } from "./environment.ts"
 import { featureRequestHeading } from "./feature.ts"
 import { removeLeftFullChecks } from "./fullcheck.ts"
-import { makeGateAsk, noScout } from "./gateForm.ts"
 import {
   changeStops,
   exitCodeOf,
   exitCodes,
   extendFirst,
-  pastTicketLimit,
   putFirst,
-  type StopReason,
   stopFor,
-  stopOfLine,
   takesBack,
   takesNew,
   withBattery,
@@ -142,12 +130,10 @@ import { Ledger } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
 import { watchLogins } from "./login.ts"
 import { make as makeLoop } from "./look.ts"
-import { hasRoom, make as makeMachineGate, type Room } from "./machineGate.ts"
 import type { QueueState } from "./mergequeue.ts"
 import { putBackLeft } from "./mergetrain.ts"
 import type { TicketPhase } from "./phase.ts"
 import { off as playbookOff } from "./playbookRun.ts"
-import { make as makePredictor } from "./predict.ts"
 import { capEvidence } from "./pressureCap.ts"
 import { backoff, failedRead, lasted, type Outage, readDue, sustained } from "./queueOutage.ts"
 import { interruptedText, keptText } from "./quit.ts"
@@ -157,14 +143,14 @@ import { type ReportOut, type ReportRun, runReport, showConcurrency } from "./re
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { runRequires } from "./requires.ts"
 import { showOn } from "./runView.ts"
-import { beadsOutage, footprintsOf, make as makeScheduler, readyPoll } from "./schedule.ts"
+import { beadsOutage, readyPoll } from "./schedule.ts"
 import { retrySetups } from "./setup.ts"
 import { makeShareKeeper } from "./share.ts"
 import { watchSleeps } from "./slept.ts"
 import { Trash } from "./trash.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { mergeWakes, reads } from "./wakes.ts"
-import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
+import { requeueWaiting, type WorkEnv } from "./work.ts"
 
 export {
   errorStop,
@@ -179,14 +165,13 @@ import { make as makeHolds } from "./run/holds.ts"
 import { make as makeMergeSide } from "./run/mergeSide.ts"
 import { make as makeServices } from "./run/services.ts"
 import {
-  causeStop,
-  defectOf,
   firstLine,
   type Outcome,
   type RunEnv,
   type RunOptions,
   showEndOfRun,
 } from "./run/shared.ts"
+import { make as makeStarting } from "./run/starting.ts"
 
 /**
  * The run, from its START block to its end record, in the run's scope: it hands back its exit
@@ -213,7 +198,6 @@ const runFrom = (
       config,
       beads,
       host,
-      store,
       attention,
       ledger,
       logs,
@@ -241,195 +225,27 @@ const runFrom = (
       loginCheck,
       organs,
       triage,
-      limitReached,
       gate,
-      slots,
-      machineFull,
       pressed,
       pressure,
       disk,
       overnight,
     } = runHolds
     const merge = yield* makeMergeSide(services, runHolds)
-    const { early, criticIdle, critic, auditor, playbook, queue, mergeStop, branches } = merge
+    const { early, critic, auditor, playbook, queue, mergeStop, branches } = merge
 
-    // A ticket's fiber, dispatched or carried over: its work, and the stop it ended with, if any.
-    const onTicketLimit = (ticket: TicketId) => (stop: StopReason) =>
-      stopped(stop, (now) => pastTicketLimit(now, ticket, stop))
-    // The same, for workers resumed by carry-over or an answer, each stop naming its ticket.
-    const onResumedLimit = (stop: StopReason) =>
-      stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop)
-    const outcomeOf = <R>(ticket: TicketId, worked: Effect.Effect<Worked, WorkError, R>) =>
-      worked.pipe(
-        Effect.matchCauseEffect({
-          onSuccess: (worked) =>
-            Effect.andThen(
-              environment.settled(ticket, worked.settling ?? "other"),
-              worked.stop === null
-                ? Effect.void
-                : stopped(stopOfLine(worked.stop, { ticket, recorded: true })),
-            ),
-          onFailure: (cause) => {
-            const stop = causeStop(ticket, cause)
-            if (stop === undefined) return Effect.void
-            return stop.why === "PANIC"
-              ? panicked(`${ticket}'s fiber`, stop, defectOf(cause))
-              : stopped(stop)
-          },
-        }),
-      )
-    const ticketFiber = (issue: Issue): Effect.Effect<void> =>
-      outcomeOf(
-        issue.id,
-        work(
-          { ...issue, lessons: playbook.section(issue.id) },
-          {
-            base,
-            queue,
-            triage,
-            setUps,
-            closedBranches: branches,
-            onTicketLimit: onTicketLimit(issue.id),
-            ...overnight,
-          },
-        ),
-      ).pipe(Effect.provideContext(context))
-
-    // A merge that changed the requires list has it checked again before the next ticket starts
-    // (requires.ts): what is still missing stops the run as at its start, the running tickets
-    // finishing first. The scheduler checks it before each start and carry (its beforeStart), so
-    // that a merge during a look's fill is checked before the fill starts another; one check at a
-    // time, so that a start while one runs waits for its answer.
-    const requiresChecking = yield* Semaphore.make(1)
-    const requiresContext = yield* Effect.context<
-      WorkEnv | FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner
-    >()
-    const requiresChecked = requiresChecking
-      .withPermit(
-        Effect.gen(function* () {
-          if (!(yield* setUps.requiresDue)) return
-          const missing = yield* runRequires(yield* setUps.requires, {
-            repo: config.repo,
-            installLimit: (yield* checksNow).fast.timeout,
-          })
-          if (missing !== "") yield* stopped(stopFor("REQUIREMENTS_MISSING", missing))
-        }),
-      )
-      .pipe(Effect.provideContext(requiresContext))
-    // With the dashboard, the gate asks in init's form in place of it (gateForm.ts): tutti checks'
-    // step, scouting with the run's organs where it has them.
-    const gateAsk =
-      options.gateAsk ??
-      (screen?.form === undefined || config.specPath === null
-        ? undefined
-        : yield* makeGateAsk({
-            slot: screen.form,
-            base,
-            version: options.version,
-            scout: Option.isSome(organs)
-              ? (repo: string) =>
-                  scoutSearch(repo).pipe(Effect.provideService(Organs, organs.value))
-              : noScout,
-            machine: yield* liveMachine,
-          }))
-    // A spec run's checks gate (checksGate.ts): once its environment ticket has merged, the checks
-    // on the base are checked before anything else of the tree starts or resumes; a hold stops the
-    // run. The dashboard shows it as the full check's phase.
-    const checksGate = yield* makeChecksGate({
-      base,
-      setUps,
-      stopped: (stop) => stopped(stop),
-      show: showOn(status, "fullCheck"),
-      takesWork: Effect.map(gate, takesBack),
-      ...(gateAsk === undefined ? {} : { ask: gateAsk }),
-      early,
-    })
-    const beforeStart = Effect.andThen(requiresChecked, checksGate.before)
-
-    // The machine's other tutti and orchestra runs (machineGate.ts): with --machine-workers, the
-    // ticket about to start waits while the workers across them are at that cap.
-    const machine = yield* makeMachineGate({ holds, status, wakeUp: wakeUp("hold") })
-    // The workers allowed are the least of concurrent, the machine's cap and the pressure cap: the
-    // pressure cap's room is asked first, then the machine's, then the disk's.
-    const room = (own: number): Effect.Effect<Room> =>
-      Effect.gen(function* () {
-        const first = yield* pressure.room(own)
-        if (!hasRoom(first)) return first
-        const second = yield* machine.room(own)
-        if (!hasRoom(second)) return second
-        const third = disk === undefined ? "room" : yield* disk.room
-        if (!hasRoom(third)) return third
-        return [first, second, third].includes("lifted") ? "lifted" : "room"
-      })
-    // With the queue's footprint on (§ 8.4), a ticket sharing a function or an area with a running
-    // one is held back, and one sharing a file is warned of as it starts: the checks' scripts, and
-    // what the merge and full checks' scripts run, count as no ticket's, and the queue's shared
-    // files warn of none. A ticket works in the worktree the Store saved
-    // for it, wherever git had it (a reused one, or one an earlier run's --worktrees put
-    // elsewhere), or else in <worktrees>/<id>.
-    const footprints = config.settings.queue.footprint
-      ? yield* footprintsOf({
-          repo: config.repo,
-          base,
-          checkCommands: checkCommands(config.settings),
-          scriptedChecks: scriptedChecks(config.settings),
-          sharedFiles: config.settings.queue.shared_files,
-          vendored: config.settings.vendored,
-          worktree: (ticket) =>
-            Effect.map(
-              store.ticket(ticket),
-              (saved) => saved?.worktree ?? join(config.worktrees, ticket),
-            ),
-        })
-      : undefined
-    // The predictor (predict.ts), as orchestra starts it: with organs, the queue's footprint on and
-    // more than one slot, it guesses the files of the ready tickets naming nothing, one ticket at a
-    // time in the background, so that a ticket naming nothing doesn't run beside anything.
-    const predictor =
-      Option.isSome(organs) && footprints !== undefined && config.settings.concurrent > 1
-        ? yield* makePredictor({ repo: config.repo, vendored: config.settings.vendored }).pipe(
-            Effect.provideService(Organs, organs.value),
-          )
-        : undefined
-    // The tickets the last run left whose workers wait for a slot to be resumed (carry.ts): the
-    // scheduler dispatches none of them afresh.
-    const carrying = yield* Ref.make<ReadonlySet<TicketId>>(new Set())
-    const scheduler = yield* makeScheduler({
-      concurrent: config.settings.concurrent,
-      limit: config.limit,
-      scope: config.ticket,
-      excludeTypes: config.settings.queue.exclude_types,
-      start: { start: ticketFiber },
-      gate,
+    const starting = yield* makeStarting(options, services, runHolds, merge)
+    const {
+      onResumedLimit,
+      outcomeOf,
+      checksGate,
       beforeStart,
-      room,
-      machineFull,
-      carrying: Ref.get(carrying),
-      ...(footprints === undefined ? {} : { footprints }),
-      ...(predictor === undefined ? {} : { predictor }),
-      playbook,
-      closedBranches: branches,
-      show: ({ solo, unclosed, waits, skips }) =>
-        Effect.andThen(
-          Effect.andThen(showOn(status, "solo")(solo), showOn(status, "unclosed")(unclosed)),
-          showOn(status, "holdTexts")({ waits, skips }),
-        ),
-    })
-    yield* Ref.set(slots, scheduler.recheckSlot)
-    yield* Ref.set(limitReached, scheduler.limitReached)
-    yield* Ref.set(
-      criticIdle,
-      Effect.map(
-        Effect.all([scheduler.slots, queue.state, pressure.pressed]),
-        ([taken, now, hard]) => taken < config.settings.concurrent && now.merging === null && !hard,
-      ),
-    )
-    // A look around the machine (machineGate.ts): the hold's end writes the queue's record.
-    const lookAround = Effect.gen(function* () {
-      const own = yield* scheduler.slots
-      const lifted = yield* pressure.lookAround(own)
-      if ((yield* machine.lookAround(own)) || lifted) yield* scheduler.recordQueue
-    })
+      machine,
+      predictor,
+      carrying,
+      scheduler,
+      lookAround,
+    } = starting
 
     // The run's watchers: one that dies panics the run.
     const watchers = yield* fibers.make("run")

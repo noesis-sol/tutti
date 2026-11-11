@@ -46,7 +46,7 @@ export const exceptions: ReadonlyArray<Exception> = [
     why: "the checks gate asks in init's form, drawn in place of the dashboard (§ 4.14)",
   },
   {
-    from: "run/run.ts",
+    from: "run/run/starting.ts",
     to: "init",
     why: "the checks gate's scout search and machine are init's (§ 4.14)",
   },
