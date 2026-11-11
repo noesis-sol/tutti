@@ -82,31 +82,24 @@ import {
   SubscriptionRef,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
-import { AgentHost } from "../agent/AgentHost.ts"
-import { Attention } from "../agent/Attention.ts"
-import { serve } from "../agent/attentionFiles.ts"
 import { AppConfig } from "../core/AppConfig.ts"
-import { Log, line, tagged } from "../core/log.ts"
+import { line, tagged } from "../core/log.ts"
 import { scoutSearch } from "../init/checks.ts"
 import { liveMachine } from "../init/steps.ts"
 import { section } from "../organs/evidence.ts"
 import { Organs } from "../organs/Organs.ts"
 import { printSummary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { schemeNotices } from "../project/scheme.ts"
 import { checkCommands, scriptedChecks } from "../project/settings.ts"
-import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
+import { beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { checksNow } from "../services/Checks.ts"
 import { EventStream } from "../services/EventStream.ts"
 import { earlyEvidence } from "../services/figures.ts"
-import { Git } from "../services/Git.ts"
 import { OtherWorkers } from "../services/machine.ts"
 import type { Notifier } from "../services/Notifier.ts"
 import { OrganCost } from "../services/OrganCost.ts"
 import { endRecord, Spending, showSums } from "../services/Spending.ts"
-import { Store } from "../services/Store.ts"
 import { dependentFollowUps, scorecardsEvidence, scorecardsReport } from "../services/scorecard.ts"
-import { outputMode, Tty } from "../services/Tty.ts"
 import { awakeSince } from "../services/Wake.ts"
 import { make as makeApiOutage } from "./apiOutage.ts"
 import { askedQuestions, readAnswers, takeAnswers } from "./asked.ts"
@@ -116,7 +109,6 @@ import {
   AutoAnswer,
   answeredQuestions,
   answerQuestions,
-  autoAnswerName,
   makeAutoAnswering,
   notifyLeftOpen,
 } from "./autoAnswer.ts"
@@ -135,7 +127,6 @@ import { make as makeEarlyChecks } from "./earlyCheck.ts"
 import { make as makeEndOfRun } from "./endOfRun.ts"
 import { make as makeEnvironmentHold, removeLeftProbes } from "./environment.ts"
 import { featureRequestHeading } from "./feature.ts"
-import { RunFibers } from "./fibers.ts"
 import { removeLeftFullChecks } from "./fullcheck.ts"
 import { makeGateAsk, noScout } from "./gateForm.ts"
 import {
@@ -159,7 +150,6 @@ import {
   withFiling,
   withLoginHold,
 } from "./holds.ts"
-import { make as makeHoldsGate } from "./holdsGate.ts"
 import { Ledger } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
 import { loginStop, watchLogins } from "./login.ts"
@@ -181,7 +171,7 @@ import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport, showConcurrency } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { runRequires } from "./requires.ts"
-import { emptyStatus, type Status, showOn } from "./runView.ts"
+import { showOn } from "./runView.ts"
 import { warn } from "./say.ts"
 import {
   beadsOutage,
@@ -190,8 +180,6 @@ import {
   readyPoll,
   type Scheduler,
 } from "./schedule.ts"
-import { show } from "./screen.ts"
-import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
 import { makeShareKeeper } from "./share.ts"
 import { watchSleeps } from "./slept.ts"
@@ -200,7 +188,7 @@ import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold } from "./usageLimit.ts"
 import { make as watchUsageWindows } from "./usageWindows.ts"
-import { make as makeWakes, mergeWakes, reads } from "./wakes.ts"
+import { mergeWakes, reads } from "./wakes.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 export {
@@ -212,6 +200,7 @@ export {
   showEndOfRun,
 } from "./run/shared.ts"
 
+import { make as makeServices } from "./run/services.ts"
 import {
   causeStop,
   defectOf,
@@ -242,58 +231,27 @@ const runFrom = (
   begun: number,
 ): Effect.Effect<Outcome, never, RunEnv | Scope.Scope> =>
   Effect.gen(function* () {
-    const config = yield* AppConfig
-    const beads = yield* Beads
-    const host = yield* AgentHost
-    const store = yield* Store
-    const attention = yield* Attention
-    const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
-    const fibers = yield* RunFibers
-    const context = yield* Effect.context<WorkEnv>()
-    const { base } = options
-    // The base's commit as the run starts, for the report's commits merged.
-    const startHead = yield* (yield* Git)
-      .revParse(config.repo, base)
-      .pipe(Effect.orElseSucceed(() => base))
-
-    if (options.start !== undefined && options.start.length > 0) yield* logs.write(...options.start)
-    yield* serve({ repo: config.repo })
-    // What the dashboard says of the run, beside its tickets: the holds change it as they come.
-    const notices = schemeNotices(config.scheme)
-    const status = yield* SubscriptionRef.make<Status>({
-      ...emptyStatus,
-      version: options.version,
-      branch: base,
-      scope: config.ticket,
-      ...(config.specPath === null ? {} : { spec: config.specPath }),
-      began: begun,
-      concurrency: config.settings.concurrent,
-      autoAnswer:
-        config.autoAnswer === null
-          ? null
-          : autoAnswerName(config.autoAnswer, formatDuration(config.autoAnswer)),
-      subscription: options.subscription ?? false,
-      warnings: notices,
-    })
-    const dashboard = options.dashboard
-    const screen =
-      dashboard !== undefined && outputMode(yield* Tty, config.plain)._tag === "Dashboard"
-        ? yield* show(dashboard, SubscriptionRef.changes(status))
-        : null
-    // The run's end, set once nothing is to start or act after it, and the screen's commands that
-    // act on the run until then (screenCommands.ts).
-    const commands = yield* makeScreenCommands({ repo: config.repo, base, scope: config.ticket })
-
-    // Wakes the run to look again, each wake for its reason (wakes.ts): a merge, a stop, a drain
-    // request, the ready poll.
-    const wakes = yield* makeWakes
-    const { wakeUp } = wakes
-    // What holds the run (holdsGate.ts): its stops, the tickets past --ticket-limit, the machine's
-    // hold and the usage limit's view, each shown on the dashboard as it comes. A stop holds the
-    // run, said as it comes while tickets still run, and wakes it.
-    const holds = yield* makeHoldsGate({ status, notices, wakeUp: wakeUp("hold") })
+    const services = yield* makeServices(options, begun)
+    const {
+      config,
+      beads,
+      host,
+      store,
+      attention,
+      ledger,
+      logs,
+      events,
+      fibers,
+      context,
+      base,
+      startHead,
+      status,
+      screen,
+      commands,
+      wakes,
+      wakeUp,
+      holds,
+    } = services
     const { changeHolds, currentStops, stopped } = holds
     // The first request to quit, or a panic, ends the loop below, and the run quits (quitting.ts).
     const quitting = yield* Deferred.make<Quitting>()
