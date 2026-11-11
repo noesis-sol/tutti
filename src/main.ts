@@ -33,7 +33,6 @@ import {
   Queue,
   Result,
   Scope,
-  SubscriptionRef,
 } from "effect"
 import { Command } from "effect/cli"
 import { talkHere } from "./answer/talkHere.ts"
@@ -42,16 +41,18 @@ import {
   askLines,
   askThenBegin,
   cancelled,
-  featureUnavailable,
   interviewUnavailable,
   specAsk,
   takeSpec,
   ticketCount,
 } from "./cli/choose.ts"
-import { checkoutOf, mainCheckout, planServices, setUpForSpec, tuttiWith } from "./cli/commands.ts"
+import { checkoutOf, mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
 import { gitLayer, runLayers } from "./cli/start/layers.ts"
+import { lockRun } from "./cli/start/lock.ts"
 import { overnight } from "./cli/start/overnight.ts"
+import { power } from "./cli/start/power.ts"
 import { cannotStart, liveLines, preflight, signalQueues } from "./cli/start/preflight.ts"
+import { prepareWork } from "./cli/start/prepare.ts"
 import { tuttiVersion, version } from "./cli/version.ts"
 import { runStarted } from "./core/localTime.ts"
 import { detail, type Line, Log } from "./core/log.ts"
@@ -60,16 +61,13 @@ import { endWith, type Output, themeStyles } from "./print/nothing.ts"
 import { bothPrinters, guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
 import { screenOut } from "./print/screenOut.ts"
 import type { RunFlags } from "./project/flags.ts"
-import { currentHome } from "./project/userConfig.ts"
 import { talkQuestion } from "./run/answerTalk.ts"
-import { batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import { startBranches } from "./run/closedBranches.ts"
 import { scopedTo } from "./run/feature.ts"
 import { exitCodes } from "./run/holds.ts"
 import { inRenderer } from "./run/inRenderer.ts"
 import { type InterviewScreen, interview, interviewEnding } from "./run/interview.ts"
-import { keepAwake, keepAwakePlan, lidNote } from "./run/keepAwake.ts"
 import { liveLoad } from "./run/load.ts"
 import {
   check as checkNothing,
@@ -92,19 +90,13 @@ import {
 } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
 import { startShareNote } from "./run/share.ts"
-import { fetchOnce, fetchSpecLive, type LiveFetch } from "./run/specSource.ts"
-import { setUpFromFlags, specStart } from "./run/specStart.ts"
-import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
+import { specStart } from "./run/specStart.ts"
+import { type Started, startBlock } from "./run/startup.ts"
 import { fixedLeft } from "./run/takenBack.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
-import { claudeProjects, readyRoot } from "./run/worktreesRoot.ts"
 import { Beads, beadsWhy, type TicketId } from "./services/Beads.ts"
 import { EventStream } from "./services/EventStream.ts"
-import { Git } from "./services/Git.ts"
-import { whichOnPath } from "./services/onPath.ts"
-import { type Holder, RunLock } from "./services/RunLock.ts"
 import { endRecord } from "./services/Spending.ts"
-import { TimeMachine } from "./services/TimeMachine.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
 import { dashboard, interviewScreen } from "./ui/App.tsx"
 import { liveClipboard } from "./ui/clipboard.ts"
@@ -161,120 +153,35 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     const { drains, suspends } = yield* signalQueues
     const { terminal, ready, newer } = yield* preflight
     const cannot = cannotStart(ready)
-    // A spec run in a repository init hasn't set up sets it up first, as init does without a
-    // terminal (§ 4.14): what that wrote is committed with the spec.
-    // A spec at a URL is fetched once (§ 4.14), by the setup or the checks, whichever reads it first.
-    const fetch = fetchOnce(fetchSpecLive)
-    // A spec at a URL chosen at the start question: fetched again after a failure, for the URL to
-    // be fixed or tried again, and what was fetched read once chosen; and what fetches run on.
-    const fieldFetch = fetchOnce(fetchSpecLive, { failures: false })
-    const fetchContext = yield* Effect.context<LiveFetch>()
-    const setup = yield* setUpFromFlags({
-      cwd,
-      flags,
-      env: (name) => process.env[name],
-      setUp: (concurrent) => setUpForSpec(cwd, concurrent),
-      say: (text) => Effect.andThen(ready.end, Console.log(text)),
-      fetch,
-    }).pipe(Effect.provide(gitLayer))
-    if (typeof setup === "number") return setup
-    const checked = yield* Effect.result(
-      check(live(cwd, flags, ready.unpacking, setup, fetch)).pipe(Effect.provide(gitLayer)),
-    )
-    if (Result.isFailure(checked)) {
-      const failed = checked.failure
-      return yield* cannot(failed instanceof StartupFailed ? failed.message : String(failed))
-    }
-    // --feature talks the feature through in the Interview view, which only the renderer shows.
-    if (
-      checked.success.config.feature !== null &&
-      outputMode(terminal, checked.success.config.plain)._tag === "Plain"
-    ) {
-      return yield* cannot(featureUnavailable)
-    }
-    yield* ready.step(readySteps.starting)
-    // Keeping the machine awake (src/run/keepAwake.ts): the command started as the run begins, or
-    // the warning the START block gives where there is none.
-    const awake = keepAwakePlan({
-      on: checked.success.config.keepAwake,
-      platform: process.platform,
-      pid: process.pid,
-      which: whichOnPath,
-    })
-    // A run that starts on battery says so in its START block (src/run/battery.ts); one kept
-    // awake on a machine with a battery, a laptop, that a closed lid still sleeps it.
-    const battery = yield* liveBattery().read
-    const onBattery = batteryNote(battery)
-    const lid =
-      awake._tag === "Command" && battery !== null && battery !== undefined
-        ? lidNote(process.platform)
-        : null
-    const notes = [
-      ...(awake._tag === "Missing" ? [awake.warning] : []),
-      ...(lid === null ? [] : [lid]),
-      ...(onBattery === null ? [] : [onBattery]),
-    ]
-    let started: Started =
-      notes.length > 0
-        ? { ...checked.success, warnings: [...checked.success.warnings, ...notes] }
-        : checked.success
+    const prepared = yield* prepareWork(cwd, flags, { ready, terminal })
+    if (typeof prepared === "number") return prepared
+    const { setup, fieldFetch, fetchContext } = prepared
+    const machine = yield* power(prepared.started.config)
+    const { awake, battery } = machine
+    const checked: Started =
+      machine.notes.length > 0
+        ? { ...prepared.started, warnings: [...prepared.started.warnings, ...machine.notes] }
+        : prepared.started
     // `config` as --overnight's pre-flight leaves it, below.
-    let config = started.config
-    const { base } = started
+    let config = checked.config
+    const { base } = checked
     // Whether workers bill the subscription login: the summary's dollars are estimates then.
-    const subscription = started.account.billing._tag === "Subscription"
+    const subscription = checked.account.billing._tag === "Subscription"
     const at = runStarted(yield* Clock.currentTimeMillis)
 
     // The run lock, held until the runtime below has been disposed of.
-    const commonDir = yield* Effect.result(
-      Effect.flatMap(Git, (git) => git.commonDir(config.repo)).pipe(Effect.provide(gitLayer)),
-    )
-    if (Result.isFailure(commonDir)) {
-      return yield* cannot(`tutti cannot find the git folder of ${config.repo}`)
-    }
-    let holder: Holder = {
-      pid: process.pid,
-      started: at,
-      version,
-      branch: base,
-      ...(config.ticket === null ? {} : { scope: config.ticket }),
-      ...(config.feature === null ? {} : { feature: config.feature }),
-      ...(started.spec == null ? {} : { spec: started.spec.path }),
-    }
-    const locked = yield* Effect.result(
-      Effect.flatMap(RunLock, (lock) =>
-        lock.acquire({ repo: config.repo, commonDir: commonDir.success, holder }),
-      ).pipe(Effect.provide(RunLock.layer)),
-    )
-    if (Result.isFailure(locked)) return yield* cannot(locked.failure.message)
-    const lock = locked.success
-
-    // The worktrees' root (src/run/worktreesRoot.ts), with the lock held, so no other run of the
-    // repository moves its worktrees meanwhile, and before the pre-flight and the run's services,
-    // which make worktrees there: the default claimed, the old root's worktrees moved into it once,
-    // and its Time Machine exclusion made.
-    const rooted = yield* readyRoot(config, {
-      platform: process.platform,
-      home: yield* currentHome,
-      projects: yield* claudeProjects,
-    }).pipe(Effect.provide(Layer.mergeAll(gitLayer, TimeMachine.layer)))
-    started = {
-      ...started,
-      config: { ...config, worktrees: rooted.root },
-      worktrees: { line: rooted.line, notes: rooted.notes },
-      warnings: [...started.warnings, ...rooted.warnings],
-    }
+    const locked = yield* lockRun(checked, at, ready)
+    if (typeof locked === "number") return locked
+    const { lock } = locked
+    let { holder, started } = locked
     config = started.config
 
     // The scope the run's services and the keep-awake command close with, once the report is done.
     const runScope = yield* Effect.scope
-    // Whether the keep-awake command holds the machine awake, for the title line's badge.
-    const keepingAwake = yield* SubscriptionRef.make(false)
     // An overnight run keeps the machine awake from before its pre-flight, whose questions wait for
     // a maintainer who may have walked away (tutti-epza.17); the others as the run begins. Its lines
     // go to the log, opened for it in the run's scope, which plain output prints, as the run's;
     // one that can't be opened leaves it to begin.
-    let keptAwake = false
     if (config.overnight && awake._tag === "Command") {
       const plain = outputMode(terminal, config.plain)._tag === "Plain"
       if (plain) yield* ready.end
@@ -284,11 +191,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         ),
       )
       if (Result.isSuccess(logged)) {
-        yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(
-          Effect.provideContext(logged.success),
-          Scope.provide(runScope),
-        )
-        keptAwake = true
+        yield* machine.hold(runScope).pipe(Effect.provideContext(logged.success))
       }
     }
 
@@ -415,19 +318,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       if (asks !== "no") yield* Effect.forkChild(unmergedNow)
       yield* ready.step(readySteps.starting)
 
-      const awakeOption =
-        awake._tag === "Command" ? { keepingAwake: SubscriptionRef.changes(keepingAwake) } : {}
+      const awakeOption = machine.runOption()
       /**
        * The run begins on `work`: the machine kept awake until the run's scope closes, the feature
        * chosen named in the lock, and the start event.
        */
       const begin = (work: Work) =>
         Effect.gen(function* () {
-          if (awake._tag === "Command" && !keptAwake) {
-            // Its line goes to the log, which plain output prints.
-            if (mode._tag === "Plain") yield* ready.end
-            yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(Scope.provide(runScope))
-          }
+          // Its line goes to the log, which plain output prints.
+          yield* machine.hold(runScope, mode._tag === "Plain" ? ready.end : Effect.void)
           const feature = work._tag === "Feature" ? work.description : config.feature
           // The lock is held all the same if its holder can't be rewritten.
           if (work._tag === "Feature") {
