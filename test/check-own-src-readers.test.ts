@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { resolve } from "node:path"
 import fc from "fast-check"
-import { srcReaders, testsFor } from "../scripts/check-own.ts"
+import { srcReaders, testsFor, wholeSuite } from "../scripts/check-own.ts"
 
 const sources = (files: Record<string, string>) => new Map(Object.entries(files))
 const existing = (files: Record<string, string>) => (file: string) => file in files
@@ -51,12 +51,13 @@ describe("testsFor on the tests that read the whole of src/", () => {
   test("takes them when any changed file is under src/, whatever else changed", () => {
     const path = fc.stringMatching(/^[a-z]{1,6}(\/[a-z]{1,6}){0,3}\.ts$/)
     const under = fc.constantFrom("src/", "test/", "scripts/", "docs/", "")
-    const changed = fc.array(
-      fc.tuple(under, path).map(([top, rest]) => top + rest),
-      {
-        maxLength: 6,
-      },
-    )
+    // A path that touches every test (scripts/test.ts) is left out: the readers are then in "all".
+    const changed = fc
+      .array(
+        fc.tuple(under, path).map(([top, rest]) => top + rest),
+        { maxLength: 6 },
+      )
+      .filter((list) => !list.some((file) => wholeSuite.includes(file)))
     fc.assert(
       fc.property(changed, (list) => {
         const picked = tests(list)
