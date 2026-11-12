@@ -31,7 +31,8 @@
   ],
   "workers": {
     "mcp_servers": [],
-    "effort": "high"
+    "effort": "high",
+    "model": "opus"
   },
   "templates": {
     "worker_prompt": 13,
