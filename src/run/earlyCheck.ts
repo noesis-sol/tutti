@@ -6,11 +6,15 @@
 // branch, as the full check runs (never in the worker's worktree, nor in the main checkout), the
 // setup first, and keeps a pass by the rebased tree and the base's commit. At the ticket's turn, a
 // rebase that gives the same tree on the same base merges with no second check (merge.ts's Check
-// step), waiting for the early check if it still runs, though no longer than a fresh check takes
-// (the median of the last early checks that passed): one still running then is cancelled, a miss,
-// and the merge runs its own; the base moved on since, or a different tree, takes the merge check
-// as ever (a miss). Its setup's and check's time limits leave out the time the machine is loaded,
-// as a merge check's do.
+// step), waiting for the early check if it still runs, a line saying what it waits for, until the
+// check has run twice the longest of the last early checks that passed, or its own time limit
+// where that is sooner, or before any passed (waitBound): one still running then is stuck, or far
+// slower than a fresh check, so it is cancelled, a miss, and the merge runs its own. Cancelling one
+// sooner, at an estimate of a fresh check's time, lost about 2,000 s in ten days (tutti-kazz):
+// check times fall in two groups, so the estimate fell short of the check running, and the fresh
+// check cost the estimate again after the early check had done most of its work. The base moved on
+// since, or a different tree, takes the merge check as ever (a miss). Its setup's and check's time
+// limits leave out the time the machine is loaded, as a merge check's do.
 //
 // The check slot: checks run side by side slow each other 1.1x-2.3x, so an early check starts only
 // while no other check runs (a merge's, a train's, a fix's, the checks gate's, another early check),
@@ -47,7 +51,7 @@ import {
 } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../core/AppConfig.ts"
-import { type Line, type Log, line, ticketLine } from "../core/log.ts"
+import { type Line, Log, line, ticketLine } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
 import {
@@ -62,7 +66,6 @@ import { tenths } from "../services/events.ts"
 import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
-import { median } from "../services/scorecard.ts"
 import { sleepAwake } from "../services/Wake.ts"
 import { branchOf, Worktrees } from "../services/Worktrees.ts"
 import {
@@ -87,8 +90,11 @@ const whose = "an early check's"
 /** How often an early check under way looks whether its ticket's branch has moved on. */
 export const branchPoll = "5 seconds"
 
-/** How many of the last early checks that passed say how long a fresh check takes (freshTakes). */
-export const freshOf = 5
+/** How many of the last early checks that passed bound the wait for one at its turn (waitBound). */
+export const recentOf = 5
+
+/** How many times the longest of the recent passes an early check may run before its turn gives it up. */
+export const beyondLongest = 2
 
 /** The phases a ticket keeps its early check in: Working, and on its way through the merge queue. */
 const keptIn: ReadonlySet<string> = new Set(["Working", "ToMerge", "Merging"])
@@ -103,12 +109,28 @@ const earlyLine = (id: TicketId, text: Line): Line => ticketLine(earlyTag)`${id}
 const took = (seconds: number): string =>
   seconds < 1 ? "0s" : formatDuration(Duration.seconds(Math.floor(seconds)))
 
+/** How long an early check may have run at its ticket's turn before the turn gives it up. */
+export interface WaitBound {
+  readonly seconds: number
+  /** The bound in words, for the lines: `twice the longest of the last 3 passes (4m20s)`. */
+  readonly why: string
+}
+
 /**
- * How long, in seconds, a fresh check takes, by the times of the last early checks that passed:
- * their median; undefined before any passed.
+ * How long, in seconds, an early check may have run at its ticket's turn before the turn gives it
+ * up: beyondLongest times the longest of `times`, the last early checks that passed, in seconds,
+ * but no longer than `timeLimit`, the check's own time limit in seconds, which alone bounds it
+ * before any passed. One still running then is stuck, or far slower than a fresh check would be.
  */
-export const freshTakes = (times: ReadonlyArray<number>): number | undefined =>
-  times.length === 0 ? undefined : median(times)
+export const waitBound = (times: ReadonlyArray<number>, timeLimit: number): WaitBound => {
+  const longest = times.length === 0 ? undefined : Math.max(...times)
+  const beyond = longest === undefined ? undefined : longest * beyondLongest
+  if (longest === undefined || beyond === undefined || beyond >= timeLimit) {
+    return { seconds: timeLimit, why: `the check's time limit (${took(timeLimit)})` }
+  }
+  const of = times.length === 1 ? "the last pass" : `the last ${times.length} passes`
+  return { seconds: beyond, why: `twice the longest of ${of} (${took(longest)})` }
+}
 
 /** How an early check ended. */
 export type Ended = Data.TaggedEnum<{
@@ -132,6 +154,8 @@ interface Early {
   readonly onto: Sha
   /** The merge check it runs, as the run had it as it started (Checks' now). */
   readonly command: string
+  /** The merge check's time limit, as the run had it as it started (Checks' now). */
+  readonly timeLimit: Duration.Duration
   /** When it started, in epoch milliseconds. */
   readonly began: number
   /** Its rebased tree, once it is rebased; undefined when it never was. */
@@ -236,6 +260,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
     const held = options.held ?? Effect.succeed(false)
     yield* removeLeftWorktrees(earlyFolderPrefix, whose)
     const context = yield* Effect.context<Env>()
+    const logs = yield* Log
     const git = yield* Git
     const worktrees = yield* Worktrees
     const ledger = yield* Ledger
@@ -246,7 +271,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
     // The slot's decisions, one at a time; no early check's own fiber takes it, so a decision may
     // wait for one it cancels.
     const lock = yield* Semaphore.make(1)
-    // How long, in seconds, each of the last freshOf early checks that passed took.
+    // How long, in seconds, each of the last recentOf early checks that passed took.
     const passTimes = yield* Ref.make<ReadonlyArray<number>>([])
     const runs = yield* fibers.make<void, never>("early checks")
     const cleanups = yield* fibers.make<void, never>("early checks' worktrees")
@@ -524,7 +549,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
           })
         }
         if (ended._tag === "Passed") {
-          yield* Ref.update(passTimes, (all) => [...all, ended.seconds].slice(-freshOf))
+          yield* Ref.update(passTimes, (all) => [...all, ended.seconds].slice(-recentOf))
         }
         yield* Deferred.succeed(early.ended, ended)
       }).pipe(
@@ -540,7 +565,13 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
       )
 
     // Starts the ticket's early check of `head` on `onto` where the slot is free; false where not.
-    const start = (id: TicketId, branch: string, head: Sha, onto: Sha, command: string) =>
+    const start = (
+      id: TicketId,
+      branch: string,
+      head: Sha,
+      onto: Sha,
+      check: { readonly command: string; readonly timeLimit: Duration.Duration },
+    ) =>
       lock.withPermit(
         Effect.gen(function* () {
           const now = yield* Ref.get(slot)
@@ -551,7 +582,8 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
             branch,
             head,
             onto,
-            command,
+            command: check.command,
+            timeLimit: check.timeLimit,
             began: yield* Clock.currentTimeMillis,
             tree: yield* Deferred.make<Sha | undefined>(),
             ended: yield* Deferred.make<Ended>(),
@@ -580,7 +612,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
       Effect.gen(function* () {
         const ticket = (yield* ledger.current).tickets.get(id)
         if (ticket?.phase._tag !== "Working" || (yield* Ref.get(slot)).stopped) return
-        const command = (yield* checksNow).fast.command
+        const { command, timeout: timeLimit } = (yield* checksNow).fast
         if (command === null) return
         // Its next round: the one under way checks what the worker may be changing.
         yield* lock.withPermit(
@@ -616,7 +648,7 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
         if (yield* held) {
           return yield* Effect.logDebug(`${id}: no early check: the machine's memory is pressed`)
         }
-        const started = yield* start(id, branch, head, onto, command)
+        const started = yield* start(id, branch, head, onto, { command, timeLimit })
         if (!started) yield* Effect.logDebug(`${id}: no early check: the check slot is taken`)
       }).pipe(Effect.provideContext(context))
 
@@ -684,18 +716,28 @@ export const make = (options: EarlyOptions): Effect.Effect<EarlyChecks, never, E
           return false
         }
         const waiting = yield* Clock.currentTimeMillis
-        // Waited for no longer than a fresh check takes: one still running then is slower than the
-        // merge's own check would be, as on a loaded machine, or stuck.
-        const fresh = freshTakes(yield* Ref.get(passTimes))
-        const ended = yield* fresh === undefined
-          ? Deferred.await(early.ended)
-          : Effect.raceFirst(
-              Deferred.await(early.ended),
-              Effect.as(sleepAwake(Duration.seconds(fresh)), undefined),
-            )
+        // Waited for until it has run the bound (waitBound): one still running then is stuck, or
+        // far slower than a fresh check would be; cancelling one sooner only costs the check again.
+        const bound = waitBound(yield* Ref.get(passTimes), Duration.toSeconds(early.timeLimit))
+        const ended = yield* Effect.gen(function* () {
+          if (!(yield* running(early))) return yield* Deferred.await(early.ended)
+          const ran = tenths(waiting - early.began)
+          const left = bound.seconds - ran
+          if (left <= 0) return undefined
+          yield* logs.write(
+            earlyLine(
+              id,
+              line`still running after ${took(ran)}: its turn waits up to ${took(left)} more for it, until it has run ${bound.why}`,
+            ),
+          )
+          return yield* Effect.raceFirst(
+            Deferred.await(early.ended),
+            Effect.as(sleepAwake(Duration.seconds(left)), undefined),
+          )
+        })
         if (ended === undefined) {
           const ran = tenths((yield* Clock.currentTimeMillis) - early.began)
-          const why = line`it still ran after ${took(ran)}, and a fresh check takes ${took(fresh ?? 0)}`
+          const why = line`it still ran after ${took(ran)}, ${bound.why}`
           yield* cancel(early, why)
           yield* miss(early, why)
           return false
