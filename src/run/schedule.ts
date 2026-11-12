@@ -40,7 +40,7 @@
 // Scheduling): the slots (slots.ts), what it keeps between fills and the queue it shows and
 // records (queue.ts), placing and holding (place.ts), starting a ticket in a slot (dispatch.ts),
 // and the fill, with what it reads once (fill.ts, reads.ts). `make` assembles them.
-import { Effect, FiberSet, type FileSystem, Queue, Ref, type Scope } from "effect"
+import { Effect, FiberSet, type FileSystem, identity, Queue, Ref, type Scope } from "effect"
 import type { Log } from "../core/log.ts"
 import type { Beads, BeadsError, Issue, TicketId } from "../services/Beads.ts"
 import type { EventStream } from "../services/EventStream.ts"
@@ -59,7 +59,7 @@ import type { RunPlaybook } from "./playbookRun.ts"
 import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
 import { carry, recheckSlot } from "./schedule/dispatch.ts"
-import { fillTrying } from "./schedule/fill.ts"
+import { fillTrying, Polled } from "./schedule/fill.ts"
 import { recordQueue } from "./schedule/queue.ts"
 import { LookOpen } from "./schedule/reads.ts"
 import { slotsNow } from "./schedule/slots.ts"
@@ -69,6 +69,7 @@ import { noneVendored, readVendored } from "./vendored.ts"
 export { dispatchLine, footprintLine } from "./schedule/dispatch.ts"
 export {
   beadsOutage,
+  busyPoll,
   type Picked,
   type PickFrom,
   pick,
@@ -323,9 +324,15 @@ export interface Scheduler {
   readonly fillTrying: Effect.Effect<Filled, BeadsError>
   /**
    * fillTrying with bd's open list read already, `open`, at the look's start (run.ts), which the
-   * fill takes rather than read it again.
+   * fill takes rather than read it again; with none, it reads its own. `polled`, that the ready
+   * poll alone woke the look (wakes.ts's polledOnly): with every slot taken, such a fill reads git
+   * alone, for the LIKELY_CONFLICT warning, unless busyPoll has passed since the queue was last
+   * read from bd (schedule/fill.ts).
    */
-  fillWith(open: ReadonlyArray<Issue>): Effect.Effect<Filled, BeadsError>
+  fillWith(
+    open: ReadonlyArray<Issue> | undefined,
+    polled?: boolean,
+  ): Effect.Effect<Filled, BeadsError>
   /** Waits until a ticket's fiber has ended and freed its slot. */
   readonly freed: Effect.Effect<void>
   /**
@@ -382,7 +389,10 @@ export const make = (
     const trying = fillTrying(sched)
     return {
       fillTrying: trying,
-      fillWith: (open) => Effect.provideService(trying, LookOpen, open),
+      fillWith: (open, polled = false) =>
+        Effect.provideService(trying, Polled, polled).pipe(
+          open === undefined ? identity : Effect.provideService(LookOpen, open),
+        ),
       freed: Queue.take(sched.freed),
       carry: (ticket, start, issue) => carry(sched, ticket, start, issue),
       recheckSlot: (ticket, work) => recheckSlot(sched, ticket, work),

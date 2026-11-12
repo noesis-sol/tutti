@@ -22,16 +22,17 @@ import type { Scheduler } from "./schedule.ts"
 import type { ScreenCommands } from "./screenCommands.ts"
 import type { Triage } from "./triage.ts"
 import type { UsageLimitHold } from "./usageLimit.ts"
-import { reads, type Wakes } from "./wakes.ts"
+import { reads, type Wake, type Wakes } from "./wakes.ts"
 
 /** What the loop reads and does, of the run's parts. */
 export interface LoopParts {
   /**
    * The look's effects, which read bd and git: the tickets put back in the queue, the setups,
    * checks and requires taken again, the carried and answered workers taken up, the free slots
-   * filled.
+   * filled. `why`, what woke the look (wakes.ts): one the ready poll alone woke reads bd for the
+   * queue only every busyPoll while every slot is taken (schedule/fill.ts).
    */
-  readonly fill: Effect.Effect<void>
+  readonly fill: (why: ReadonlySet<Wake>) => Effect.Effect<void>
   readonly wakes: Pick<Wakes, "take" | "next">
   /** Whether the run may take work, read once for each decision (holds.ts's Gate). */
   readonly gate: Effect.Effect<Gate>
@@ -89,7 +90,7 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
       const why = yield* wakes.take
       const mergedBefore = isSettled(yield* queue.state)
       yield* Effect.logDebug(`look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`)
-      if (reads(why)) yield* parts.fill
+      if (reads(why)) yield* parts.fill(why)
       const gate = yield* parts.gate
       const look: Look = {
         mergedBefore,

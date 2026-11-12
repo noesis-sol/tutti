@@ -572,6 +572,8 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
             decodeIssues,
             options?.ids,
           ),
+        // The test layer keeps no list: there is nothing to drop.
+        dropKept: () => Effect.void,
         update: (id, changes) => answer("write", "update", id, update(id, changes), decodeIssue),
         close: (id, reason) =>
           answer(

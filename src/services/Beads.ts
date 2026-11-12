@@ -506,12 +506,13 @@ export interface ListOptions {
 }
 
 /**
- * How long the live layer keeps what a list of closed issues with labels gave (the ones left
- * `unmerged`), which a merge's recheck and the look it wakes both read, as the start does three
- * times: about one look. A label or status tutti writes drops it; one changed by hand within it
- * reads as changed that much later.
+ * How long at most the live layer keeps what a list of closed issues with labels gave (the ones
+ * left `unmerged`), which every fill with a ticket in line reads, as a merge's recheck does and
+ * the start three times. A label or status tutti writes drops it, and so does `dropKept`, which
+ * the fill calls once the base's commit has moved (schedule/reads.ts); a label changed by hand
+ * within it, the base still, reads as changed that much later.
  */
-export const labelledKeep: Duration.Duration = Duration.seconds(5)
+export const labelledKeep: Duration.Duration = Duration.minutes(3)
 
 /** Whether the live layer keeps what this list gave for labelledKeep. */
 const keptList = (list: ListOptions): boolean =>
@@ -585,6 +586,11 @@ export class Beads extends Context.Service<
     show(id: TicketId, options?: ShowOptions): Effect.Effect<Issue, BeadsError>
     /** bd list: the issues that aren't closed, or every one with `all`. */
     list(options?: ListOptions): Effect.Effect<ReadonlyArray<Issue>, BeadsError>
+    /**
+     * Drops what the live layer keeps of its lists (labelledKeep), as a status or label it writes
+     * does: for the base's commit moving, which may have merged a ticket left unmerged by hand.
+     */
+    dropKept(): Effect.Effect<void>
     update(id: TicketId, update: Update): Effect.Effect<Issue, BeadsError>
     close(id: TicketId, reason?: string): Effect.Effect<Issue, BeadsError>
     /** bd defer: sets the issue aside, indefinitely or until a date. */
@@ -832,6 +838,7 @@ export class Beads extends Context.Service<
           ),
           show: Effect.fn("Beads.show")(show),
           list: Effect.fn("Beads.list")(list),
+          dropKept: () => drop,
           update: Effect.fn("Beads.update")((id, change) =>
             change.claim || change.status !== undefined
               ? dropping(update(id, change))

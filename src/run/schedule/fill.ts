@@ -2,7 +2,7 @@
 // back or releases the tickets waiting, and fills the free slots (fillSlots), each pass of its
 // loop in named steps: the queue as it is now (lineUp), what holds each ticket in line back
 // (holdsOf), the pick (choose), and the start or the placing of the rest (startOrPlace).
-import { Duration, Effect, Ref } from "effect"
+import { Clock, Context, Duration, Effect, Ref } from "effect"
 import { type Line, line } from "../../core/log.ts"
 import { type BeadsError, beadsWhy, type Issue, type TicketId } from "../../services/Beads.ts"
 import { ticketIdProblem } from "../../services/Worktrees.ts"
@@ -65,8 +65,26 @@ import {
 } from "./slots.ts"
 import type { Scheduling } from "./state.ts"
 
-/** How often bd ready is read while tickets run: tickets become ready mid-run. */
+/** How often the ready poll wakes the run while tickets run: tickets become ready mid-run. */
 export const readyPoll: Duration.Duration = Duration.seconds(30)
+
+/**
+ * How often a fill the ready poll alone woke reads bd while every slot is taken (slotFree): bd
+ * ready, bd list and the closed tickets labelled unmerged, about 2 s of bd one after the other, for
+ * a fill that can start nothing, so that the queue's counts, the placements of the tickets waiting
+ * and those no longer ready stay near the truth. Between, it reads git alone, for the
+ * LIKELY_CONFLICT warning of two worktrees changing one file, every readyPoll as ever. A slot
+ * freed and a merge wake a fill that reads at once, as does any other reason beside the poll.
+ */
+export const busyPoll: Duration.Duration = Duration.minutes(3)
+
+/**
+ * Whether the ready poll alone woke the look the fill is in (wakes.ts's polledOnly), for
+ * Scheduler.fillWith; false where a fill is run otherwise, which reads as ever.
+ */
+export const Polled = Context.Reference<boolean>("tutti/run/Polled", {
+  defaultValue: () => false,
+})
 
 /** How many times a poll reads bd ready while it fails, and how long it waits between reads. */
 export const readTries = 3
@@ -261,7 +279,10 @@ const queueCandidates = (
  * Warns LIKELY_CONFLICT, once, of two running tickets' worktrees changing one file: the second
  * to merge may conflict.
  */
-const warnSharedChanges = (sched: Scheduling, reads: FillReads): Effect.Effect<void> =>
+const warnSharedChanges = (
+  sched: Scheduling,
+  reads: Pick<FillReads, "changes" | "repo">,
+): Effect.Effect<void> =>
   Effect.gen(function* () {
     const runningNow = (yield* Ref.get(sched.slots)).running
     if (sched.options.footprints === undefined || runningNow.size <= 1) return
@@ -536,11 +557,52 @@ const fillSlots = (
     return dispatched
   })
 
-/** One fill: reads bd ready, queues its new candidates, holds back or releases them, fills the slots. */
+/**
+ * Whether a fill the ready poll alone woke reads git alone this time: every slot is taken, and
+ * the queue was read from bd less than busyPoll ago.
+ */
+const betweenReads = (sched: Scheduling): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const { s, state } = yield* current(sched)
+    if (slotFree(s, state, sched.options.concurrent)) return false
+    const { readAt } = yield* Ref.get(sched.memo)
+    if (readAt === null) return false
+    const now = yield* Clock.currentTimeMillis
+    return now - readAt < Duration.toMillis(busyPoll)
+  })
+
+/**
+ * A poll's fill between the queue's reads (busyPoll): it warns of two running tickets' worktrees
+ * changing one file, from git alone, and starts nothing, no slot being free; the counts as the
+ * last read left them.
+ */
+const fillBetween = (sched: Scheduling): Effect.Effect<Filled> =>
+  Effect.gen(function* () {
+    const { footprints } = sched.options
+    const repo = footprints === undefined ? undefined : yield* footprints.repo
+    yield* warnSharedChanges(sched, { repo, changes: new Map() })
+    const { lastIds } = yield* Ref.get(sched.memo)
+    const after = counts(yield* sched.ledger.current, lastIds, null)
+    return {
+      dispatched: [],
+      setAside: [],
+      queued: after.queued,
+      heldBack: (after.held ?? 0) - (after.held_by?.setup ?? 0),
+    }
+  })
+
+/**
+ * One fill: reads bd ready, queues its new candidates, holds back or releases them, fills the
+ * slots. One the ready poll alone woke (Polled), with every slot taken, reads git alone until
+ * busyPoll has passed since the queue was last read (fillBetween).
+ */
 export const fill = (sched: Scheduling): Effect.Effect<Filled, BeadsError> =>
   sched.oneFill.withPermit(
     Effect.gen(function* () {
+      if ((yield* Polled) && (yield* betweenReads(sched))) return yield* fillBetween(sched)
       const { found, ids, queue, setAside } = yield* readQueue(sched)
+      const readAt = yield* Clock.currentTimeMillis
+      yield* remember(sched, (m) => ({ ...m, readAt }))
       const reads = yield* fillReads(sched, found)
       yield* warnSharedChanges(sched, reads)
       const dispatched = yield* fillSlots(sched, reads, queue, ids)

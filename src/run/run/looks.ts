@@ -19,6 +19,7 @@ import { backoff, failedRead, lasted, type Outage, readDue, sustained } from "..
 import { showOn } from "../runView.ts"
 import { beadsOutage } from "../schedule.ts"
 import { retrySetups } from "../setup.ts"
+import { polledOnly, type Wake } from "../wakes.ts"
 import { requeueWaiting, type WorkEnv } from "../work.ts"
 import type { RunParts } from "./parts.ts"
 import type { Started } from "./start.ts"
@@ -34,8 +35,13 @@ export interface AskedRead {
 export interface Looks {
   /** bd's open list, read once where a ticket is Asked, for the answers and the fill both. */
   readonly lookAtAsked: Effect.Effect<AskedRead>
-  /** The look's effects, which read bd and git, in the run's context. */
-  readonly fill: Effect.Effect<void, never, WorkEnv | FileSystem.FileSystem | Notifier>
+  /**
+   * The look's effects, which read bd and git, in the run's context; `why`, what woke the look
+   * (wakes.ts), for the fill, which the ready poll alone has read bd less often (look.ts).
+   */
+  readonly fill: (
+    why: ReadonlySet<Wake>,
+  ) => Effect.Effect<void, never, WorkEnv | FileSystem.FileSystem | Notifier>
   /** Whether a question --auto-answer takes waits for its time, as the last fill found. */
   readonly autoAnswering: Ref.Ref<boolean>
   /** bd failing every fill's read of the queue since, if it does (queueOutage.ts). */
@@ -74,7 +80,7 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
     // The look's effects, which read bd and git: the tickets put back in the queue, the setups,
     // checks and requires taken again, the carried and answered workers taken up, then the free
     // slots filled.
-    const fill = Effect.gen(function* () {
+    const fill = Effect.fn(function* (why: ReadonlySet<Wake>) {
       yield* lookAround
       yield* requeueWaiting(branches)
       // A ticket merged, which may bring what a setup that failed in a ticket's worktree needed.
@@ -121,11 +127,13 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
       // Those answered with no slot for them need you no longer: a later look brings them back.
       yield* showOn(status, "answered")(look.noSlot)
       // A fill bd can't read the queue for leaves the slots as they are, and a later look reads it
-      // again; bd failing every read for beadsOutage stops the run (queueOutage.ts).
+      // again; bd failing every read for beadsOutage stops the run (queueOutage.ts). One the ready
+      // poll alone woke, bd not failing, reads bd for the queue only every busyPoll while every
+      // slot is taken (schedule/fill.ts).
       const failing = yield* Ref.get(outage)
       if (takesNew(yield* gate) && readDue(failing, yield* Clock.currentTimeMillis)) {
         const filled = yield* Effect.result(
-          open === undefined ? scheduler.fillTrying : scheduler.fillWith(open),
+          scheduler.fillWith(open, failing === null && polledOnly(why)),
         )
         const now = yield* Clock.currentTimeMillis
         if (Result.isSuccess(filled)) {

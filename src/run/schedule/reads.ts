@@ -10,7 +10,7 @@ import type { Sources } from "../overlap.ts"
 import type { RepoFiles } from "../repoFiles.ts"
 import { unclosedIn, unmergedLabel } from "../scope.ts"
 import { issueOf } from "./place.ts"
-import { remember } from "./queue.ts"
+import { type Memo, remember } from "./queue.ts"
 import type { Scheduling } from "./state.ts"
 
 /** bd's open list as the look read it at its start, for the fill it gives it to (fillWith). */
@@ -108,7 +108,7 @@ export const holding = (sched: Scheduling, reads: FillReads): Effect.Effect<Hold
   Effect.gen(function* () {
     if (reads.holders !== undefined) return reads.holders
     const { beads, ledger } = sched
-    const labelled = yield* beads.list({ status: "closed", labels: [unmergedLabel] })
+    const labelled = yield* labelledNow(sched, reads)
     const left = leftUnmerged(yield* ledger.current, labelled)
     if (reads.looked !== undefined) {
       const lookedIds = new Set(reads.looked.map((issue) => issue.id))
@@ -129,6 +129,32 @@ export const holding = (sched: Scheduling, reads: FillReads): Effect.Effect<Hold
     )
     reads.holders = { labelled, left, parents }
     return reads.holders
+  })
+
+/**
+ * The closed tickets labelled unmerged, which Beads keeps between tutti's writes of a status or a
+ * label (labelledKeep): read afresh once the base's commit has moved since they were last read,
+ * which may have merged one of them by hand, its label removed by hand with it. The base is read
+ * once a fill (`reads.head`), with the option that reads it; without it, Beads keeps the list as
+ * long as it does.
+ */
+const labelledNow = (
+  sched: Scheduling,
+  reads: FillReads,
+): Effect.Effect<ReadonlyArray<Issue>, BeadsError> =>
+  Effect.gen(function* () {
+    const { beads } = sched
+    const closed = sched.options.closedBranches
+    if (closed !== undefined) {
+      reads.head ??= { at: yield* closed.head }
+      const at = reads.head.at ?? null
+      const moved = yield* Ref.modify(sched.memo, (m): readonly [boolean, Memo] => [
+        at === null || m.baseSeen !== at,
+        { ...m, baseSeen: at },
+      ])
+      if (moved) yield* beads.dropKept()
+    }
+    return yield* beads.list({ status: "closed", labels: [unmergedLabel] })
   })
 
 /** A ticket's issue as bd show gives it, read once a fill; null when bd couldn't. */
@@ -173,7 +199,7 @@ export const linksOf = (
 /** The files the running ticket's worktree changed, as the repository has them, read once a fill. */
 export const changedIn = (
   sched: Scheduling,
-  reads: FillReads,
+  reads: Pick<FillReads, "changes" | "repo">,
   id: TicketId,
 ): Effect.Effect<ReadonlyArray<string>> =>
   Effect.gen(function* () {

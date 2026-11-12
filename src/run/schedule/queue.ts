@@ -85,6 +85,19 @@ export interface Memo {
   /** The candidates the last fill read, which a queue record counts. */
   readonly lastIds: ReadonlyArray<TicketId>
   /**
+   * When the queue was last read from bd, in the clock's milliseconds, or null before the first
+   * read: a fill the ready poll alone woke, with every slot taken, reads it again only busyPoll
+   * later (fill.ts).
+   */
+  readonly readAt: number | null
+  /**
+   * The base's commit as the closed tickets labelled unmerged were last read (reads.ts's
+   * `labelledNow`), or null for none read yet, or git unable to say: Beads keeps the list between
+   * tutti's writes (labelledKeep), and once the base moves, which may have merged one of them by
+   * hand, the fill has it read afresh.
+   */
+  readonly baseSeen: string | null
+  /**
    * The tickets set aside (Deferred) that a fill found gone from bd ready, their fibers ended: one
    * bd ready lists again was undeferred outside the run, and is queued again while the run doesn't
    * hold. One bd couldn't defer, which bd ready still lists, is kept out of the run. So is one an
@@ -105,6 +118,8 @@ export const noMemo: Memo = {
   unclosed: null,
   shownLast: "",
   lastIds: [],
+  readAt: null,
+  baseSeen: null,
   leftReady: new Set(),
 }
 

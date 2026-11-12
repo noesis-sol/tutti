@@ -36,6 +36,15 @@ const unread: ReadonlySet<Wake> = new Set(["attention"])
 export const reads = (why: ReadonlySet<Wake>): boolean =>
   why.size === 0 || [...why].some((each) => !unread.has(each))
 
+/**
+ * Whether the ready poll alone woke a look woken for `why`, with at most the reasons in `unread`:
+ * its fill, with every slot taken, reads git alone between the queue's reads (schedule/fill.ts's
+ * busyPoll). A slot freed, a merge, a hold, a command, a verdict or a drain request beside it
+ * reads as ever, as does a look with no reason recorded.
+ */
+export const polledOnly = (why: ReadonlySet<Wake>): boolean =>
+  why.has("poll") && [...why].every((each) => each === "poll" || unread.has(each))
+
 const same = (one: ReadonlyArray<TicketId>, other: ReadonlyArray<TicketId>): boolean =>
   one.length === other.length && one.every((id, i) => id === other[i])
 

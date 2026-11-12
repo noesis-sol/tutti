@@ -65,7 +65,7 @@ export const loop = (
             }),
           ).pipe(Effect.provideContext(fillContext))
     const { untilEnd } = yield* makeLoop({
-      fill: Effect.provideContext(fill, fillContext),
+      fill: (why) => Effect.provideContext(fill(why), fillContext),
       wakes,
       gate,
       holds,

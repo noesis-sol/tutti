@@ -88,7 +88,7 @@ const runLoop = (w: World, steps: ReadonlyArray<(w: World) => void> = []) => {
   const left = [...steps]
   const holdsNow = () => ({ ...noHolds, stops: w.stops })
   const parts: LoopParts = {
-    fill: Effect.sync(() => calls.push("fill")),
+    fill: () => Effect.sync(() => calls.push("fill")),
     wakes: {
       take: Effect.sync(() => w.woken.shift() ?? new Set()),
       next: () =>
