@@ -23,8 +23,10 @@
 // - A ticket in the staged recall arm (playbook.ts's recallArmOf) whose worker shows it is
 //   struggling, its second verifier round beginning (AgentHost's verifierCalls) or a failed check
 //   handed back to it (checkback.ts, through MergeOptions' `struggled`), is given the records of
-//   the lessons it has, once (`record`): a `lesson_record` record and a line in the log. A steered
-//   worker is sent nothing, as ever; a worker that is gone gets it with its hand-back, if one comes.
+//   the lessons it has, once (`record`): a `lesson_record` record and a line in the log, written
+//   once the records have reached it (`told`), not as the hand-back is composed: one that can't be
+//   given leaves them untold. A steered worker is sent nothing, as ever; a worker that is gone gets
+//   it with its hand-back, if one comes.
 //
 // The file is read afresh for each, so `tutti playbook` acts on a run under way. Anything wrong with
 // it, PLAYBOOK_FAILED, in the log and a `warn` record, leaves workers without lessons and the run going.
@@ -113,6 +115,17 @@ type MeasuredLesson = Extract<Event, { readonly kind: "lesson_measure" }>["lesso
 /** A pair the reflector reads by contrast. */
 export type Pair = typeof ReflectedPair.Type
 
+/** The records a staged worker that struggles is to be told, as `record` gives them. */
+export interface Records {
+  /** The text to put to the worker, after its hand-back's prompt. */
+  readonly text: string
+  /**
+   * Marks the records told, their `lesson_record` and the log's line, once `text` has reached the
+   * worker; nothing when it was told them meanwhile.
+   */
+  readonly told: Effect.Effect<void>
+}
+
 export interface RunPlaybook {
   /** What `issue`, of `footprint`, gets of the playbook; undefined with none in its scope. */
   choose(
@@ -123,9 +136,9 @@ export interface RunPlaybook {
   section(ticket: TicketId): Effect.Effect<string>
   /**
    * The records a staged worker is told as it struggles, `why`, once: the text to put to it, and
-   * its `lesson_record`; empty once it has had them, or with none to tell.
+   * `told` to run once it has; undefined once it has had them, or with none to tell.
    */
-  record(ticket: TicketId, why: RecordWhy): Effect.Effect<string>
+  record(ticket: TicketId, why: RecordWhy): Effect.Effect<Records | undefined>
   /** A ticket's part in the run ended: the scorecards not yet counted are, as `pending` does. */
   ended(end: Ended): Effect.Effect<void>
   /** The scorecards not yet counted are, then: the reflection under way, and those queued. */
@@ -140,7 +153,7 @@ export interface RunPlaybook {
 export const off: RunPlaybook = {
   choose: () => Effect.succeed(undefined),
   section: () => Effect.succeed(""),
-  record: () => Effect.succeed(""),
+  record: () => Effect.succeed(undefined),
   ended: () => Effect.void,
   pending: Effect.succeed(0),
   interrupt: Effect.void,
@@ -812,9 +825,12 @@ export const make = (options: {
       record: (ticket, why) =>
         Effect.gen(function* () {
           const lessons = yield* heldFor(ticket)
-          if (lessons.length === 0) return ""
-          yield* toldOf(ticket, why, lessons)
-          return recordText(lessons, why)
+          if (lessons.length === 0) return undefined
+          const told = Effect.gen(function* () {
+            if ((yield* heldFor(ticket)).length === 0) return
+            yield* toldOf(ticket, why, lessons)
+          })
+          return { text: recordText(lessons, why), told } satisfies Records
         }),
       ended: () => catchUp,
       pending: Effect.andThen(catchUp, Ref.get(pending)),

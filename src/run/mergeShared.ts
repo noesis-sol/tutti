@@ -24,6 +24,7 @@ import type { EarlyChecks } from "./earlyCheck.ts"
 import type { AtReset, HandBacks, HandedRebase } from "./handback.ts"
 import type { Ledger } from "./ledger.ts"
 import type { OvernightAside } from "./overnightAside.ts"
+import type { Records } from "./playbookRun.ts"
 import { shownChanges } from "./settle.ts"
 import type { SetUps } from "./setup.ts"
 import type { Trash } from "./trash.ts"
@@ -97,10 +98,10 @@ export interface MergeOptions {
   readonly merged?: (work: MergedWork) => Effect.Effect<void>
   /**
    * What a failed check's hand-back to `ticket`'s worker carries after its prompt (checkback.ts):
-   * the playbook's records for a worker that struggles (playbookRun.ts's `record`), once. Nothing
-   * without it.
+   * the playbook's records for a worker that struggles (playbookRun.ts's `record`), once, marked
+   * told once the hand-back has reached it. Nothing without it.
    */
-  readonly struggled?: (ticket: TicketId) => Effect.Effect<string>
+  readonly struggled?: (ticket: TicketId) => Effect.Effect<Records | undefined>
 }
 
 /** Where the merges land: the main checkout and the base, all that most of their steps read. */

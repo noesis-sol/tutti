@@ -474,14 +474,16 @@ export const fixCheck = (
         stop.onTop === true
           ? undefined
           : yield* Effect.result(git.log(options.repo, stop.head, stop.onto))
-      // The playbook's records for a worker that struggles go after the prompt, once (playbookRun.ts).
+      // The playbook's records for a worker that struggles go after the prompt, once, told as the
+      // hand-back reaches it (playbookRun.ts): one that can't be given leaves them for the next.
+      const records = options.struggled === undefined ? undefined : yield* options.struggled(id)
       const prompt =
         fixPrompt(
           stop,
           options.base,
           check,
           landed !== undefined && Result.isSuccess(landed) ? landed.success : undefined,
-        ) + (options.struggled === undefined ? "" : yield* options.struggled(id))
+        ) + (records?.text ?? "")
       const what = line`${id}'s failed check is handed back to its worker`
       const fixed = Effect.map(verifyFixed(stop, options), (left) => left._tag === "Fixed")
       const why = yield* give(
@@ -493,6 +495,7 @@ export const fixCheck = (
           onto: stop.onto,
           to: stop.at,
           done: fixed,
+          ...(records === undefined ? {} : { sent: records.told }),
         },
         limit,
         options,

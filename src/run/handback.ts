@@ -597,6 +597,12 @@ export interface HandBack {
    * with the branch on top of the base, or a fix committed.
    */
   readonly done: Effect.Effect<boolean, never, Git>
+  /**
+   * Run once the prompt has reached the worker, sent or its session resumed with it, before give
+   * waits on its settle; not when it couldn't be given (checkback.ts marks the playbook's records
+   * told with it).
+   */
+  readonly sent?: Effect.Effect<void>
 }
 
 /** What a worker on a hand-back has done once git shows it done, for a line. */
@@ -1117,6 +1123,7 @@ const giveTo = (
       // the first of a resumed session, is over.
       taken = Effect.void
     }
+    yield* handBack.sent ?? Effect.void
     // Background tasks the worker leaves running as its turns end are stopped, as in its settle.
     const settled = Effect.scoped(
       Effect.gen(function* () {

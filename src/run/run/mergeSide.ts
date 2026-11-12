@@ -111,7 +111,8 @@ export const make = (
         base,
         early,
         merged: critic.merged,
-        // A failed check handed back carries the playbook's records for a struggling worker.
+        // A failed check handed back carries the playbook's records for a struggling worker, told
+        // once it has reached it.
         struggled: (ticket) => playbook.record(ticket, "hand_back"),
         noMore,
         atReset: usage.atReset,
