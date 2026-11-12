@@ -24,6 +24,8 @@ export const ReflectorAnswer = Schema.Struct({
       kind: Schema.Literals(lessonKinds),
       scope: Schema.Array(Schema.String),
       evidence: Schema.Array(LessonEvidence),
+      /** Read from pairs: where the tickets that went badly and well parted (tutti-5fs7.4). */
+      record: Schema.optionalKey(Schema.NullOr(Schema.String)),
     }),
   ),
 })
@@ -45,8 +47,8 @@ const evidenceRead = 8
 /** One ticket the reflector reads closely. */
 export interface TicketEvidence {
   readonly ticket: string
-  /** Among the worst of the tickets it was called for, or the best. */
-  readonly standing: "worst" | "best"
+  /** Among the worst of the tickets it was called for, or the best; in a pair, the bad or the good. */
+  readonly standing: "worst" | "best" | "bad" | "good"
   /** The ticket, as bd show gives it (ticketText.ts's ticketText). */
   readonly shown: string
   /** The files its ticket names, and those predicted for it. */
@@ -57,29 +59,62 @@ export interface TicketEvidence {
   readonly transcript: string
 }
 
+/**
+ * A pair the reflector reads by contrast (tutti-5fs7.4; XRepoSkill, arXiv 2609.36807; SWE-Exp,
+ * 2507.23361): a ticket that didn't go clean and one that did, in the same area.
+ */
+export interface PairEvidence {
+  readonly bad: TicketEvidence
+  readonly good: TicketEvidence
+  /** The folders and files their footprints share, one a line. */
+  readonly area: string
+}
+
 /** What the reflector is given. */
 export interface Evidence {
   /** The run's scorecards, one a line. */
   readonly scorecards: string
   /** The lessons the pool has, one a line. */
   readonly lessons: string
+  /** The worst and the best, read alone; none when it reads pairs. */
   readonly tickets: ReadonlyArray<TicketEvidence>
+  /** The pairs it reads by contrast; none when it reads the worst and the best. */
+  readonly pairs?: ReadonlyArray<PairEvidence>
   /** The most lessons it may propose. */
   readonly most: number
+  /** Reading pairs: how many a lesson must cite tickets of. */
+  readonly recurring?: number
 }
 
-/** The reflector's input: the evidence in sections, the request last. */
-export const reflectorInput = (e: Evidence): ReadonlyArray<InputPart> => [
-  section("The run's scorecards, best first, the worst last", e.scorecards),
-  section("The lessons the playbook has", e.lessons === "" ? "(none yet)" : e.lessons),
-  ...e.tickets.flatMap((t) => [
-    section(`Ticket ${t.ticket}, among the ${t.standing} (bd show)`, t.shown),
-    section(`${t.ticket}'s footprint`, t.footprint),
-    section(`${t.ticket}'s records, as evidence cites them`, t.records),
-    section(`${t.ticket}'s worker's transcript, an excerpt`, t.transcript),
-  ]),
-  `Propose at most ${e.most} lessons, or none.\n`,
+const ticketSections = (t: TicketEvidence, standing: string): ReadonlyArray<InputPart> => [
+  section(`Ticket ${t.ticket}, ${standing} (bd show)`, t.shown),
+  section(`${t.ticket}'s footprint`, t.footprint),
+  section(`${t.ticket}'s records, as evidence cites them`, t.records),
+  section(`${t.ticket}'s worker's transcript, an excerpt`, t.transcript),
 ]
+
+/** The reflector's input: the evidence in sections, the request last. */
+export const reflectorInput = (e: Evidence): ReadonlyArray<InputPart> => {
+  const pairs = e.pairs ?? []
+  return [
+    section("The run's scorecards, best first, the worst last", e.scorecards),
+    section("The lessons the playbook has", e.lessons === "" ? "(none yet)" : e.lessons),
+    ...e.tickets.flatMap((t) => ticketSections(t, `among the ${t.standing}`)),
+    ...pairs.flatMap((pair, i) => [
+      section(
+        `Pair ${i + 1}: ${pair.bad.ticket} went badly and ${pair.good.ticket} went well, in the same area`,
+        pair.area,
+      ),
+      ...ticketSections(pair.bad, `the one of pair ${i + 1} that went badly`),
+      ...ticketSections(pair.good, `the one of pair ${i + 1} that went well`),
+    ]),
+    pairs.length === 0
+      ? `Propose at most ${e.most} lessons, or none.\n`
+      : `Propose at most ${e.most} lessons, or none, each from where the two tickets of a pair ` +
+        `parted, and only where it recurs: its evidence cites tickets of at least ${e.recurring ?? 2} of the ` +
+        `${pairs.length} pairs. Give each its record.\n`,
+  ]
+}
 
 // One line, sanitised, and bounded, in the characters a model may have put anywhere.
 const line = (text: string): string => oneLine(sanitizeLine(text), lineCharacters)
@@ -90,7 +125,7 @@ const scopeGlob = (glob: string): string => {
   return bare.endsWith("/") ? `${bare}**` : bare
 }
 
-/** The first `most` lessons of `answer`, for the gate to read. */
+/** The first `most` lessons of `answer`, for the gate to read; a record kept on a line, bounded. */
 export const lessonsOf = (answer: ReflectorAnswer, most: number): ReadonlyArray<Candidate> =>
   answer.lessons.slice(0, most).map((lesson) => ({
     text: line(lesson.text),
@@ -100,6 +135,9 @@ export const lessonsOf = (answer: ReflectorAnswer, most: number): ReadonlyArray<
       ticket: line(each.ticket),
       event: line(each.event),
     })),
+    ...(typeof lesson.record === "string" && lesson.record.trim() !== ""
+      ? { record: line(lesson.record) }
+      : {}),
   }))
 
 /** The reflector's answer on the evidence. */

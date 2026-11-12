@@ -10,7 +10,7 @@ import { type ClosedBranches, closedBranches } from "../closedBranches.ts"
 import { type Critic, off as criticOff, make as makeCritic } from "../critic.ts"
 import { type EarlyChecks, make as makeEarlyChecks } from "../earlyCheck.ts"
 import { stopFor, stopOfLine } from "../holds.ts"
-import type { Ledger } from "../ledger.ts"
+import { Ledger } from "../ledger.ts"
 import { type MergeQueue, make as makeQueue, type QueueState } from "../mergequeue.ts"
 import { make as makePlaybook, type RunPlaybook } from "../playbookRun.ts"
 import { showOn } from "../runView.ts"
@@ -96,10 +96,14 @@ export const make = (
     // The playbook (playbookRun.ts): what each ticket dispatched is given of it, counted as it ends
     // (followEnds, below), and, when the run has organs, a reflection every so many ends in the
     // background. Each reflection's end wakes the run, which doesn't end while one waits.
+    const ledger = yield* Ledger
     const playbook = yield* makePlaybook({
       repo: config.repo,
       organs,
       done: wakeUp("verdict"),
+      // A steered worker is sent nothing, its records neither (§ 4.3).
+      steered: (ticket) =>
+        Effect.map(ledger.current, (state) => state.tickets.get(ticket)?.steered === true),
     })
     const queue = yield* makeQueue(
       {
@@ -107,6 +111,8 @@ export const make = (
         base,
         early,
         merged: critic.merged,
+        // A failed check handed back carries the playbook's records for a struggling worker.
+        struggled: (ticket) => playbook.record(ticket, "hand_back"),
         noMore,
         atReset: usage.atReset,
         recheckSlot,

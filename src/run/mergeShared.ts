@@ -95,6 +95,12 @@ export interface MergeOptions {
    * for the critic (critic.ts), which may review it. Nothing is told without it.
    */
   readonly merged?: (work: MergedWork) => Effect.Effect<void>
+  /**
+   * What a failed check's hand-back to `ticket`'s worker carries after its prompt (checkback.ts):
+   * the playbook's records for a worker that struggles (playbookRun.ts's `record`), once. Nothing
+   * without it.
+   */
+  readonly struggled?: (ticket: TicketId) => Effect.Effect<string>
 }
 
 /** Where the merges land: the main checkout and the base, all that most of their steps read. */

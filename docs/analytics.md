@@ -55,7 +55,7 @@ FROM read_json(path, format = 'newline_delimited', filename = true, columns = {
   working: 'DOUBLE', flaky: 'INTEGER', denied: 'INTEGER', asked: 'INTEGER', size: 'INTEGER',
   median: 'STRUCT(tickets INTEGER, working DOUBLE, cost_usd DOUBLE)',
   items: 'STRUCT(item VARCHAR, answer VARCHAR, evidence VARCHAR, ungrounded BOOLEAN)[]',
-  lessons: 'STRUCT(id VARCHAR, "text" VARCHAR, kind VARCHAR, state VARCHAR, refused VARCHAR, displaced VARCHAR, shown BOOLEAN, helpful INTEGER, harmful INTEGER, held_clean INTEGER, held_bad INTEGER, effect DOUBLE, p DOUBLE, retired VARCHAR)[]'
+  lessons: 'STRUCT(id VARCHAR, "text" VARCHAR, kind VARCHAR, state VARCHAR, refused VARCHAR, displaced VARCHAR, shown BOOLEAN, helpful INTEGER, harmful INTEGER, held_clean INTEGER, held_bad INTEGER, effect DOUBLE, p DOUBLE, retired VARCHAR, record VARCHAR, record_refused VARCHAR, pairs INTEGER, recall STRUCT(arm VARCHAR, staged_clean INTEGER, staged_bad INTEGER, plain_clean INTEGER, plain_bad INTEGER, effect DOUBLE, p DOUBLE))[]'
 });
 
 CREATE OR REPLACE MACRO transcripts(path) AS TABLE

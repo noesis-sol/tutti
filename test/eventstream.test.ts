@@ -519,6 +519,10 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       kind: "reflection",
       trigger: "every",
       tickets: ["a-1", "a-2"],
+      pairs: [
+        { bad: "a-1", good: "a-3", area: ["src/run/**"] },
+        { bad: "a-2", good: "a-4", area: ["src/run/ledger.ts"] },
+      ],
       version: 4,
       lessons: [
         {
@@ -526,6 +530,9 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
           kind: "pitfall",
           scope: ["src/run/ledger.ts"],
           evidence: [{ ticket: "a-1", event: "check@2026-10-02T09:12:04.51+02:00" }],
+          record: "The one that went badly called bd under the lock; the other read first.",
+          record_refused: "too_long",
+          pairs: 2,
           id: "L4",
           state: "active",
           displaced: "L1",
@@ -561,8 +568,35 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
           retired: "no_effect",
         },
         { id: "L5", shown: false, helpful: 0, harmful: 0, held_clean: 1, held_bad: 0 },
+        {
+          id: "L6",
+          shown: true,
+          helpful: 2,
+          harmful: 1,
+          held_clean: 1,
+          held_bad: 1,
+          recall: {
+            arm: "staged",
+            staged_clean: 1,
+            staged_bad: 0,
+            plain_clean: 1,
+            plain_bad: 1,
+            effect: 0.5,
+            p: 1,
+          },
+        },
       ],
-      text: "  lessons for a-1: clean; shown L4; held back L5; retired L4 (no_effect)",
+      text: "  lessons for a-1: clean; shown L4, L6; held back L5; retired L4 (no_effect)",
+    },
+  ],
+  lesson_record: [
+    {
+      ...head,
+      kind: "lesson_record",
+      ticket: "a-1",
+      why: "verifier",
+      ids: ["L6"],
+      text: "  records for a-1 (second verifier round): L6",
     },
   ],
   phase: [
@@ -762,6 +796,7 @@ describe("the records", () => {
         ],
         ...["check", "turn", "organ", "ticket_end"],
         ...["verifier", "score", "score_update", "review", "audit", "reflection", "lesson_measure"],
+        "lesson_record",
         "auto_answered",
       ].sort(),
     )

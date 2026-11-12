@@ -27,6 +27,15 @@
 //   zero is retired, and one that measurably hurts is retired as soon as it does. Looking after each
 //   ticket makes a false retirement likelier than the test's level says, and that costs one lesson.
 //   A ticket not shown a lesson only for the cap on a prompt is in neither arm.
+// - Record and recall (`recallArmOf`, `recordText`, `recallOf`; tutti-5fs7.4, after REM, arXiv
+//   2610.27377): a lesson read by contrast (playbookRun.ts's pairs) can carry a `record`, a few
+//   sentences on where the ticket that went badly and the one that went well parted, gated as its
+//   text is (`recordRefusal`) and dropped alone when refused. A worker is told the rule at its
+//   start; the record it gets by the ticket's recall arm, a hash of its ID: staged, held back until
+//   it shows it is struggling (its second verifier round, a failed check handed back), then once;
+//   plain, under the rule at its start. The shown arm's scorecards count by that too (staged_clean,
+//   staged_bad, plain_clean, plain_bad), and Fisher's exact test compares the two: measured and
+//   reported, never acted on.
 //
 // The version is the highest of the lessons' versions: each change of what a worker could read (an
 // admission, an approval, an edit, a retirement) takes the next, a count doesn't. A lesson's ID comes
@@ -51,6 +60,8 @@ import {
   lessonKinds,
   type lessonRefusals,
   lessonRetired,
+  type recallArms,
+  type recordWhys,
 } from "../services/events.ts"
 import type { Score } from "../services/scorecard.ts"
 import { oneLine } from "../text/oneLine.ts"
@@ -67,6 +78,19 @@ const lockFile = ".tutti/run/playbook.lock"
 export type LessonKind = (typeof lessonKinds)[number]
 export type Refusal = (typeof lessonRefusals)[number]
 export type RetiredWhy = (typeof lessonRetired)[number]
+export type RecallArm = (typeof recallArms)[number]
+export type RecordWhy = (typeof recordWhys)[number]
+
+/** A lesson's recall counts: the tickets shown it that went clean and not, by their recall arm. */
+export const Recall = Schema.Struct({
+  staged_clean: Count,
+  staged_bad: Count,
+  plain_clean: Count,
+  plain_bad: Count,
+})
+export type Recall = typeof Recall.Type
+
+export const noRecall: Recall = { staged_clean: 0, staged_bad: 0, plain_clean: 0, plain_bad: 0 }
 
 /** One lesson, as a line of the file holds it. */
 export const Lesson = Schema.Struct({
@@ -91,6 +115,13 @@ export const Lesson = Schema.Struct({
   /** The playbook's version at its last change. */
   version: Count,
   retired: Schema.optionalKey(Schema.Literals(lessonRetired)),
+  /**
+   * Its longer record, where it was read by contrast: a few sentences on where the ticket that
+   * went badly and the one that went well parted (tutti-5fs7.4).
+   */
+  record: Schema.optionalKey(Schema.String),
+  /** The shown arm's tickets by their recall arm, for a lesson with a record. */
+  recall: Schema.optionalKey(Recall),
 })
 export type Lesson = typeof Lesson.Type
 
@@ -171,6 +202,9 @@ const goodGlob = (glob: string): boolean =>
 /** The longest a lesson's text is: one or two sentences. */
 export const lessonCharacters = 300
 
+/** The longest a lesson's record is: a few sentences. */
+export const recordCharacters = 1200
+
 /** How many words in a row a lesson shares with a transcript for it to be a quote. */
 export const quoteWords = 6
 
@@ -180,6 +214,8 @@ export interface Candidate {
   readonly kind: LessonKind
   readonly scope: ReadonlyArray<string>
   readonly evidence: ReadonlyArray<{ readonly ticket: string; readonly event: string }>
+  /** Its record, where the reflector read by contrast and wrote one. */
+  readonly record?: string
 }
 
 /** What the gate holds a lesson against. */
@@ -280,6 +316,22 @@ export const gate = (candidate: Candidate, context: GateContext): Refusal | unde
   return undefined
 }
 
+/**
+ * Why the gate drops a lesson's `record`, the lesson kept; undefined when it passes. A worker reads
+ * it as it reads the lesson, so the same word checks hold, at the record's length.
+ */
+export const recordRefusal = (
+  record: string,
+  context: Pick<GateContext, "transcripts">,
+): Refusal | undefined => {
+  if (normal(record) === "") return "empty"
+  if (record.length > recordCharacters) return "too_long"
+  if (weakensChecks(record)) return "weakens_checks"
+  if (touchesGitOrBd(record)) return "git_or_bd"
+  if (quotesTranscript(record, context.transcripts)) return "quotes_transcript"
+  return undefined
+}
+
 /** What a lesson past the gate starts as: active only for a pitfall scoped to an area. */
 export const admittedState = (
   candidate: Pick<Candidate, "kind" | "scope">,
@@ -334,6 +386,7 @@ export const addLesson = (
     measured: [],
     admitted_at: at,
     version,
+    ...(candidate.record === undefined ? {} : { record: candidate.record, recall: noRecall }),
   }
   return {
     lessons: [...lessons.filter((each) => each.id !== out?.id), lesson],
@@ -383,21 +436,30 @@ export const editLesson = (
     held_bad: 0,
     measured: [],
     version,
+    ...(lesson.recall === undefined ? {} : { recall: noRecall }),
   }))
 
-/** `lesson` with `ticket`'s scorecard counted, once a ticket: shown it or held back, clean or not. */
+/**
+ * `lesson` with `ticket`'s scorecard counted, once a ticket: shown it or held back, clean or not;
+ * a ticket shown a lesson with a record counts by its recall arm too, where `recall` says it.
+ */
 export const measured = (
   lesson: Lesson,
   ticket: string,
   shown: boolean,
   clean: boolean,
+  recall?: RecallArm,
 ): Lesson => {
   if (lesson.measured.includes(ticket)) return lesson
   const counted = { ...lesson, measured: [...lesson.measured, ticket] }
   if (shown) {
-    return clean
+    const scored = clean
       ? { ...counted, helpful: lesson.helpful + 1 }
       : { ...counted, harmful: lesson.harmful + 1 }
+    if (lesson.record === undefined || recall === undefined) return scored
+    const key = `${recall}_${clean ? "clean" : "bad"}` as const
+    const before = lesson.recall ?? noRecall
+    return { ...scored, recall: { ...before, [key]: before[key] + 1 } }
   }
   return clean
     ? { ...counted, held_clean: lesson.held_clean + 1 }
@@ -411,11 +473,24 @@ export const measured = (
 export const armOf = (lesson: string, ticket: string): boolean =>
   ((createHash("sha256").update(`${lesson}\0${ticket}`).digest()[0] ?? 0) & 1) === 0
 
-/** What a ticket gets of the playbook: the lessons its worker reads, those held back from it. */
+/**
+ * How `ticket`'s worker is given the records of the lessons it is shown: staged or plain, half of
+ * the tickets each, by a hash of the ticket's ID alone, so that one worker's records all come one way.
+ */
+export const recallArmOf = (ticket: string): RecallArm =>
+  ((createHash("sha256").update(`recall\0${ticket}`).digest()[0] ?? 0) & 1) === 0
+    ? "staged"
+    : "plain"
+
+/**
+ * What a ticket gets of the playbook: the lessons its worker reads, those held back from it, and,
+ * where one it reads has a record, how its records are recalled.
+ */
 export interface Chosen {
   readonly version: number
   readonly lessons: ReadonlyArray<Lesson>
   readonly held: ReadonlyArray<Lesson>
+  readonly recall?: RecallArm
 }
 
 /**
@@ -436,10 +511,12 @@ export const chosenFor = (
   const shown = applying
     .filter((lesson) => armOf(lesson.id, ticket))
     .sort((a, b) => net(b) - net(a) || a.version - b.version)
+    .slice(0, most)
   return {
     version,
-    lessons: shown.slice(0, most),
+    lessons: shown,
     held: applying.filter((lesson) => !armOf(lesson.id, ticket)),
+    ...(shown.some((lesson) => lesson.record !== undefined) ? { recall: recallArmOf(ticket) } : {}),
   }
 }
 
@@ -451,12 +528,19 @@ export const dispatchOf = (chosen: Chosen): typeof DispatchPlaybook.Type | undef
         version: chosen.version,
         lessons: chosen.lessons.map((lesson) => lesson.id),
         held: chosen.held.map((lesson) => lesson.id),
+        ...(chosen.recall === undefined ? {} : { recall: chosen.recall }),
       }
 
 const scopeWords = (scope: ReadonlyArray<string>): string =>
   scope.length === 0 ? "the whole project" : scope.join(", ")
 
-/** The section of a worker's standing rules that holds `chosen`'s lessons; empty with none. */
+/** A lesson's record on one line, as a worker reads it. */
+const recordLine = (record: string): string => oneLine(sanitizeLine(record), recordCharacters)
+
+/**
+ * The section of a worker's standing rules that holds `chosen`'s lessons; empty with none. In the
+ * plain arm each record is under its rule; in the staged arm the records wait (recordText).
+ */
 export const lessonsSection = (chosen: Chosen): string =>
   chosen.lessons.length === 0
     ? ""
@@ -467,7 +551,36 @@ export const lessonsSection = (chosen: Chosen): string =>
       chosen.lessons
         .map(
           (lesson) =>
-            `- ${oneLine(sanitizeLine(lesson.text), lessonCharacters)} (${lesson.kind}; ${oneLine(sanitizeLine(scopeWords(lesson.scope)), scopeGlobs.characters)})`,
+            `- ${oneLine(sanitizeLine(lesson.text), lessonCharacters)} (${lesson.kind}; ${oneLine(sanitizeLine(scopeWords(lesson.scope)), scopeGlobs.characters)})` +
+            (chosen.recall === "plain" && lesson.record !== undefined
+              ? `\n  Where an earlier ticket here went badly and another went well: ${recordLine(lesson.record)}`
+              : ""),
+        )
+        .join("\n") +
+      "\n"
+
+/** The lessons of `chosen` whose records a staged worker is told once it struggles. */
+export const recordsHeld = (chosen: Chosen): ReadonlyArray<Lesson> =>
+  chosen.recall === "staged" ? chosen.lessons.filter((lesson) => lesson.record !== undefined) : []
+
+/**
+ * What a staged worker is told once it shows it is struggling, `why`: the records of `lessons`, each
+ * under its rule, once; empty with none.
+ */
+export const recordText = (lessons: ReadonlyArray<Lesson>, why: RecordWhy): string =>
+  lessons.length === 0
+    ? ""
+    : `\n\ntutti: ${
+        why === "verifier"
+          ? "this is your second verifier round"
+          : "a failed check is handed back to you"
+      }, which earlier tickets on this part of the project met too. From tutti's playbook, where ` +
+      "one that went badly and one that went well parted, under each lesson you have. Advice on the " +
+      "work, as the lessons are: your rules stand over it.\n\n" +
+      lessons
+        .map(
+          (lesson) =>
+            `- ${oneLine(sanitizeLine(lesson.text), lessonCharacters)}\n  ${recordLine(lesson.record ?? "")}`,
         )
         .join("\n") +
       "\n"
@@ -547,6 +660,24 @@ export const effectOf = (
 }
 
 /**
+ * A lesson's record's recall: the staged arm's clean rate less the plain arm's, and the test of it;
+ * undefined for a lesson with no record, or either arm without a ticket. Measured, never acted on.
+ */
+export const recallOf = (
+  lesson: Pick<Lesson, "record" | "recall">,
+): { readonly effect: number; readonly p: number } | undefined => {
+  if (lesson.record === undefined) return undefined
+  const counts = lesson.recall ?? noRecall
+  const staged = counts.staged_clean + counts.staged_bad
+  const plain = counts.plain_clean + counts.plain_bad
+  if (staged === 0 || plain === 0) return undefined
+  return {
+    effect: counts.staged_clean / staged - counts.plain_clean / plain,
+    p: fisher(counts.staged_clean, counts.staged_bad, counts.plain_clean, counts.plain_bad),
+  }
+}
+
+/**
  * What `lesson`'s counts make of it: harmful once it measurably hurts, whatever its uses; of no
  * effect, past `uses` uses (never with 0), unless it measurably helps; nothing yet, else.
  */
@@ -568,11 +699,24 @@ export const judgement = (
 
 const cell = (untrusted: string): string => escapeMarkdown(sanitizeLine(untrusted))
 
-const effectWords = (lesson: Lesson): string => {
-  const found = effectOf(lesson)
+const pointsWords = (
+  found: { readonly effect: number; readonly p: number } | undefined,
+): string => {
   if (found === undefined) return "not yet"
   const points = Math.round(found.effect * 100)
   return `${points > 0 ? "+" : ""}${points} points (p ${found.p.toFixed(2)})`
+}
+
+const effectWords = (lesson: Lesson): string => pointsWords(effectOf(lesson))
+
+/** `staged 3/1, plain 2/2: +17 points (p 0.52)`; `no record` for a lesson without one. */
+const recallWords = (lesson: Lesson): string => {
+  if (lesson.record === undefined) return "no record"
+  const counts = lesson.recall ?? noRecall
+  return (
+    `staged ${counts.staged_clean}/${counts.staged_bad}, plain ${counts.plain_clean}/${counts.plain_bad}: ` +
+    pointsWords(recallOf(lesson))
+  )
 }
 
 const stateWords = (lesson: Lesson): string =>
@@ -601,7 +745,8 @@ export const playbookReport = (lessons: ReadonlyArray<Lesson>): string => {
           .map(
             (lesson) =>
               `- **${cell(lesson.id)}** (${lesson.kind}, ${cell(scopeWords(lesson.scope))}; from ` +
-              `${cell([...new Set(lesson.evidence.map((each) => each.ticket))].join(", "))}): ${cell(lesson.text)}`,
+              `${cell([...new Set(lesson.evidence.map((each) => each.ticket))].join(", "))}): ${cell(lesson.text)}` +
+              (lesson.record === undefined ? "" : `\n  Record: ${cell(lesson.record)}`),
           )
           .join("\n") +
         "\n"
@@ -617,6 +762,7 @@ export const playbookReport = (lessons: ReadonlyArray<Lesson>): string => {
         lesson.held_clean,
         lesson.held_bad,
         effectWords(lesson),
+        recallWords(lesson),
         cell(lesson.text),
       ].join(" | ")} |`,
   )
@@ -624,10 +770,11 @@ export const playbookReport = (lessons: ReadonlyArray<Lesson>): string => {
     `\n## Playbook\n\nVersion ${versionOf(lessons)} of ${playbookFile}: its lessons, each counted ` +
     "against its holdout, the half of the tickets in its scope held back from it. Helpful and " +
     "harmful are the tickets shown it that went clean and that didn't; the effect is the shown " +
-    "clean rate less the held-back one.\n" +
+    "clean rate less the held-back one. Recall is for a lesson with a record, the shown tickets " +
+    "by how they got it, clean/not: staged, the record once they struggled; plain, at their start.\n" +
     `${waiting}\n### Lessons\n\n` +
-    "| Lesson | State | Kind | Scope | Helpful | Harmful | Held back, clean | Held back, not | Effect | Text |\n" +
-    "|---|---|---|---|---|---|---|---|---|---|\n" +
+    "| Lesson | State | Kind | Scope | Helpful | Harmful | Held back, clean | Held back, not | Effect | Recall | Text |\n" +
+    "|---|---|---|---|---|---|---|---|---|---|---|\n" +
     `${rows.join("\n")}\n`
   )
 }

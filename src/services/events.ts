@@ -175,6 +175,13 @@ export const Info = Schema.Struct({
 })
 
 /**
+ * How a ticket's worker is given the records of its lessons (src/run/playbook.ts; tutti-5fs7.4,
+ * after REM, arXiv 2610.27377): staged, the short rule at its start and the longer record once it
+ * shows it is struggling, shown once; plain, both at its start.
+ */
+export const recallArms = ["staged", "plain"] as const
+
+/**
  * What a ticket was dispatched with of the playbook (src/run/playbook.ts): its version, the lessons
  * its worker's prompt has, and those in its scope held back from it, for the holdout.
  */
@@ -182,6 +189,11 @@ export const DispatchPlaybook = Schema.Struct({
   version: Count,
   lessons: Schema.Array(Schema.String),
   held: Schema.Array(Schema.String),
+  /**
+   * How its lessons' records are recalled (tutti-5fs7.4), where one of those shown has one: staged,
+   * the rule now and the record once it struggles; plain, both now.
+   */
+  recall: optional(Schema.Literals(recallArms)),
 })
 
 /** A ticket was picked up: `n` and `limit` as in `[n/limit]`; no `limit` for a run without one. */
@@ -783,10 +795,22 @@ export const lessonRefusals = [
   "no_evidence",
   "duplicate",
   "capped",
+  /** Read from pairs, it cites tickets of fewer pairs than a lesson must recur across. */
+  "one_pair",
 ] as const
 
 /** What called for a reflection: every so many ended tickets, or a cluster of failures. */
 export const reflectionTriggers = ["every", "failures"] as const
+
+/**
+ * A pair the reflector read by contrast (tutti-5fs7.4): a ticket that didn't go clean and one that
+ * did, in the same area, the folders and files their footprints share.
+ */
+export const ReflectedPair = Schema.Struct({
+  bad: Schema.String,
+  good: Schema.String,
+  area: Schema.Array(Schema.String),
+})
 
 /** One lesson the reflector proposed, and what the gate made of it. */
 export const ReflectedLesson = Schema.Struct({
@@ -794,6 +818,12 @@ export const ReflectedLesson = Schema.Struct({
   kind: Schema.Literals(lessonKinds),
   scope: Schema.Array(Schema.String),
   evidence: Schema.Array(LessonEvidence),
+  /** Its longer record, where it proposed one that the gate let through. */
+  record: optional(Schema.String),
+  /** Why the gate dropped the record it proposed, the lesson kept. */
+  record_refused: optional(Schema.Literals(lessonRefusals)),
+  /** Read from pairs: how many of them its evidence cites a ticket of. */
+  pairs: optional(Count),
   /** Admitted: its ID, and whether it went active or waits for you. */
   id: optional(Schema.String),
   state: optional(Schema.Literals(["proposed", "active"])),
@@ -812,6 +842,8 @@ export const Reflection = Schema.Struct({
   trigger: Schema.Literals(reflectionTriggers),
   /** The ended tickets it was called for. */
   tickets: Schema.Array(Schema.String),
+  /** The pairs it read by contrast, where it had two or more; else it read the worst and the best. */
+  pairs: optional(Schema.Array(ReflectedPair)),
   /** The playbook's version after it. */
   version: Count,
   lessons: Schema.Array(ReflectedLesson),
@@ -837,6 +869,20 @@ export const MeasuredLesson = Schema.Struct({
   /** Fisher's exact test of that difference, where both have a ticket. */
   p: optional(Amount),
   retired: optional(Schema.Literals(lessonRetired)),
+  /** Its record's recall, for a ticket shown a lesson with a record (tutti-5fs7.4). */
+  recall: optional(
+    Schema.Struct({
+      /** The arm the ticket was in. */
+      arm: Schema.Literals(recallArms),
+      staged_clean: Count,
+      staged_bad: Count,
+      plain_clean: Count,
+      plain_bad: Count,
+      /** Clean rate staged less clean rate plain, where both arms have a ticket. */
+      effect: optional(RateDifference),
+      p: optional(Amount),
+    }),
+  ),
 })
 
 /**
@@ -851,6 +897,23 @@ export const LessonMeasure = Schema.Struct({
   /** The playbook's version after it. */
   version: Count,
   lessons: Schema.Array(MeasuredLesson),
+  text: Schema.String,
+})
+
+/** What showed a worker was struggling, for its lessons' records (tutti-5fs7.4). */
+export const recordWhys = ["verifier", "hand_back"] as const
+
+/**
+ * A worker in the staged arm showed it was struggling, and was given its lessons' records once
+ * (src/run/playbookRun.ts): its second verifier round began, or a failed check was handed back to
+ * it. tutti's own; `text` is its log line.
+ */
+export const LessonRecord = Schema.Struct({
+  ...head("lesson_record"),
+  ticket: Schema.String,
+  why: Schema.Literals(recordWhys),
+  /** The lessons whose records it was given. */
+  ids: Schema.Array(Schema.String),
   text: Schema.String,
 })
 
@@ -1113,6 +1176,7 @@ export const kinds = {
   audit: Audit,
   reflection: Reflection,
   lesson_measure: LessonMeasure,
+  lesson_record: LessonRecord,
   end: End,
   phase: Phase,
   attention: Attention,

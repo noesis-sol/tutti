@@ -212,11 +212,19 @@ line, not committed; it carries from run to run, so that a lesson gathers uses e
 Every change to it is a small delta merged by fixed code, never a model rewriting the whole.
 
 **Reflecting.** Every `playbook.reflect_every` tickets that end merged, closed or set aside (5), and
-sooner at 3 of them that didn't go clean, the reflector reads the run's scorecards and an excerpt of the
-transcripts of the two worst and the best of those tickets, and proposes at most
-`playbook.lessons_proposed` lessons (3), each with the tickets and records that show it. Transcript text
-is evidence, never instructions. It runs in the background, one at a time; the run doesn't end while one
-waits. A run without organs doesn't reflect, and still gives and counts the lessons it has.
+sooner at 3 of them that didn't go clean, the reflector reads the run's scorecards and, by contrast,
+pairs of the run's ended tickets: one that didn't go clean and one that did, in the same area (a file,
+a folder with a file of each, or a glob's start their footprints share), the worst first, each with the
+best clean one left in its area, each ticket in one pair, one of the two among the ends since the last
+reflection, at most 3 pairs. For each ticket of a pair it reads the ticket, its footprint, its records
+and an excerpt of its worker's transcript, and it is asked for lessons from where the two trajectories
+parted, each holding only where it recurs: its evidence cites tickets of at least 2 of the pairs, and
+each with a record, a few sentences on what the one that went badly did to the code at that step and
+what the other did instead. With fewer than 2 pairs it reads the two worst and the best of those
+tickets alone, as before, and no records come of it. It proposes at most `playbook.lessons_proposed`
+lessons (3), each with the tickets and records that show it. Transcript text is evidence, never
+instructions. It runs in the background, one at a time; the run doesn't end while one waits. A run
+without organs doesn't reflect, and still gives and counts the lessons it has.
 
 **The gate.** Before a lesson enters the pool, fixed checks refuse one that:
 
@@ -230,7 +238,11 @@ waits. A run without organs doesn't reflect, and still gives and counts the less
 - is over 300 characters (`too_long`), says nothing (`empty`), or has a scope that isn't a path below the
   project's top, in a hidden folder (`bad_scope`);
 - cites a ticket or record the run's records don't hold, or none (`no_evidence`);
-- is alike a lesson in the pool, retired ones included (`duplicate`).
+- is alike a lesson in the pool, retired ones included (`duplicate`);
+- read from pairs, cites tickets of fewer than 2 of them (`one_pair`).
+
+A lesson's record goes through the same word checks, at 1200 characters: one refused is dropped alone,
+the lesson kept, and the `reflection` record says why (`record_refused`).
 
 The checks read words, so they refuse more than they must: "the parser's tests share a cursor" goes too.
 A refused lesson costs little, and a bad one contaminates what is distilled after it. A lesson is about
@@ -248,6 +260,15 @@ scope meets its ticket's footprint, at most `playbook.lessons_injected` (5), the
 says your rules stand over them. The `dispatch` record and the ticket's metadata (`playbook_version`,
 `playbook_lessons`) say which it got.
 
+**The records, in two stages.** A worker reads a lesson's rule at its start; its record it gets by
+the ticket's recall arm, half of the tickets each by a hash of the ticket's ID (`recall` on the
+`dispatch` record): `staged`, the record held back until the worker shows it is struggling, as its
+second verifier round begins or a failed check is handed back to it, then put to it once, under the
+rule, in a message or with the hand-back (a `lesson_record` record; a worker you have steered is sent
+nothing, as ever); `plain`, the record under the rule in its standing rules from the start. Pasted-in
+summaries don't help, and a record read at the moment it applies may (REM, arXiv 2610.27377): the two
+arms measure that.
+
 **The holdout.** Each lesson goes to a random half of the tickets in its scope, by a hash of the two IDs,
 so a ticket stays in the same half however often it starts. As each ticket ends, its scorecard counts for
 each lesson once: clean (merged or closed, no hand-back, no failed check, no failed verifier round, its
@@ -256,10 +277,13 @@ exact test at 5% compares the two halves' clean rates. A lesson that measurably 
 one with no effect to tell from zero after `playbook.judged_after` uses (10) is retired too. With so few
 tickets only a large effect shows, so most lessons go that way: that is on purpose, as a pool of small
 unproven lessons does harm of its own. A ticket that only the cap on a prompt kept a lesson from is in
-neither half.
+neither half. A ticket shown a lesson with a record counts by its recall arm too (`staged_clean`,
+`staged_bad`, `plain_clean`, `plain_bad` on the lesson), and the same test compares the two arms'
+clean rates: measured and reported, never acted on.
 
-The report's Playbook section lists what waits for you and each lesson's counts and effect, and
-[Analytics](analytics.md#the-playbook) has queries over the records.
+The report's Playbook section lists what waits for you, with each proposed lesson's record, and each
+lesson's counts, effect and recall, and [Analytics](analytics.md#the-playbook) has queries over the
+records.
 
 ```
 $ tutti playbook                       # the lessons, those proposed first, counts and effect

@@ -11,10 +11,20 @@
 //   (`ended`, as the auditor's), and each look of the run asks (`pending`), so that no end can slip
 //   past the run's last look, its count and the reflection it calls for lost with it.
 // - Every `playbook.reflect_every` such ends, or at `clusterFailures` not clean since the last
-//   reflection, the reflector (organs/reflector.ts) reads the scorecards and the worst and the best
-//   of those tickets, one reflection at a time, in the run's scope, so that no ticket waits for a
-//   model. Each lesson it proposes goes through the gate: a `reflection` record and a line in the log.
-//   The run doesn't end while one waits (`pending`), and a quit interrupts it.
+//   reflection, the reflector (organs/reflector.ts) reads the scorecards and, by contrast, pairs of
+//   the run's judged tickets (`pairsOf`; tutti-5fs7.4): one that didn't go clean and one that did
+//   with a file or a folder of their footprints in common (`sharedArea`), one of the two among the
+//   ends since the last reflection, each ticket in one pair, the worst first, at most
+//   `readClosely.pairs`. With fewer than `recurringPairs` pairs it reads the worst and the best of
+//   those ends as before. One reflection at a time, in the run's scope, so that no ticket waits for a
+//   model. Each lesson it proposes goes through the gate, and one read from pairs must cite tickets
+//   of `recurringPairs` pairs, else it is refused `one_pair`: a `reflection` record and a line in
+//   the log. The run doesn't end while one waits (`pending`), and a quit interrupts it.
+// - A ticket in the staged recall arm (playbook.ts's recallArmOf) whose worker shows it is
+//   struggling, its second verifier round beginning (AgentHost's verifierCalls) or a failed check
+//   handed back to it (checkback.ts, through MergeOptions' `struggled`), is given the records of
+//   the lessons it has, once (`record`): a `lesson_record` record and a line in the log. A steered
+//   worker is sent nothing, as ever; a worker that is gone gets it with its hand-back, if one comes.
 //
 // The file is read afresh for each, so `tutti playbook` acts on a run under way. Anything wrong with
 // it, PLAYBOOK_FAILED, in the log and a `warn` record, leaves workers without lessons and the run going.
@@ -33,7 +43,9 @@ import {
   Result,
   type Scope,
   Semaphore,
+  Stream,
 } from "effect"
+import { AgentHost } from "../agent/AgentHost.ts"
 import { Transcripts } from "../agent/Transcripts.ts"
 import { AppConfig } from "../core/AppConfig.ts"
 import { timestamp } from "../core/localTime.ts"
@@ -44,13 +56,19 @@ import {
   excerptCharacters,
   excerptHeadCharacters,
   lessonsOf,
+  type PairEvidence,
   reflect,
   type TicketEvidence,
 } from "../organs/reflector.ts"
 import { ticketText } from "../organs/ticketText.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { EventStream } from "../services/EventStream.ts"
-import type { DispatchPlaybook, Event, reflectionTriggers } from "../services/events.ts"
+import type {
+  DispatchPlaybook,
+  Event,
+  ReflectedPair,
+  reflectionTriggers,
+} from "../services/events.ts"
 import { Git } from "../services/Git.ts"
 import { ranked, type Score, type Scoring, scorecardsEvidence } from "../services/scorecard.ts"
 import { ensurePlaybookExcluded } from "../services/Worktrees.ts"
@@ -73,8 +91,14 @@ import {
   type Lesson,
   lessonsSection,
   measured,
+  noRecall,
   playbookReport,
+  type RecordWhy,
   readPlaybook,
+  recallOf,
+  recordRefusal,
+  recordsHeld,
+  recordText,
   retireLesson,
   versionOf,
 } from "./playbook.ts"
@@ -86,6 +110,9 @@ export type Trigger = (typeof reflectionTriggers)[number]
 type Reflected = Extract<Event, { readonly kind: "reflection" }>["lessons"][number]
 type MeasuredLesson = Extract<Event, { readonly kind: "lesson_measure" }>["lessons"][number]
 
+/** A pair the reflector reads by contrast. */
+export type Pair = typeof ReflectedPair.Type
+
 export interface RunPlaybook {
   /** What `issue`, of `footprint`, gets of the playbook; undefined with none in its scope. */
   choose(
@@ -94,6 +121,11 @@ export interface RunPlaybook {
   ): Effect.Effect<typeof DispatchPlaybook.Type | undefined>
   /** The section of `ticket`'s worker's standing rules that holds its lessons; empty with none. */
   section(ticket: TicketId): Effect.Effect<string>
+  /**
+   * The records a staged worker is told as it struggles, `why`, once: the text to put to it, and
+   * its `lesson_record`; empty once it has had them, or with none to tell.
+   */
+  record(ticket: TicketId, why: RecordWhy): Effect.Effect<string>
   /** A ticket's part in the run ended: the scorecards not yet counted are, as `pending` does. */
   ended(end: Ended): Effect.Effect<void>
   /** The scorecards not yet counted are, then: the reflection under way, and those queued. */
@@ -108,6 +140,7 @@ export interface RunPlaybook {
 export const off: RunPlaybook = {
   choose: () => Effect.succeed(undefined),
   section: () => Effect.succeed(""),
+  record: () => Effect.succeed(""),
   ended: () => Effect.void,
   pending: Effect.succeed(0),
   interrupt: Effect.void,
@@ -117,8 +150,101 @@ export const off: RunPlaybook = {
 /** How many tickets not clean, since the last reflection, make a cluster of failures. */
 export const clusterFailures = 3
 
-/** How many of the worst and of the best tickets the reflector reads closely. */
-export const readClosely = { worst: 2, best: 1 }
+/**
+ * How many of the worst and of the best tickets the reflector reads closely, and how many pairs
+ * at most.
+ */
+export const readClosely = { worst: 2, best: 1, pairs: 3 }
+
+/**
+ * How many pairs a lesson read from pairs must cite tickets of, and so how many pairs there must
+ * be for the reflector to read pairs rather than the worst and the best.
+ */
+export const recurringPairs = 2
+
+/** A footprint as pairing reads it: its files and globs. */
+export type Area = Pick<Footprint, "files" | "globs">
+
+export const noArea: Area = { files: [], globs: [] }
+
+// The areas a footprint names, each as a glob: a file as it is, the folder of each file and a folder
+// entry as all under it, and a glob's fixed start the same.
+const areasOf = (footprint: Area): ReadonlySet<string> => {
+  const out = new Set<string>()
+  const folder = (path: string) => {
+    if (path !== "") out.add(`${path}/**`)
+  }
+  for (const file of footprint.files) {
+    if (file.endsWith("/")) {
+      folder(file.slice(0, -1))
+      continue
+    }
+    out.add(file)
+    const slash = file.lastIndexOf("/")
+    if (slash > 0) folder(file.slice(0, slash))
+  }
+  for (const glob of footprint.globs) {
+    const parts = glob.split("/")
+    const fixed = parts.slice(0, Math.max(0, parts.findIndex(isGlob)))
+    if (fixed.length > 0 && parts.some(isGlob)) folder(fixed.join("/"))
+  }
+  return out
+}
+
+/**
+ * What two footprints have in common, each as a glob, sorted: a file both name, a folder both have a
+ * file in (or name whole), a fixed start both globs have. None: the tickets aren't in one area.
+ */
+export const sharedArea = (a: Area, b: Area): ReadonlyArray<string> => {
+  const other = areasOf(b)
+  return [...areasOf(a)].filter((area) => other.has(area)).sort()
+}
+
+/**
+ * The pairs the reflector reads by contrast from `scores`, the run's judged scorecards, with the
+ * `footprints` the run has of their tickets: for each that didn't go clean, the worst first, the
+ * best clean one in the same area (`sharedArea`), each ticket in one pair, one of the two among
+ * `fresh`, the ends since the last reflection; at most `most`.
+ */
+export const pairsOf = (
+  scores: ReadonlyArray<Score>,
+  footprints: ReadonlyMap<string, Area>,
+  fresh: ReadonlySet<string>,
+  most: number,
+): ReadonlyArray<Pair> => {
+  const order = ranked(scores.filter((score) => judgedOutcome(score.outcome))).map(
+    ({ score }) => score,
+  )
+  const bad = order.filter((score) => !cleanScore(score))
+  const good = order.filter(cleanScore).reverse()
+  const used = new Set<string>()
+  const pairs: Array<Pair> = []
+  for (const worse of bad) {
+    if (pairs.length >= most) break
+    const footprint = footprints.get(worse.ticket)
+    if (footprint === undefined || used.has(worse.ticket)) continue
+    for (const better of good) {
+      if (used.has(better.ticket)) continue
+      if (!fresh.has(worse.ticket) && !fresh.has(better.ticket)) continue
+      const area = sharedArea(footprint, footprints.get(better.ticket) ?? noArea)
+      if (area.length === 0) continue
+      pairs.push({ bad: worse.ticket, good: better.ticket, area })
+      used.add(worse.ticket)
+      used.add(better.ticket)
+      break
+    }
+  }
+  return pairs
+}
+
+/** How many of `pairs` the tickets `evidence` cites are of. */
+export const pairsCited = (
+  evidence: ReadonlyArray<{ readonly ticket: string }>,
+  pairs: ReadonlyArray<Pick<Pair, "bad" | "good">>,
+): number => {
+  const cited = new Set(evidence.map((each) => each.ticket))
+  return pairs.filter((pair) => cited.has(pair.bad) || cited.has(pair.good)).length
+}
 
 /** What calls for a reflection after `since`, the judged ends since the last one; none for none. */
 export const triggerOf = (since: ReadonlyArray<Score>, every: number): Trigger | undefined =>
@@ -149,7 +275,11 @@ export const namedFootprint = (
   return { files: named.filter((name) => !isGlob(name)), globs: named.filter(isGlob) }
 }
 
-/** The gate's way through `candidates`, in turn, each against the pool as the last left it. */
+/**
+ * The gate's way through `candidates`, in turn, each against the pool as the last left it. Read
+ * from `pairs`, a candidate must cite tickets of `recurring` of them. A record the gate refuses is
+ * dropped, its lesson kept.
+ */
 export const admit = (
   lessons: ReadonlyArray<Lesson>,
   candidates: ReadonlyArray<Candidate>,
@@ -158,18 +288,32 @@ export const admit = (
     readonly transcripts: ReadonlyArray<string>
     readonly cap: number
     readonly at: string
+    readonly pairs?: ReadonlyArray<Pick<Pair, "bad" | "good">>
+    readonly recurring?: number
   },
 ): { readonly lessons: ReadonlyArray<Lesson>; readonly result: ReadonlyArray<Reflected> } => {
   let pool = lessons
-  const result = candidates.map((candidate): Reflected => {
+  const result = candidates.map((given): Reflected => {
+    const { record: proposed, ...rest } = given
+    const recordRefused = proposed === undefined ? undefined : recordRefusal(proposed, context)
+    const candidate: Candidate =
+      proposed === undefined || recordRefused !== undefined ? rest : { ...rest, record: proposed }
+    const pairs =
+      context.pairs === undefined ? undefined : pairsCited(candidate.evidence, context.pairs)
     const said = {
       text: candidate.text,
       kind: candidate.kind,
       scope: candidate.scope,
       evidence: candidate.evidence,
+      ...(candidate.record === undefined ? {} : { record: candidate.record }),
+      ...(recordRefused === undefined ? {} : { record_refused: recordRefused }),
+      ...(pairs === undefined ? {} : { pairs }),
     }
     const refused = gate(candidate, { ...context, lessons: pool })
     if (refused !== undefined) return { ...said, refused }
+    if (pairs !== undefined && pairs < (context.recurring ?? recurringPairs)) {
+      return { ...said, refused: "one_pair" }
+    }
     const added = addLesson(pool, candidate, context.cap, context.at)
     if (added === undefined) return { ...said, refused: "capped" }
     pool = added.lessons
@@ -189,7 +333,7 @@ export const admit = (
  */
 export const measure = (
   lessons: ReadonlyArray<Lesson>,
-  chosen: Pick<Chosen, "lessons" | "held">,
+  chosen: Pick<Chosen, "lessons" | "held" | "recall">,
   ticket: string,
   clean: boolean,
   uses: number,
@@ -202,13 +346,14 @@ export const measure = (
     !lesson.measured.includes(ticket)
   if (!lessons.some(applies)) return { lessons, result: [] }
   let pool = lessons.map((lesson) =>
-    applies(lesson) ? measured(lesson, ticket, shown.has(lesson.id), clean) : lesson,
+    applies(lesson) ? measured(lesson, ticket, shown.has(lesson.id), clean, chosen.recall) : lesson,
   )
   const result = lessons.filter(applies).map((before): MeasuredLesson => {
     const lesson = pool.find((each) => each.id === before.id) ?? before
     const retired = judgement(lesson, uses)
     if (retired !== undefined) pool = [...retireLesson(pool, lesson.id, retired)]
     const found = effectOf(lesson)
+    const recalled = recallOf(lesson)
     return {
       id: lesson.id,
       shown: shown.has(lesson.id),
@@ -218,6 +363,15 @@ export const measure = (
       held_bad: lesson.held_bad,
       ...(found === undefined ? {} : { effect: found.effect, p: found.p }),
       ...(retired === undefined ? {} : { retired }),
+      ...(shown.has(lesson.id) && lesson.record !== undefined && chosen.recall !== undefined
+        ? {
+            recall: {
+              arm: chosen.recall,
+              ...(lesson.recall ?? noRecall),
+              ...(recalled === undefined ? {} : { effect: recalled.effect, p: recalled.p }),
+            },
+          }
+        : {}),
     }
   })
   return { lessons: pool, result }
@@ -244,8 +398,11 @@ export const measureLine = (
   return detail`lessons for ${id}: ${parts.join("; ")}`
 }
 
-/** `  reflection: 3 lessons; active L1; proposed L2; refused 1 duplicate`. */
-export const reflectionLine = (lessons: ReadonlyArray<Reflected>): Line => {
+/**
+ * `  reflection: 3 lessons; active L1; proposed L2; refused 1 duplicate`, or from pairs
+ * `  reflection from 2 pairs: …`.
+ */
+export const reflectionLine = (lessons: ReadonlyArray<Reflected>, pairs = 0): Line => {
   const ids = (state: "active" | "proposed") =>
     lessons.flatMap((each) => (each.state === state && each.id !== undefined ? [each.id] : []))
   const refused = new Map<string, number>()
@@ -260,8 +417,13 @@ export const reflectionLine = (lessons: ReadonlyArray<Reflected>): Line => {
       ? []
       : [`refused ${[...refused].map(([why, n]) => `${n} ${why}`).join(", ")}`]),
   ]
-  return detail`reflection: ${parts.join("; ")}`
+  const from = pairs === 0 ? "" : ` from ${pairs === 1 ? "1 pair" : `${pairs} pairs`}`
+  return detail`reflection${from}: ${parts.join("; ")}`
 }
+
+/** `  records for <id> (verifier): L1, L3`. */
+export const recordLine = (id: string, why: RecordWhy, ids: ReadonlyArray<string>): Line =>
+  detail`records for ${id} (${why === "verifier" ? "second verifier round" : "failed check handed back"}): ${ids.join(", ")}`
 
 /** `  REFLECT_FAILED: <why>`. */
 export const reflectFailedLine = (why: string): Line =>
@@ -300,9 +462,12 @@ export const make = (options: {
   readonly repo: string
   readonly organs: Option.Option<Organs["Service"]>
   readonly done?: Effect.Effect<void>
+  /** Whether you have steered `ticket`'s worker (ledger.ts), which is then sent nothing; never without it. */
+  readonly steered?: (ticket: TicketId) => Effect.Effect<boolean>
 }): Effect.Effect<
   RunPlaybook,
   never,
+  | AgentHost
   | AppConfig
   | Beads
   | Git
@@ -318,11 +483,17 @@ export const make = (options: {
     if (!settings.enabled) return off
     const beads = yield* Beads
     const git = yield* Git
+    const host = yield* AgentHost
     const events = yield* EventStream
     const transcripts = yield* Transcripts
     const { say, warn } = yield* sayer
     const { repo } = options
     const chosen = yield* Ref.make<ReadonlyMap<string, Chosen>>(new Map())
+    // Each dispatched ticket's footprint, for the pairs; and the tickets told their records.
+    const footprints = yield* Ref.make<ReadonlyMap<string, Area>>(new Map())
+    const told = yield* Ref.make<ReadonlySet<string>>(new Set())
+    // How many calls to the verifier each worker has made.
+    const calls = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
     const since = yield* Ref.make<ReadonlyArray<string>>([])
     const queued = yield* Queue.unbounded<Due>()
     const pending = yield* Ref.make(0)
@@ -380,7 +551,7 @@ export const make = (options: {
         })
       })
 
-    const closeRead = (scoring: Scoring, ticket: string, standing: "worst" | "best") =>
+    const closeRead = (scoring: Scoring, ticket: string, standing: TicketEvidence["standing"]) =>
       Effect.gen(function* () {
         const shown = yield* Effect.result(beads.show(ticket as TicketId))
         const items = yield* allItems(transcripts, ticket as TicketId)
@@ -404,10 +575,30 @@ export const make = (options: {
           const score = scoring.scores.get(ticket)
           return score === undefined ? [] : [score]
         })
-        const tickets = yield* Effect.forEach(closely(called), ({ ticket, standing }) =>
-          closeRead(scoring, ticket, standing),
+        // By contrast where there are pairs enough; else the worst and the best of the ends.
+        const judged = scores.filter((score) => judgedOutcome(score.outcome))
+        const known = yield* footprintsOf(judged.map((score) => score.ticket))
+        const pairs = pairsOf(judged, known, new Set(due.tickets), readClosely.pairs)
+        const byContrast = pairs.length >= recurringPairs
+        const tickets = byContrast
+          ? []
+          : yield* Effect.forEach(closely(called), ({ ticket, standing }) =>
+              closeRead(scoring, ticket, standing),
+            )
+        const paired = !byContrast
+          ? []
+          : yield* Effect.forEach(pairs, (pair) =>
+              Effect.map(
+                Effect.all([
+                  closeRead(scoring, pair.bad, "bad"),
+                  closeRead(scoring, pair.good, "good"),
+                ]),
+                ([bad, good]): PairEvidence => ({ bad, good, area: pair.area.join("\n") }),
+              ),
+            )
+        const read = [...tickets, ...paired.flatMap((pair) => [pair.bad, pair.good])].filter(
+          (each) => each.transcript.trim() !== "",
         )
-        const read = tickets.filter((each) => each.transcript.trim() !== "")
         // Nothing to compare: a model turn would have only the figures it can't explain.
         if (read.length === 0) return
         const pool = yield* lessonsNow
@@ -417,7 +608,8 @@ export const make = (options: {
             .filter((lesson) => lesson.state !== "retired")
             .map((lesson) => `${lesson.id} (${lesson.kind}): ${lesson.text}`)
             .join("\n"),
-          tickets: read,
+          tickets,
+          ...(byContrast ? { pairs: paired, recurring: recurringPairs } : {}),
           most: settings.lessons_proposed,
         }).pipe(Effect.provideService(Organs, organs), Effect.result)
         if (Result.isFailure(answer)) {
@@ -436,6 +628,7 @@ export const make = (options: {
               transcripts: read.map((each) => each.transcript),
               cap: settings.pool_cap,
               at,
+              ...(byContrast ? { pairs, recurring: recurringPairs } : {}),
             }),
           ),
         )
@@ -444,9 +637,10 @@ export const make = (options: {
           kind: "reflection",
           trigger: due.trigger,
           tickets: due.tickets,
+          ...(byContrast ? { pairs } : {}),
           version: versionOf(yield* lessonsNow),
           lessons: admitted.success,
-          text: reflectionLine(admitted.success),
+          text: reflectionLine(admitted.success, byContrast ? pairs.length : 0),
         })
       }).pipe(
         Effect.catchCause((cause) =>
@@ -462,7 +656,64 @@ export const make = (options: {
         ),
       )
 
+    // The footprints of `tickets`: as the run read them at dispatch, else the files each names.
+    const footprintsOf = (tickets: ReadonlyArray<string>) =>
+      Effect.gen(function* () {
+        const read = yield* Ref.get(footprints)
+        const out = new Map<string, Area>()
+        for (const ticket of tickets) {
+          const kept = read.get(ticket)
+          if (kept !== undefined) {
+            out.set(ticket, kept)
+            continue
+          }
+          const shown = yield* Effect.result(beads.show(ticket as TicketId))
+          out.set(ticket, Result.isSuccess(shown) ? namedFootprint(shown.success) : noArea)
+        }
+        return out as ReadonlyMap<string, Area>
+      })
+
+    // The lessons whose records `ticket`'s staged worker still has to be told; none once told.
+    const heldFor = (ticket: TicketId) =>
+      Effect.gen(function* () {
+        const given = (yield* Ref.get(chosen)).get(ticket)
+        if (given === undefined || (yield* Ref.get(told)).has(ticket)) return []
+        return recordsHeld(given)
+      })
+
+    // The worker was told the records of `lessons`, `why`: once a ticket, with its record.
+    const toldOf = (ticket: TicketId, why: RecordWhy, lessons: ReadonlyArray<Lesson>) =>
+      Effect.gen(function* () {
+        yield* Ref.update(told, (now) => new Set(now).add(ticket))
+        const ids = lessons.map((lesson) => lesson.id)
+        yield* say({ kind: "lesson_record", ticket, why, ids, text: recordLine(ticket, why, ids) })
+      })
+
+    // A worker's second verifier round: told its records then, unless you have steered it. One
+    // that is gone, or ended, isn't told: its hand-back carries them, if one comes.
+    const verifierCalled = (ticket: TicketId) =>
+      Effect.gen(function* () {
+        const n = yield* Ref.modify(calls, (now) => {
+          const next = (now.get(ticket) ?? 0) + 1
+          return [next, new Map(now).set(ticket, next)] as const
+        })
+        if (n !== 2) return
+        const lessons = yield* heldFor(ticket)
+        if (lessons.length === 0) return
+        if (options.steered !== undefined && (yield* options.steered(ticket))) return
+        const text = recordText(lessons, "verifier")
+        const sent = yield* Effect.result(host.send(ticket, { text, from: "clientComposed" }))
+        if (Result.isSuccess(sent)) yield* toldOf(ticket, "verifier", lessons)
+      })
+
     const fibers = yield* (yield* RunFibers).make<never, never>("playbook")
+    yield* FiberSet.run(
+      fibers,
+      Effect.andThen(
+        Stream.runForEach(host.verifierCalls, (call) => verifierCalled(call.ticket)),
+        Effect.never,
+      ),
+    )
     if (Option.isSome(options.organs)) {
       const organs = options.organs.value
       yield* FiberSet.run(
@@ -511,12 +762,11 @@ export const make = (options: {
         Effect.gen(function* () {
           const kept = (yield* Ref.get(chosen)).get(issue.id)
           if (kept !== undefined) return dispatchOf(kept)
-          const given = chosenFor(
-            yield* lessonsNow,
-            footprint ?? namedFootprint(issue),
-            issue.id,
-            settings.lessons_injected,
+          const area = footprint ?? namedFootprint(issue)
+          yield* Ref.update(footprints, (now) =>
+            new Map(now).set(issue.id, { files: area.files, globs: area.globs }),
           )
+          const given = chosenFor(yield* lessonsNow, area, issue.id, settings.lessons_injected)
           const said = dispatchOf(given)
           if (said === undefined) return undefined
           yield* Ref.update(chosen, (now) => new Map(now).set(issue.id, given))
@@ -542,6 +792,13 @@ export const make = (options: {
         Effect.map(Ref.get(chosen), (now) => {
           const given = now.get(ticket)
           return given === undefined ? "" : lessonsSection(given)
+        }),
+      record: (ticket, why) =>
+        Effect.gen(function* () {
+          const lessons = yield* heldFor(ticket)
+          if (lessons.length === 0) return ""
+          yield* toldOf(ticket, why, lessons)
+          return recordText(lessons, why)
         }),
       ended: () => catchUp,
       pending: Effect.andThen(catchUp, Ref.get(pending)),

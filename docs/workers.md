@@ -147,7 +147,10 @@ section by section ([Keeping them up to date](setup.md#keeping-the-worker-prompt
 
 A worker's standing rules can end with a marked section of lessons from the project's earlier tickets,
 those in its ticket's scope: [The playbook](organs.md#the-reflector-and-the-playbook). Your rules stand
-over them.
+over them. A lesson read by contrast carries a record, a few sentences on where an earlier ticket in
+that area went badly and another went well: half of the workers read it under the rule from the start,
+and half are told it once, as a message starting `tutti:` or with a failed check handed back, as their
+second verifier round begins or the check comes back, so that the two can be compared.
 
 ## Permissions
 

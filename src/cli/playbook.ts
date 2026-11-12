@@ -13,7 +13,9 @@ import {
   effectOf,
   type Lesson,
   lessonCharacters,
+  noRecall,
   readPlaybook,
+  recallOf,
   retireLesson,
   touchesGitOrBd,
   versionOf,
@@ -58,18 +60,26 @@ export interface Say {
 
 /** One lesson on a line: `L3 proposed pitfall src/** +2/-1, held 1/1, effect +17 points: text`. */
 export const lessonLine = (lesson: Lesson): string => {
+  const points = (found: { readonly effect: number; readonly p: number } | undefined): string =>
+    found === undefined ? "" : ` ${Math.round(found.effect * 100)} points (p ${found.p.toFixed(2)})`
   const found = effectOf(lesson)
-  const effect =
-    found === undefined
+  const effect = found === undefined ? "" : `, effect${points(found)}`
+  const counts = lesson.recall ?? noRecall
+  const recall =
+    lesson.record === undefined
       ? ""
-      : `, effect ${Math.round(found.effect * 100)} points (p ${found.p.toFixed(2)})`
+      : `, recall staged ${counts.staged_clean}/${counts.staged_bad}, plain ${counts.plain_clean}/${counts.plain_bad}${points(recallOf(lesson))}`
   const scope = lesson.scope.length === 0 ? "the whole project" : lesson.scope.join(", ")
   const state = lesson.retired === undefined ? lesson.state : `retired (${lesson.retired})`
   return sanitizeLine(
     `${lesson.id} ${state} ${lesson.kind} [${scope}] helpful ${lesson.helpful}, harmful ${lesson.harmful}, ` +
-      `held back ${lesson.held_clean} clean, ${lesson.held_bad} not${effect}: ${lesson.text}`,
+      `held back ${lesson.held_clean} clean, ${lesson.held_bad} not${effect}${recall}: ${lesson.text}`,
   )
 }
+
+/** The line under a lesson's that holds its record, `  record: …`; undefined with none. */
+export const recordLine = (lesson: Lesson): string | undefined =>
+  lesson.record === undefined ? undefined : sanitizeLine(`  record: ${lesson.record}`)
 
 const rank = (lesson: Lesson): number =>
   lesson.state === "proposed" ? 0 : lesson.state === "active" ? 1 : 2
@@ -109,6 +119,8 @@ export const playbook = (top: string, act: PlaybookAct, say: Say) =>
         say.out(`Playbook version ${versionOf(lessons)}:`)
         for (const lesson of [...lessons].sort((a, b) => rank(a) - rank(b))) {
           say.out(lessonLine(lesson))
+          const record = recordLine(lesson)
+          if (record !== undefined) say.out(record)
         }
       }
       if (bad.length > 0)
