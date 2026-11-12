@@ -4,11 +4,12 @@
 // the end's steps (endOfRun.ts): the tickets a run can't end in Stopped and their sessions
 // suspended (§ 4.8), the quit's stop put first, the stops' line, the summary lines and the closing
 // line (the stops', or READY_EMPTY, LIMIT_REACHED or DRAINED, with a scoped run's SCOPE_ part),
-// the full check when the run ended by itself having merged a ticket (fullcheck.ts), the report's
-// evidence (reportEvidence.ts), and the end record; or, given RunOptions.endLater, the report and
-// the end record are left to `finish` (run.ts), which main runs on the main screen once the
-// renderer is gone (§ 7.1).
-import { Deferred, Effect, Option, Result } from "effect"
+// the full check when the run ended by itself having merged a ticket (fullcheck.ts), with the
+// report's evidence from bd and git read beside it (report.ts readEvidence, reportEvidence.ts), so
+// that the reviewer starts as the check ends, and the end record; or, given RunOptions.endLater,
+// the report and the end record are left to `finish` (run.ts), which main runs on the main screen
+// once the renderer is gone (§ 7.1).
+import { Deferred, Effect, Exit, Fiber, Option, Result } from "effect"
 import { section } from "../../organs/evidence.ts"
 import { Organs } from "../../organs/Organs.ts"
 import type { TicketId } from "../../services/Beads.ts"
@@ -30,7 +31,13 @@ import { capEvidence } from "../pressureCap.ts"
 import { interruptedText, keptText } from "../quit.ts"
 import { quitStop } from "../quitting.ts"
 import { dropRechecks } from "../recheck.ts"
-import { type ReportOut, type ReportRun, runReport, showConcurrency } from "../report.ts"
+import {
+  type ReportOut,
+  type ReportRun,
+  readEvidence,
+  runReport,
+  showConcurrency,
+} from "../report.ts"
 import { failedChecksSection, followUpsSection } from "../reportEvidence.ts"
 import { showOn } from "../runView.ts"
 import type { Looped } from "./loop.ts"
@@ -174,6 +181,30 @@ export const summarise = (
     const sections = [...failedChecksSection(state.tickets, yield* queue.rechecks.failures)]
     // No early check runs beside the full check, nor after it.
     yield* early.stop("the full check runs")
+    // The report's evidence from bd and git (the commits merged, the tickets closed and set aside,
+    // the ready count; for a scoped run, the follow-ups filed outside its scope), read while the
+    // full check runs, so that the reviewer starts as the check ends: only the report's section on
+    // the check waits for it. Nothing is read for a run quit already, which has no report, and a
+    // quit during the check interrupts the reads at once.
+    const reviewing =
+      Option.isSome(organs) &&
+      config.settings.organs.review &&
+      quit === null &&
+      !(yield* Deferred.isDone(quitting))
+    const reading = reviewing
+      ? yield* Effect.forkChild(
+          Effect.raceFirst(
+            Effect.all({
+              read: readEvidence({ base, startHead }),
+              followUps:
+                config.ticket === null
+                  ? Effect.succeed([])
+                  : followUpsSection(beads, config.ticket, begun),
+            }),
+            Effect.andThen(Deferred.await(quitting), Effect.interrupt),
+          ),
+        )
+      : null
     const checked = yield* end.fullCheck(Object.values(phases), all.length > 0, quit)
     const said = [...summary, closing, ...checked.said]
     sections.push(...checked.sections)
@@ -194,12 +225,16 @@ export const summarise = (
     const after = scorecardsReport(scores) + (yield* playbook.report) + checked.after
     const exitCode = checked.code ?? exitCodeOf(all)
 
-    // Gathered only for a report, which a quit skips: bd lists the scope's tickets level by level.
+    // What was read is the report's, which a quit skips: a quit during the full check stopped the
+    // reads, and one just after it stops them now.
     const quitted = quit !== null || (yield* Deferred.isDone(quitting))
-    const reviews = Option.isSome(organs) && config.settings.organs.review && !quitted
-    if (config.ticket !== null && reviews) {
-      sections.push(...(yield* followUpsSection(beads, config.ticket, begun)))
-    }
+    const read =
+      reading === null
+        ? undefined
+        : quitted
+          ? yield* Effect.as(Fiber.interrupt(reading), undefined)
+          : yield* Fiber.await(reading)
+    if (read !== undefined && read._tag === "Success") sections.push(...read.value.followUps)
     if (config.feature !== null) {
       sections.push(section(featureRequestHeading(config.ticket), config.feature))
     }
@@ -214,6 +249,11 @@ export const summarise = (
       quit: quitted,
       sections,
       ...(after === "" ? {} : { after }),
+      ...(read === undefined
+        ? {}
+        : {
+            read: Exit.map(read, ({ read }) => ({ ...read, beforeFullCheck: checked.ran })),
+          }),
     }
     const reportContext = yield* Effect.context<RunEnv | Ledger>()
     const cost = yield* Effect.serviceOption(OrganCost)

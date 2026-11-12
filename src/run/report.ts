@@ -17,7 +17,7 @@
 // hold is on it can't run (§ 4.12): a hold lifted before the end lets it run, and one that held the
 // run to its end skips it. Ctrl+C, which interrupts it, skips it too; a defect is REVIEW_FAILED.
 import { join } from "node:path"
-import { Cause, Clock, Effect, Result } from "effect"
+import { Cause, Clock, Effect, type Exit, Result } from "effect"
 import { Attention, type Tally } from "../agent/Attention.ts"
 import { AppConfig } from "../core/AppConfig.ts"
 import { clock, clockFrom, reportName, span } from "../core/localTime.ts"
@@ -83,6 +83,32 @@ export interface ReportRun {
    * of its output (fullCheckReport).
    */
   readonly after?: string
+  /**
+   * What the run read from bd and git for the report while the full check ran (readEvidence,
+   * run/end.ts), so that the reviewer starts as the check ends; read as the report is gathered
+   * when absent. A read that failed in a defect fails the report, REVIEW_FAILED, as one made here
+   * would.
+   */
+  readonly read?: Exit.Exit<Readings>
+}
+
+/**
+ * The report's evidence read from bd and git: the commits merged, the tickets closed and set aside
+ * as bd has them, and how many tickets are ready. Read while the full check runs (ReportRun.read),
+ * as nothing a run has left running changes them; the ready count, which a ticket filed by hand
+ * could move, says so.
+ */
+export interface Readings {
+  /** The commits merged, as the reviewer reads them. */
+  readonly commits: string
+  /** Each ticket closed in the run, as the reviewer reads it. */
+  readonly closed: ReadonlyArray<string>
+  /** Each ticket set aside in the run, as the reviewer reads it. */
+  readonly setAside: ReadonlyArray<string>
+  /** How many tickets are ready; null when bd couldn't list them. */
+  readonly ready: number | null
+  /** The full check ran after these were read: the ready count says it was counted before it. */
+  readonly beforeFullCheck?: boolean
 }
 
 /** Where the report is printed after the dashboard. */
@@ -427,26 +453,18 @@ export const ranFrom = (started: number, ended: number): string =>
   `from ${clock(started)} to ${clockFrom(ended, started)}`
 
 /**
- * The reviewer's input: the run's evidence, in sections, then tutti's own line on the run, with the
- * request last, as Claude reads long inputs best with it at the end.
+ * Reads the report's evidence from bd and git (Readings): the commits merged into `run`'s base
+ * since its start, the tickets closed and set aside, with one bd list, and the ready count. Each
+ * read that fails is said in its place; it never fails.
  */
-export const gather = (
-  run: ReportRun,
-): Effect.Effect<
-  ReadonlyArray<InputPart>,
-  never,
-  AppConfig | OrganCost | Ledger | Attention | Log | Beads | Git
-> =>
+export const readEvidence = (
+  run: Pick<ReportRun, "base" | "startHead">,
+): Effect.Effect<Readings, never, AppConfig | Ledger | Beads | Git> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
-    const attention = yield* Attention
     const beads = yield* Beads
     const git = yield* Git
-    const logs = yield* Log
-    const logLines = yield* logs.lines
-    const startBlockEnd = yield* logs.startBlockEnd
     const entries = [...(yield* (yield* Ledger).current).tickets.values()]
-    const now = yield* Clock.currentTimeMillis
 
     const commits = yield* git.log(config.repo, run.startHead, run.base).pipe(
       Effect.map((list) =>
@@ -474,7 +492,7 @@ export const gather = (
         ),
       )
 
-    const closedText = yield* Effect.forEach(
+    const closed = yield* Effect.forEach(
       entries.filter(inSection("closed")),
       (entry) =>
         shown(entry, (issue) => {
@@ -487,7 +505,7 @@ export const gather = (
       { concurrency: showConcurrency },
     )
 
-    const asideText = yield* Effect.forEach(
+    const setAside = yield* Effect.forEach(
       entries.filter(inSection("setAside")),
       (entry) =>
         shown(entry, (issue) =>
@@ -500,14 +518,46 @@ export const gather = (
       { concurrency: showConcurrency },
     )
 
+    const ready = yield* beads.ready(config.ticket === null ? {} : { parent: config.ticket }).pipe(
+      Effect.map((issues) => issues.length),
+      Effect.catch(() => Effect.succeed(null)),
+    )
+    return { commits, closed, setAside, ready } satisfies Readings
+  })
+
+/** The ready count as the reviewer reads it: when it was counted, where the full check came after. */
+export const readySaid = (read: Readings): string =>
+  read.ready === null
+    ? "unknown, bd could not list them"
+    : read.beforeFullCheck === true
+      ? `${read.ready}, counted before the full check ran`
+      : String(read.ready)
+
+/**
+ * The reviewer's input: the run's evidence, in sections, then tutti's own line on the run, with the
+ * request last, as Claude reads long inputs best with it at the end. What bd and git give is
+ * `run.read`, read while the full check ran, or read now (readEvidence).
+ */
+export const gather = (
+  run: ReportRun,
+): Effect.Effect<
+  ReadonlyArray<InputPart>,
+  never,
+  AppConfig | OrganCost | Ledger | Attention | Log | Beads | Git
+> =>
+  Effect.gen(function* () {
+    const config = yield* AppConfig
+    const attention = yield* Attention
+    const logs = yield* Log
+    const logLines = yield* logs.lines
+    const startBlockEnd = yield* logs.startBlockEnd
+    const entries = [...(yield* (yield* Ledger).current).tickets.values()]
+    const now = yield* Clock.currentTimeMillis
+    const read = yield* run.read ?? readEvidence(run)
+
     const runningText = entries
       .filter(inSection("inProgress"))
       .map((entry) => `${entry.ticket}: ${entry.title}\n${phaseSaid(entry.phase)}`)
-
-    const ready = yield* beads.ready(config.ticket === null ? {} : { parent: config.ticket }).pipe(
-      Effect.map((issues) => String(issues.length)),
-      Effect.catch(() => Effect.succeed("unknown, bd could not list them")),
-    )
 
     const tallies =
       entries.length === 0
@@ -541,14 +591,14 @@ export const gather = (
     return [
       section("The run's final line", ending),
       section("tutti's log for this run", cappedLog(logLines.map(filed), startBlockEnd)),
-      section(`Commits merged into ${run.base} in this run`, commits),
+      section(`Commits merged into ${run.base} in this run`, read.commits),
       section(
         "Tickets closed in this run, merged or with no change to merge (ID, title, phase, close reason)",
-        cappedList(closedText, listCaps.closed, { one: "closed ticket", many: "closed tickets" }),
+        cappedList(read.closed, listCaps.closed, { one: "closed ticket", many: "closed tickets" }),
       ),
       section(
         "Tickets set aside in this run (ID, title, phase, bd status, notes including triage notes)",
-        cappedList(asideText, listCaps.setAside, {
+        cappedList(read.setAside, listCaps.setAside, {
           one: "set-aside ticket",
           many: "set-aside tickets",
         }),
@@ -560,7 +610,7 @@ export const gather = (
           many: "tickets in progress",
         }),
       ),
-      section("Tickets still ready", ready),
+      section("Tickets still ready", readySaid(read)),
       section(
         "Each ticket's attention requests and their answers, the calls Claude Code denied its " +
           "worker without asking, your messages to its worker, its compactions, and whether you " +

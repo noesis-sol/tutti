@@ -134,6 +134,8 @@ export interface Suspended {
 
 /** What the full check after the closing line said (fullCheck). */
 export interface Checked {
+  /** Whether the full check ran: it was due, and went to its end or a quit's. */
+  readonly ran: boolean
   /** The lines it wrote after the closing line. */
   readonly said: ReadonlyArray<Line>
   /** Its evidence for the report. */
@@ -389,12 +391,19 @@ export const make = (options: {
         return { line: text, ending: Ending.Done({ text, tickets: n, limit: config.limit, took }) }
       })
 
-    // The stop of a quit, or a panic, after the loop: `when` it came, written and recorded.
-    const lateStop = (late: Quitting, when: string) =>
+    // The stop of a quit, or a panic, after the loop: `when` it came, during the full check
+    // (`during`) or as the run ended, written and recorded.
+    const lateStop = (late: Quitting, when: string, during = false) =>
       Effect.gen(function* () {
         const stop = quitStop(late, ({ how }) => `quit ${how} ${when}`)
         yield* say({ kind: "stop", detail: stop.why, text: stop.text })
-        return { said: [stop.text], sections: [], after: "", code: stop.code } satisfies Checked
+        return {
+          ran: during,
+          said: [stop.text],
+          sections: [],
+          after: "",
+          code: stop.code,
+        } satisfies Checked
       })
 
     // The dashboard's Status, when the run shows one: what the full check runs, null once it ends.
@@ -422,8 +431,11 @@ export const make = (options: {
               (quit) => ({ quit }),
             ),
           ).pipe(Effect.ensuring(showCheck(null)))
-          if ("quit" in checked) return yield* lateStop(checked.quit, "during the full check")
+          if ("quit" in checked) {
+            return yield* lateStop(checked.quit, "during the full check", true)
+          }
           return {
+            ran: true,
             said: [checked.done.text],
             sections: [section("The full check", fullCheckEvidence(checked.done))],
             after: fullCheckReport(checked.done, command ?? ""),
@@ -433,7 +445,7 @@ export const make = (options: {
           // Asked to quit as the run ended: it ended all the same, INTERRUPTED.
           return yield* lateStop(yield* Deferred.await(quitting), "as the run ended")
         }
-        return { said: [], sections: [], after: "" } satisfies Checked
+        return { ran: false, said: [], sections: [], after: "" } satisfies Checked
       }).pipe(Effect.provideContext(context))
 
     return { suspend, figures, summary, closing, fullCheck: checkFull } satisfies EndOfRun
