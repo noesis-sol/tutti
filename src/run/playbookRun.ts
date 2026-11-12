@@ -75,7 +75,7 @@ import { ensurePlaybookExcluded } from "../services/Worktrees.ts"
 import { allItems, type Ended } from "./auditor.ts"
 import { RunFibers } from "./fibers.ts"
 import type { Footprint } from "./footprint.ts"
-import { isGlob } from "./glob.ts"
+import { globHolds, globsMeet, isGlob } from "./glob.ts"
 import {
   addLesson,
   type Candidate,
@@ -167,37 +167,53 @@ export type Area = Pick<Footprint, "files" | "globs">
 
 export const noArea: Area = { files: [], globs: [] }
 
-// The areas a footprint names, each as a glob: a file as it is, the folder of each file and a folder
-// entry as all under it, and a glob's fixed start the same.
-const areasOf = (footprint: Area): ReadonlySet<string> => {
-  const out = new Set<string>()
-  const folder = (path: string) => {
-    if (path !== "") out.add(`${path}/**`)
-  }
-  for (const file of footprint.files) {
-    if (file.endsWith("/")) {
-      folder(file.slice(0, -1))
-      continue
-    }
-    out.add(file)
-    const slash = file.lastIndexOf("/")
-    if (slash > 0) folder(file.slice(0, slash))
-  }
-  for (const glob of footprint.globs) {
-    const parts = glob.split("/")
-    const fixed = parts.slice(0, Math.max(0, parts.findIndex(isGlob)))
-    if (fixed.length > 0 && parts.some(isGlob)) folder(fixed.join("/"))
-  }
-  return out
+// The areas a footprint names: its files; the folder of each file (`folders`, as `src/run/`), which
+// says the file is there and no more; and what it names whole (`covers`, each as a glob), a folder
+// entry as all under it and a glob as it is, which holds whatever is under it.
+interface Areas {
+  readonly files: ReadonlySet<string>
+  readonly folders: ReadonlySet<string>
+  readonly covers: ReadonlySet<string>
 }
 
+const areasOf = (footprint: Area): Areas => {
+  const files = new Set<string>()
+  const folders = new Set<string>()
+  const covers = new Set<string>(footprint.globs)
+  for (const file of footprint.files) {
+    if (file.endsWith("/")) {
+      if (file !== "/") covers.add(`${file}**`)
+      continue
+    }
+    files.add(file)
+    const slash = file.lastIndexOf("/")
+    if (slash > 0) folders.add(file.slice(0, slash + 1))
+  }
+  return { files, folders, covers }
+}
+
+// A cover of one footprint, with what of the other is under it: a file, a folder with a file in it,
+// or a cover that meets it.
+const covered = (cover: string, other: Areas): boolean =>
+  [...other.files].some((file) => globHolds(cover, file)) ||
+  [...other.folders].some((folder) => globHolds(cover, folder)) ||
+  [...other.covers].some((each) => globsMeet(cover, each))
+
 /**
- * What two footprints have in common, each as a glob, sorted: a file both name, a folder both have a
- * file in (or name whole), a fixed start both globs have. None: the tickets aren't in one area.
+ * What two footprints have in common, each as a glob, sorted: a file both name; a folder both have
+ * a file in; and what one names whole, a folder entry or a glob, with a file, a folder or a cover
+ * of the other under it. A file's folder says only that the file is there: two files in folders
+ * one under the other share none. None: the tickets aren't in one area.
  */
 export const sharedArea = (a: Area, b: Area): ReadonlyArray<string> => {
-  const other = areasOf(b)
-  return [...areasOf(a)].filter((area) => other.has(area)).sort()
+  const left = areasOf(a)
+  const right = areasOf(b)
+  const shared = new Set<string>()
+  for (const file of left.files) if (right.files.has(file)) shared.add(file)
+  for (const folder of left.folders) if (right.folders.has(folder)) shared.add(`${folder}**`)
+  for (const cover of left.covers) if (covered(cover, right)) shared.add(cover)
+  for (const cover of right.covers) if (covered(cover, left)) shared.add(cover)
+  return [...shared].sort()
 }
 
 /**

@@ -213,8 +213,9 @@ Every change to it is a small delta merged by fixed code, never a model rewritin
 
 **Reflecting.** Every `playbook.reflect_every` tickets that end merged, closed or set aside (5), and
 sooner at 3 of them that didn't go clean, the reflector reads the run's scorecards and, by contrast,
-pairs of the run's ended tickets: one that didn't go clean and one that did, in the same area (a file,
-a folder with a file of each, or a glob's start their footprints share), the worst first, each with the
+pairs of the run's ended tickets: one that didn't go clean and one that did, in the same area (a file
+both name, a folder with a file of each, or a folder entry or glob of one with a file of the other under
+it), the worst first, each with the
 best clean one left in its area, each ticket in one pair, one of the two among the ends since the last
 reflection, at most 3 pairs. For each ticket of a pair it reads the ticket, its footprint, its records
 and an excerpt of its worker's transcript, and it is asked for lessons from where the two trajectories

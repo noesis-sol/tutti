@@ -133,7 +133,7 @@ const ticketIn = (id: string, arm: "staged" | "plain"): TicketId => {
 }
 
 describe("the pairs", () => {
-  test("two footprints share an area where they name a file, a folder, or a glob's start", () => {
+  test("two footprints share an area where they name a file, a folder, or a glob with one under it", () => {
     expect(
       sharedArea(
         { files: ["src/run/a.ts", "src/ui/x.tsx"], globs: [] },
@@ -148,7 +148,24 @@ describe("the pairs", () => {
     ).toEqual(["src/run/**"])
     expect(
       sharedArea({ files: [], globs: ["src/ui/*.tsx"] }, { files: ["src/ui/x.tsx"], globs: [] }),
-    ).toEqual(["src/ui/**"])
+    ).toEqual(["src/ui/*.tsx"])
+  })
+
+  test("what one names whole, a folder entry or a glob, holds the other's files under it", () => {
+    const nested = { files: ["src/ui/panel/x.tsx"], globs: [] }
+    expect(sharedArea({ files: [], globs: ["src/ui/**"] }, nested)).toEqual(["src/ui/**"])
+    expect(sharedArea(nested, { files: ["src/ui/"], globs: [] })).toEqual(["src/ui/**"])
+    expect(
+      sharedArea({ files: [], globs: ["src/**"] }, { files: ["src/run/a.ts"], globs: [] }),
+    ).toEqual(["src/**"])
+    // A glob of one file's shape doesn't reach a subfolder; two covers that meet share both.
+    expect(sharedArea({ files: [], globs: ["src/ui/*.tsx"] }, nested)).toEqual([])
+    expect(
+      sharedArea({ files: [], globs: ["src/ui/**"] }, { files: [], globs: ["src/ui/panel/**"] }),
+    ).toEqual(["src/ui/**", "src/ui/panel/**"])
+    expect(
+      sharedArea({ files: [], globs: ["src/ui/**"] }, { files: ["src/uix/a.ts"], globs: [] }),
+    ).toEqual([])
   })
 
   test("not where their folders differ, however near, nor with a file at the top alone", () => {
