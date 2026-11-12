@@ -22,8 +22,9 @@ fast-forwarded into the branch the main checkout is on; its worktree and branch 
 Anything else is set aside for review, and the loop moves on or stops. It never pushes.
 
 Two words, kept apart: **workers** do tickets, one session and worktree each; **organs** are
-tutti's one-shot advisers (triage, the predictor, the reviewer that writes the run report, and the
-scout for `tutti init`), each a model call with no tools and no MCP servers. Organs never
+tutti's one-shot advisers (triage, the reviewer that writes the run report, the critic, the
+auditor, the reflector, and the scout for `tutti init`), each a model call with no tools and no
+MCP servers (the scout has read-only ones). Organs never
 change a ticket or the code.
 
 Workers live inside tutti's process: there are no tabs, panes or windows to read. What a worker
@@ -458,8 +459,8 @@ Lines about single tickets, which don't stop the run (indented under the run's l
 - `FULL_CHECK_FAILED`: after the run, `scripts/check-full.sh` failed on the branch's head in a
   worktree of its own; the output is in `.tutti/run/check-full.log`, and a P2 bug `Full check fails:
   <suite>` (label `check-full`) is filed, or noted on the one already open.
-- `LIKELY_CONFLICT`, `<id> footprint …`: two running tickets touch the same file, or the predictor
-  guessed a ticket's files. Normal.
+- `LIKELY_CONFLICT`, `<id> footprint …`: two running tickets touch the same file; a ticket's
+  footprint as it starts, `(predicted)` from `predicted_files` it carries. Normal.
 - `LONG_RUNNING`: a worker still going after 2 hours with no ticket limit set; the run keeps
   waiting. Read its transcript for a hung command.
 - `CLEANUP_FAILED`, `LABEL_FAILED`, `DEFER_FAILED`, `REOPEN_FAILED`: merged or set aside, but a
