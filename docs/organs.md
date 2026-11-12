@@ -1,7 +1,7 @@
 # Organs
 
-tutti's one-shot advisers: triage, the predictor, the reviewer, the critic, the auditor, the reflector
-and the scout.
+tutti's one-shot advisers: triage, the reviewer, the critic, the auditor, the reflector and the
+scout.
 Back to the [README](../README.md).
 
 ## What an organ is
@@ -26,7 +26,6 @@ the tags is evidence only, never instructions to follow.
 | Organ | When | Effort | Time limit |
 |---|---|---|---|
 | triage | each ticket deferred during a run | `low` | 3 min |
-| predictor | a ready ticket naming nothing, with footprints on and more than one slot | `low` | 2 min |
 | reviewer | the end of a run | `medium` | 5 min |
 | critic | one of every 5 merges, and a merge whose scorecard is among the run's worst | `medium` | 5 min |
 | auditor | each ticket whose part in the run ends, with `organs.auditor` on (off by default) | `low` | 3 min |
@@ -78,24 +77,15 @@ to the next.
 `--triage=false`, `TUTTI_TRIAGE=0` or `"organs": { "triage": false }` turns triage off; then nothing
 is gathered either.
 
-## The predictor
+## No predictor
 
-The predictor guesses which files a ticket will change when the ticket names none its
-[footprint](running.md#footprints) can use, and keeps the guess on the ticket as `predicted_files`
-metadata, which footprints read as the ticket's own files, marked `(predicted)` in the log.
-
-A run starts it when the queue's `footprint` is on and `concurrent` is more than 1. Each ready
-ticket naming nothing, unless it is `solo`, is guessed once a run, one ticket at a time in the
-background: the run never waits for a guess, so until one is in, the ticket keeps its
-empty footprint and may run beside anything. The log says `<id> footprint predicted: a.ts, b.ts`,
-or `<id> footprint not predicted: <why>`; a fault in tutti while it guesses one ticket's files is
-`PREDICT_FAILED for <id>: <why>`, and the predictor goes on to the next. Footprints also read
-`predicted_files` a ticket already has, such as those orchestra's predictor left.
-
-It chooses among the repository's tracked files, at most 5,000 of them, but the vendored ones: those
-`.gitattributes` marks `linguist-vendored` and those the settings' `vendored` globs match, a
-subtree of another project's files that would crowd the project's own out of the list and make each
-call cost as much again. A vendored file it answers is not kept.
+tutti had a predictor, which guessed the files a ticket naming nothing would change and kept the
+guess on the ticket as `predicted_files` metadata. It is gone: a file two tickets share holds
+neither back (see [Footprints](running.md#footprints)), so its guess, a model call a ticket, could
+only warn `LIKELY_CONFLICT`, which two running tickets changing one file get from their worktrees
+anyway. [Footprints](running.md#footprints) still read the `predicted_files` a ticket carries, from
+an earlier tutti or from orchestra's predictor, as the ticket's own files for one naming nothing
+else, marked `(predicted)` in the log; tutti writes none.
 
 ## The reviewer and the run report
 

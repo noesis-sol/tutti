@@ -89,7 +89,7 @@ export const workedIn = (items: ReadonlyArray<Item>): string | undefined => {
 /** What the auditor is given about one ended ticket. */
 export interface Evidence {
   readonly ticket: TicketId
-  /** The ticket, as bd show gives it (predictor.ts's ticketText). */
+  /** The ticket, as bd show gives it (ticketText.ts's ticketText). */
   readonly shown: string
   /** The files its ticket names, and those predicted for it. */
   readonly footprint: string

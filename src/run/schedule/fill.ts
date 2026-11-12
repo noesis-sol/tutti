@@ -7,7 +7,7 @@ import { type Line, line } from "../../core/log.ts"
 import { type BeadsError, beadsWhy, type Issue, type TicketId } from "../../services/Beads.ts"
 import { ticketIdProblem } from "../../services/Worktrees.ts"
 import { type Again, retrying } from "../again.ts"
-import { type Footprint, withChanges } from "../footprint.ts"
+import { type Footprint, footprintOf, withChanges } from "../footprint.ts"
 import {
   type Beside,
   type Held,
@@ -28,7 +28,6 @@ import {
 } from "../holds.ts"
 import type { State } from "../ledger.ts"
 import { type HoldBack, Move, TicketPhase } from "../phase.ts"
-import { footprintOf } from "../predict.ts"
 import type { Filled } from "../schedule.ts"
 import { ready } from "../scope.ts"
 import { dispatch, mayStart } from "./dispatch.ts"
@@ -330,7 +329,7 @@ const overlapping = (
     const beside = new Map<TicketId, ReadonlyArray<Beside>>()
     const asked = issues.filter((issue) => !isSolo(issue))
     const { footprints } = sched.options
-    const { repo, predicted } = reads
+    const { repo } = reads
     if (
       footprints === undefined ||
       repo === undefined ||
@@ -342,15 +341,12 @@ const overlapping = (
     const { startBranch } = yield* Ref.get(sched.memo)
     const running = new Map<TicketId, Footprint>()
     for (const [id, issue] of s.issues) {
-      const fp = footprintOf(issue, repo, predicted, startBranch.get(id) ?? [])
+      const fp = footprintOf(issue, repo, startBranch.get(id) ?? [])
       running.set(id, withChanges(fp, yield* changedIn(sched, reads, id), repo))
     }
     const mine = new Map<TicketId, Footprint>()
     for (const issue of asked) {
-      mine.set(
-        issue.id,
-        footprintOf(issue, repo, predicted, yield* branchIn(sched, reads, issue.id)),
-      )
+      mine.set(issue.id, footprintOf(issue, repo, yield* branchIn(sched, reads, issue.id)))
     }
     const pairs = [...mine.values()].flatMap((fp) =>
       [...running.values()].map((other) => [fp, other] as const),
@@ -513,8 +509,8 @@ const startOrPlace = (
       ...m,
       startBranch: new Map(m.startBranch).set(start.id, branch),
     }))
-    const { repo, predicted } = reads
-    const footprint = repo === undefined ? undefined : footprintOf(start, repo, predicted, branch)
+    const { repo } = reads
+    const footprint = repo === undefined ? undefined : footprintOf(start, repo, branch)
     if (!(yield* dispatch(sched, start, ids, footprint))) return "done"
     yield* warnBeside(sched, start.id, overlaps.beside.get(start.id) ?? [])
     return { started: start.id }
@@ -545,7 +541,7 @@ export const fill = (sched: Scheduling): Effect.Effect<Filled, BeadsError> =>
   sched.oneFill.withPermit(
     Effect.gen(function* () {
       const { found, ids, queue, setAside } = yield* readQueue(sched)
-      const reads = yield* fillReads(sched, found, queue)
+      const reads = yield* fillReads(sched, found)
       yield* warnSharedChanges(sched, reads)
       const dispatched = yield* fillSlots(sched, reads, queue, ids)
       yield* showQueue(sched)

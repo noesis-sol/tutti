@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The predictor is gone (§ 5 item 5, § 6; `src/organs/Organs.ts`, `src/run/footprint.ts`'s `footprintOf`; tutti-wxvk): since a file two tickets share holds neither back (tutti-k4if.1), its guess of a ticket's files, a model call for each ready ticket naming nothing, could only warn `LIKELY_CONFLICT`, which two running tickets changing one file get from their worktrees anyway; and with no tools, seeing only the ticket and the file list, a guess of functions would be blind. `src/organs/predictor.ts`, its prompt and `src/run/predict.ts` are removed, with the `PREDICT_FAILED` tag and the `footprint predicted` lines; `ticketText`, which the other organs read a ticket with, is `src/organs/ticketText.ts`. A ticket's `predicted_files` metadata is still read as its footprint where it names nothing else (orchestra's predictor writes it), marked `(predicted)`; tutti writes none. `test/predictor-dropped.test.ts` covers it.
+
 ## [0.8.1] - 2026-11-11
 
 - A run begins once, and starts its keep-awake command once: a dashboard run that refined a spec in the renderer, or broke one down, and then put --overnight's open questions there called its beginning twice, and with no pre-flight start (the pre-flight's log couldn't be opened) started two keep-awake commands and emitted two start events. `begin` now does nothing after its first call, and the hold starts the command once whether `holdFirst` or `hold` comes first (`src/cli/start/beginning.ts`, `holdOf` in `src/cli/start/power.ts`; `test/begin-once.test.ts`; tutti-gtfd).

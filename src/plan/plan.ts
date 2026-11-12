@@ -55,8 +55,9 @@ const inOrder = (open: ReadonlyArray<Issue>): ReadonlyArray<Issue> =>
 
 /**
  * The ticket's footprint for planning: for a ticket whose branch changes files on top of the
- * checked-out branch (`branch`), branchFootprint's, as a run's. A predicted footprint is a guess:
- * good enough to keep two tickets apart for a while, not to order them for good.
+ * checked-out branch (`branch`), branchFootprint's, as a run's. A predicted footprint (the
+ * `predicted_files` orchestra's predictor leaves) is a guess: good enough to warn of two tickets
+ * starting side by side, not to order them for good.
  */
 const planFootprint = (
   issue: Issue,

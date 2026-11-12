@@ -40,7 +40,6 @@ import { timestamp } from "../core/localTime.ts"
 import { causeWhy, detail, type Line, type Log, line, Tag } from "../core/log.ts"
 import { footprintText, transcriptText } from "../organs/auditor.ts"
 import { type OrganError, Organs } from "../organs/Organs.ts"
-import { ticketText } from "../organs/predictor.ts"
 import {
   excerptCharacters,
   excerptHeadCharacters,
@@ -48,6 +47,7 @@ import {
   reflect,
   type TicketEvidence,
 } from "../organs/reflector.ts"
+import { ticketText } from "../organs/ticketText.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { EventStream } from "../services/EventStream.ts"
 import type { DispatchPlaybook, Event, reflectionTriggers } from "../services/events.ts"

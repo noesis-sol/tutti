@@ -28,7 +28,7 @@ setDefaultTimeout(90_000)
 const main = join(import.meta.dir, "..", "src", "main.ts")
 const fake = join(import.meta.dir, "fixtures", "fake-claude", "claude.ts")
 
-/** The ticket the fake bd hands the run: it names a file, so the run predicts no footprint. */
+/** The ticket the fake bd hands the run: it names a file, which is its footprint. */
 const ticket = {
   id: "demo-1",
   title: "A ticket",

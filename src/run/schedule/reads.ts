@@ -53,8 +53,6 @@ export interface FillReads {
   readonly branches: Map<TicketId, ReadonlyArray<string>>
   /** The tickets' branches there are, once read for `branchIn`; names undefined where git can't say. */
   existing: { readonly names: ReadonlySet<string> | undefined } | undefined
-  /** The predictor's guesses so far, which join the footprints. */
-  predicted: ReadonlyMap<TicketId, ReadonlyArray<string>>
   /** The base as the fill first asked git of a closed blocker's branch (`branchesOf`). */
   head: { readonly at: string | undefined } | undefined
   /** Why git finds each closed blocker's work only on its branch, undefined for not (`branchesOf`). */
@@ -63,13 +61,11 @@ export interface FillReads {
 
 /**
  * A fill's reads begun: bd's open list (the look's, or read now), with the queue's `unclosed`
- * remembered from it, the repository's files with footprints on, and, with the predictor, `queue`
- * (the candidates) given to it and its guesses so far.
+ * remembered from it, and the repository's files with footprints on.
  */
 export const fillReads = (
   sched: Scheduling,
   found: ReadonlyArray<Issue>,
-  queue: ReadonlyArray<Issue>,
 ): Effect.Effect<FillReads, BeadsError> =>
   Effect.gen(function* () {
     const { options } = sched
@@ -91,17 +87,9 @@ export const fillReads = (
       changes: new Map(),
       branches: new Map(),
       existing: undefined,
-      predicted: new Map(),
       head: undefined,
       offBase: new Map(),
     }
-    // The ready tickets naming nothing, nor with commits on their branches, go to the predictor;
-    // its guesses so far join footprints.
-    const predictor = options.predictor
-    if (predictor !== undefined && repo !== undefined) {
-      yield* predictor.queue(queue, repo, (id) => branchIn(sched, reads, id))
-    }
-    if (predictor !== undefined) reads.predicted = yield* predictor.predicted
     return reads
   })
 

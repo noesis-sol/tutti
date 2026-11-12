@@ -112,7 +112,6 @@ export const Tag = {
   organ: "ORGAN",
   spec: "SPEC",
   triageFailed: "TRIAGE_FAILED",
-  predictFailed: "PREDICT_FAILED",
   criticFailed: "CRITIC_FAILED",
   auditFailed: "AUDIT_FAILED",
   reflectFailed: "REFLECT_FAILED",

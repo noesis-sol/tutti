@@ -47,7 +47,7 @@ export interface TicketEvidence {
   readonly ticket: string
   /** Among the worst of the tickets it was called for, or the best. */
   readonly standing: "worst" | "best"
-  /** The ticket, as bd show gives it (predictor.ts's ticketText). */
+  /** The ticket, as bd show gives it (ticketText.ts's ticketText). */
   readonly shown: string
   /** The files its ticket names, and those predicted for it. */
   readonly footprint: string

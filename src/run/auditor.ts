@@ -33,7 +33,7 @@ import {
   workedIn,
 } from "../organs/auditor.ts"
 import { type OrganError, Organs } from "../organs/Organs.ts"
-import { ticketText } from "../organs/predictor.ts"
+import { ticketText } from "../organs/ticketText.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import type { EventStream } from "../services/EventStream.ts"
 import { auditWords } from "../services/scorecard.ts"

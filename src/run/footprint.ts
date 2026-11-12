@@ -2,14 +2,15 @@
 // functions its title, description, design and acceptance criteria name, its area:<name> labels and
 // the files its `files` metadata lists (folders and globs among them), resolved against git
 // ls-files, and the globs it lists, which hold the files other tickets add where they match; with
-// none of these, its `predicted_files`. Not its notes: they say what happened to it
+// none of these, its `predicted_files`, left by an earlier tutti or by orchestra's predictor (tutti
+// writes none since tutti-wxvk). Not its notes: they say what happened to it
 // (the run's notes, its workers', a reopening's), naming files and functions it doesn't change. The
 // files the project's check commands name are left out unless the metadata lists them, as is the
 // spec the ticket's `spec` metadata cites: nearly every ticket asks for the check to pass, and cites
 // its spec, without changing them. The files git merges by union (`merge=union` in .gitattributes,
 // as tutti init offers for the changelog) are left out always: two tickets' lines in one can't
 // conflict, git keeps both. So are vendored paths (vendored.ts), copies of other projects' files: a
-// ticket naming one, or the predictor answering one, makes only false overlaps. A ticket with
+// ticket naming one, or a prediction holding one, makes only false overlaps. A ticket with
 // commits on its branch (reopened, carried over) is footprinted from what its branch changes, its
 // files metadata, the functions its text names that the files its branch changes declare, and its
 // area labels (`branchFootprint`). A running ticket's footprint also grows with the files its
@@ -70,7 +71,7 @@ export interface Footprint {
   readonly cited: ReadonlyArray<string>
   /** The files metadata lists the files the ticket changes: a function it names changes no other. */
   readonly listed: boolean
-  /** `files` are the predictor's guess, for a ticket naming nothing. */
+  /** `files` are its `predicted_files`, a guess left on the ticket, for one naming nothing. */
   readonly predicted: boolean
   /** `files` are those the ticket's branch changes, with those its metadata lists (`branchFootprint`). */
   readonly branch: boolean
@@ -189,7 +190,8 @@ const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string>
 
 /**
  * Where the ticket works: the files and functions named in its title and text, its area labels and
- * the files its metadata lists; with none of these, the files predicted for it (`predicted_files`).
+ * the files its metadata lists; with none of these, the files predicted for it (`predicted_files`,
+ * which orchestra's predictor writes; tutti's own is gone, tutti-wxvk).
  *
  * - **Text** is the title, description, design and acceptance criteria, not the notes. It names a
  *   file by its path (`src/run/ledger.ts:120`), its base name (`ledger.ts`, every file of that
@@ -291,6 +293,18 @@ export const branchFootprint = (
     branch: true,
   }
 }
+
+/**
+ * The ticket's footprint as the run reads it: for a ticket whose branch changes files on top of the
+ * base (`branch`), branchFootprint's; else ticketFootprint's, which, for a ticket naming nothing,
+ * reads the `predicted_files` an earlier tutti or orchestra's predictor left on it.
+ */
+export const footprintOf = (
+  issue: FootprintTicket,
+  repo: RepoFiles,
+  branch: ReadonlyArray<string> = [],
+): Footprint =>
+  branch.length > 0 ? branchFootprint(issue, branch, repo) : ticketFootprint(issue, repo)
 
 /**
  * The footprint grown by the files its ticket's worktree has changed (`worktreeChanges`), in the

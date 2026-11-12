@@ -5,7 +5,6 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
-import type { Predictor } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
@@ -32,7 +31,6 @@ const logOfCarry = (
   seed: Seed,
   options: {
     readonly footprints?: Footprints
-    readonly predictor?: Predictor
     readonly withIssue?: boolean
   },
 ): Promise<ReadonlyArray<string>> =>
@@ -72,13 +70,11 @@ describe("a carried ticket's footprint", () => {
     expect(lines).toEqual(["  t-1 footprint: nothing named"])
   })
 
-  test("marks the predictor's files as predicted", async () => {
-    const predictor: Predictor = {
-      queue: () => Effect.void,
-      predicted: Effect.succeed(new Map([["t-1" as TicketId, ["src/b.ts"]]])),
-      interrupt: Effect.void,
-    }
-    const lines = await logOfCarry({ id: "t-1" }, { footprints, predictor })
+  test("marks the files its predicted_files metadata holds as predicted", async () => {
+    const lines = await logOfCarry(
+      { id: "t-1", metadata: { predicted_files: '["src/b.ts"]' } },
+      { footprints },
+    )
     expect(lines).toEqual(["  t-1 footprint: src/b.ts (predicted)"])
   })
 

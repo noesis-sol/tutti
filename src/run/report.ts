@@ -571,7 +571,7 @@ export const gather = (
         "The attention requests, answers and denials of this run, as the log has them",
         cappedAttention(attentionLines(logLines).map(filed)),
       ),
-      section("What the run's organs (triage, the predictor and the like) cost", costSaid),
+      section("What the run's organs (triage, the critic and the like) cost", costSaid),
       ...(run.sections ?? []).map((each) => cappedEvidence(each)),
       `${scope}, on branch ${run.base} of ${config.repo}, ${ranFrom(run.started, now)}. ` +
         `Exit code ${run.exitCode} (${meaning}). Write its report.\n`,

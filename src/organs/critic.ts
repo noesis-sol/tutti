@@ -53,7 +53,7 @@ export const critic = make("critic", { prompt, answer: CriticAnswer })
 /** What the critic is given about one merged ticket. */
 export interface Evidence {
   readonly ticket: TicketId
-  /** The ticket, as bd show gives it (predictor.ts's ticketText). */
+  /** The ticket, as bd show gives it (ticketText.ts's ticketText). */
   readonly shown: string
   /** Its scorecard, as the reviewer's lines give it; empty when it has none. */
   readonly scorecard: string

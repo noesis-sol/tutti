@@ -139,7 +139,7 @@ const toldTo = (ran: Ran<unknown>, id: string): ReadonlyArray<string> =>
     sent._tag === "Message" && sent.ticket === id ? [String(sent.message.message.content)] : [],
   )
 
-// The predictor guesses the tickets' files as they are dispatched, before any stop: left off, every
+// With the queue's footprint off nothing of the repository is read as tickets are dispatched: every
 // organ call the organs record is one after the stop.
 const noFootprint = { ...appConfig().settings.queue, footprint: false }
 

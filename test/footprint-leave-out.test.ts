@@ -17,12 +17,12 @@ import {
   branchFootprint,
   emptyFootprint,
   type FootprintTicket,
+  footprintOf,
   showFootprint,
   ticketFootprint,
   withChanges,
 } from "../src/run/footprint.ts"
 import { holdsApart, overlaps, shared } from "../src/run/overlap.ts"
-import { footprintOf } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, footprintsOf, make } from "../src/run/schedule.ts"
 import type { Link } from "../src/run/shape.ts"
@@ -387,8 +387,8 @@ describe("a ticket with commits on its branch", () => {
       metadata: reopened.metadata,
       files: reopened.files,
     })
-    expect(footprintOf(asIssue, plain, new Map(), ["src/run/merge.ts"]).branch).toBe(true)
-    expect(footprintOf(asIssue, plain, new Map()).files).toContain("src/run/loop.ts")
+    expect(footprintOf(asIssue, plain, ["src/run/merge.ts"]).branch).toBe(true)
+    expect(footprintOf(asIssue, plain).files).toContain("src/run/loop.ts")
   })
 
   test("is footprinted from its branch by tutti plan", () => {

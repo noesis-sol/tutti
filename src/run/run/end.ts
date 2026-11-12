@@ -59,7 +59,7 @@ export const windDown = (
     const { changeHolds, currentStops } = holds
     const { quitting, setUps, usage } = parts.holds
     const { queue, mergeStop } = parts.merge
-    const { checksGate, predictor, scheduler } = parts.starting
+    const { checksGate, scheduler } = parts.starting
     const { quit, watch, quits, answersAtWakes } = looped
     // The loop's end set it already, under the commands' lock; a quit sets it at once, without
     // waiting for a command acting now: quitting holds the merges and interrupts the workers.
@@ -69,8 +69,6 @@ export const windDown = (
     // late for the last look; one recorded after that finds the end set, and wakes it.
     yield* showOn(status, "looksOver")(true)
     yield* watch(answersAtWakes)
-    // No ticket is taken any more: the guess under way is aborted.
-    if (predictor !== undefined) yield* predictor.interrupt
     // A worker past its ticket limit, or waiting on you, is still at it: every ticket's fiber is
     // stopped now, before anything else of the end, so that an answer through `tutti answer`, which
     // the loop's end doesn't wait for, can't run a worker on into the end's steps; the answers are

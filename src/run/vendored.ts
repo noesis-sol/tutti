@@ -2,8 +2,8 @@
 // subtrees, which are no part of its own files. A path is vendored where .gitattributes gives it
 // linguist-vendored (as git check-attr reads it, so `repos/** linguist-vendored` holds every file
 // under repos/), or where the settings' `vendored` globs match it, for a project that doesn't want
-// the attribute. The predictor doesn't list them (predict.ts), and a footprint drops those a ticket
-// names or the predictor answers (footprint.ts), so they make no overlap.
+// the attribute. A footprint drops those a ticket names or its `predicted_files` hold
+// (footprint.ts), so they make no overlap.
 import { join } from "node:path"
 import { Effect, FileSystem } from "effect"
 import { settingsFile } from "../project/settings.ts"

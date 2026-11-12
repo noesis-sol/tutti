@@ -37,7 +37,7 @@ import { type Item, Transcripts } from "../agent/Transcripts.ts"
 import { AppConfig } from "../core/AppConfig.ts"
 import { causeWhy, detail, filed, type Line, Log, line, Tag } from "../core/log.ts"
 import { type OrganError, Organs } from "../organs/Organs.ts"
-import { ticketText } from "../organs/predictor.ts"
+import { ticketText } from "../organs/ticketText.ts"
 import {
   compactionsText,
   type Evidence,

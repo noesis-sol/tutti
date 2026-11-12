@@ -91,7 +91,10 @@ export interface Issue {
   readonly metadata: Readonly<Record<string, unknown>>
   /** The files the metadata lists under `files`, in any of the forms `metadataList` reads. */
   readonly files: ReadonlyArray<string>
-  /** The files the predictor expects the ticket to change, under `predicted_files`. */
+  /**
+   * The files predicted for the ticket, under `predicted_files`: orchestra's predictor writes it,
+   * and tutti's wrote it until tutti-wxvk; tutti reads it, and writes it no more.
+   */
   readonly predictedFiles: ReadonlyArray<string>
   /** RFC 3339. */
   readonly createdAt: string

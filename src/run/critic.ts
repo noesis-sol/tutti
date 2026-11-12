@@ -47,7 +47,7 @@ import {
 } from "../organs/critic.ts"
 import type { OrganError } from "../organs/Organs.ts"
 import { Organs } from "../organs/Organs.ts"
-import { ticketText } from "../organs/predictor.ts"
+import { ticketText } from "../organs/ticketText.ts"
 import {
   Beads,
   beadsWhy,

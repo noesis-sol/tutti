@@ -107,7 +107,6 @@ describe("the screen and plan organs", () => {
   test("are gone from the organs", () => {
     expect([...organNames]).toEqual([
       "triage",
-      "predictor",
       "reviewer",
       "critic",
       "auditor",

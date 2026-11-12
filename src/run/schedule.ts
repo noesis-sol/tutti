@@ -56,7 +56,6 @@ import type { Ledger } from "./ledger.ts"
 import type { Room } from "./machineGate.ts"
 import { type Mentions, readMentions, type Sources } from "./overlap.ts"
 import type { RunPlaybook } from "./playbookRun.ts"
-import type { Predictor } from "./predict.ts"
 import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
 import { carry, recheckSlot } from "./schedule/dispatch.ts"
@@ -278,11 +277,6 @@ export interface Options {
   readonly carrying?: Effect.Effect<ReadonlySet<TicketId>>
   /** Where tickets work, with the queue's `footprint` on; without it, no ticket overlaps another. */
   readonly footprints?: Footprints
-  /**
-   * Guesses the files of the ready tickets naming nothing, in the background (predict.ts), when
-   * footprints are on: its guesses join their footprints as they come in.
-   */
-  readonly predictor?: Predictor
   /** What each ticket dispatched gets of the playbook (playbookRun.ts); none without it. */
   readonly playbook?: Pick<RunPlaybook, "choose">
   /**

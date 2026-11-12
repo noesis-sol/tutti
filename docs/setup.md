@@ -604,7 +604,7 @@ for a project that sets them all; the table below gives each one's default:
 | `queue.exclude_types` | `["epic"]` | issue types a run never takes; epics never run whatever it says |
 | `queue.footprint` | `true` | keep tickets that share a function or an area label apart, and warn of two sharing a file; [Footprints](running.md#footprints) |
 | `queue.shared_files` | `[]` | files two tickets share without a warning, a `tutti plan` link or a conflict wait, paths or globs (a name without a slash matches in any folder), as the features map `init` lists as it files the test work; [Footprints](running.md#footprints) |
-| `vendored` | `[]` | paths that are no part of the project's own files, as globs (a name without a slash matches in any folder): a subtree of another project's, which the predictor doesn't list and no footprint names; `linguist-vendored` in `.gitattributes` counts as well, and `init` writes neither; [Footprints](running.md#footprints) |
+| `vendored` | `[]` | paths that are no part of the project's own files, as globs (a name without a slash matches in any folder): a subtree of another project's, which no footprint names; `linguist-vendored` in `.gitattributes` counts as well, and `init` writes neither; [Footprints](running.md#footprints) |
 | `merge.resolve_conflicts` | `true` | hand a rebase's conflicts back to the ticket's worker; `--resolve-conflicts` for a run |
 | `merge.resolve_timeout` | `"20m"` | how long the worker has for a hand-back |
 | `merge.conflict_wait` | `"15m"` | how long a ticket waiting to merge waits for one still resolving a conflict in a file its branch changes; `"0"` for none; [The merge queue](running.md#the-merge-queue) |

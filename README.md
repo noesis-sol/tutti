@@ -184,7 +184,7 @@ How the code uses it:
   `src/testing/`. Errors are `Schema.TaggedError`s.
 - Every external command runs through `effect/process` (`ChildProcess`); flags are parsed with
   `effect/cli`.
-- The organs (triage, the predictor, the reviewer…) call `effect/ai`'s `LanguageModel` with Effect
+- The organs (triage, the reviewer, the critic…) call `effect/ai`'s `LanguageModel` with Effect
   `Schema`, through a layer over the Agent SDK (`src/organs/AgentSdkLanguageModel.ts`), or
   `@effect/ai-anthropic` with an API key.
 - `src/main.ts` runs on `@effect/platform-bun`'s `BunServices`, with a `runMain` built as
@@ -207,8 +207,8 @@ Effect's guide and source for the installed version are in `node_modules/effect`
   plain output, terminals, notifications
 - [docs/workers.md](docs/workers.md): the worker prompt, permissions, attention requests and
   `tutti answer`, steering, hand-backs, sessions, MCP servers
-- [docs/organs.md](docs/organs.md): triage, the predictor, the reviewer and the run report, the
-  screen, the plan and the scout
+- [docs/organs.md](docs/organs.md): triage, the reviewer and the run report, the critic, the
+  auditor, the reflector and the scout
 - [docs/events.md](docs/events.md): the event stream for scripts and agents, with `jq` recipes
 - [docs/analytics.md](docs/analytics.md): ready-made DuckDB queries over the event stream, the
   workers' transcripts and bd's export: runs, throughput and bottlenecks, tickets, checks and

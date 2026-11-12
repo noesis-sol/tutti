@@ -175,7 +175,6 @@ describe("Organs", () => {
     )
     expect(calls.map((c) => c.call)).toEqual([
       { organ: "triage", effort: "low" },
-      { organ: "predictor", effort: "low" },
       { organ: "reviewer", effort: "medium" },
       { organ: "critic", effort: "medium" },
       { organ: "auditor", effort: "low" },
@@ -206,7 +205,6 @@ describe("Organs", () => {
     )
     expect(minutes).toEqual({
       triage: 3,
-      predictor: 2,
       reviewer: 5,
       critic: 5,
       auditor: 3,

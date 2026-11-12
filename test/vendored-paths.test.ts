@@ -1,7 +1,7 @@
 // Vendored paths (§ 5 item 5, § 8.4): a subtree of another project's files, marked linguist-vendored
 // in .gitattributes or matched by the settings' `vendored` globs, is no part of the project's own
-// files. The predictor doesn't list them, a footprint drops those a ticket names or the predictor
-// answers, and the START block names the globs.
+// files. A footprint drops those a ticket names or its predicted_files hold, and the START block
+// names the globs.
 import { describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs"
@@ -9,14 +9,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer } from "effect"
-import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { OrganHold, Organs } from "../src/organs/Organs.ts"
 import { readSettings } from "../src/project/settings.ts"
-import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import { type FootprintTicket, ticketFootprint } from "../src/run/footprint.ts"
-import { make as makePredictor } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { footprintsOf } from "../src/run/schedule.ts"
 import { type Started, startBlock } from "../src/run/startup.ts"
@@ -28,14 +24,10 @@ import {
   vendoredNote,
   vendoredPatterns,
 } from "../src/run/vendored.ts"
-import type { TicketId } from "../src/services/Beads.ts"
 import { Git, GitWriter, parseVendored } from "../src/services/Git.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
-import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
-import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
-import { layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import { slow } from "./gates.ts"
 
 const vendoredFile = "repos/pi/packages/coding-agent/src/cli/setup.ts"
@@ -182,7 +174,7 @@ describe("a footprint", () => {
     }
   })
 
-  test("drops the vendored files the predictor answered", async () => {
+  test("drops the vendored files among a ticket's predicted_files", async () => {
     for (const [source, vendored] of await sources()) {
       const repo = repoFiles(tracked, [], [], [], undefined, vendored)
       const fp = ticketFootprint(ticket("", [], [vendoredFile, "src/b.ts"]), repo)
@@ -257,74 +249,6 @@ describe("a footprint", () => {
       "src/b.ts",
     ])
     expect(ticketFootprint(ticket(`Fix ${vendoredFile} and src/b.ts.`), globbed).files).toEqual([])
-  })
-})
-
-/** Lets forked fibers run, without moving the clock. */
-const flush = Effect.gen(function* () {
-  for (let i = 0; i < 200; i++) yield* Effect.yieldNow
-})
-
-/** The predictor's calls for one ticket naming nothing, over the repository with `files`. */
-const predictorCalls = async (
-  files: Readonly<Record<string, string>>,
-  vendored: ReadonlyArray<string>,
-  answer: ReadonlyArray<string>,
-) => {
-  const calls: Array<OrganCallRecord> = []
-  const seeds: ReadonlyArray<Seed> = [{ id: "t-1", title: "Make the greeting friendlier" }]
-  const organs = Organs.layer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        cannedLayer({ predictor: { files: answer } }, calls),
-        TestAppConfig.layer(TestAppConfig.appConfig({})),
-        Layer.succeed(OrganHold, { held: Effect.succeed(false) }),
-      ),
-    ),
-  )
-  const base = Layer.mergeAll(beadsLayer(seeds), ledgerLayer(), runFibersLayer)
-  const layers = Layer.mergeAll(organs, memoryGit({ files })).pipe(
-    Layer.provideMerge(base),
-    Layer.provideMerge(TestClock.layer()),
-  )
-  const predicted = await Effect.runPromise(
-    Effect.gen(function* () {
-      const repo = yield* Repository
-      const predictor = yield* makePredictor({ repo: repo.dir, vendored })
-      const issue = yield* Effect.flatMap(Backlog, (backlog) => backlog.get("t-1"))
-      yield* predictor.queue(issue === undefined ? [] : [issue], repoFiles(tracked), () =>
-        Effect.succeed([]),
-      )
-      yield* flush
-      return yield* predictor.predicted
-    }).pipe(Effect.scoped, Effect.provide(layers)),
-  )
-  return { calls, predicted: predicted.get("t-1" as TicketId) }
-}
-
-describe("the predictor", () => {
-  const files = Object.fromEntries(tracked.map((f) => [f, `// ${f}\n`]))
-
-  test("lists no vendored file, nor keeps one it answers", async () => {
-    for (const [source, given, globs] of [
-      [".gitattributes", { ...files, ".gitattributes": attributes }, []],
-      ["the settings", files, ["repos/**"]],
-    ] as const) {
-      const { calls, predicted } = await predictorCalls(given, globs, [vendoredFile, "src/a.ts"])
-      expect([source, calls.length]).toEqual([source, 1])
-      const input = calls[0]?.input ?? ""
-      expect([source, input.includes("repos/"), input.includes("src/cli/setup.ts")]).toEqual([
-        source,
-        false,
-        true,
-      ])
-      expect([source, predicted]).toEqual([source, ["src/a.ts"]])
-    }
-  })
-
-  test("without either source, lists them as before", async () => {
-    const { calls } = await predictorCalls(files, [], ["src/a.ts"])
-    expect(calls[0]?.input).toContain(vendoredFile)
   })
 })
 

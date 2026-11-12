@@ -6,28 +6,21 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber, Layer } from "effect"
-import { TestClock } from "effect/testing"
 import { line, ticketLine } from "../src/core/log.ts"
-import { Organs } from "../src/organs/Organs.ts"
 import { formatDuration } from "../src/project/configFile.ts"
 import { putAside } from "../src/run/aside.ts"
-import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
-import { make as makePredictor } from "../src/run/predict.ts"
-import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { Beads, type TicketId } from "../src/services/Beads.ts"
+import type { TicketId } from "../src/services/Beads.ts"
 import { TimeLimit } from "../src/services/exec.ts"
 import { Git } from "../src/services/Git.ts"
 import { result, run as step, turn } from "../src/testing/AgentHost.ts"
-import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
+import { appConfig } from "../src/testing/AppConfig.ts"
 import { Backlog, layer as beadsLayer, type Fault } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
-import { layer as memoryGit } from "../src/testing/Git.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
-import { layer as cannedLayer } from "../src/testing/Organs.ts"
 import { layer as storeLayer } from "../src/testing/Store.ts"
 import { expectLog, scenario } from "./harness.ts"
 
@@ -116,51 +109,5 @@ describe("DEFER_FAILED", () => {
       "  DEFER_FAILED: t-1 still open, and bd could not defer it: Error: database is locked; kept out of this run, nothing done, so its worktree and branch are removed",
     ])
     expect(ran.issues.find((issue) => issue.id === "t-1")?.status).toBe("open")
-  })
-})
-
-describe("a predicted footprint bd can't keep", () => {
-  const tracked = ["README.md", "src/a.ts"]
-
-  /** Predicts t-1's files with bd failing the write of its metadata as `fault` says. */
-  const predicting = (fault: Fault) => {
-    const organs = Organs.layer.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          cannedLayer({ predictor: { files: ["src/a.ts"] } }),
-          configLayer(appConfig()),
-        ),
-      ),
-    )
-    const files = Object.fromEntries(tracked.map((f) => [f, `// ${f}\n`]))
-    const layers = Layer.mergeAll(organs, memoryGit({ files })).pipe(
-      Layer.provideMerge(
-        Layer.mergeAll(beadsLayer([{ id: "t-1" }]), ledgerLayer(), runFibersLayer),
-      ),
-      Layer.provideMerge(TestClock.layer()),
-    )
-    return Effect.runPromise(
-      Effect.gen(function* () {
-        yield* (yield* Backlog).fail("update", fault)
-        const predictor = yield* makePredictor({ repo: "/repo" })
-        const issue = yield* (yield* Beads).show("t-1" as TicketId)
-        yield* predictor.queue([issue], repoFiles(tracked), () => Effect.succeed([]))
-        for (let i = 0; i < 200; i++) yield* Effect.yieldNow
-        return yield* texts
-      }).pipe(Effect.scoped, Effect.provide(layers)),
-    )
-  }
-
-  test("says why with bd's first line of stderr, and is still used", async () => {
-    const lines = await predicting(locked)
-    expect(lines).toContain(
-      "  t-1 footprint predicted, but bd could not keep it: Error: database is locked",
-    )
-    expect(lines).toContain("  t-1 footprint predicted: src/a.ts")
-  })
-
-  test("says why with bd's time limit when bd times out", async () => {
-    const lines = await predicting({ id: "t-1", timedOut: true })
-    expect(lines).toContain(`  t-1 footprint predicted, but bd could not keep it: ${slow}`)
   })
 })

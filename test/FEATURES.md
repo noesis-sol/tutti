@@ -151,7 +151,7 @@ below are the coverage report's uncovered lines at 368899e.
   `memory-share.test.ts`,
   `holds-time.test.ts`, `run-footprints.test.ts`, `run-footprints-worktree.test.ts`,
   `dispatch-footprint-line.test.ts`, `carry-footprint-line.test.ts`, `scope-open-followup.test.ts`,
-  `run-predictor.test.ts`, `state-records.test.ts`, `store.test.ts`, `run-finish.test.ts`,
+  `predictor-dropped.test.ts`, `state-records.test.ts`, `store.test.ts`, `run-finish.test.ts`,
   `end-of-run.test.ts`, `epic-close.test.ts`, `epic-close-failures.test.ts`, `asked.test.ts`,
   `run-end.test.ts`, `beads-failures.test.ts`.
 - **Untested**: nothing found.
@@ -206,11 +206,11 @@ below are the coverage report's uncovered lines at 368899e.
   `scenarios-merge.test.ts`.
 - **Untested**: nothing found.
 
-## Organs: triage, predictor, scout, reviewer, plan, screen
+## Organs: triage, scout, reviewer, critic, auditor, reflector
 
 - **Reached by**: `--triage`, `--review`, `--organ-model`, `--organ-effort`,
   `TUTTI_ORGAN_PROVIDER=anthropic`; the scout in `tutti init`.
-- **Tests**: `organs.test.ts`, `triage.test.ts`, `predict.test.ts`, `scout.test.ts`,
+- **Tests**: `organs.test.ts`, `triage.test.ts`, `predictor-dropped.test.ts`, `scout.test.ts`,
   `agent-sdk-language-model.test.ts`, `anthropic-provider.test.ts`,
   `anthropic-language-model.test.ts`, `organ-cost-*.test.ts`, `organ-usage-limit.test.ts`,
   `organ-billing.test.ts`.

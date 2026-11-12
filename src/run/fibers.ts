@@ -1,6 +1,6 @@
 // The FiberSets the run forks its fibers into (§ 3.4). Effect 4 has no Supervisor, so each fiber
 // the run forks into a scope that lasts as long as the run (the scheduler's tickets, the merge
-// queue and its train and hand-backs, triage, the predictor, the usage limit's watchers) belongs
+// queue and its train and hand-backs, triage, the usage limit's watchers) belongs
 // to a set made here, registered under a name. Once the run's scope has closed, a set still holding
 // fibers was made in a scope that outlives the run: a leak, which whole-run scenarios fail on
 // (§ 13). A fiber forked with Effect.forkScoped into a scope that closes with the work it serves

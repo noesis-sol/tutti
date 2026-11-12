@@ -1,31 +1,19 @@
-// A defect while triaging or predicting one ticket loses that ticket's verdict or guess, not the
-// loop: it is TRIAGE_FAILED or PREDICT_FAILED in the log, the next ticket is still taken, and the
-// run still ends.
+// A defect while triaging one ticket loses that ticket's verdict, not the loop: it is TRIAGE_FAILED
+// in the log, the next ticket is still taken, and the run still ends.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Cause, Effect, Fiber, Layer, Ref, type Scope } from "effect"
-import { TestClock } from "effect/testing"
-import { causeWhy, type Log, line } from "../src/core/log.ts"
-import { OrganHold, Organs } from "../src/organs/Organs.ts"
+import { Cause, Effect, Fiber, Layer } from "effect"
+import { causeWhy, line } from "../src/core/log.ts"
+import { Organs } from "../src/organs/Organs.ts"
 import type { Verdict as HoldVerdict } from "../src/run/environment.ts"
-import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
-import type { Ledger } from "../src/run/ledger.ts"
-import { make as makePredictor } from "../src/run/predict.ts"
-import { repoFiles } from "../src/run/repoFiles.ts"
 import { run } from "../src/run/run.ts"
 import { type Deferral, make as makeTriage } from "../src/run/triage.ts"
-import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
-import type { EventStream } from "../src/services/EventStream.ts"
+import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
-import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
-import { type Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
-import type { Captured } from "../src/testing/EventStream.ts"
-import { layer as memoryGit } from "../src/testing/Git.ts"
-import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
-import { texts } from "../src/testing/Log.ts"
+import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import {
   backlog,
@@ -214,56 +202,5 @@ describe("a run whose triage dies on one ticket", () => {
     expectPhases(ran, { "t-1": "Deferred", "t-2": "Deferred" })
     expect(ran.log).toContain("  TRIAGE_FAILED for t-1: boom")
     expect(ran.log).toContain("  triage t-2: problem (medium confidence) - The second one.")
-  })
-})
-
-describe("a defect in one ticket's prediction", () => {
-  const tracked = ["README.md", "src/a.ts"]
-
-  type Env = Beads | Backlog | Ledger | Log | EventStream | Captured | RunFibers | Organs | Git
-
-  const predicting = <A>(answers: Answers, effect: Effect.Effect<A, never, Env | Scope.Scope>) => {
-    const base = Layer.mergeAll(
-      beadsLayer([{ id: "t-1" }, { id: "t-2" }]),
-      ledgerLayer(),
-      runFibersLayer,
-    )
-    const organs = Organs.layer.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          cannedLayer(answers),
-          configLayer(appConfig({})),
-          Layer.succeed(OrganHold, { held: Effect.succeed(false) }),
-        ),
-      ),
-    )
-    const files = Object.fromEntries(tracked.map((f) => [f, `// ${f}\n`]))
-    const layers = Layer.mergeAll(organs, memoryGit({ files })).pipe(
-      Layer.provideMerge(base),
-      Layer.provideMerge(TestClock.layer()),
-    )
-    return Effect.runPromise(effect.pipe(Effect.scoped, Effect.provide(layers)))
-  }
-
-  test("is PREDICT_FAILED, and the next ticket is still predicted", async () => {
-    const [lines, predicted] = await predicting(
-      { predictor: [Effect.die(new Error("the guess broke")), { files: ["src/a.ts"] }] },
-      Effect.gen(function* () {
-        const predictor = yield* makePredictor({ repo: "/repo" })
-        const issues = yield* Ref.make<ReadonlyArray<Issue>>([])
-        const beads = yield* Beads
-        for (const id of ["t-1" as TicketId, "t-2" as TicketId]) {
-          const issue = yield* Effect.orDie(beads.show(id))
-          yield* Ref.update(issues, (all) => [...all, issue])
-        }
-        yield* predictor.queue(yield* Ref.get(issues), repoFiles(tracked), () => Effect.succeed([]))
-        yield* flush
-        return [yield* texts, yield* predictor.predicted] as const
-      }),
-    )
-    expect(lines).toContain("  PREDICT_FAILED for t-1: the guess broke")
-    expect(lines).toContain("  t-2 footprint predicted: src/a.ts")
-    expect(predicted.get("t-2" as TicketId)).toEqual(["src/a.ts"])
-    expect(predicted.has("t-1" as TicketId)).toBe(false)
   })
 })

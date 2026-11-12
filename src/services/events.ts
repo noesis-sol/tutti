@@ -557,7 +557,7 @@ export const organOutcomes = ["answered", "unpriced", "no_result"] as const
 /** An organ call ended (§ 6.1); the log has its `ORGAN` line. */
 export const Organ = Schema.Struct({
   ...head("organ"),
-  /** `triage`, `predictor`, `reviewer`, `scout`, … */
+  /** `triage`, `reviewer`, `scout`, … (`predictor` in the events of runs before tutti-wxvk). */
   organ: Schema.String,
   /** The ticket it was about, when it was about one. */
   ticket: optional(Schema.String),

@@ -5,10 +5,9 @@ import { Effect, Ref, Result } from "effect"
 import { detail, type Line, line } from "../../core/log.ts"
 import type { Issue, TicketId } from "../../services/Beads.ts"
 import { followUpsOf } from "../../services/scorecard.ts"
-import { type Footprint, showFootprint } from "../footprint.ts"
+import { type Footprint, footprintOf, showFootprint } from "../footprint.ts"
 import { isSolo, takesBack, takesNew } from "../holds.ts"
 import { Move, TicketPhase } from "../phase.ts"
-import { footprintOf } from "../predict.ts"
 import type { Said as SaidRecord } from "../say.ts"
 import { issueOf, known } from "./place.ts"
 import { recorded, remember, soloState } from "./queue.ts"
@@ -101,18 +100,15 @@ export const carriedFootprint = (
   issue: Issue | undefined,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const { footprints, predictor } = sched.options
+    const { footprints } = sched.options
     if (issue === undefined || footprints === undefined) return
     const repo = yield* footprints.repo
-    const predicted: ReadonlyMap<TicketId, ReadonlyArray<string>> = predictor === undefined
-      ? new Map()
-      : yield* predictor.predicted
     const branch = footprints.branch === undefined ? [] : yield* footprints.branch(issue.id)
     yield* remember(sched, (m) => ({
       ...m,
       startBranch: new Map(m.startBranch).set(issue.id, branch),
     }))
-    yield* sched.logs.write(footprintLine(issue.id, footprintOf(issue, repo, predicted, branch)))
+    yield* sched.logs.write(footprintLine(issue.id, footprintOf(issue, repo, branch)))
   })
 
 /**

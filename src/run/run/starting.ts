@@ -2,8 +2,8 @@
 // the stop it ends with; the requires list checked again when a merge changed it (requires.ts);
 // a spec run's checks gate (checksGate.ts, § 4.14), asked in init's form in place of the dashboard
 // (gateForm.ts); the machine's cap on workers across its runs (machineGate.ts) and the room the
-// pressure cap, the machine and the disk leave; the queue's footprints (§ 8.4) and the predictor
-// (predict.ts); and the scheduler (schedule.ts), which starts each ticket in a slot.
+// pressure cap, the machine and the disk leave; the queue's footprints (§ 8.4); and the scheduler
+// (schedule.ts), which starts each ticket in a slot.
 import { join } from "node:path"
 import type { FileSystem } from "effect"
 import { Effect, Option, Ref, type Scope, Semaphore } from "effect"
@@ -19,7 +19,6 @@ import { makeGateAsk, noScout } from "../gateForm.ts"
 import { pastTicketLimit, type StopReason, stopFor, stopOfLine, takesBack } from "../holds.ts"
 import type { Ledger } from "../ledger.ts"
 import { hasRoom, type MachineGate, make as makeMachineGate, type Room } from "../machineGate.ts"
-import { make as makePredictor, type Predictor } from "../predict.ts"
 import { runRequires } from "../requires.ts"
 import { showOn } from "../runView.ts"
 import { footprintsOf, make as makeScheduler, type Scheduler } from "../schedule.ts"
@@ -104,8 +103,6 @@ export interface Starting extends Pick<TicketFibers, "onResumedLimit" | "outcome
   /** The requires list a merge changed, checked, then the checks gate, before anything starts. */
   readonly beforeStart: Effect.Effect<void>
   readonly machine: MachineGate
-  /** The predictor, with organs, the queue's footprint on and more than one slot. */
-  readonly predictor: Predictor | undefined
   /** The tickets the last run left whose workers wait for a slot to be resumed (carry.ts). */
   readonly carrying: Ref.Ref<ReadonlySet<TicketId>>
   readonly scheduler: Scheduler
@@ -217,7 +214,7 @@ export const make = (
 > =>
   Effect.gen(function* () {
     const { config, store, base, status, wakeUp, holds } = services
-    const { organs, limitReached, gate, slots, machineFull, pressure, disk } = runHolds
+    const { limitReached, gate, slots, machineFull, pressure, disk } = runHolds
     const { criticIdle, playbook, queue, branches } = merge
     const { onResumedLimit, outcomeOf, ticketFiber } = ticketFibers(services, runHolds, merge)
     const { checksGate, beforeStart } = yield* beforeStartOf(options, services, runHolds, merge)
@@ -257,15 +254,6 @@ export const make = (
             ),
         })
       : undefined
-    // The predictor (predict.ts), as orchestra starts it: with organs, the queue's footprint on and
-    // more than one slot, it guesses the files of the ready tickets naming nothing, one ticket at a
-    // time in the background, so that a ticket naming nothing doesn't run beside anything.
-    const predictor =
-      Option.isSome(organs) && footprints !== undefined && config.settings.concurrent > 1
-        ? yield* makePredictor({ repo: config.repo, vendored: config.settings.vendored }).pipe(
-            Effect.provideService(Organs, organs.value),
-          )
-        : undefined
     // The tickets the last run left whose workers wait for a slot to be resumed (carry.ts): the
     // scheduler dispatches none of them afresh.
     const carrying = yield* Ref.make<ReadonlySet<TicketId>>(new Set())
@@ -281,7 +269,6 @@ export const make = (
       machineFull,
       carrying: Ref.get(carrying),
       ...(footprints === undefined ? {} : { footprints }),
-      ...(predictor === undefined ? {} : { predictor }),
       playbook,
       closedBranches: branches,
       show: ({ solo, unclosed, waits, skips }) =>
@@ -311,7 +298,6 @@ export const make = (
       checksGate,
       beforeStart,
       machine,
-      predictor,
       carrying,
       scheduler,
       lookAround,

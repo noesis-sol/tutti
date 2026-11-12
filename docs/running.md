@@ -923,7 +923,8 @@ Tickets that touch the same code don't run side by side. Each ticket has a **foo
   `src/run/cart.ts`) and, matching none yet, those it would match from the repository's root
   (`web/src/*.ts` before there is a `web/`); a name with a `[` (`pages/[id].tsx`) is that file or
   folder as well as the glob;
-- for a ticket naming none of these, the `predicted_files` metadata, if it has one;
+- for a ticket naming none of these, the `predicted_files` metadata, if it has one (orchestra's
+  predictor writes it; tutti's own predictor is gone, so tutti reads it and never writes it);
 - once it runs, the files its worktree has changed, read every 30 seconds.
 
 A ticket with commits on its branch (`tutti/<id>`: reopened, or carried over) is footprinted from the
@@ -948,8 +949,8 @@ the old and the new version of a line changed in place. `tutti init` lists the f
 create-check-suite skill writes as it files the test work.
 Vendored paths, a subtree of another project's files kept in the repository, are no ticket's: a path
 `.gitattributes` marks `linguist-vendored` (`repos/** linguist-vendored`), or one the settings'
-`vendored` globs match (`["repos/**"]`), is dropped wherever a ticket names it or the predictor
-answers it, so it makes no overlap, and the predictor doesn't list it. The START block names them:
+`vendored` globs match (`["repos/**"]`), is dropped wherever a ticket names it or its
+`predicted_files` hold it, so it makes no overlap. The START block names them:
 `vendored: repos/** (from .gitattributes)`.
 The log shows each ticket's footprint as it is dispatched: `<id> footprint: Loop.merge,
 src/run/merge.ts, area:run`, the predicted files marked `(predicted)`, a branch's `(from its
