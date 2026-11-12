@@ -14,10 +14,12 @@ and try to show that it is not done.
 
 ## Its checks
 
-- `scripts/check-fast.sh`, the merge check: tutti runs it on each ticket before it merges it. It runs:
+- `scripts/check-fast.sh`, the merge check: tutti runs it on each ticket's branch rebased onto main
+  before it merges it. It runs:
   - `echo "SUITE: check"`
-  - `(scripts/check.sh)`
-- `scripts/check-full.sh`, every check, which tutti runs at the end of a run: `scripts/check-fast.sh`, then:
+  - `(TUTTI_OWN_SAME_TREE=1 scripts/check-own.sh)`: tsc, biome, shellcheck and only the tests the
+    change since main touches; `scripts/check.sh` whole when the project's setup changed
+- `scripts/check-full.sh`, every check, every test, which tutti runs at the end of a run:
   - `echo "SUITE: check-slow"`
   - `(TUTTI_SLOW=1 scripts/check.sh)`
 - Run each of those commands on what a change touches where its tool allows it

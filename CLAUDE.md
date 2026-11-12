@@ -74,7 +74,13 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
 ```
 
 - `scripts/check-fast.sh` (tutti's merge check, `checks.fast` in `.tutti/settings.json`) runs
-  `scripts/check.sh`; `scripts/check-full.sh` runs it with `TUTTI_SLOW=1`.
+  `scripts/check-own.sh` on the ticket's branch rebased onto main, with `TUTTI_OWN_SAME_TREE=1`:
+  tsc, biome and shellcheck as the own check runs them, and only the tests the rebased change
+  touches, saying how many; `scripts/check.sh` whole when the project's setup changed or there is
+  no main. It stands on no pass kept in the worktree but one at the very tree it checks. The gate is
+  weaker between full checks: a break only an unselected test would catch reaches main and is found
+  by the next full check. `scripts/check-full.sh` is the whole suite, `scripts/check.sh` with
+  `TUTTI_SLOW=1`: tutti runs it once at the end of a run, and CI and the release run it.
 - `scripts/check-own.sh` is `checks.own` in `.tutti/settings.json`, the check tutti's workers run
   on their own change: tsc, biome and shellcheck on the files changed since main, and the tests
   that changed, import a changed module or name a changed file outside their imports

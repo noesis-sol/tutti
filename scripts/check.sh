@@ -1,6 +1,8 @@
 #!/bin/sh
-# scripts/check.sh: the project's check (§ 13), and the suite scripts/check-fast.sh and
-# scripts/check-full.sh run. Each step prints a SUITE: line, then runs in a subshell:
+# scripts/check.sh: the project's whole check (§ 13). scripts/check-full.sh runs it with
+# TUTTI_SLOW=1, every test; the merge check, scripts/check-fast.sh, runs its steps on a ticket's
+# change through scripts/check-own.sh, and it whole when the project's setup changed or there is no
+# main to start from. Each step prints a SUITE: line, then runs in a subshell:
 #   tsc:        bunx tsc --noEmit
 #   biome:      bunx biome check .
 #   test:       scripts/test.sh (slow suites too when TUTTI_SLOW=1)

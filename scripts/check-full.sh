@@ -1,7 +1,10 @@
 #!/bin/sh
-# scripts/check-full.sh: every check in one pass, the slow suites included. tutti runs it
-# once at the end of a run. It doesn't run scripts/check-fast.sh first: scripts/check.sh with
-# TUTTI_SLOW=1 already runs everything check-fast does, so that would run the tests twice.
+# scripts/check-full.sh: every check in one pass, every test, the slow suites included. tutti runs
+# it once at the end of a run that ended by itself and merged, on the base's head, and CI and the
+# release run it on every push. The merge check, scripts/check-fast.sh, runs only the tests a
+# ticket's change touches, so a break only another test would catch reaches main and is found
+# here. It doesn't run scripts/check-fast.sh first: scripts/check.sh with TUTTI_SLOW=1 already runs
+# everything check-fast does, so that would run the tests twice.
 # It is the project's to edit. Each suite is one command, run from the
 # repository's root, and finds its own test files: a new test in an existing suite needs no edit here.
 # Each runs in a subshell, ( ), so that a command failing anywhere in it (cd web && npm test) fails

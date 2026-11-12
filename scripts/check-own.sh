@@ -14,8 +14,10 @@
 #   lint:       shellcheck on the changed shell scripts (and bin/tutti, which has no .sh)
 # A change to the project's setup (package.json, bun.lock, tsconfig.json, bunfig.toml, biome.json,
 # scripts/check.sh) runs scripts/check.sh whole instead, and so does a branch without main to start
-# from. TUTTI_OWN_BASE names another commit to start from. tutti's merge check,
-# scripts/check-fast.sh, still runs the whole check on each ticket before it merges it.
+# from. TUTTI_OWN_BASE names another commit to start from. The test step says how many test files
+# it runs. tutti's merge check, scripts/check-fast.sh, runs this script too, on the ticket's branch
+# rebased onto main, with TUTTI_OWN_SAME_TREE=1 (below); the whole suite runs in
+# scripts/check-full.sh, once at the end of a run.
 # A pass is kept under the worktree's own git dir (git rev-parse --git-dir), never tracked: the tree
 # it ran on (HEAD's with what isn't committed yet, untracked files included), its mode and the test
 # files that passed. The next run picks tests from what changed since that tree too, and leaves out
@@ -27,7 +29,9 @@
 # that it left out (check-own.ts' afterFailure): the next run runs the files that failed again. Any
 # other failure (tsc, biome, shellcheck, or the tests without that list) keeps nothing and forgets
 # the passes kept: the next run starts from main. tsc, biome and shellcheck run whatever passed
-# before.
+# before. With TUTTI_OWN_SAME_TREE=1, as the merge check runs it in the ticket's worktree where the
+# worker's passes are kept, a pass stands only at the very tree being checked, and one of another
+# tree is said and left: the merge check takes no worker's pass as read.
 # The last line is the verdict, its exit status unchanged, as scripts/check.sh's.
 set -e
 cd "$(dirname "$0")/.."

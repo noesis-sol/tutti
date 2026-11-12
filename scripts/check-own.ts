@@ -20,7 +20,10 @@
 // slow pass stands for a plain run too, as it ran more; a plain one stands for a slow run only for
 // the test files with no slow gate (slowGated), which run the same in both modes. A run
 // whose tests failed keeps, at its tree, the test files whose tests all passed in it and the earlier
-// pass's that it left out (afterFailure): the next one runs the files that failed again.
+// pass's that it left out (afterFailure): the next one runs the files that failed again. With
+// TUTTI_OWN_SAME_TREE=1, as tutti's merge check runs it (scripts/check-fast.sh), a pass stands only
+// at the very tree being checked (standing): the merge check runs in the ticket's worktree, where
+// the worker's own passes are kept, and takes none of them as read but one of the tree it checks.
 //
 // Run as `bun scripts/check-own.ts <changed file>...`: it prints the test files to run, one a line,
 // or ALL for the whole suite, reading the repository's src/, test/ and scripts/ from the current
@@ -237,6 +240,26 @@ export const slowGated = (
   return [...gated].filter(isTestFile).sort()
 }
 
+/**
+ * The variable that, set to 1, has a run stand only on a pass at the very tree it checks
+ * (standing): tutti's merge check, scripts/check-fast.sh, sets it.
+ */
+export const sameTreeVariable = "TUTTI_OWN_SAME_TREE"
+
+/**
+ * The pass a run may stand on, of `record`: any where `sameTreeOnly` is false, as a worker's own
+ * run; else one at `tree`, the tree being checked, and none at another or where the tree is
+ * unknown.
+ */
+export const standing = (
+  record: PassRecord | undefined,
+  tree: string | undefined,
+  sameTreeOnly: boolean,
+): PassRecord | undefined =>
+  record !== undefined && (!sameTreeOnly || (tree !== undefined && record.tree === tree))
+    ? record
+    : undefined
+
 /** A pass of check-own's tests: the tree it ran on, its mode, and the test files that passed. */
 export interface PassRecord {
   readonly tree: string
@@ -425,12 +448,25 @@ const pick = (): void => {
   const selection = testsFor(Bun.argv.slice(2), sources, isFile)
   const all = [...sources.keys()].filter((file) => isTestFile(file) && isFile(file)).sort()
   const mode = process.env.TUTTI_SLOW === "1" ? "slow" : "plain"
+  const sameTreeOnly = process.env[sameTreeVariable] === "1"
   const gitDir = git(["rev-parse", "--absolute-git-dir"])
   const tree = gitDir === undefined ? undefined : workingTree(gitDir)
-  const record = gitDir === undefined ? undefined : readKept(recordFile(gitDir, mode))
+  // The pass kept that may stand: with TUTTI_OWN_SAME_TREE=1, only one at the tree being checked.
+  const kept = (which: PassRecord["mode"]): PassRecord | undefined => {
+    if (gitDir === undefined) return undefined
+    const record = readKept(recordFile(gitDir, which))
+    const stands = standing(record, tree, sameTreeOnly)
+    if (record !== undefined && stands === undefined) {
+      console.log(
+        `check-own: standing on no pass: the ${which} one kept, at ${record.tree.slice(0, 7)}, ` +
+          `is of another tree (${sameTreeVariable}=1).`,
+      )
+    }
+    return stands
+  }
+  const record = kept(mode)
   // In a slow run, the plain pass stands for the test files with no slow gate too.
-  const plain =
-    gitDir === undefined || mode !== "slow" ? undefined : readKept(recordFile(gitDir, "plain"))
+  const plain = mode === "slow" ? kept("plain") : undefined
   // The tests the change since a pass's tree touches; undefined for a tree git no longer has
   // (pruned), which reads as no pass.
   const touchedSince = (pass: PassRecord): ReadonlyArray<string> | "all" | undefined => {
@@ -471,12 +507,16 @@ const pick = (): void => {
     const count = picked.leftOut[at] ?? 0
     return count > 0 ? [why(count)] : []
   })
+  const running = picked.run === "all" ? all.length : picked.run.length
   if (reasons.length > 0) {
-    const running = picked.run === "all" ? all.length : picked.run.length
     console.log(
       `check-own: ${reasons.join(", and ")} and nothing since touches them; ` +
         `running ${running || "none"}.`,
     )
+  } else if (picked.run === "all") {
+    console.log(`test: running every test file, ${all.length}.`)
+  } else if (running > 0) {
+    console.log(`test: running the ${files(running)} the change touches.`)
   }
   if (gitDir !== undefined && tree !== undefined) {
     writeRecord(recordFile(gitDir, "next"), { tree, mode, tests: picked.passed })

@@ -936,7 +936,7 @@ declares `merge`), so that it holds back a ticket naming one as it would startin
 The files the checks' commands name are left out, unless the `files` metadata lists them: nearly every
 ticket says "`scripts/check-fast.sh` passes" without changing it. So are the files the merge check's
 and the full check's scripts run, named on their lines that aren't comments (`scripts/check.sh`,
-which `scripts/check-fast.sh` runs), one level deep; not those the worker's own check's script runs
+which `scripts/check-full.sh` runs), one level deep; not those the worker's own check's script runs
 (`scripts/check-own.ts`), which tickets change. A ticket that does change such a file warns of no
 other starting beside it, but two running tickets changing it still warn `LIKELY_CONFLICT`. The files git merges by union
 (`CHANGELOG.md merge=union` in `.gitattributes`) are always left out: git keeps both tickets' lines.
