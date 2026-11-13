@@ -640,12 +640,15 @@ describe("the checks that show it", () => {
 describe("this repository's tests", () => {
   test("a PROGRESS: line as each test file ends, ending at total over total", () => {
     const said: Array<string> = []
+    // One process: bun test names the next file as the one before it ends.
     const counting = progressCounter(3, (line) => said.push(line))
     counting.take("test/a.test.ts:")
     counting.take("(pass) a > one [0.59ms]")
+    expect(said).toEqual([])
     counting.take("test/b.test.ts:")
     // A rerun of a failed test names its file again; it isn't counted twice.
     counting.take("test/b.test.ts:")
+    counting.take("test/c.test.ts:")
     counting.end()
     expect(said).toEqual(["PROGRESS: 1/3", "PROGRESS: 2/3", "PROGRESS: 3/3"])
     expect(said.map(progressOf)).toEqual([
@@ -655,10 +658,23 @@ describe("this repository's tests", () => {
     ])
   })
 
-  test("the last line isn't printed twice when every file was named", () => {
+  test("with several processes it lags by the files in flight, never reading ahead of them", () => {
+    const said: Array<string> = []
+    const counting = progressCounter(4, (line) => said.push(line), 3)
+    for (const file of ["a", "b", "c"]) counting.take(`test/${file}.test.ts:`)
+    // Three processes have three files in flight: none of them has ended.
+    expect(said).toEqual([])
+    counting.take("test/d.test.ts:")
+    expect(said).toEqual(["PROGRESS: 1/4"])
+    counting.end()
+    expect(said).toEqual(["PROGRESS: 1/4", "PROGRESS: 4/4"])
+  })
+
+  test("the last line isn't printed twice when every file was counted", () => {
     const said: Array<string> = []
     const counting = progressCounter(1, (line) => said.push(line))
     counting.take("test/a.test.ts:")
+    counting.take("test/b.test.ts:")
     counting.end()
     expect(said).toEqual(["PROGRESS: 1/1"])
   })
@@ -700,14 +716,11 @@ describe("this repository's tests", () => {
         controller.close()
       },
     })
-    const counting = progressCounter(2, (line) => written.push(`${line}\n`))
+    const counting = progressCounter(1, (line) => written.push(`${line}\n`))
     const all = await tee(stream, to, counting.take)
     expect(all).toBe(chunks.join(""))
     // Every PROGRESS: line is a line of its own: none is spliced onto a line still being printed.
     const lines = written.join("").split("\n")
-    expect(lines.filter((line) => line.includes("PROGRESS:"))).toEqual([
-      "PROGRESS: 1/2",
-      "PROGRESS: 2/2",
-    ])
+    expect(lines.filter((line) => line.includes("PROGRESS:"))).toEqual(["PROGRESS: 1/1"])
   })
 })

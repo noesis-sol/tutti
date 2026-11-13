@@ -481,26 +481,34 @@ export const fileOfHeader = (line: string): string | undefined =>
   fileHeader.exec(Bun.stripANSI(line).trimEnd())?.[1]
 
 /**
- * Counts the test files bun test names as it runs them and prints `PROGRESS: <done>/<total>` for
- * each new one, for the bar tutti's dashboard draws while the check runs (§ 3.3): the files done
- * over the files picked, each file counted once, so a rerun of a failed test doesn't count again.
- * `say` is given each line to print.
+ * Counts the test files that have ended and prints `PROGRESS: <done>/<total>` as each does, for the
+ * bar tutti's dashboard draws while the check runs (§ 3.3): the files done over the files picked,
+ * each file counted once, so a rerun of a failed test doesn't count again. bun test names a file as
+ * it starts it, and `running`, its processes, have one each in flight, so the files that have ended
+ * are those named beyond them: with one process the count moves as the next file's name is printed,
+ * and with more it lags by the files in flight rather than read ahead of them, which read full
+ * while the slowest file still ran. `say` is given each line to print.
  */
 export const progressCounter = (
   total: number,
   say: (line: string) => void,
+  running = 1,
 ): { readonly take: (line: string) => void; readonly end: () => void } => {
   const seen = new Set<string>()
+  let said = 0
   return {
     take: (line) => {
       const file = fileOfHeader(line)
       if (file === undefined || seen.has(file)) return
       seen.add(file)
-      say(`PROGRESS: ${Math.min(seen.size, total)}/${total}`)
+      const done = Math.min(Math.max(0, seen.size - Math.max(1, running)), total)
+      if (done <= said) return
+      said = done
+      say(`PROGRESS: ${done}/${total}`)
     },
     // Every file is done once bun test has exited, whatever its output named: the bar fills.
     end: () => {
-      if (seen.size < total) say(`PROGRESS: ${total}/${total}`)
+      if (said < total) say(`PROGRESS: ${total}/${total}`)
     },
   }
 }
@@ -1266,9 +1274,13 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   const firstArgs = [...parallel, ...limit, ...args]
   // The files picked, which the PROGRESS: lines count against as bun test names each one it runs.
   const picked = filesPicked(args, process.cwd())
-  const progress = progressCounter(picked, (line) => {
-    console.log(line)
-  })
+  const progress = progressCounter(
+    picked,
+    (line) => {
+      console.log(line)
+    },
+    workers,
+  )
   const { code, output, watched } = await runBunTest(
     firstArgs,
     first,
