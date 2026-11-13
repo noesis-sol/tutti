@@ -559,9 +559,10 @@ const fillSlots = (
 
 /**
  * Whether a fill the ready poll alone woke reads git alone this time: every slot is taken, and
- * the queue was read from bd less than busyPoll ago.
+ * the queue was read from bd less than busyPoll ago. Such a look leaves its Asked tickets'
+ * reads too (run/looks.ts).
  */
-const betweenReads = (sched: Scheduling): Effect.Effect<boolean> =>
+export const betweenReads = (sched: Scheduling): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     const { s, state } = yield* current(sched)
     if (slotFree(s, state, sched.options.concurrent)) return false

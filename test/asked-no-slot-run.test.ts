@@ -1,6 +1,7 @@
 // A whole run on one slot (tutti-luwa, § 5.1): t-1 asks, t-2 takes the slot and t-1's question is
 // answered while t-2 works. The look tells the dashboard: t-1 no longer needs you, its row says
-// `↻ answered` and Up next lists it, until t-2's slot frees and it comes back.
+// `↻ answered` and Up next lists it, until t-2's slot frees and it comes back. With every slot
+// taken, the first poll past busyPoll reads the answer (tutti-1odn).
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -9,7 +10,7 @@ import { Duration, Effect, Fiber, Queue, SubscriptionRef } from "effect"
 import type { DrainRequest } from "../src/run/drain.ts"
 import { run } from "../src/run/run.ts"
 import type { RunView } from "../src/run/runView.ts"
-import { readyPoll } from "../src/run/schedule.ts"
+import { busyPoll, readyPoll } from "../src/run/schedule.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
@@ -89,12 +90,12 @@ describe("a question answered with no slot, in a whole run", () => {
         worktrees: { root },
         scripts: (world: World) => ({
           "t-1": [asks(world, "t-1" as TicketId), finishes(world, root, "t-1" as TicketId, [])],
-          // t-2 answers t-1's question, then goes on past ready polls with the slot.
+          // t-2 answers t-1's question, then goes on with the slot past busyPoll's read.
           "t-2": [
             finishes(world, root, "t-2" as TicketId, [
               sleep(Duration.times(readyPoll, 2)),
               step(answers(world, "t-1" as TicketId)),
-              sleep(Duration.times(readyPoll, 3)),
+              sleep(Duration.sum(busyPoll, Duration.times(readyPoll, 2))),
             ]),
           ],
         }),
@@ -117,7 +118,7 @@ describe("a question answered with no slot, in a whole run", () => {
         const fiber = yield* Effect.forkChild(
           run({ version: "0.1.0-test", base: "main", dashboard }),
         )
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 18; i++) {
           for (let j = 0; j < 200; j++) yield* Effect.yieldNow
           yield* look
           yield* advance(readyPoll)

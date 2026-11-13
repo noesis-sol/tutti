@@ -59,7 +59,7 @@ import type { RunPlaybook } from "./playbookRun.ts"
 import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
 import { carry, recheckSlot } from "./schedule/dispatch.ts"
-import { fillTrying, Polled } from "./schedule/fill.ts"
+import { betweenReads, fillTrying, Polled } from "./schedule/fill.ts"
 import { recordQueue } from "./schedule/queue.ts"
 import { LookOpen } from "./schedule/reads.ts"
 import { slotsNow } from "./schedule/slots.ts"
@@ -333,6 +333,12 @@ export interface Scheduler {
     open: ReadonlyArray<Issue> | undefined,
     polled?: boolean,
   ): Effect.Effect<Filled, BeadsError>
+  /**
+   * Whether a fill the ready poll alone woke would read git alone now: every slot taken, and the
+   * queue read from bd less than busyPoll ago. The look leaves its Asked tickets' reads then
+   * (run/looks.ts), as no answered one has a slot to come back in.
+   */
+  readonly betweenReads: Effect.Effect<boolean>
   /** Waits until a ticket's fiber has ended and freed its slot. */
   readonly freed: Effect.Effect<void>
   /**
@@ -393,6 +399,7 @@ export const make = (
         Effect.provideService(trying, Polled, polled).pipe(
           open === undefined ? identity : Effect.provideService(LookOpen, open),
         ),
+      betweenReads: betweenReads(sched),
       freed: Queue.take(sched.freed),
       carry: (ticket, start, issue) => carry(sched, ticket, start, issue),
       recheckSlot: (ticket, work) => recheckSlot(sched, ticket, work),

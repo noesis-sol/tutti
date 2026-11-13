@@ -14,7 +14,7 @@ import { askedQuestions, readAnswers, takeAnswers } from "../asked.ts"
 import { type AskedLook, askedLook } from "../askedLook.ts"
 import { answeredQuestions, answerQuestions, notifyLeftOpen } from "../autoAnswer.ts"
 import { carryWaiting } from "../carry.ts"
-import { stopFor, takesBack, takesNew } from "../holds.ts"
+import { type Gate, stopFor, takesBack, takesNew } from "../holds.ts"
 import { backoff, failedRead, lasted, type Outage, readDue, sustained } from "../queueOutage.ts"
 import { showOn } from "../runView.ts"
 import { beadsOutage } from "../schedule.ts"
@@ -77,6 +77,33 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
       }
       return { open, look: askedLook(open, (yield* SubscriptionRef.get(status)).answered) }
     })
+    // The look's reads of its Asked tickets and what it does with them, as the gate is now: the
+    // answered ones taken back, or only read as answered where the run takes nothing back. bd's
+    // open list as it read it, for the fill; none where a question was answered meanwhile.
+    const answers = Effect.fn(function* (gateNow: Gate) {
+      const read = yield* lookAtAsked
+      const { look } = read
+      let { open } = read
+      if (takesBack(gateNow)) {
+        // --auto-answer's questions first, so that takeAnswers resumes their tickets at once; one
+        // still waiting for its time keeps the run from ending on it.
+        const before = (yield* answeredQuestions).length
+        yield* Ref.set(autoAnswering, yield* answerQuestions(look))
+        // A question answered closed since the list was read: the fill reads it afresh.
+        if ((yield* answeredQuestions).length !== before) open = undefined
+        yield* takeAnswers(carryOptions, look)
+      } else {
+        yield* Ref.set(autoAnswering, false)
+        // Winding down, it answers none: the questions --auto-answer took at once, which notified
+        // nothing, notify now. A hold only puts their answer off.
+        if (gateNow.windingDown) yield* notifyLeftOpen
+        // A question answered meanwhile needs you no longer, though its ticket comes back later.
+        yield* readAnswers(look)
+      }
+      // Those answered with no slot for them need you no longer: a later look brings them back.
+      yield* showOn(status, "answered")(look.noSlot)
+      return open
+    })
     // The look's effects, which read bd and git: the tickets put back in the queue, the setups,
     // checks and requires taken again, the carried and answered workers taken up, then the free
     // slots filled.
@@ -105,27 +132,13 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
         )
         yield* Ref.set(carrying, waitingOf(left))
       }
-      const read = yield* lookAtAsked
-      const { look } = read
-      let { open } = read
-      if (takesBack(gateNow)) {
-        // --auto-answer's questions first, so that takeAnswers resumes their tickets at once; one
-        // still waiting for its time keeps the run from ending on it.
-        const before = (yield* answeredQuestions).length
-        yield* Ref.set(autoAnswering, yield* answerQuestions(look))
-        // A question answered closed since the list was read: the fill reads it afresh.
-        if ((yield* answeredQuestions).length !== before) open = undefined
-        yield* takeAnswers(carryOptions, look)
-      } else {
-        yield* Ref.set(autoAnswering, false)
-        // Winding down, it answers none: the questions --auto-answer took at once, which notified
-        // nothing, notify now. A hold only puts their answer off.
-        if (gateNow.windingDown) yield* notifyLeftOpen
-        // A question answered meanwhile needs you no longer, though its ticket comes back later.
-        yield* readAnswers(look)
-      }
-      // Those answered with no slot for them need you no longer: a later look brings them back.
-      yield* showOn(status, "answered")(look.noSlot)
+      // A look the ready poll alone woke, bd not failing, with every slot taken and the queue read
+      // from bd less than busyPoll ago, leaves its Asked tickets as the last look that read them
+      // left them, the panel and --auto-answer's wait with them: an answered one has no slot to
+      // come back in, a slot freed wakes a look that reads at once, as does an answer on the screen
+      // (a command), and the next poll past busyPoll reads them again (schedule/fill.ts).
+      const polled = polledOnly(why) && (yield* Ref.get(outage)) === null
+      const open = polled && (yield* scheduler.betweenReads) ? undefined : yield* answers(gateNow)
       // A fill bd can't read the queue for leaves the slots as they are, and a later look reads it
       // again; bd failing every read for beadsOutage stops the run (queueOutage.ts). One the ready
       // poll alone woke, bd not failing, reads bd for the queue only every busyPoll while every
