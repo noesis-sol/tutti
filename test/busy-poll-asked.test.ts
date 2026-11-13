@@ -1,26 +1,32 @@
 // A poll with every slot taken reads bd for its Asked tickets as rarely as for the queue
 // (tutti-1odn): a look the ready poll alone woke, between the queue's reads (busyPoll), lists no
 // open tickets for the answers, as an answered ticket has no slot to come back in; the first poll
-// past busyPoll reads them again, and the slot freed takes the answered ticket back.
+// past busyPoll reads them again, and the slot freed takes the answered ticket back. Such a look
+// keeps an answered ticket waiting for a slot from the run's end: no end-of-run box beside a worker
+// waiting on you.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Deferred, Duration, Effect, Fiber } from "effect"
+import { Deferred, Duration, Effect, Fiber, SubscriptionRef } from "effect"
 import { line } from "../src/core/log.ts"
 import { run } from "../src/run/run.ts"
 import { busyPoll, readyPoll } from "../src/run/schedule.ts"
+import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   bash,
+  canUseTool,
   filesQuestion,
   type SessionScript,
   sleep,
   run as step,
+  tool,
   turn,
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
+import { waitForTest } from "../src/testing/Attention.ts"
 import { advance, backlog, expectExitCode, expectPhases, scenario, type World } from "./harness.ts"
 
 const folder = (name: string) =>
@@ -165,5 +171,74 @@ describe("a run with a ticket Asked and every slot taken", () => {
     expect(within).toContain("list")
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done", "t-2": "Done" })
+  }, 30_000)
+
+  test("keeps the answered ticket from the run's end while a worker in the slot waits on you", async () => {
+    const repo = folder("repo")
+    const root = folder("worktrees")
+    const working = Deferred.makeUnsafe<void>()
+    // Each poll's end-of-run box while no hold is on, with t-1's row.
+    const seen: Array<string> = []
+    await scenario(
+      {
+        config: { repo, settings: { ...appConfig().settings, concurrent: 1 } },
+        backlog: backlog().ticket("t-1").ticket("t-2").seeds,
+        git: { dir: repo },
+        worktrees: { root },
+        policy: waitForTest,
+        scripts: (world: World) => ({
+          "t-1": [asks(world, "t-1" as TicketId), turn([])],
+          // t-2 works 2 minutes in the one slot, then asks you and waits.
+          "t-2": [
+            turn([
+              ...bash(
+                "bd update t-2 --claim",
+                orDie(world.beads.update("t-2" as TicketId, { claim: true })),
+              ),
+              step(Deferred.succeed(working, undefined)),
+              sleep(Duration.minutes(2)),
+              canUseTool("Bash", { command: "rm -rf build" }),
+              ...tool("Bash", { command: "rm -rf build" }),
+            ]),
+          ],
+        }),
+      },
+      Effect.gen(function* () {
+        const git = yield* Git
+        const beads = yield* Beads
+        for (const id of ["t-1", "t-2"]) {
+          yield* git.addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
+        }
+        let shown: ScreenInputs | undefined
+        const dashboard: Dashboard = (inputs) =>
+          Effect.sync(() => {
+            shown = inputs
+          })
+        const fiber = yield* Effect.forkChild(
+          run({ version: "0.1.0-test", base: "main", dashboard }),
+        )
+        yield* Deferred.await(working)
+        yield* settle
+        // t-1's question answered by hand, read at a look that has no slot for it.
+        for (const dependency of (yield* Effect.orDie(beads.show("t-1" as TicketId)))
+          .dependencies) {
+          if (dependency.issue?.labels.includes("human") === true) {
+            yield* Effect.orDie(beads.close(dependency.id, "answered"))
+          }
+        }
+        for (let i = 0; i < 10; i++) {
+          yield* advance(readyPoll)
+          yield* settle
+          if (shown === undefined) continue
+          const view = yield* SubscriptionRef.get(shown.view)
+          if (view.banners.length > 0) continue
+          const row = view.rows.find((each) => each.ticket === "t-1")
+          seen.push(`${row?.word ?? "no row"} · ${JSON.stringify(view.endOfRun ?? null)}`)
+        }
+        yield* Fiber.interrupt(fiber)
+      }),
+    )
+    expect(seen).toContain("answered · null")
+    expect(seen.filter((each) => !each.endsWith(" · null"))).toEqual([])
   }, 30_000)
 })

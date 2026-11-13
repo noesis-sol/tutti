@@ -51,7 +51,7 @@ export interface Looks {
 /** The looks, over the run's parts and what the start's steps left. */
 export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
   Effect.gen(function* () {
-    const { beads, ledger, logs, context, status, holds } = parts.services
+    const { beads, ledger, logs, context, status, holds, attention } = parts.services
     const { stopped } = holds
     const { setUps, gate } = parts.holds
     const { critic, queue, branches } = parts.merge
@@ -124,7 +124,7 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
       // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
       // winds down, which takes up only what is running: the next run resumes them, though the look
       // still reads which questions are answered.
-      yield* Ref.set(unslotted, new Set())
+      const unslottedBefore = yield* Ref.getAndSet(unslotted, new Set())
       const gateNow = yield* gate
       if (takesBack(gateNow)) {
         const left = yield* carryWaiting(carryOptions, yield* Ref.get(carrying)).pipe(
@@ -136,9 +136,21 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
       // from bd less than busyPoll ago, leaves its Asked tickets as the last look that read them
       // left them, the panel and --auto-answer's wait with them: an answered one has no slot to
       // come back in, a slot freed wakes a look that reads at once, as does an answer on the screen
-      // (a command), and the next poll past busyPoll reads them again (schedule/fill.ts).
+      // (a command), and the next poll past busyPoll reads them again (schedule/fill.ts). Only while
+      // a worker in a slot works rather than waits on you, so the run can't end (runEnd.ts's
+      // whatsLeft) on an answer not read yet. Those the last look found answered with no slot still
+      // wait for one, keeping the run from ending.
       const polled = polledOnly(why) && (yield* Ref.get(outage)) === null
-      const open = polled && (yield* scheduler.betweenReads) ? undefined : yield* answers(gateNow)
+      const asking = new Set((yield* attention.current).map((request) => request.ticket))
+      const working = [...(yield* scheduler.running)].some((ticket) => !asking.has(ticket))
+      const skipped = polled && working && (yield* scheduler.betweenReads)
+      const open = skipped ? undefined : yield* answers(gateNow)
+      if (skipped && takesBack(gateNow)) {
+        const stillAsked = [...(yield* ledger.current).tickets.values()]
+          .filter((entry) => entry.phase._tag === "Asked" && unslottedBefore.has(entry.ticket))
+          .map((entry) => entry.ticket)
+        yield* Ref.update(unslotted, (all) => new Set([...all, ...stillAsked]))
+      }
       // A fill bd can't read the queue for leaves the slots as they are, and a later look reads it
       // again; bd failing every read for beadsOutage stops the run (queueOutage.ts). One the ready
       // poll alone woke, bd not failing, reads bd for the queue only every busyPoll while every
