@@ -46,6 +46,11 @@ export interface Looks {
   readonly autoAnswering: Ref.Ref<boolean>
   /** bd failing every fill's read of the queue since, if it does (queueOutage.ts). */
   readonly outage: Ref.Ref<Outage | null>
+  /**
+   * Whether the last look that did its effects left its Asked tickets unread, a busy poll's
+   * between the queue's reads: one may be answered, to come back once a slot frees.
+   */
+  readonly askedUnread: Ref.Ref<boolean>
 }
 
 /** The looks, over the run's parts and what the start's steps left. */
@@ -61,6 +66,8 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
     const autoAnswering = yield* Ref.make(false)
     // bd failing every fill's read of the queue since, if it does (queueOutage.ts).
     const outage = yield* Ref.make<Outage | null>(null)
+    // Whether the last look that did its effects left its Asked tickets unread (fill's skipped).
+    const askedUnread = yield* Ref.make(false)
     // bd's open list, read here once where a ticket is Asked, for the answers and the fill both: a
     // ticket whose question it has open isn't shown (asked.ts's AskedLook).
     const lookAtAsked = Effect.gen(function* () {
@@ -124,7 +131,7 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
       // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
       // winds down, which takes up only what is running: the next run resumes them, though the look
       // still reads which questions are answered.
-      const unslottedBefore = yield* Ref.getAndSet(unslotted, new Set())
+      yield* Ref.set(unslotted, new Set())
       const gateNow = yield* gate
       if (takesBack(gateNow)) {
         const left = yield* carryWaiting(carryOptions, yield* Ref.get(carrying)).pipe(
@@ -138,19 +145,18 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
       // come back in, a slot freed wakes a look that reads at once, as does an answer on the screen
       // (a command), and the next poll past busyPoll reads them again (schedule/fill.ts). Only while
       // a worker in a slot works rather than waits on you, so the run can't end (runEnd.ts's
-      // whatsLeft) on an answer not read yet. Those the last look found answered with no slot still
-      // wait for one, keeping the run from ending.
+      // whatsLeft) on an answer not read yet; and until a look reads them, the run's end counts
+      // them as waiting for a slot (askedUnread), as a look woken by an attention change alone
+      // reads nothing.
       const polled = polledOnly(why) && (yield* Ref.get(outage)) === null
       const asking = new Set((yield* attention.current).map((request) => request.ticket))
       const working = [...(yield* scheduler.running)].some((ticket) => !asking.has(ticket))
       const skipped = polled && working && (yield* scheduler.betweenReads)
       const open = skipped ? undefined : yield* answers(gateNow)
-      if (skipped && takesBack(gateNow)) {
-        const stillAsked = [...(yield* ledger.current).tickets.values()]
-          .filter((entry) => entry.phase._tag === "Asked" && unslottedBefore.has(entry.ticket))
-          .map((entry) => entry.ticket)
-        yield* Ref.update(unslotted, (all) => new Set([...all, ...stillAsked]))
-      }
+      const asked = [...(yield* ledger.current).tickets.values()].some(
+        (entry) => entry.phase._tag === "Asked",
+      )
+      yield* Ref.set(askedUnread, skipped && asked && takesBack(gateNow))
       // A fill bd can't read the queue for leaves the slots as they are, and a later look reads it
       // again; bd failing every read for beadsOutage stops the run (queueOutage.ts). One the ready
       // poll alone woke, bd not failing, reads bd for the queue only every busyPoll while every
@@ -190,5 +196,5 @@ export const make = (parts: RunParts, started: Started): Effect.Effect<Looks> =>
       // The critic's next review, in a slot the fill left free.
       yield* critic.look
     })
-    return { lookAtAsked, fill, autoAnswering, outage }
+    return { lookAtAsked, fill, autoAnswering, outage, askedUnread }
   })

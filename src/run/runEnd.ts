@@ -26,7 +26,9 @@ export interface Look {
   /**
    * Whether a worker to be resumed found no slot in the look, carried over from the last run or
    * its question answered: it is still to start, once a slot frees (§ 5's Scheduling). The look
-   * tries none while the run holds, which, as for a queued ticket, leaves it for the next run.
+   * tries none while the run holds, which, as for a queued ticket, leaves it for the next run. A
+   * busy poll's look that left its Asked tickets unread counts so too (run/looks.ts's
+   * askedUnread): one may be answered.
    */
   readonly resuming: boolean
   /**

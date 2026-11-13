@@ -177,7 +177,7 @@ describe("a run with a ticket Asked and every slot taken", () => {
     const repo = folder("repo")
     const root = folder("worktrees")
     const working = Deferred.makeUnsafe<void>()
-    // Each poll's end-of-run box while no hold is on, with t-1's row.
+    // The end-of-run box every 10 s while no hold is on, with t-1's row.
     const seen: Array<string> = []
     await scenario(
       {
@@ -188,7 +188,7 @@ describe("a run with a ticket Asked and every slot taken", () => {
         policy: waitForTest,
         scripts: (world: World) => ({
           "t-1": [asks(world, "t-1" as TicketId), turn([])],
-          // t-2 works 2 minutes in the one slot, then asks you and waits.
+          // t-2 works 135 s in the one slot, between two polls, then asks you and waits.
           "t-2": [
             turn([
               ...bash(
@@ -196,7 +196,7 @@ describe("a run with a ticket Asked and every slot taken", () => {
                 orDie(world.beads.update("t-2" as TicketId, { claim: true })),
               ),
               step(Deferred.succeed(working, undefined)),
-              sleep(Duration.minutes(2)),
+              sleep(Duration.seconds(135)),
               canUseTool("Bash", { command: "rm -rf build" }),
               ...tool("Bash", { command: "rm -rf build" }),
             ]),
@@ -226,8 +226,9 @@ describe("a run with a ticket Asked and every slot taken", () => {
             yield* Effect.orDie(beads.close(dependency.id, "answered"))
           }
         }
-        for (let i = 0; i < 10; i++) {
-          yield* advance(readyPoll)
+        // Every 10 s, so that the look t-2's request wakes, before the next poll, is seen too.
+        for (let i = 0; i < 30; i++) {
+          yield* advance(Duration.seconds(10))
           yield* settle
           if (shown === undefined) continue
           const view = yield* SubscriptionRef.get(shown.view)

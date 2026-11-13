@@ -44,7 +44,10 @@ export const loop = (
     const watchers = yield* makeWatchers(parts)
     const started = yield* startRun(parts, watchers)
     yield* afterStart(parts, watchers)
-    const { lookAtAsked, fill, autoAnswering, outage } = yield* makeLooks(parts, started)
+    const { lookAtAsked, fill, autoAnswering, outage, askedUnread } = yield* makeLooks(
+      parts,
+      started,
+    )
     const { unslotted } = started
     // The loop (look.ts): it looks at each wake until nothing is left, then ends the run.
     const fillContext = yield* Effect.context<WorkEnv | FileSystem.FileSystem | Notifier>()
@@ -80,7 +83,10 @@ export const loop = (
       usage,
       commands,
       environment: { probe: (stops) => environment.probe(stops, answersAtWakes) },
-      resuming: Effect.map(Ref.get(unslotted), (all) => all.size > 0),
+      resuming: Effect.map(
+        Effect.all([Ref.get(unslotted), Ref.get(askedUnread)]),
+        ([all, unread]) => all.size > 0 || unread,
+      ),
       answering: Ref.get(autoAnswering),
       unread: Effect.map(Ref.get(outage), (now) => now !== null),
       ...(disk === undefined ? {} : { diskHeld: disk.held }),
