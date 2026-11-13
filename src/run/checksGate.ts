@@ -59,6 +59,7 @@ import { type checksGateOutcomes, type GateRan, tenths } from "../services/event
 import { Git, type Sha, shortHash } from "../services/Git.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { flakyWarnings, howFailed, outputTo, recorded } from "./check.ts"
+import { fullCheckKey, watchCheck } from "./checking.ts"
 import { type EarlyChecks, holdingSlot } from "./earlyCheck.ts"
 import {
   type FullCheckRun,
@@ -635,19 +636,23 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
                 const checked = yield* timed(
                   check,
                   Effect.scoped(
-                    Effect.flatMap(outputTo({ worktree: dir }, name, `${whose} ${what}'s`), (to) =>
+                    Effect.gen(function* () {
+                      const to = yield* outputTo({ worktree: dir }, name, `${whose} ${what}'s`)
+                      // Its bar in Current's box, where the gate shows there (§ 7.2).
+                      const watched = yield* watchCheck(fullCheckKey, "checks gate", check)
                       // The check record names check-fast's runs as the merge check's.
-                      recorded(
+                      return yield* recorded(
                         check === "fast" ? "merge" : "full",
                         undefined,
                         checks[check]({
                           cwd: dir,
                           ...to,
+                          ...watched,
                           command: settings.command,
                           timeLimit: settings.timeout,
                         }),
-                      ),
-                    ),
+                      )
+                    }),
                   ),
                   outcomeOf,
                 )

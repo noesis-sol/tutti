@@ -49,6 +49,7 @@ import { type checkSuites, tenths } from "../services/events.ts"
 import { type Git, Sha, type StatusEntry } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
+import { checkPassed, watchCheck } from "./checking.ts"
 import { noteWritten } from "./checkWrote.ts"
 import { keepFailedOutput } from "./keptChecks.ts"
 import { warn } from "./say.ts"
@@ -143,6 +144,8 @@ export const recordedKeeping = <R>(
     if (Result.isSuccess(ran)) {
       if (ran.success._tag === "CheckPassed") {
         yield* events.emit({ ...base, command: ran.success.command, result: "passed" })
+        // Its kind's recent passes, which the bar of the next check of that kind is estimated from.
+        yield* checkPassed(suite, seconds)
       }
       return { ran, kept: undefined }
     }
@@ -438,13 +441,15 @@ export const checkOnce = (
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, checkLogName, "the check's")
+        // Its card's bar, where the run shows one: the check says where it is as it goes.
+        const watched = yield* watchCheck(ticket.id, "merge check", "fast")
         let status: ReadonlyArray<StatusEntry> | undefined
         const { ran, kept } = yield* recordedKeeping(
           how.suite,
           ticket.id,
           noteWritten(
             ticket.worktree,
-            checks.fast({ cwd: ticket.worktree, ...to, ...loadedOf(how.loaded) }),
+            checks.fast({ cwd: ticket.worktree, ...to, ...watched, ...loadedOf(how.loaded) }),
             {
               before: how.before,
               read: (after) => {

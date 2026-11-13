@@ -730,7 +730,8 @@ rather than file another, and once the checks pass tutti closes it, as the tree'
 
 It waits while a stop or the usage limit holds the run, and a run that winds down leaves it to the
 next. While it runs, Current's box says `checks gate: <command> · <time>` (`setting up the checks gate`
-during a setup) and the load line names its memory `checks gate`. A quit stops it, and the next run
+during a setup), with the bar of the check running under it ([the dashboard](dashboard.md)), and the
+load line names its memory `checks gate`. A quit stops it, and the next run
 runs it again. It runs once per spec: once it passes, the root epic records the runners it passed
 (`checks_gate` in its metadata), so a run carried on, or a spec update whose environment ticket left
 the runners as they were, doesn't run it again. Its end is a `checks_gate` record

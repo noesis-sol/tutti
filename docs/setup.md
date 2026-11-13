@@ -338,6 +338,13 @@ bun test
   names the suite that failed, and the ticket tutti files is about it.
 - **`FLAKY: <test>`**, printed by a suite that reran a failed test and passed when the rerun did,
   lets the ticket merge with a warning naming it.
+- **`PROGRESS: <done>/<total>`**, printed by a suite as it goes, in whatever it counts (test files,
+  packages, cases), fills a bar on the dashboard while the check runs, the count beside it. tutti
+  keeps the latest line of the suite running and forgets it at the next `SUITE:` line; a line that
+  isn't two whole numbers, done no more than total, is an ordinary line of the output. It is
+  optional: a suite that prints none fills the bar by the time it has run against the median of
+  that check's recent passes, marked as an estimate (`≈`), and a check with no pass to go by yet
+  shows no bar. Without a dashboard, a line says each check's count every minute instead.
 - **`lock <name>` and `unlock`**, around a suite, have it take turns with the same suite in other
   worktrees, for a suite that can't run twice at once (a fixed port, a shared database).
 

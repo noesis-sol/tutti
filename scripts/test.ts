@@ -65,6 +65,7 @@
 //
 // It runs nothing on a node_modules behind bun.lock, saying which packages differ (check-deps.ts):
 // the suites would run on the packages of before a bump, and fail on bugs it fixed (tutti-a8q2).
+import type { Dirent } from "node:fs"
 import {
   lstatSync,
   mkdirSync,
@@ -389,15 +390,96 @@ export const timeoutLeftovers = (
   )
 }
 
-// Copies a stream of bun test's output through to ours, as it comes, and returns all of it.
-const tee = async (stream: ReadableStream<Uint8Array>, to: NodeJS.WriteStream): Promise<string> => {
+// Copies a stream of bun test's output through to ours, as it comes, and returns all of it; `onLine`
+// is given each whole line as it is copied, for the PROGRESS: lines (progressCounter).
+const tee = async (
+  stream: ReadableStream<Uint8Array>,
+  to: NodeJS.WriteStream,
+  onLine?: (line: string) => void,
+): Promise<string> => {
   const decoder = new TextDecoder()
   let text = ""
+  let partial = ""
   for await (const chunk of stream) {
     to.write(chunk)
-    text += decoder.decode(chunk, { stream: true })
+    const part = decoder.decode(chunk, { stream: true })
+    text += part
+    if (onLine === undefined) continue
+    const lines = (partial + part).split("\n")
+    partial = lines.pop() ?? ""
+    for (const line of lines) onLine(line)
   }
-  return text + decoder.decode()
+  const last = decoder.decode()
+  if (onLine !== undefined && `${partial}${last}` !== "") onLine(`${partial}${last}`)
+  return text + last
+}
+
+// testFileName matches a file bun test runs: its default patterns, under any folder but node_modules.
+const testFileName = /[._](test|spec)\.[cm]?[jt]sx?$/
+
+/**
+ * The test files under `dir`, as bun test finds them when no path is given: every file whose name
+ * matches its default patterns, in any folder below but node_modules and the hidden ones.
+ */
+export const testFilesUnder = (dir: string): ReadonlyArray<string> => {
+  const found: Array<string> = []
+  const walk = (folder: string): void => {
+    let entries: ReadonlyArray<Dirent>
+    try {
+      entries = readdirSync(folder, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name === "node_modules") continue
+      if (entry.isDirectory()) walk(join(folder, entry.name))
+      else if (entry.isFile() && testFileName.test(entry.name)) found.push(join(folder, entry.name))
+    }
+  }
+  walk(dir)
+  return found
+}
+
+/**
+ * How many test files a run of `args` in `dir` has before it starts: those the arguments name, or
+ * every file bun test would find where they name none. The PROGRESS: lines count against it.
+ */
+export const filesPicked = (args: ReadonlyArray<string>, dir: string): number => {
+  const named = args.filter((arg) => !arg.startsWith("-") && /\.[cm]?[jt]sx?$/.test(arg))
+  return named.length > 0 ? named.length : testFilesUnder(dir).length
+}
+
+// fileHeader matches the line bun test prints as it runs a file, `test/marks.test.ts:`.
+const fileHeader = /^(\S+[._](?:test|spec)\.[cm]?[jt]sx?):$/
+
+/** The test file `line` of bun test's output names as it runs it; undefined when it names none. */
+export const fileOfHeader = (line: string): string | undefined =>
+  // Bun colours the name where it prints to a terminal; a check's output has it plain.
+  fileHeader.exec(Bun.stripANSI(line).trimEnd())?.[1]
+
+/**
+ * Counts the test files bun test names as it runs them and prints `PROGRESS: <done>/<total>` for
+ * each new one, for the bar tutti's dashboard draws while the check runs (§ 3.3): the files done
+ * over the files picked, each file counted once, so a rerun of a failed test doesn't count again.
+ * `say` is given each line to print.
+ */
+export const progressCounter = (
+  total: number,
+  say: (line: string) => void,
+): { readonly take: (line: string) => void; readonly end: () => void } => {
+  const seen = new Set<string>()
+  return {
+    take: (line) => {
+      const file = fileOfHeader(line)
+      if (file === undefined || seen.has(file)) return
+      seen.add(file)
+      say(`PROGRESS: ${Math.min(seen.size, total)}/${total}`)
+    },
+    // Every file is done once bun test has exited, whatever its output named: the bar fills.
+    end: () => {
+      if (seen.size < total) say(`PROGRESS: ${total}/${total}`)
+    },
+  }
 }
 
 /**
@@ -1091,6 +1173,7 @@ const runBunTest = async (
   environment: Readonly<Record<string, string>>,
   echo = true,
   watch?: (pid: number, exited: Promise<number>) => Promise<Watched>,
+  onLine?: (line: string) => void,
 ): Promise<{
   readonly code: number
   readonly out: string
@@ -1116,8 +1199,8 @@ const runBunTest = async (
     },
   )
   const [out, err, code, watched] = await Promise.all([
-    echo ? tee(proc.stdout, process.stdout) : new Response(proc.stdout).text(),
-    echo ? tee(proc.stderr, process.stderr) : new Response(proc.stderr).text(),
+    echo ? tee(proc.stdout, process.stdout, onLine) : new Response(proc.stdout).text(),
+    echo ? tee(proc.stderr, process.stderr, onLine) : new Response(proc.stderr).text(),
     proc.exited,
     watch?.(proc.pid, proc.exited),
   ])
@@ -1158,6 +1241,11 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   const limit = timeLimitArguments(args)
   const first = join(reports, "first.xml")
   const firstArgs = [...parallel, ...limit, ...args]
+  // The files picked, which the PROGRESS: lines count against as bun test names each one it runs.
+  const picked = filesPicked(args, process.cwd())
+  const progress = progressCounter(picked, (line) => {
+    console.log(line)
+  })
   const { code, output, watched } = await runBunTest(
     firstArgs,
     first,
@@ -1165,7 +1253,9 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     { ...suites, ...coreThreadVariables(machine, undefined, workers) },
     true,
     own ? (pid, exited) => watchMemory(pid, testsInWorkers(firstArgs), exited) : undefined,
+    progress.take,
   )
+  progress.end()
   const cases = readReport(first)
   const warned = watched?.warned === true
   if (warned) {

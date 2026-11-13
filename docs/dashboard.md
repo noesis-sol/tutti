@@ -319,8 +319,13 @@ box, their tickets, statuses and times lined up as columns, so that the titles s
 column. With nothing running, a box as tall as a card says `picking the next ticket…`, or
 `stopping…`. Once the run has ended by itself having merged a ticket,
 it says what its full check runs and for how long: `setting up the full check: bun install · 12s`,
-then `full check: scripts/check-full.sh · 1m12s`. The environment probe has a card of its own, labelled
-`probe`. Elapsed times update every 3 seconds.
+then `full check: scripts/check-full.sh · 1m12s`. Under that line, while the check says where it is,
+a bar fills with its progress and the count beside it: `test ━━━━──── 424/848`, the suite it is in
+first. A suite that counts nothing, and a check that counts nothing at all, fills the bar by the
+time it has run against the median of that check's recent passes, marked as an estimate,
+`tsc ━━━━──── ≈50%`; with no pass to go by there is no bar. A ticket's merge check shows the same
+beside its card's action, `running the check on main · test ━━────── 212/848`. The environment
+probe has a card of its own, labelled `probe`. Elapsed times update every 3 seconds.
 
 ### Attention cards
 

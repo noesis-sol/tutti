@@ -70,7 +70,8 @@ const play = (scripted: Scripted, run: CheckRun): Effect.Effect<CheckResult, Che
   if (Effect.isEffect(scripted)) return scripted
   if (typeof scripted === "function") return scripted(run)
   if (!("_tag" in scripted)) {
-    const output = new CheckOutput()
+    // Through the run's onAt, where it asked for one: its output moves the bar as the live one's does.
+    const output = new CheckOutput(run.onAt)
     output.write(new TextEncoder().encode(scripted.output))
     return resultOf(run.check, run.command, scripted.exitCode, output, run.outputFile)
   }

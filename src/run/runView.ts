@@ -34,6 +34,8 @@ import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
 import type { Motion, Shown, Tone } from "../ui/tone.ts"
 import { afterMerging, afterSolo } from "./after.ts"
+import type { CheckShown } from "./checking.ts"
+import { fullCheckKey } from "./checking.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import type { FullCheckRun } from "./fullcheck.ts"
 import {
@@ -204,6 +206,11 @@ export interface Status {
   readonly verdicts: ReadonlyMap<string, string>
   /** How the checks of tickets waiting to merge go ahead of their turn, by ticket (mergetrain.ts). */
   readonly checksAhead: ReadonlyMap<string, CheckAhead>
+  /**
+   * How far each check running has got, by its key (checking.ts): a ticket's ID for its merge
+   * check, fullCheckKey for the full check and the checks gate. The bars are drawn from it (§ 7.2).
+   */
+  readonly checking: ReadonlyMap<string, CheckShown>
   /** The environment probe's session, while it runs (§ 4.9): shown as a card labelled `probe`. */
   readonly probe: ProbeView | null
   /** What the dashboard's warning line says for the whole run: the colour scheme's notices. */
@@ -242,6 +249,7 @@ export const emptyStatus: Status = {
   looksOver: false,
   verdicts: new Map(),
   checksAhead: new Map(),
+  checking: new Map(),
   probe: null,
   warnings: [],
 }
@@ -472,6 +480,8 @@ export interface Card {
   readonly steered: boolean
   /** Its worker's open requests, oldest first. */
   readonly requests: ReadonlyArray<ShownRequest>
+  /** How far its merge check has got, while one runs (§ 7.2); absent when none does. */
+  readonly check?: CheckShown
   /** Its issue, for its worker view's description and whole ticket; absent until the run reads it. */
   readonly issue?: TicketText
   /**
@@ -625,6 +635,12 @@ export const Need = Data.taggedEnum<Need>()
 export const isConflict = (need: Need | undefined): need is Extract<Need, { _tag: "Blocked" }> =>
   need?._tag === "Blocked" && need.why === Tag.mergeConflict
 
+/** What the full check, or the checks gate in its place, runs and how far it has got (§ 7.2). */
+export interface FullCheckView extends FullCheckRun {
+  /** How far it has got, while it says (checking.ts); absent before it has said anything. */
+  readonly at?: CheckShown
+}
+
 export interface RunView {
   readonly title: TitleView
   /** The load line's figures; null until the run has read the machine's load. */
@@ -648,7 +664,7 @@ export interface RunView {
   /** The workers the end-of-run box names (D19), in place of the cards; null with no box. */
   readonly endOfRun: ReadonlyArray<Waiting> | null
   /** What the end-of-run full check runs, its command sanitised, for Current's box; null otherwise. */
-  readonly fullCheck: FullCheckRun | null
+  readonly fullCheck: FullCheckView | null
   /** The warning line's notices, each once. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -962,6 +978,31 @@ const motionOf = (
   // ⟳, as its row: the card's status says its worker resolves or fixes, its frame whether it works.
   if (phase._tag === "Resolving" || phase._tag === "Fixing") return "reworking"
   return working(state, requests) ? "spinner" : "idle"
+}
+
+/** The check running under `key`, its suite sanitised: a project's script named it (§ 7.10). */
+const shownCheck = (checking: Status["checking"], key: string): CheckShown | undefined => {
+  const shown = checking.get(key)
+  if (shown === undefined || shown.suite === null) return shown
+  return { ...shown, suite: sanitizeLine(shown.suite) }
+}
+
+/** A card's merge check, while one runs: `check`, left out when none does. */
+const checkingOf = (
+  checking: Status["checking"],
+  key: string,
+): Pick<Card, "check"> | Record<never, never> => {
+  const shown = shownCheck(checking, key)
+  return shown === undefined ? {} : { check: shown }
+}
+
+/** The full check's or the checks gate's progress, while it says: `at`, left out before it does. */
+const atOf = (
+  checking: Status["checking"],
+  key: string,
+): Pick<FullCheckView, "at"> | Record<never, never> => {
+  const shown = shownCheck(checking, key)
+  return shown === undefined ? {} : { at: shown }
 }
 
 /** The environment probe's card, worker 0, as a Working ticket's, its session in `state`. */
@@ -1296,6 +1337,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         latest: latestOf(actions.get(entry.ticket)),
         steered: entry.steered,
         requests: open,
+        ...checkingOf(status.checking, entry.ticket),
         ...(entry.issue === undefined ? {} : { issue: ticketText(entry.issue) }),
         ...memoryOf(status.load, entry.ticket),
       })
@@ -1365,10 +1407,14 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         ? "checks gate"
         : "full check"
   const load = status.load === null ? null : loadView(status.load, running)
-  const fullCheck =
+  const fullCheck: FullCheckView | null =
     status.fullCheck === null
       ? null
-      : { ...status.fullCheck, command: sanitizeLine(status.fullCheck.command) }
+      : {
+          ...status.fullCheck,
+          command: sanitizeLine(status.fullCheck.command),
+          ...atOf(status.checking, fullCheckKey),
+        }
   // The box names each worker the run waits on that still has a request open, a conflict hand-back
   // waiting for it, or its conflict set aside (§ 4.3).
   const waiting = (status.endOfRun ?? []).flatMap((ticket): ReadonlyArray<Waiting> => {

@@ -6,7 +6,10 @@
 // goes to a file the caller names (check.log or setup.log in a worktree's .tutti/run/, § 9.1), or to
 // a descriptor the caller opened for it through the symlink guard; in
 // memory, only what is said of it is kept, each part bounded, as orchestra keeps it: its last lines,
-// the lines that say what failed, its FLAKY: lines and the suites its SUITE: lines name. The lines
+// the lines that say what failed, its FLAKY: lines and the suites its SUITE: lines name. Where the
+// caller asks to be told (RunOptions' onAt), it is told as well where the check is as it goes: the
+// suite its last SUITE: line named and the latest PROGRESS: line of that suite, the count the
+// dashboard's bar fills with (§ 7.2). The lines
 // that say what failed are picked as orchestra picks them, for Go's tools, generic errors and the
 // test runners of other languages (bun, jest, vitest, node, pytest, cargo, mocha and TAP), and also
 // for tsc and Biome, the tools of a TypeScript project such as tutti's own. A check
@@ -66,6 +69,44 @@ export const OutputBounds = {
 export const flakyPrefix = "FLAKY:"
 /** Starts the line a runner prints as each suite starts, `SUITE: unit tests`. */
 export const suiteMarker = "SUITE:"
+/** Starts the line a check may print as it goes, `PROGRESS: 312/848` (§ 3.3). */
+export const progressMarker = "PROGRESS:"
+
+/** How far the suite running has got, in whatever it counts: its PROGRESS: line's two numbers. */
+export interface CheckProgress {
+  readonly done: number
+  readonly total: number
+}
+
+/** Where a check is: the suite its last SUITE: line named, and how far that suite says it has got. */
+export interface CheckAt {
+  /** The suite named last; null before any SUITE: line. */
+  readonly suite: string | null
+  /** The latest PROGRESS: line of that suite; null where it has printed none. */
+  readonly progress: CheckProgress | null
+}
+
+/** A check that has said nothing of itself yet. */
+export const noCheckAt: CheckAt = { suite: null, progress: null }
+
+// progressNumbers matches what follows PROGRESS:, `312/848`: two whole numbers, spaces around the
+// slash allowed, each short enough to be a whole number in a double.
+const progressNumbers = /^(\d{1,15}) *\/ *(\d{1,15})$/
+
+/**
+ * How far `line`, a line of a check's output, says it has got: `PROGRESS: <done>/<total>`, two
+ * whole numbers with done no more than total. null when it says no such thing, which leaves it an
+ * ordinary line of the output.
+ */
+export const progressOf = (line: string): CheckProgress | null => {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith(progressMarker)) return null
+  const numbers = progressNumbers.exec(trimmed.slice(progressMarker.length).trim())
+  if (numbers === null) return null
+  const done = Number(numbers[1])
+  const total = Number(numbers[2])
+  return done > total ? null : { done, total }
+}
 
 // failedAnywhere matches a line of a check's output, trimmed, that says a package or a test failed
 // (go test's FAIL and --- FAIL:, gotestsum's === FAIL:, a bare FAIL saying nothing more aside), or
@@ -194,6 +235,12 @@ const decoder = new TextDecoder()
  * stderr each have a line of their own being printed, so their lines don't run into each other.
  */
 export class CheckOutput {
+  /**
+   * Told where the check is as its SUITE: and PROGRESS: lines move it, for the dashboard's bar
+   * (§ 7.2); nothing is told when it is left out.
+   */
+  constructor(private readonly onAt?: (at: CheckAt) => void) {}
+
   private readonly partial = { stdout: new LineBuffer(), stderr: new LineBuffer() }
   private readonly tail: Array<string> = []
   /** The blank lines printed since the last line in tail, kept once another line follows. */
@@ -212,6 +259,8 @@ export class CheckOutput {
   private flakyCount = 0
   private readonly suites: Array<string> = []
   private suite: string | null = null
+  /** The latest PROGRESS: line of the suite running, forgotten at the next SUITE: line. */
+  private progress: CheckProgress | null = null
 
   /** Takes the next chunk printed on `from`. */
   write(chunk: Uint8Array, from: "stdout" | "stderr" = "stdout"): void {
@@ -234,6 +283,11 @@ export class CheckOutput {
     for (const line of [this.partial.stdout, this.partial.stderr]) {
       if (line.length > 0) this.endLine(line)
     }
+  }
+
+  /** Where the check is now: the suite running and how far it says it has got. */
+  at(): CheckAt {
+    return { suite: this.suite, progress: this.progress }
   }
 
   /** What is said of the output taken so far. */
@@ -275,11 +329,20 @@ export class CheckOutput {
       const name = trimmed.slice(suiteMarker.length).trim().split(/\s+/).join(" ")
       if (name !== "") {
         this.suite = name
+        // The suite running is counted on its own: the one before's count is forgotten with it.
+        this.progress = null
         if (!this.suites.includes(name) && this.suites.length < OutputBounds.maxSuites) {
           this.suites.push(name)
         }
+        this.onAt?.(this.at())
       }
+      return
     }
+    const progress = progressOf(trimmed)
+    if (progress === null) return
+    const shown = this.progress
+    this.progress = progress
+    if (shown?.done !== progress.done || shown.total !== progress.total) this.onAt?.(this.at())
   }
 
   /** Keeps `line` among the last lines; blank lines at the end are left out. */
@@ -432,6 +495,12 @@ export interface RunOptions {
    */
   readonly timeLimit?: Duration.Input
   /**
+   * Told where the check is as its output moves it, the suite it is in and how far that suite says
+   * it has got (CheckOutput): what the dashboard draws its bar from (§ 7.2). Nothing is told when
+   * it is left out.
+   */
+  readonly onAt?: (at: CheckAt) => void
+  /**
    * Leave the processes the command leaves running in `cwd` as they are, where the layer stops
    * them (stoppingStrays): for a command run in the main checkout, where people and tutti's own git
    * and bd run (setup.ts's setUpCheckout); a check in a worktree has them stopped.
@@ -490,7 +559,7 @@ export const runCheck = Effect.fn("runCheck")(function* (
   options: RunOptions,
   share?: CheckShare,
 ) {
-  const output = new CheckOutput()
+  const output = new CheckOutput(options.onAt)
   const branch = yield* BranchEnv
   const ran = yield* exec({
     command: "sh",

@@ -25,9 +25,9 @@
 // 1m12s`.
 import { memo, useCallback, useMemo } from "react"
 import { pad } from "../core/localTime.ts"
-import type { FullCheckRun } from "../run/fullcheck.ts"
+import type { CheckShown } from "../run/checking.ts"
 import { activityRows } from "../run/phase.ts"
-import { type Card, isAtWork, type ShownRequest } from "../run/runView.ts"
+import { type Card, type FullCheckView, isAtWork, type ShownRequest } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { marks, separator } from "../text/marks.ts"
 import { attentionInside, attentionLines } from "./AttentionCard.tsx"
@@ -46,7 +46,8 @@ import {
   seg,
   widthOf,
 } from "./line.tsx"
-import { cardIndent, fieldGap, markGap, spinnerGap } from "./spacing.ts"
+import { cardIndent, fieldGap, markGap, spinnerGap, wordSpace } from "./spacing.ts"
+import { gauge } from "./TitleLine.tsx"
 import type { Theme } from "./theme.ts"
 import { lookOf, motionTones } from "./tone.ts"
 import { useNow, useSpinner } from "./useRunView.ts"
@@ -188,14 +189,48 @@ export const headOf = (
   status: Segments,
 ): Segments => headLine(cellsOf(card, theme, now, status), cardMark(card, theme, spin), noColumns)
 
-/** The card's action line: the phase's, else its worker's latest action behind `▸`; null for none. */
+/**
+ * What a check running says of itself (§ 7.2): the suite it is in, the bar it fills with done over
+ * total, and the count beside it, `test ━━━━──── 312/848`; the estimate from its recent passes
+ * where its suite counts nothing, `≈23%`, and the suite's name alone where there is no bar to draw.
+ * Nothing where it has said nothing at all.
+ */
+export const checkSegments = (shown: CheckShown, theme: Theme): Segments => {
+  const { dim } = theme.styles
+  const { fill } = shown
+  const suite = shown.suite === null ? [] : [seg(shown.suite, dim)]
+  if (fill === null) return suite
+  return [
+    ...suite,
+    ...(suite.length === 0 ? [] : [seg(wordSpace)]),
+    seg(gauge(fill.filled), dim),
+    seg(wordSpace),
+    seg(fill.count, dim),
+  ]
+}
+
+/** The check running on a card, after its action, `· test ━━━━──── 312/848`; none without one. */
+const checkBeside = (card: Card, theme: Theme): Segments => {
+  if (card.check === undefined) return []
+  const shown = checkSegments(card.check, theme)
+  return shown.length === 0 ? [] : [seg(separator, theme.styles.dim), ...shown]
+}
+
+/**
+ * The card's action line: the phase's, else its worker's latest action behind `▸`; null for none.
+ * While its merge check runs, where it has got to is beside the action (§ 7.2).
+ */
 export const actionLine = (card: Card, theme: Theme): Segments | null => {
   const { styles } = theme
-  if (card.action !== null) return [seg(cardIndent), seg(card.action, styles.dim)]
-  if (card.latest === null) return null
+  const beside = checkBeside(card, theme)
+  if (card.action !== null) return [seg(cardIndent), seg(card.action, styles.dim), ...beside]
+  if (card.latest === null) {
+    return beside.length === 0 ? null : [seg(cardIndent), ...beside.slice(1)]
+  }
   return [
     seg(cardIndent),
     seg(`${marks.latest} ${card.latest.text}`, card.latest.denied ? styles.deferred : styles.dim),
+    ...beside,
   ]
 }
 
@@ -343,7 +378,7 @@ export const compactLines = (
  */
 export const idleText = (
   stopping: boolean,
-  fullCheck: FullCheckRun | null,
+  fullCheck: FullCheckView | null,
   now: number,
 ): string => {
   if (stopping) return "stopping…"
@@ -356,7 +391,8 @@ export const idleText = (
 /**
  * The box with no worker in it, saying `text` on its first line: the spinner `live`, its text faint,
  * framed `frame`. It is `lines` lines tall, its frame included, as tall as a full card unless the
- * pane has fewer lines for it, and never fewer than its frame and its text.
+ * pane has fewer lines for it, and never fewer than its frame and its text. `under`, the bar of the
+ * check running (§ 7.2), goes on the line below, where the box has a line to spare for it.
  */
 export const idleBox = (
   text: string,
@@ -365,11 +401,14 @@ export const idleBox = (
   width: number,
   lines: number = idleLines,
   border: Border = "rounded",
+  under: Segments = [],
 ): ReadonlyArray<Segments> => {
+  const inside = Math.min(lines, idleLines) - 2
   const content: Array<Segments> = [
     [seg(spin, theme.look("live")), seg(spinnerGap), seg(text, theme.styles.dim)],
   ]
-  while (content.length < Math.min(lines, idleLines) - 2) content.push([])
+  if (under.length > 0 && inside >= 2) content.push([seg(cardIndent), ...under])
+  while (content.length < inside) content.push([])
   return boxed(content, width, theme.look("frame"), border)
 }
 
@@ -453,15 +492,17 @@ const IdleBox = ({
   border,
 }: {
   readonly stopping: boolean
-  readonly fullCheck: FullCheckRun | null
+  readonly fullCheck: FullCheckView | null
   readonly theme: Theme
   readonly width: number
   /** The box's lines, its frame included: as many as a full card's where the room has them. */
   readonly lines: number
   readonly border: Border
 }) => {
-  const text = idleText(stopping, fullCheck, useNow())
-  return <Lines lines={idleBox(text, theme, useSpinner(true), width, lines, border)} />
+  const now = useNow()
+  const text = idleText(stopping, fullCheck, now)
+  const under = stopping || fullCheck?.at === undefined ? [] : checkSegments(fullCheck.at, theme)
+  return <Lines lines={idleBox(text, theme, useSpinner(true), width, lines, border, under)} />
 }
 
 /**
@@ -617,7 +658,7 @@ export const Cards = ({
   readonly room: number
   readonly stopping: boolean
   /** What the end-of-run full check runs, for the box with no worker in it; null when it isn't. */
-  readonly fullCheck: FullCheckRun | null
+  readonly fullCheck: FullCheckView | null
   /** The highlighted card's ticket. */
   readonly highlighted: string | null
   /** The compact line of the request the hint names, barred whichever panel has the focus. */

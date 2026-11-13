@@ -6,8 +6,8 @@
 // so that a quit during the start's steps cuts the step under way short. After them: the machine's
 // poll, what the dashboard shows of triage, the checks ahead, the probe and each worker's figures
 // (§ 7.5), the machine's load (load.ts) and the workers' share of it (share.ts), the screen's
-// commands, the ready poll, the merge queue's changes, drain requests (drain.ts) and BLOCKED
-// (blockedWatch.ts).
+// commands, the ready poll, the merge queue's changes, drain requests (drain.ts), BLOCKED
+// (blockedWatch.ts) and how far the checks running have got (checking.ts).
 import { availableParallelism } from "node:os"
 import {
   Deferred,
@@ -26,6 +26,7 @@ import { Spending, showSums } from "../../services/Spending.ts"
 import { off as auditorOff, followEnds } from "../auditor.ts"
 import { Battery, watchBattery } from "../battery.ts"
 import { make as makeBlockedWatch } from "../blockedWatch.ts"
+import { Checking, sayChecking, showChecking } from "../checking.ts"
 import { hear } from "../drain.ts"
 import { stopFor, withBattery, withFiling } from "../holds.ts"
 import type { Ledger } from "../ledger.ts"
@@ -168,6 +169,16 @@ export const afterStart = (
     yield* watch(Stream.runForEach(queue.checksAhead, showOn(status, "checksAhead", Object.is)))
     // The environment probe's session shows as a card while it runs.
     yield* watch(Stream.runForEach(environment.probing, showOn(status, "probe")))
+    // How far each check running has got (checking.ts): the bars on the dashboard, and, for a plain
+    // run with no bar to draw, the count as lines at intervals (§ 7.6).
+    const checking = yield* Effect.serviceOption(Checking)
+    if (Option.isSome(checking)) {
+      yield* watch(
+        screen === null
+          ? sayChecking(checking.value, logs)
+          : showChecking(checking.value, showOn(status, "checking", Object.is)),
+      )
+    }
     // What each worker consumes, for its view's figures (§ 7.5): its tokens and dollars, live
     // while a turn goes on, at most once a second (showSums); and how full its context is, as the
     // host last asked it.

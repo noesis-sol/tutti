@@ -9,13 +9,15 @@
 // to `finish` below, which main runs once the renderer is gone (§ 7.1). What the parts share, the
 // run's options, its outcome and the stop a ticket's fiber ends with, is shared.ts. In plain mode
 // (§ 7.6) every line goes to stdout as the Log writes it; with a dashboard (screen.ts) the run
-// shows its status live instead, and main prints the lines it hands back.
+// shows its status live instead, and main prints the lines it hands back. Its Checking (checking.ts)
+// holds the checks running, which the dashboard draws their bars from.
 import { Clock, Effect, type Scope } from "effect"
 import { AppConfig } from "../core/AppConfig.ts"
 import { printSummary } from "../print/summary.ts"
 import { EventStream } from "../services/EventStream.ts"
 import { endRecord } from "../services/Spending.ts"
 import { AutoAnswer, makeAutoAnswering } from "./autoAnswer.ts"
+import { Checking } from "./checking.ts"
 import { exitCodes } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import type { ReportOut } from "./report.ts"
@@ -56,7 +58,7 @@ const runFrom = (
     const parts = yield* assemble(options, begun)
     const looped = yield* loop(parts)
     return yield* end(parts, looped)
-  }).pipe(Effect.provide(Ledger.layer))
+  }).pipe(Effect.provide(Ledger.layer), Effect.provide(Checking.layer))
 
 /**
  * What follows a run that left it to its caller (RunOptions.endLater), on the main screen once the

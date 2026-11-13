@@ -40,6 +40,7 @@ import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { ellipsis } from "../text/marks.ts"
 import { escapeMarkdown, sanitizeLine } from "../text/sanitize.ts"
 import { flakyWarnings, howFailed, outputTo, recorded, saidOf } from "./check.ts"
+import { fullCheckKey, watchCheck } from "./checking.ts"
 import type { TicketPhase } from "./phase.ts"
 import { say, warn } from "./say.ts"
 
@@ -351,9 +352,12 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
         yield* show("check", command)
       }
       const ran = yield* Effect.scoped(
-        Effect.flatMap(outputTo({ worktree: path }, fullCheckLogName, "the full check's"), (to) =>
-          recorded("full", undefined, checks.full({ cwd: path, ...to })),
-        ),
+        Effect.gen(function* () {
+          const to = yield* outputTo({ worktree: path }, fullCheckLogName, "the full check's")
+          // Current's box draws its bar from what it says of itself as it goes (§ 7.2).
+          const watched = yield* watchCheck(fullCheckKey, "full check", "full")
+          return yield* recorded("full", undefined, checks.full({ cwd: path, ...to, ...watched }))
+        }),
       )
       const ms = yield* elapsed
       if (Result.isFailure(ran)) {
