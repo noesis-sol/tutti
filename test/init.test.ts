@@ -427,6 +427,8 @@ describe("the Workers step", () => {
         concurrent: { initial: 1, max: 16 },
         mcp: { available: ["postgres", "firecrawl"], chosen: [], notes: {} },
         changelogUnion: true,
+        model: true,
+        effort: true,
       },
     ])
     const settings = await readSettings(project)
@@ -451,7 +453,14 @@ describe("the Workers step", () => {
     summaryOf(
       await runInit(project, {
         form,
-        flags: { ...noFlags, concurrent: 2, mcp: [], changelogUnion: false },
+        flags: {
+          ...noFlags,
+          concurrent: 2,
+          workerModel: "sonnet",
+          workerEffort: "medium",
+          mcp: [],
+          changelogUnion: false,
+        },
       }),
     )
     expect(asked).toEqual([])
@@ -740,6 +749,8 @@ describe("init's flags and the line form's answers", () => {
     checkFullTimeout: Option.none<string>(),
     setup: Option.none<string>(),
     concurrent: Option.none<string>(),
+    workerModel: Option.none<string>(),
+    workerEffort: Option.none<string>(),
     mcp: Option.none<string>(),
     changelogUnion: Option.none<string>(),
     installBeads: Option.none<string>(),

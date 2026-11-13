@@ -6,6 +6,7 @@
 import { Effect } from "effect"
 import type { Scouting } from "../organs/scout.ts"
 import { fastRunner, fullRunner } from "../project/runners.ts"
+import { efforts } from "../project/settings.ts"
 import { skillDir } from "../project/templateFiles.ts"
 import type { FormCancelled } from "../ui/questions.ts"
 import {
@@ -28,11 +29,14 @@ import { offerDescription } from "./import.ts"
 import type { InitForm } from "./init.ts"
 import {
   concurrencyNote,
+  defaultWorkerEffort,
+  defaultWorkerModel,
   normalPrefix,
   prefixProblem,
   renamedId,
   type WorkersAnswers,
   type WorkersQuestions,
+  workerModels,
 } from "./workers.ts"
 
 /** init's two steps, in order. */
@@ -196,6 +200,27 @@ export const initForm = (fields: Fields): InitForm => ({
           if (note !== null) yield* fields.note(`${read.ok} workers: ${note}`)
           answers = { ...answers, concurrent: read.ok }
         }
+      }
+      if (questions.model) {
+        const option = yield* fields.select({
+          title: "Workers' model",
+          description:
+            "Every worker runs on it, named by its family so that it follows the series as Claude Code updates. A run can override it with --worker-model.",
+          options: workerModels.map((each) => each.label),
+          initial: workerModels.findIndex((each) => each.model === defaultWorkerModel),
+        })
+        const chosen = workerModels[option]
+        answers = { ...answers, model: chosen === undefined ? defaultWorkerModel : chosen.model }
+      }
+      if (questions.effort) {
+        const option = yield* fields.select({
+          title: "Workers' effort",
+          description:
+            "How hard every worker thinks: more effort takes more time and usage. A run can override it with --worker-effort.",
+          options: efforts,
+          initial: efforts.indexOf(defaultWorkerEffort),
+        })
+        answers = { ...answers, effort: efforts[option] ?? defaultWorkerEffort }
       }
       if (questions.mcp !== null) {
         answers = { ...answers, mcp: yield* fields.servers(questions.mcp) }

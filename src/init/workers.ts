@@ -1,9 +1,9 @@
-// tutti init's Workers step (§ 8.3): how many tickets run at once, the MCP servers workers get, and
-// CHANGELOG.md merge=union, asked through init's form; then Beads, as orchestra init sets it up
-// (bd installed where it is missing, with your consent; bd init where Beads isn't set up; the
-// ticket prefix bd init gives, or every ticket renamed to it), and the login probe (§ 4.13), whose
-// account, billing and permission mode the summary reports. It asks nothing about a terminal: tutti
-// runs its workers itself.
+// tutti init's Workers step (§ 8.3): how many tickets run at once, the model and effort every worker
+// uses, the MCP servers workers get, and CHANGELOG.md merge=union, asked through init's form; then
+// Beads, as orchestra init sets it up (bd installed where it is missing, with your consent; bd init
+// where Beads isn't set up; the ticket prefix bd init gives, or every ticket renamed to it), and the
+// login probe (§ 4.13), whose account, billing and permission mode the summary reports. It asks
+// nothing about a terminal: tutti runs its workers itself.
 //
 // An untrusted main checkout, which the probe finds, is offered the fix Claude Code suggests: init
 // sets `projects["<main checkout>"].hasTrustDialogAccepted` in the user's .claude.json, only once
@@ -30,6 +30,7 @@ import {
 } from "../agent/Account.ts"
 import { chromeServer } from "../agent/mcp.ts"
 import { writeFileAtomic } from "../core/atomicFile.ts"
+import type { efforts } from "../project/settings.ts"
 import { unmergedLabel } from "../run/scope.ts"
 import { memoryEstimate } from "../run/startup.ts"
 import { Beads, bdPayload, beadsWhy } from "../services/Beads.ts"
@@ -47,6 +48,10 @@ export interface WorkersQuestions {
   readonly installBeads: { readonly method: string; readonly command: string } | null
   /** How many tickets run at the same time by default: the project's number now. */
   readonly concurrent: { readonly initial: number; readonly max: number } | null
+  /** The model every worker uses, where the settings name none. Offered as Opus. */
+  readonly model: boolean
+  /** The effort every worker runs at, where the settings name none. Offered as high. */
+  readonly effort: boolean
   /**
    * The MCP servers workers get: those defined for the project here, and those chosen now; what
    * the question says beside some of them (serverNotes).
@@ -64,6 +69,9 @@ export interface WorkersQuestions {
 export interface WorkersAnswers {
   readonly installBeads?: boolean
   readonly concurrent?: number
+  /** A family's alias; null for Claude Code's own default. */
+  readonly model?: string | null
+  readonly effort?: Effort
   readonly mcp?: ReadonlyArray<string>
   readonly changelogUnion?: boolean
 }
@@ -72,6 +80,8 @@ export interface WorkersAnswers {
 export const asksAnything = (questions: WorkersQuestions): boolean =>
   questions.installBeads !== null ||
   questions.concurrent !== null ||
+  questions.model ||
+  questions.effort ||
   questions.mcp !== null ||
   questions.changelogUnion
 
@@ -92,6 +102,52 @@ export const concurrencyStep = (concurrent: number, asked: boolean): Step => {
     `${tickets}${note === null ? "" : `, ${note}`}`,
   )
 }
+
+/** An effort level Claude Code takes. */
+export type Effort = (typeof efforts)[number]
+
+/**
+ * The models init offers workers, in order: Opus, the default, then Claude Code's other families,
+ * each by its alias so that it follows the series as Claude Code updates; last Claude Code's own
+ * default, null, which each machine's Claude Code settings choose.
+ */
+export const workerModels: ReadonlyArray<{
+  readonly model: string | null
+  readonly label: string
+}> = [
+  { model: "opus", label: "Opus" },
+  { model: "fable", label: "Fable" },
+  { model: "sonnet", label: "Sonnet" },
+  { model: "haiku", label: "Haiku" },
+  { model: null, label: "Claude Code's default  · as each machine's Claude Code settings choose" },
+]
+
+/** The model workers use where init asks nothing: Opus. */
+export const defaultWorkerModel = "opus"
+
+/** The effort workers run at where init asks nothing: high, as the settings' default. */
+export const defaultWorkerEffort: Effort = "high"
+
+/**
+ * The summary's step for the workers' model and effort, as the settings hold them now: done where
+ * init `set` either, kept otherwise. `unasked` names the flags of those it set to their defaults
+ * without a terminal.
+ */
+export const modelStep = (
+  model: string | null,
+  effort: Effort | null,
+  set: boolean,
+  unasked: ReadonlyArray<string>,
+): Step =>
+  step(
+    set ? "done" : "kept",
+    "model",
+    `workers run ${model ?? "Claude Code's default model"} at ${effort === null ? "Claude Code's default effort" : `${effort} effort`}${
+      unasked.length === 0
+        ? ""
+        : `; not asked (no terminal): ${joinAnd(unasked)} ${unasked.length === 1 ? "chooses another" : "choose others"}`
+    }`,
+  )
 
 /** What the MCP servers question says beside Claude in Chrome when it is set up here. */
 export const chromeBuiltIn = "built into Claude Code, drives Chrome on this machine"

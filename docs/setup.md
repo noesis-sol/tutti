@@ -185,6 +185,16 @@ lines; `Ctrl+D` cancels.
 - **Tickets to run at the same time**: 1 (one at a time, the safest), 2, 3 or 4, or **Custom…**, a
   number up to 16 typed in. It starts on the current setting, on Custom… above 4. Each worker takes
   about 1 GiB of memory, which `init` says for more than one.
+- **Workers' model**: the model every worker runs on, **Opus** first and selected, then **Fable**,
+  **Sonnet** and **Haiku**, and **Claude Code's default**. `init` writes the family's alias
+  (`"model": "opus"`), not a dated model ID, so the setting follows the series as Claude Code
+  updates; Claude Code's default writes `"model": null`, which leaves the choice to each machine's
+  Claude Code settings. **Workers' effort** is asked beside it, from `low` to `max`, `high`
+  selected. Both are written as `workers.model` and `workers.effort`, one setting for all workers;
+  `--worker-model` and `--worker-effort` override them for a run. A settings file that already
+  names a model or an effort, even `null`, keeps its own and isn't asked, as is one an import from
+  orchestra brings. Without a terminal `init` writes `opus` and `high` where they aren't named, and
+  its summary says so.
 - **MCP servers workers get**, from those defined for this project on your machine (see
   [MCP servers](workers.md#mcp-servers)).
 - **Merge CHANGELOG.md by union?** Where the project keeps a `CHANGELOG.md`: tickets that each add a
@@ -234,6 +244,8 @@ lines; `Ctrl+D` cancels.
 | `--check-full-timeout 60m` | how long the full check may run |
 | `--setup "<command>"` | the setup command; `""` for none |
 | `-c N`, `--concurrent N` | tickets at the same time, 1 to 16 |
+| `--worker-model <model>` | the model every worker uses: a family's alias (`opus`, `fable`, `sonnet`, `haiku`) or a model's ID; `""` for Claude Code's default. Replaces one the settings name |
+| `--worker-effort <level>` | the effort every worker runs at: `low`, `medium`, `high`, `xhigh` or `max`. Replaces one the settings name |
 | `--mcp a,b` | the MCP servers workers get, by name; `""` for none |
 | `--changelog-union[=false]` | add `CHANGELOG.md merge=union` to `.gitattributes`, or not |
 | `--install-beads[=false]` | install Beads where it is missing, or not |
@@ -583,7 +595,7 @@ for a project that sets them all; the table below gives each one's default:
 | `workers.mcp_servers` | `[]` | the MCP servers workers get, by name: none by default; [MCP servers](workers.md#mcp-servers) |
 | `workers.permission_mode` | `"auto"` | `auto`, `default` or `acceptEdits`; [Permissions](workers.md#permissions) |
 | `workers.effort` | `"high"` | `low`, `medium`, `high`, `xhigh` or `max`, or `null` for Claude Code's; `--worker-effort` for a run; the feature interview's too |
-| `workers.model` | Claude Code's | `--worker-model` for a run |
+| `workers.model` | Claude Code's | `opus` as `init` writes it; `null` for Claude Code's; `--worker-model` for a run |
 | `workers.ticket_limit` | none | how long a worker may go on after dispatch before the run holds; `--ticket-limit` for a run |
 | `workers.ask_user_question` | `true` | whether workers may ask you quick questions; [Attention requests](workers.md#attention-requests) |
 | `templates.worker_prompt`, `templates.verifier`, `templates.check_suite_skill` | `0` | the versions of tutti's templates the worker prompt, the verifier and the create-check-suite skill came from, which `init` records; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |

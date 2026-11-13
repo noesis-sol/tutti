@@ -407,6 +407,8 @@ describe("--no-mouse", () => {
         checkFullTimeout: Option.none(),
         setup: Option.none(),
         concurrent: Option.none(),
+        workerModel: Option.none(),
+        workerEffort: Option.none(),
         mcp: Option.none(),
         changelogUnion: Option.none(),
         installBeads: Option.none(),

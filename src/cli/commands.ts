@@ -65,6 +65,7 @@ import {
   cliFlags,
   count,
   noFlags,
+  oneOf,
   onOff,
   positiveTime,
   type Reader,
@@ -72,7 +73,7 @@ import {
   runFlags,
 } from "../project/flags.ts"
 import { orchestraLoaded } from "../project/scheme.ts"
-import { maxConcurrent } from "../project/settings.ts"
+import { efforts, maxConcurrent } from "../project/settings.ts"
 import { exitCodes } from "../run/holds.ts"
 import { listen } from "../run/quit.ts"
 import { load, loadLenient, withScheme } from "../run/resolveConfig.ts"
@@ -620,6 +621,16 @@ export const initFlags = {
     `tickets to run at the same time by default, 1 to ${maxConcurrent} (asked when omitted)`,
     { alias: "c", metavar: "N" },
   ),
+  workerModel: initFlag(
+    "worker-model",
+    `the model every worker uses, by its family's alias (opus, fable, sonnet, haiku) or a model's ID; "" for Claude Code's own default (asked when omitted, opus without a terminal; a model the settings name is kept)`,
+    { metavar: "model" },
+  ),
+  workerEffort: initFlag(
+    "worker-effort",
+    `the effort every worker runs at: ${efforts.join(", ")} (asked when omitted, high without a terminal; an effort the settings name is kept)`,
+    { metavar: "level" },
+  ),
   mcp: initFlag(
     "mcp",
     `the MCP servers workers get, by name, comma-separated, e.g. postgres,firecrawl; "" for none (asked when omitted)`,
@@ -688,6 +699,13 @@ export const readInitFlags = (
   ) => (read.value === undefined ? {} : { [key]: read.value })
   const flags: InitFlags = {
     ...pick("concurrent", read("concurrent", given.concurrent, count(1, maxConcurrent))),
+    ...pick(
+      "workerModel",
+      read("worker-model", given.workerModel, (text) =>
+        Result.succeed(text.trim() === "" ? null : text.trim()),
+      ),
+    ),
+    ...pick("workerEffort", read("worker-effort", given.workerEffort, oneOf(efforts))),
     ...pick(
       "mcp",
       read("mcp", given.mcp, (text) => Result.succeed(parseMcpNames(text))),
@@ -1245,6 +1263,8 @@ export const readChecksFlags = (
     readInitFlags({
       ...given,
       concurrent: Option.none(),
+      workerModel: Option.none(),
+      workerEffort: Option.none(),
       mcp: Option.none(),
       changelogUnion: Option.none(),
       installBeads: Option.none(),

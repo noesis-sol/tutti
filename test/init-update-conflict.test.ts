@@ -12,6 +12,8 @@ const texts: InitFlagTexts = {
   checkFullTimeout: none,
   setup: none,
   concurrent: none,
+  workerModel: none,
+  workerEffort: none,
   mcp: none,
   changelogUnion: none,
   installBeads: none,

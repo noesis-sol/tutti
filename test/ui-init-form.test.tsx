@@ -35,6 +35,8 @@ const workers: WorkersQuestions = {
   concurrent: { initial: 1, max: 16 },
   mcp: { available: ["github", "linear"], chosen: ["github"], notes: {} },
   changelogUnion: true,
+  model: false,
+  effort: false,
 }
 
 const twoSuites: Scouting = {

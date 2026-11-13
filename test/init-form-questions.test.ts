@@ -55,6 +55,8 @@ describe("the offer to install Beads", () => {
     concurrent: null,
     mcp: null,
     changelogUnion: false,
+    model: false,
+    effort: false,
   }
 
   test("is asked where bd is missing and init knows how to install it, yes on Enter", async () => {

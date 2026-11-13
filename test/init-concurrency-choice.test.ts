@@ -24,6 +24,8 @@ const questions = (initial: number): WorkersQuestions => ({
   concurrent: { initial, max: 16 },
   mcp: null,
   changelogUnion: false,
+  model: false,
+  effort: false,
 })
 
 /** The Workers step in lines over `input`, which then ends: its answers, and what it wrote. */

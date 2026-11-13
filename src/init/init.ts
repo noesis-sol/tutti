@@ -108,10 +108,14 @@ import {
   asksAnything,
   type Consent,
   concurrencyStep,
+  defaultWorkerEffort,
+  defaultWorkerModel,
+  type Effort,
   findBeadsInstall,
   locateBd,
   markTrusted,
   mcpSteps,
+  modelStep,
   normalPrefix,
   offersUnion,
   offPath,
@@ -133,6 +137,9 @@ import {
 /** init's flags: each absent where the command line doesn't give it. */
 export interface InitFlags {
   readonly concurrent?: number
+  /** The model every worker uses; null for Claude Code's own default. */
+  readonly workerModel?: string | null
+  readonly workerEffort?: Effort
   readonly mcp?: ReadonlyArray<string>
   readonly changelogUnion?: boolean
   readonly installBeads?: boolean
@@ -352,6 +359,9 @@ const hasSharedFiles = (json: Json | null): boolean => {
 /** What init changes in the settings: each absent where it keeps what is there. */
 export interface SettingsChanges {
   readonly concurrent: number | null
+  /** The workers' model, null for Claude Code's own default. */
+  readonly model?: string | null
+  readonly effort?: Effort
   readonly mcp: ReadonlyArray<string> | null
   readonly checkFastTimeout?: Duration.Duration
   readonly checkFullTimeout?: Duration.Duration
@@ -392,6 +402,12 @@ export const writeSettings = (
       if (text !== null) text = setIn(text, name.split("."), value)
     }
     if (changes.concurrent !== null) set(json, "concurrent", changes.concurrent, "concurrent")
+    if (changes.model !== undefined) {
+      set(section(json, "workers"), "model", changes.model, "workers.model")
+    }
+    if (changes.effort !== undefined) {
+      set(section(json, "workers"), "effort", changes.effort, "workers.effort")
+    }
     if (changes.mcp !== null) {
       set(section(json, "workers"), "mcp_servers", [...changes.mcp], "workers.mcp_servers")
     }
@@ -971,6 +987,10 @@ const initWork = <R>(options: InitOptions<R>) =>
       Effect.orElseSucceed((): ReadonlyArray<string> => []),
     )
     const available = [...new Set([...defined, ...chosenNow])]
+    // A model or an effort the settings name, even null, is the project's: kept, and not asked.
+    const workersJson = existing.json?.workers
+    const names = (key: string) =>
+      Predicate.isObject(workersJson) && Object.hasOwn(workersJson, key)
     const prefixGiven: PrefixPlan | null =
       flags.prefix === undefined
         ? null
@@ -986,6 +1006,8 @@ const initWork = <R>(options: InitOptions<R>) =>
           : null,
       concurrent:
         flags.concurrent === undefined ? { initial: current.concurrent, max: maxConcurrent } : null,
+      model: flags.workerModel === undefined && !names("model"),
+      effort: flags.workerEffort === undefined && !names("effort"),
       mcp:
         flags.mcp === undefined && available.length > 0
           ? { available, chosen: chosenNow, notes: serverNotes(available, defined) }
@@ -1011,6 +1033,21 @@ const initWork = <R>(options: InitOptions<R>) =>
     )
     const concurrent = flags.concurrent ?? answers.concurrent ?? null
     const mcp = flags.mcp ?? answers.mcp ?? null
+    // Without a terminal, or an answer, the model and effort asked for are their defaults.
+    const model =
+      flags.workerModel !== undefined
+        ? flags.workerModel
+        : questions.model
+          ? answers.model === undefined
+            ? defaultWorkerModel
+            : answers.model
+          : undefined
+    const effort =
+      flags.workerEffort ?? (questions.effort ? (answers.effort ?? defaultWorkerEffort) : undefined)
+    const modelUnasked = [
+      ...(form === null && questions.model ? ["--worker-model"] : []),
+      ...(form === null && questions.effort ? ["--worker-effort"] : []),
+    ]
 
     // The Checks step.
     const fs = yield* FileSystem.FileSystem
@@ -1116,6 +1153,8 @@ const initWork = <R>(options: InitOptions<R>) =>
       }
       const written = yield* writeSettings(repo, existing, {
         concurrent,
+        ...(model === undefined ? {} : { model }),
+        ...(effort === undefined ? {} : { effort }),
         mcp,
         ...(flags.checkFastTimeout === undefined
           ? {}
@@ -1147,6 +1186,14 @@ const initWork = <R>(options: InitOptions<R>) =>
       steps.push(yield* writeGitignore(repo))
       steps.push(...(yield* applyUnion(machine, repo, unionConsent)))
       steps.push(concurrencyStep(written.settings.concurrent, concurrent !== null))
+      steps.push(
+        modelStep(
+          written.settings.workers.model,
+          written.settings.workers.effort,
+          model !== undefined || effort !== undefined,
+          modelUnasked,
+        ),
+      )
       steps.push(
         ...mcpSteps(
           written.settings.workers.mcp_servers,

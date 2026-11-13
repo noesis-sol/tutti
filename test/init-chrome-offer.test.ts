@@ -126,6 +126,8 @@ describe("the MCP servers question's notes", () => {
         notes: { [chromeServer]: chromeBuiltIn },
       },
       changelogUnion: false,
+      model: false,
+      effort: false,
     }
     const stream = new PassThrough()
     stream.end(`${chromeServer}\n`)
