@@ -658,16 +658,15 @@ describe("this repository's tests", () => {
     ])
   })
 
-  test("with several processes it lags by the files in flight, never reading ahead of them", () => {
+  test("never reads ahead of the suite: the file named last may still be running", () => {
     const said: Array<string> = []
-    const counting = progressCounter(4, (line) => said.push(line), 3)
+    const counting = progressCounter(4, (line) => said.push(line))
     for (const file of ["a", "b", "c"]) counting.take(`test/${file}.test.ts:`)
-    // Three processes have three files in flight: none of them has ended.
-    expect(said).toEqual([])
+    // The last of the three may still be running, whichever way bun named them.
+    expect(said).toEqual(["PROGRESS: 1/4", "PROGRESS: 2/4"])
     counting.take("test/d.test.ts:")
-    expect(said).toEqual(["PROGRESS: 1/4"])
     counting.end()
-    expect(said).toEqual(["PROGRESS: 1/4", "PROGRESS: 4/4"])
+    expect(said).toEqual(["PROGRESS: 1/4", "PROGRESS: 2/4", "PROGRESS: 3/4", "PROGRESS: 4/4"])
   })
 
   test("the last line isn't printed twice when every file was counted", () => {
