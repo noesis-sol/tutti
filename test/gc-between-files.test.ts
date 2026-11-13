@@ -9,8 +9,8 @@ import { testEnv } from "./env.ts"
 
 const root = resolve(import.meta.dir, "..")
 
-// Runs, in one worker process, a file that makes ~240 MB of garbage and then one that reads the
-// heap's size, with the given preloads, and returns that size in MiB.
+// Runs, at --parallel=1 (in bun test's own process), a file that makes ~240 MB of garbage and then
+// one that reads the heap's size, with the given preloads, and returns that size in MiB.
 const heapAfterGarbage = (preloads: ReadonlyArray<string>): number => {
   const dir = mkdtempSync(join(tmpdir(), "tutti-gc-"))
   writeFileSync(
@@ -66,7 +66,7 @@ describe("the preload's garbage collection between files", () => {
 })
 
 describe("parallelArguments", () => {
-  test("runs one process's files in a worker too, so that the preload's hooks are each file's", () => {
+  test("runs one process's files under --parallel too, so that the preload's hooks are each file's", () => {
     expect(parallelArguments(1, [])).toEqual(["--parallel=1"])
     expect(parallelArguments(1, ["test/a.test.ts", "test/b.test.ts"])).toEqual(["--parallel=1"])
     expect(parallelArguments(1, ["test/"])).toEqual(["--parallel=1"])

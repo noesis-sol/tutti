@@ -473,10 +473,12 @@ export const testWorkers = (
 
 /**
  * bun test's --parallel for `workers` processes running the files `args` name, or every file where
- * they name none: for one process too, where it runs more than one file, as only in bun test's
- * workers does each file run in a fresh global with the preload's hooks around it, which collect
- * its garbage (test/warm-up.ts; tutti-3cri); without, a file's garbage stays for the next. None for
- * one file, or where the arguments choose --parallel themselves.
+ * they name none: for one process too, where it runs more than one file, as only under --parallel
+ * does each file run in a fresh global with the preload's hooks around it, which collect its
+ * garbage (test/warm-up.ts; tutti-3cri); without, a file's garbage stays for the next. At
+ * --parallel=1 bun test starts no worker but runs the files itself, each still in a fresh global
+ * (Bun 1.4.3; testsInWorkers). None for one file, or where the arguments choose --parallel
+ * themselves.
  */
 export const parallelArguments = (
   workers: number,
@@ -485,6 +487,22 @@ export const parallelArguments = (
   if (args.some((arg) => arg === "--parallel" || arg.startsWith("--parallel="))) return []
   const files = args.filter((arg) => !arg.startsWith("-") && /\.[cm]?[jt]sx?$/.test(arg)).length
   return workers > 1 || files !== 1 ? [`--parallel=${workers}`] : []
+}
+
+/**
+ * Whether bun test, given `args`, runs the files in worker processes of its own: where the last
+ * --parallel asks for more than one, a bare --parallel for as many as the machine's `cores`. At
+ * --parallel=1, or without --parallel, it runs them in its own process (Bun 1.4.3), whose memory
+ * is then the test process's: a one-process run that read its children read only what its tests
+ * started, 147-210 MB where a worker's peak was 880-1107 MB (tutti-96rg).
+ */
+export const testsInWorkers = (
+  args: ReadonlyArray<string>,
+  cores: number = availableParallelism(),
+): boolean => {
+  const asked = args.filter((arg) => arg === "--parallel" || arg.startsWith("--parallel=")).at(-1)
+  if (asked === undefined) return false
+  return (asked === "--parallel" ? cores : Number(asked.slice("--parallel=".length))) > 1
 }
 
 /** What the processes are sized by beside the cores (testProcesses). */
@@ -644,7 +662,8 @@ export const availableMemory = (
 
 /**
  * One run the record keeps: when it ended, the most one test process took itself and the most one
- * process's tests started took (processPeak), its processes and files, and whether it was TUTTI_SLOW.
+ * process's tests started took (processPeak), its processes and files, whether it was TUTTI_SLOW,
+ * and `root` where bun test ran the files in its own process, the test process read.
  */
 export interface MemoryRun {
   readonly at: string
@@ -653,6 +672,7 @@ export interface MemoryRun {
   readonly processes: number
   readonly files: number
   readonly slow: boolean
+  readonly root?: true
 }
 
 /**
@@ -679,7 +699,8 @@ export const warnHold = 10 * 60_000
 /**
  * The record in `text`, the runs and the warn that are well formed; empty for anything else. A run
  * kept before tutti-q61i, without children_mb, counted its tests' processes in its peak, and is left
- * out.
+ * out, as is a run in one process without `root`: kept before tutti-96rg, its peak was only what
+ * its tests started, read below bun test, which ran the files itself.
  */
 export const parseMemoryRecord = (text: string): MemoryRecord => {
   let json: unknown
@@ -705,7 +726,9 @@ export const parseMemoryRecord = (text: string): MemoryRecord => {
       run.children_mb >= 0 &&
       whole(run.processes) &&
       whole(run.files) &&
-      typeof run.slow === "boolean",
+      typeof run.slow === "boolean" &&
+      (run.root === undefined || run.root === true) &&
+      (run.processes > 1 || run.root === true),
   )
   const { at, processes } = (typeof warn === "object" && warn !== null ? warn : {}) as {
     at?: unknown
@@ -769,6 +792,8 @@ export interface Watched {
   readonly children: number
   /** Whether the memory pressure reached warn or worse. */
   readonly warned: boolean
+  /** Whether the test process read was bun test's own, which ran the files itself. */
+  readonly root?: boolean
 }
 
 /**
@@ -794,6 +819,7 @@ export const recordRun = (
     processes: run.processes,
     files: run.files,
     slow: run.slow,
+    ...(run.root === true ? { root: true as const } : {}),
   }
   const runs = run.files >= recordFiles && peak >= 1 ? [...record.runs, kept] : record.runs
   return {
@@ -848,7 +874,8 @@ const writeMemoryRecord = (path: string, record: MemoryRecord): void => {
 /**
  * The most one test process takes itself in the listing `all`, in bytes, and the most everything
  * below one of them takes (the processes its tests started). The test processes are bun test's,
- * `root`'s, children where it runs them in workers (`parallel`, --parallel), else `root` itself.
+ * `root`'s, children where it runs the files in workers (`parallel`, testsInWorkers), else `root`
+ * itself, as at --parallel=1.
  */
 export const processPeak = (
   all: Processes,
@@ -929,7 +956,7 @@ export const watchMemory = async (
     if (pressure === "warn" || pressure === "critical") warned = true
     await Promise.race([Bun.sleep(watchEvery), exited])
   }
-  return { peak, children, warned }
+  return { peak, children, warned, root: !parallel }
 }
 
 /** A test's time limit where its file sets none (setDefaultTimeout), in place of bun's 5 s. */
@@ -1130,13 +1157,14 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   const parallel = parallelArguments(workers, args)
   const limit = timeLimitArguments(args)
   const first = join(reports, "first.xml")
+  const firstArgs = [...parallel, ...limit, ...args]
   const { code, output, watched } = await runBunTest(
-    [...parallel, ...limit, ...args],
+    firstArgs,
     first,
     temp,
     { ...suites, ...coreThreadVariables(machine, undefined, workers) },
     true,
-    own ? (pid, exited) => watchMemory(pid, parallel.length > 0, exited) : undefined,
+    own ? (pid, exited) => watchMemory(pid, testsInWorkers(firstArgs), exited) : undefined,
   )
   const cases = readReport(first)
   const warned = watched?.warned === true
