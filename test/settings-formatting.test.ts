@@ -51,7 +51,7 @@ describe("setIn", () => {
         "fast": { "command": null, "timeout": "30m" },
         "full": { "command": null, "timeout": "60m" }
     },
-    "workers": { "mcp_servers": [] }
+    "workers": { "mcp_servers": [], "model": "opus", "effort": "high" }
 }
 `
 
@@ -209,7 +209,7 @@ const ours = `{
         "fast": { "command": "scripts/check-fast.sh", "timeout": "30m" },
         "full": { "command": "scripts/check-full.sh", "timeout": "60m" }
     },
-    "workers": { "mcp_servers": [] }
+    "workers": { "mcp_servers": [], "model": "opus", "effort": "high" }
 }
 `
 

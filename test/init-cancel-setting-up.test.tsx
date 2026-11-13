@@ -84,7 +84,14 @@ describe("Ctrl+C while init sets up, before it catches stops", () => {
               branch: "main",
               version: "0.1.0",
               // The Workers step asks nothing, so the prefix is read under the working spinner.
-              flags: { force: false, concurrent: 2, mcp: [], changelogUnion: false },
+              flags: {
+                force: false,
+                concurrent: 2,
+                workerModel: "opus",
+                workerEffort: "high",
+                mcp: [],
+                changelogUnion: false,
+              },
               form,
               scout: Effect.fail("there is no scout in this test"),
               machine,
