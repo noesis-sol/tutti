@@ -33,7 +33,7 @@ export const fullCheckKey = "the full check"
 /** How many of a check's last passes the estimate's median is of. */
 export const recentPasses = 5
 
-/** How full the estimate's bar may be before the check has ended: it stops short of full. */
+/** How full the estimate's bar may be before the check has ended: it stops short of full, in whole percents. */
 export const estimateCap = 0.9
 
 /** A check running, for the dashboard. */
@@ -81,8 +81,10 @@ export const fillOf = (
   }
   if (usual === null || usual <= 0) return null
   const ran = Math.max(0, now - began) / 1000
-  const filled = Math.min(estimateCap, ran / usual)
-  return { filled, count: `${marks.estimate}${Math.round(filled * 100)}%`, estimate: true }
+  // To the percent it shows, so that an estimate creeping a hundredth of a percent is the fill
+  // read before, which nothing redraws for (tutti-rvzn.1).
+  const percent = Math.min(estimateCap * 100, Math.round((ran / usual) * 100))
+  return { filled: percent / 100, count: `${marks.estimate}${percent}%`, estimate: true }
 }
 
 /** `test 312/848`, `tsc ≈23%`, the suite left out where none is named; null with no bar to draw. */

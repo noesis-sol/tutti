@@ -7,10 +7,10 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Duration, Effect, Fiber } from "effect"
+import { Clock, Duration, Effect, Fiber } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
-import { fileOfHeader, filesPicked, progressCounter, testFilesUnder } from "../scripts/test.ts"
+import { fileOfHeader, filesPicked, progressCounter, tee, testFilesUnder } from "../scripts/test.ts"
 import { Log } from "../src/core/log.ts"
 import { fastScript, fullScript } from "../src/project/runners.ts"
 import { orchestra } from "../src/project/scheme.ts"
@@ -260,6 +260,40 @@ describe("the checks running", () => {
     // The last recentPasses of the fast check's: 100…500, whose median is 300.
     expect(recentPasses).toBe(5)
     expect(shown?.usual).toBe(300)
+  })
+
+  test("an estimate read again is the same map until the percent it shows changes", async () => {
+    const checking = makeChecking()
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          // A kind whose passes take 600 s: a percent of the bar is 6 s.
+          yield* checking.passed("full", 600)
+          yield* checking.watch(fullCheckKey, {
+            name: "full check",
+            kind: "full",
+            began: yield* Clock.currentTimeMillis,
+            at: noCheckAt,
+          })
+          const first = yield* checking.now
+          expect(first.get(fullCheckKey)?.fill).toEqual({
+            filled: 0,
+            count: "≈0%",
+            estimate: true,
+          })
+          yield* advance("1 second")
+          expect(yield* checking.now).toBe(first)
+          yield* advance("5 seconds")
+          const later = yield* checking.now
+          expect(later).not.toBe(first)
+          expect(later.get(fullCheckKey)?.fill).toEqual({
+            filled: 0.01,
+            count: "≈1%",
+            estimate: true,
+          })
+        }),
+      ).pipe(Effect.provide(TestClock.layer())),
+    )
   })
 
   test("the map read is the one read before while nothing drawn has changed", async () => {
@@ -649,5 +683,31 @@ describe("this repository's tests", () => {
     expect(testFilesUnder(dir).length).toBe(3)
     expect(filesPicked([], dir)).toBe(3)
     expect(filesPicked(["--parallel=2", "test/a.test.ts"], dir)).toBe(1)
+    // A folder given names the test files under it.
+    expect(filesPicked(["test/deep"], dir)).toBe(1)
+  })
+
+  test("a PROGRESS: line starts a line of its own, whatever the chunks held", async () => {
+    const written: Array<string> = []
+    const to = {
+      write: (what: Uint8Array | string) =>
+        written.push(typeof what === "string" ? what : new TextDecoder().decode(what)),
+    } as unknown as NodeJS.WriteStream
+    const chunks = ["test/a.test.ts:\n(pass) a > one", " [0.59ms]\ntest/b.test.ts:\n", "(pass) b"]
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+        controller.close()
+      },
+    })
+    const counting = progressCounter(2, (line) => written.push(`${line}\n`))
+    const all = await tee(stream, to, counting.take)
+    expect(all).toBe(chunks.join(""))
+    // Every PROGRESS: line is a line of its own: none is spliced onto a line still being printed.
+    const lines = written.join("").split("\n")
+    expect(lines.filter((line) => line.includes("PROGRESS:"))).toEqual([
+      "PROGRESS: 1/2",
+      "PROGRESS: 2/2",
+    ])
   })
 })

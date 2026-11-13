@@ -392,7 +392,7 @@ export const timeoutLeftovers = (
 
 // Copies a stream of bun test's output through to ours, as it comes, and returns all of it; `onLine`
 // is given each whole line as it is copied, for the PROGRESS: lines (progressCounter).
-const tee = async (
+export const tee = async (
   stream: ReadableStream<Uint8Array>,
   to: NodeJS.WriteStream,
   onLine?: (line: string) => void,
@@ -401,17 +401,27 @@ const tee = async (
   let text = ""
   let partial = ""
   for await (const chunk of stream) {
-    to.write(chunk)
     const part = decoder.decode(chunk, { stream: true })
     text += part
-    if (onLine === undefined) continue
+    if (onLine === undefined) {
+      to.write(chunk)
+      continue
+    }
+    // The whole lines go through first and the one still being printed waits for its newline, so
+    // that a line printed between them, a PROGRESS: line, starts a line of its own.
     const lines = (partial + part).split("\n")
     partial = lines.pop() ?? ""
+    if (lines.length > 0) to.write(`${lines.join("\n")}\n`)
     for (const line of lines) onLine(line)
   }
   const last = decoder.decode()
-  if (onLine !== undefined && `${partial}${last}` !== "") onLine(`${partial}${last}`)
-  return text + last
+  text += last
+  const left = `${partial}${last}`
+  if (onLine !== undefined && left !== "") {
+    to.write(left)
+    onLine(left)
+  }
+  return text
 }
 
 // testFileName matches a file bun test runs: its default patterns, under any folder but node_modules.
@@ -445,8 +455,21 @@ export const testFilesUnder = (dir: string): ReadonlyArray<string> => {
  * every file bun test would find where they name none. The PROGRESS: lines count against it.
  */
 export const filesPicked = (args: ReadonlyArray<string>, dir: string): number => {
-  const named = args.filter((arg) => !arg.startsWith("-") && /\.[cm]?[jt]sx?$/.test(arg))
-  return named.length > 0 ? named.length : testFilesUnder(dir).length
+  const given = args.filter((arg) => !arg.startsWith("-"))
+  const named = given.filter((arg) => /\.[cm]?[jt]sx?$/.test(arg))
+  if (named.length > 0) return named.length
+  // A folder given names the test files under it.
+  const folders = given.filter((arg) => {
+    try {
+      return statSync(join(dir, arg)).isDirectory()
+    } catch {
+      return false
+    }
+  })
+  if (folders.length > 0) {
+    return folders.reduce((all, folder) => all + testFilesUnder(join(dir, folder)).length, 0)
+  }
+  return testFilesUnder(dir).length
 }
 
 // fileHeader matches the line bun test prints as it runs a file, `test/marks.test.ts:`.
