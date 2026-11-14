@@ -1239,8 +1239,11 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
               layout={layout}
               width={width}
               room={laid.current}
+              // A run stopping or drained says what its full check runs while it runs; a quit says
+              // stopping… over it, the title saying what it waits for.
               stopping={
-                view.title.stopping || view.title.quitting !== null || view.windDown !== null
+                view.title.quitting !== null ||
+                (view.fullCheck === null && (view.title.stopping || view.windDown !== null))
               }
               fullCheck={view.fullCheck}
               highlighted={lit}
