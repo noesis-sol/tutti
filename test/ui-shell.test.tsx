@@ -8,7 +8,7 @@ import { testRender } from "@opentui/react/test-utils"
 import { Effect, Exit, Option, Queue, Scope, Stream, SubscriptionRef } from "effect"
 import { act, type ReactNode, useEffect } from "react"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands, UiCommand } from "../src/run/commands.ts"
 import { run } from "../src/run/run.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
@@ -37,7 +37,7 @@ import { type Ran, type Setup, scenario, tty } from "./harness.ts"
 import { idleFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 // Each test's scope, closed after it: the bridge fibers and the renderers opened in it.
 let scopes: Array<Scope.Closeable> = []

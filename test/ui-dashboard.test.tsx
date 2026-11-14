@@ -7,7 +7,7 @@ import { TextAttributes } from "@opentui/core"
 import { Effect } from "effect"
 import fc from "fast-check"
 import { act } from "react"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { type Activity, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
@@ -27,7 +27,7 @@ import { type Frame, renderFrame, type Size, withRender } from "./render.ts"
 import { boxesIn, hintAt, hintFrom, hintRows, rowsIn, totalsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
 
 // Local times, as the banners' clock shows them.

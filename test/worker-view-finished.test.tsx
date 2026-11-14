@@ -8,7 +8,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -30,7 +30,7 @@ import { type Frame, type Rendered, withRender } from "./render.ts"
 import { cardHead } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 9, 22, 13, 0, 0).getTime()
 

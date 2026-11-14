@@ -15,7 +15,7 @@ import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import { Attention } from "../src/agent/Attention.ts"
 import { Transcripts } from "../src/agent/Transcripts.ts"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands, UiCommand } from "../src/run/commands.ts"
 import type { TicketFiling } from "../src/run/fileTicket.ts"
 import { makeHandBacks, type RebaseStop } from "../src/run/handback.ts"
@@ -90,7 +90,7 @@ describe("HandBacks' changes", () => {
 // dashboard() in the command's renderer, on worker 1's view.
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const notice = "A merge conflict waits for this worker"
 

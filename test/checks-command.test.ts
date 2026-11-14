@@ -41,7 +41,7 @@ import { Organs } from "../src/organs/Organs.ts"
 import type { Scouting } from "../src/organs/scout.ts"
 import { initHeader } from "../src/print/initSummary.ts"
 import { runnerCommands, runsNothing } from "../src/project/runners.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -255,7 +255,7 @@ const runInLines = async (project: Project, input: string, scout: Scouting) => {
       write: (text) => {
         output += text
       },
-      theme: makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true }),
+      theme: makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true }),
     }),
   )
   const ran = await runChecks(project, { makeForm, scout })
@@ -615,7 +615,7 @@ describe("a check-full.sh that runs nothing", () => {
 
 describe("tutti checks' title", () => {
   test("names checks, and what it sets, where init's names init", () => {
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     const checks = Bun.stripANSI(initHeader(theme, "/work/shop", checksHeading))
     expect(checks).toContain(" Tutti  checks  /work/shop")
     expect(checks).toContain(checksHeading.about)

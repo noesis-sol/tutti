@@ -7,7 +7,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit, Scope } from "effect"
 import { Transcripts, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -23,7 +23,7 @@ import { entryId } from "../src/ui/WorkerView.tsx"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const session = "0a4f5c3e-1111-4c8e-9a51-6f0d1f0b2a01"

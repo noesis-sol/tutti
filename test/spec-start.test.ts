@@ -12,7 +12,7 @@ import type { ToolAnswer } from "../src/agent/callbacks.ts"
 import { AppConfig } from "../src/core/AppConfig.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
 import type { RunFlags } from "../src/project/flags.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { breakdownWorker } from "../src/run/breakdown.ts"
 import { scopedTo } from "../src/run/feature.ts"
 import { exitCodes } from "../src/run/holds.ts"
@@ -131,7 +131,7 @@ const starting = <A>(
   const spec = specOf()
   const out: Array<string> = []
   const stdout: Out = { write: (text) => void out.push(text), columns: () => 100, tty: false }
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
   const recording = Effect.runSync(Deferred.make<Recording["Service"]>())
   const rewrites: Array<Holder> = []
   return Effect.runPromise(

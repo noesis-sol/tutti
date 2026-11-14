@@ -47,7 +47,7 @@ import { type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import type { Scouting, Suite as ScoutSuite } from "../src/organs/scout.ts"
 import { fastScript, runnerCommands } from "../src/project/runners.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   skillPath,
   skillText,
@@ -712,7 +712,11 @@ describe("the Checks step in lines", () => {
             write: (text) => {
               output += text
             },
-            theme: makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true }),
+            theme: makeTheme(tuttiScheme, {
+              appearance: "dark",
+              depth: "truecolor",
+              noColor: true,
+            }),
           })
           return yield* form.checks(questions)
         }),

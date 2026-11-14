@@ -10,13 +10,13 @@ import { ConfigProvider, Console, Effect, Exit } from "effect"
 import { Command } from "effect/cli"
 import { previewLines } from "../src/cli/colours.ts"
 import { planServices, tuttiWith } from "../src/cli/commands.ts"
-import { type LoadedScheme, loadScheme, orchestra, roles } from "../src/project/scheme.ts"
+import { type LoadedScheme, loadScheme, roles, tuttiScheme } from "../src/project/scheme.ts"
 import { hintFrom, rowsIn } from "./screen.ts"
 
 const dusk = {
   name: "dusk",
-  description: "orchestra's scheme with a teal live colour and a rose pill",
-  extends: "orchestra",
+  description: "tutti's scheme with a teal live colour and a rose pill",
+  extends: "tutti",
   colours: {
     live: { light: "#0F766E", dark: "#2DD4BF" },
     pill: "#E11D48",
@@ -24,7 +24,7 @@ const dusk = {
   },
 }
 
-const bad = { name: "bad", extends: "orchestra", colours: { frame: "ansi:300" } }
+const bad = { name: "bad", extends: "tutti", colours: { frame: "ansi:300" } }
 
 /** A project with `schemes` in its `.tutti/colour-schemes/`, `settings` in its settings, and a user config folder. */
 const projectWith = (
@@ -81,10 +81,10 @@ describe("the preview", () => {
     expect(roleRow(lines, "live")).toEqual(["live", "dusk", "██", "#0F766E", "██", "#2DD4BF"])
     expect(roleRow(lines, "pill")).toEqual(["pill", "dusk", "#E11D48", "#E11D48"])
     expect(roleRow(lines, "frame")).toEqual(["frame", "dusk", "██", "ansi:8", "██", "ansi:8"])
-    expect(roleRow(lines, "done")).toEqual(["done", "orchestra", "██", "#15803D", "██", "#4ADE80"])
+    expect(roleRow(lines, "done")).toEqual(["done", "tutti", "██", "#15803D", "██", "#4ADE80"])
     expect(roleRow(lines, "formMuted")).toEqual([
       "formMuted",
-      "orchestra",
+      "tutti",
       "██",
       "default",
       "██",
@@ -115,7 +115,7 @@ describe("the preview", () => {
   })
 
   test("draws a mock card, ticket row, attention card and hint in the terminal's variant", () => {
-    const lines = preview({ scheme: orchestra, fallback: null, warnings: [] }, "orchestra")
+    const lines = preview({ scheme: tuttiScheme, fallback: null, warnings: [] }, "tutti")
     const text = lines.join("\n")
     expect(text).toContain("In the terminal's dark variant:")
     expect(text).toContain("tut-12  editing  6m31s")
@@ -150,8 +150,8 @@ describe("the preview", () => {
 
   test("under NO_COLOR, says so and draws no colour", () => {
     const styled = previewLines({
-      asked: "orchestra",
-      loaded: { scheme: orchestra, fallback: null, warnings: [] },
+      asked: "tutti",
+      loaded: { scheme: tuttiScheme, fallback: null, warnings: [] },
       appearance: "dark",
       depth: "truecolor",
       noColor: true,
@@ -166,12 +166,12 @@ describe("the preview", () => {
     expect(text).not.toContain("\x1b[48;")
   })
 
-  test("heads an unusable scheme's preview with orchestra, used instead", () => {
+  test("heads an unusable scheme's preview with tutti, used instead", () => {
     const lines = preview(
-      { scheme: orchestra, fallback: "colour scheme 'bad' isn't used: …", warnings: [] },
+      { scheme: tuttiScheme, fallback: "colour scheme 'bad' isn't used: …", warnings: [] },
       "bad",
     )
-    expect(lines[0]).toBe("Colour scheme orchestra, used instead of 'bad'")
+    expect(lines[0]).toBe("Colour scheme tutti, used instead of 'bad'")
     expect(lines.some((line) => line.includes("can be used"))).toBe(false)
   })
 })
@@ -206,7 +206,7 @@ describe("tutti colours", () => {
     expect(errors).toEqual([])
     for (const role of roles) expect(roleRow(out, role)).toBeDefined()
     expect(roleRow(out, "live")?.slice(0, 2)).toEqual(["live", "dusk"])
-    expect(roleRow(out, "done")?.slice(0, 2)).toEqual(["done", "orchestra"])
+    expect(roleRow(out, "done")?.slice(0, 2)).toEqual(["done", "tutti"])
     expect(out.at(-1)).toBe("✓ dusk can be used.")
   })
 
@@ -216,7 +216,7 @@ describe("tutti colours", () => {
     expect(errors).toEqual([
       "tutti colours: colour scheme 'bad' isn't used: 'colours.frame': 'ansi:300' is not a palette slot (0–255)",
     ])
-    expect(out[0]).toBe("Colour scheme orchestra, used instead of 'bad'")
+    expect(out[0]).toBe("Colour scheme tutti, used instead of 'bad'")
   })
 
   test("a scheme that isn't found exits 1 saying where it was looked for", async () => {
@@ -235,10 +235,10 @@ describe("tutti colours", () => {
     expect(out[0]).toBe("Colour scheme dusk")
   })
 
-  test("without a name or any setting, previews orchestra", async () => {
+  test("without a name or any setting, previews tutti", async () => {
     const { exit, out } = await run([], projectWith([]))
     expect(Exit.isSuccess(exit)).toBe(true)
-    expect(out[0]).toBe("Colour scheme orchestra")
-    expect(roleRow(out, "live")).toEqual(["live", "orchestra", "██", "#0E7490", "██", "#22D3EE"])
+    expect(out[0]).toBe("Colour scheme tutti")
+    expect(roleRow(out, "live")).toEqual(["live", "tutti", "██", "#0E7490", "██", "#22D3EE"])
   })
 })

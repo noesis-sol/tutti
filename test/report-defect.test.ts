@@ -8,7 +8,7 @@ import { TestClock } from "effect/testing"
 import { PathRefused } from "../src/native/libc.ts"
 import { OrganHold, Organs } from "../src/organs/Organs.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { notSavedWhy, type ReportRun, reportsDir, runReport } from "../src/run/report.ts"
 import { Ending } from "../src/run/summary.ts"
@@ -22,7 +22,7 @@ import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { type Answers, layer as cannedLayer } from "../src/testing/Organs.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 /**
  * Runs the report at the end of an empty run with the reviewer's `answers`: gives its log, what was

@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -111,7 +111,7 @@ const shellOf = (
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
     themeOf: (appearance) =>
-      makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false }),
+      makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false }),
     now: () => {
       if (clock.turns) {
         clock.reads++

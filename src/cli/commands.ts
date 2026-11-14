@@ -72,7 +72,7 @@ import {
   type RunFlags,
   runFlags,
 } from "../project/flags.ts"
-import { orchestraLoaded } from "../project/scheme.ts"
+import { tuttiSchemeLoaded } from "../project/scheme.ts"
 import { efforts, maxConcurrent } from "../project/settings.ts"
 import { exitCodes } from "../run/holds.ts"
 import { listen } from "../run/quit.ts"
@@ -975,7 +975,7 @@ const withInitForm = <R>(
     const themeOf = (appearance: Appearance) =>
       makeTheme(
         Option.match(config, {
-          onNone: () => orchestraLoaded,
+          onNone: () => tuttiSchemeLoaded,
           onSome: (value) => value.scheme,
         }).scheme,
         {

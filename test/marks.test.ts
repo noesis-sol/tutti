@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { WorkerState } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Entry, emptyTallies, type State } from "../src/run/ledger.ts"
 import { type Activity, activities, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
@@ -199,7 +199,7 @@ describe("a row's status", () => {
   })
 
   test("every tone is a look of the theme's", () => {
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
     const tones = [
       ...phases.map(([phase, activity]) => rowStatus(phase, activity).tone),
       ...Object.values(motionTones),

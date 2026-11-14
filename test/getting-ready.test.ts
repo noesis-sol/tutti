@@ -10,7 +10,7 @@ import { resolveWith, type Sources } from "../src/agent/claudeBinary.ts"
 import { cannotStart } from "../src/cli/start/preflight.ts"
 import { gettingReady, readySteps } from "../src/print/gettingReady.ts"
 import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 
@@ -177,7 +177,7 @@ describe("the getting-ready line", () => {
 
   test("once it has gone, an organ line after it draws alone, as --feature's does", async () => {
     const { writes, out } = terminal()
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "256", noColor: true })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "256", noColor: true })
     await run(
       Effect.gen(function* () {
         const ready = yield* gettingReady(out, onTerminal)

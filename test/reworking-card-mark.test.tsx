@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { WorkerState } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { type Card, emptyStatus, project, type RunView } from "../src/run/runView.ts"
@@ -18,7 +18,7 @@ import { lookOf, motionTones } from "../src/ui/tone.ts"
 import { lineOneSegments } from "../src/ui/worker/Head.tsx"
 import { cardHead, cardOn } from "./screen.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 const began = new Date(2026, 10, 3, 13, 0, 0).getTime()
 const now = began + 67_000
 const spin = "⣽"

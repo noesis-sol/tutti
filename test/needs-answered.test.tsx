@@ -3,7 +3,7 @@
 // number; its row says `↻ answered`, and Up next that it waits for a free slot.
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
@@ -22,7 +22,7 @@ import { withRender } from "./render.ts"
 import { insideOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
 
 const began = new Date(2026, 10, 4, 8, 14, 0).getTime()

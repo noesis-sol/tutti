@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, SubscriptionRef } from "effect"
 import { TestClock } from "effect/testing"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { shownHolds } from "../src/run/holds.ts"
 import { make as makeHoldsGate } from "../src/run/holdsGate.ts"
 import {
@@ -22,7 +22,7 @@ import type { Segments } from "../src/ui/line.tsx"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const title: TitleView = {
   version: "0.1.0",

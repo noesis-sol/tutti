@@ -7,7 +7,7 @@ import { Deferred, type Duration, Effect, Fiber, Layer, Option } from "effect"
 import { TestClock } from "effect/testing"
 import type { Log } from "../src/core/log.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { breakdownWorker } from "../src/run/breakdown.ts"
 import { specRun } from "../src/run/specRun.ts"
 import {
@@ -68,7 +68,7 @@ export const runs = (options: {
   const spec = specOf()
   const errors: Array<string> = []
   const stdout: Out = { write: () => {}, columns: () => 100, tty: false }
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
   const recording = Effect.runSync(Deferred.make<Recording["Service"]>())
   return Effect.runPromise(
     Effect.gen(function* () {

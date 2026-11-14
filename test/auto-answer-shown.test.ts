@@ -9,7 +9,7 @@ import fc from "fast-check"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { summary } from "../src/print/summary.ts"
 import { autoAnswerAfter, cliFlags, type RunFlags } from "../src/project/flags.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { autoAnswerName, leftWhy } from "../src/run/autoAnswer.ts"
 import { summaryLines } from "../src/run/endOfRun.ts"
 import { defaultSettings, defaultUserConfig, resolve } from "../src/run/resolveConfig.ts"
@@ -24,7 +24,7 @@ import { appConfig } from "../src/testing/AppConfig.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 /** Parses `args` as `tutti` would, giving the flags' texts. */
 const parse = async (args: ReadonlyArray<string>): Promise<RunFlags> => {

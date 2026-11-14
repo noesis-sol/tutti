@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Layer, type Scope } from "effect"
 import { TestClock } from "effect/testing"
 import { detail, type Log, ticketLine } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Aside, putAside } from "../src/run/aside.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
@@ -94,7 +94,7 @@ const said = async (view: RunView, width: number, keys: number) => {
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
     themeOf: (appearance: Appearance) =>
-      makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false }),
+      makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false }),
     now: () => began,
   }
   let text = ""

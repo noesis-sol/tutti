@@ -11,7 +11,7 @@ import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import type { Log } from "../src/core/log.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { reportsDir } from "../src/run/report.ts"
 import { finish, run } from "../src/run/run.ts"
@@ -34,7 +34,7 @@ import {
 } from "./harness.ts"
 
 const fullCommand = "scripts/check-full.sh"
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 const reviewerText = "The run merged t-1; the full check passed.\n"
 
 const folder = (name: string) =>

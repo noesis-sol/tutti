@@ -8,7 +8,7 @@ import { type RGBA, TextAttributes } from "@opentui/core"
 import { Effect, Queue } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
@@ -36,7 +36,7 @@ import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 import { hintFrom, hintOf, pointedAt } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
@@ -507,7 +507,7 @@ describe("at the top level", () => {
     expect(contrast(themeOf("light").look("frame").fg, "white")).toBeLessThan(3)
     expect(contrast(label(themeOf("light"), false)?.fg, "white")).toBeGreaterThan(4.5)
     expect(contrast(label(themeOf("dark"), false)?.fg, "black")).toBeGreaterThan(4.5)
-    const plain = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const plain = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     expect((label(plain, true)?.attributes ?? 0) & TextAttributes.BOLD).toBe(TextAttributes.BOLD)
     expect((label(plain, false)?.attributes ?? 0) & TextAttributes.DIM).toBe(TextAttributes.DIM)
   })

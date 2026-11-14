@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/colour-scheme.json",
-  "name": "orchestra",
-  "description": "orchestra's colours, carried over exactly, with huh's Charm theme for forms, lighter on dark",
+  "name": "tutti",
+  "description": "tutti's colours, with huh's Charm theme for forms, lighter on dark",
   "colours": {
     "live": { "light": "#0E7490", "dark": "#22D3EE" },
     "done": { "light": "#15803D", "dark": "#4ADE80" },

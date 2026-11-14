@@ -4,7 +4,7 @@
 // segments.
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   boxed,
   cut,
@@ -21,7 +21,7 @@ import {
 import { makeTheme } from "../src/ui/theme.ts"
 import { withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 const frame = theme.look("frame")
 
 /** The letters of `line`, its spaces left out, each with its target. */

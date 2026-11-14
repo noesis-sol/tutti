@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import type { Resources } from "../src/run/resources.ts"
 import type { Usage } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -19,9 +19,9 @@ import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { contextLook, type FigureInputs, figureParts, shareText } from "../src/ui/worker/figures.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
-const noColor = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const noColor = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 const began = new Date(2026, 9, 24, 13, 0, 0).getTime()
 /** 6m53s on. */

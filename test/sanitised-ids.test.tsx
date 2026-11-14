@@ -14,7 +14,7 @@ import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { tuttiWith } from "../src/cli/commands.ts"
 import { linkLine, planLinks } from "../src/plan/plan.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -47,7 +47,7 @@ const unsafe = (text: string): boolean =>
   /[\x00-\x09\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]|\[31m|pwned/.test(text)
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 

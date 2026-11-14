@@ -24,7 +24,7 @@ import {
   serverNotes,
   type WorkersQuestions,
 } from "../src/init/workers.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -140,7 +140,11 @@ describe("the MCP servers question's notes", () => {
             write: (text) => {
               output += text
             },
-            theme: makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true }),
+            theme: makeTheme(tuttiScheme, {
+              appearance: "dark",
+              depth: "truecolor",
+              noColor: true,
+            }),
           })
           return yield* form.workers(questions)
         }),

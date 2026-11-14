@@ -5,10 +5,9 @@ Where tutti's colours come from, how to choose a scheme, and how to write one. B
 
 ## Schemes and roles
 
-tutti's colours come from a **colour scheme**. The default, `orchestra`, is orchestra's colours
-carried over exactly, with the Charm theme of `huh` for the forms, whose dark variant is lighter than
-`huh`'s so the forms' quiet text reads on a dark background. It is the only scheme built in.
-Others are JSON files that a project or a person adds.
+tutti's colours come from a **colour scheme**. The default, `tutti`, has the Charm theme of `huh`
+for the forms, whose dark variant is lighter than `huh`'s so the forms' quiet text reads on a dark
+background. It is the only scheme built in. Others are JSON files that a project or a person adds.
 
 A scheme gives colours to **roles**, never to screen elements. A role is a meaning, such as `live`
 (live work) or `needsYou`. Each part of the screen uses a role, and everything else is the same in
@@ -16,7 +15,7 @@ every scheme: bold, faint, italic, the glyphs, the words and the border shapes. 
 the same whatever the colours, and colour is never the only signal: `■ blocked` and `◼ to merge`
 keep their glyphs and words.
 
-Each role has a variant for light backgrounds and one for dark ones. In the `orchestra` scheme:
+Each role has a variant for light backgrounds and one for dark ones. In the `tutti` scheme:
 
 **Status and structure:**
 
@@ -101,7 +100,7 @@ The first of these that is set wins:
 | `TUTTI_COLOUR_SCHEME=<name>` | the environment | this run |
 | `"colour_scheme": "<name>"` | the [user config](setup.md#the-user-config) | your runs, in every project |
 | `"ui": { "colour_scheme": "<name>" }` | [`.tutti/settings.json`](setup.md#the-settings) | the project's default, committed and shared |
-| `orchestra` | | the default |
+| `tutti` | | the default |
 
 Your own choice wins over the project's, since colours are a matter of taste and sight.
 
@@ -111,24 +110,24 @@ A name is looked up in this order:
    team.
 2. `$XDG_CONFIG_HOME/tutti/colour-schemes/<name>.json` (`~/.config/tutti/colour-schemes/` when
    `XDG_CONFIG_HOME` is unset): yours.
-3. The built-in schemes: `orchestra`.
+3. The built-in schemes: `tutti`.
 
 The first file found is the one used, even when it can't be used: a broken project scheme isn't
-replaced by your file of the same name. A name is letters, digits, `.`, `_` and `-`. `orchestra` is
-reserved: a file named `orchestra.json` in either folder is ignored, with a warning
-(`<path> is ignored: orchestra is a built-in colour scheme's name`).
+replaced by your file of the same name. A name is letters, digits, `.`, `_` and `-`. `tutti` is
+reserved: a file named `tutti.json` in either folder is ignored, with a warning
+(`<path> is ignored: tutti is a built-in colour scheme's name`).
 
 ## Writing a scheme
 
 A scheme is a JSON file named after the scheme. This one, `.tutti/colour-schemes/dusk.json`, changes
-four roles of `orchestra` and keeps the rest:
+four roles of `tutti` and keeps the rest:
 
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/colour-scheme.json",
   "name": "dusk",
-  "description": "orchestra's scheme with a teal live colour and a rose pill",
-  "extends": "orchestra",
+  "description": "tutti's scheme with a teal live colour and a rose pill",
+  "extends": "tutti",
   "colours": {
     "live": { "light": "#0F766E", "dark": "#2DD4BF" },
     "heading2": { "light": "#0F766E", "dark": "#2DD4BF" },
@@ -143,15 +142,15 @@ four roles of `orchestra` and keeps the rest:
   [`schema/colour-scheme.json`](../schema/colour-scheme.json), so they complete and check the file.
 - **`name`** must match the file's name, without `.json`.
 - **`description`** is optional.
-- **`extends`** names another scheme, such as `orchestra`. Every role the file leaves out comes from
+- **`extends`** names another scheme, such as `tutti`. Every role the file leaves out comes from
   that scheme, which may extend another in turn. Without `extends`, the file must give every role
-  but those added since schemes were first written, which come from `orchestra` where it leaves
+  but those added since schemes were first written, which come from `tutti` where it leaves
   them out, so that an older scheme still loads: so far only `quiet`.
 - **`colours`** maps roles to colours. A value is one colour for both variants, or
   `{ "light": …, "dark": … }` with both. A colour is one of:
   - `#RRGGBB`: an exact colour. On a 256-colour terminal it becomes the nearest of the 256.
   - `ansi:N`, N from 0 to 255: a palette slot. Slots 0 to 15 follow the terminal's own theme, which
-    may remap them (one theme draws "cyan" as near-white); `orchestra` avoids them, but a scheme that
+    may remap them (one theme draws "cyan" as near-white); `tutti` avoids them, but a scheme that
     wants to follow the terminal's theme can use them. Slots 16 to 255 are the standard colour cube
     and greys.
   - `default`: the terminal's default foreground, or its default background for the background roles
@@ -161,7 +160,7 @@ Keys other than these, and roles that aren't in the tables above, are errors.
 
 ### When a scheme can't be used
 
-A scheme that can't be used never stops a run: tutti uses `orchestra` instead and says why, once:
+A scheme that can't be used never stops a run: tutti uses `tutti` instead and says why, once:
 
 - in the run's `START` block in the log,
 - on the dashboard's warning line, above the hint:
@@ -193,11 +192,11 @@ prints every role with the scheme it comes from (the file, or the one it extends
 value in each variant; then a mock card, attention card, tickets table and hint in your terminal's
 variant; then `✓ dusk can be used.`
 
-When the scheme can't be used, the preview shows `orchestra` in its place
-(`Colour scheme orchestra, used instead of 'dusk'`), the reason goes to stderr
+When the scheme can't be used, the preview shows `tutti` in its place
+(`Colour scheme tutti, used instead of 'dusk'`), the reason goes to stderr
 (`tutti colours: colour scheme 'dusk' isn't used: …`), and the command exits 1, so a scheme can be
 checked in CI. A setup problem, such as an unreadable user config, exits 1 too. Warnings about files
-named `orchestra.json` are shown but don't fail it.
+named `tutti.json` are shown but don't fail it.
 
 ## Light or dark
 

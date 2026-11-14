@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test"
 import { ManualClock } from "@opentui/core/testing"
 import { Effect } from "effect"
 import fc from "fast-check"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
@@ -116,7 +116,7 @@ describe("the Esc hold", () => {
 })
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const shellOf = (view: RunView = emptyView): ShellValue => ({
   view: external(view),

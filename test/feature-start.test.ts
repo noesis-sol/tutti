@@ -11,7 +11,7 @@ import { noServersNote } from "../src/agent/mcp.ts"
 import { AppConfig } from "../src/core/AppConfig.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { featureLine, featureRequestHeading, scopedTo } from "../src/run/feature.ts"
 import { finish, run } from "../src/run/run.ts"
 import { type Started, startBlock } from "../src/run/startup.ts"
@@ -162,7 +162,7 @@ describe("the run report's evidence", () => {
           )(run({ version: "0.1.0-test", base: "main", endLater: true })),
         )
         const outcome = yield* Fiber.join(running)
-        const theme = makeTheme(orchestra, {
+        const theme = makeTheme(tuttiScheme, {
           appearance: "dark",
           depth: "truecolor",
           noColor: true,

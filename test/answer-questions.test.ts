@@ -17,7 +17,7 @@ import {
 } from "../src/answer/questions.ts"
 import type { Log } from "../src/core/log.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { latestVersion, promptChanges } from "../src/project/templateVersions.ts"
 import { decisionSection, recordAnswer, withDecision } from "../src/run/answerQuestion.ts"
 import { resolve, UiCommand } from "../src/run/commands.ts"
@@ -30,7 +30,7 @@ import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import type { OpenQuestion } from "../src/ui/questions.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, {
+const theme = makeTheme(tuttiScheme, {
   appearance: "dark",
   depth: "256",
   noColor: true,

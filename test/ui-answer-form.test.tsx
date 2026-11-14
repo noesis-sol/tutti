@@ -8,7 +8,7 @@ import { Effect, Queue } from "effect"
 import fc from "fast-check"
 import { type AttentionRequest, fits, type Question } from "../src/agent/Attention.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -288,7 +288,7 @@ describe("the form's model", () => {
 // The worker view, as ui-worker-view.test.tsx draws it, with one request open.
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const ledgerEntry = (ticket: TicketId, worker: number): LedgerEntry => ({
   ticket,

@@ -10,7 +10,7 @@ import { Effect, Exit, Layer, Option } from "effect"
 import fc from "fast-check"
 import type { Log } from "../src/core/log.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   openQuestions,
   type Put,
@@ -28,7 +28,7 @@ import { choicesOf, FormCancelled, type OpenQuestion, type Reply } from "../src/
 import { makeTheme } from "../src/ui/theme.ts"
 import { idleFrame, pressEscape, withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, {
+const theme = makeTheme(tuttiScheme, {
   appearance: "dark",
   depth: "256",
   noColor: true,

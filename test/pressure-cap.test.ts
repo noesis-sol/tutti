@@ -13,7 +13,7 @@ import { join } from "node:path"
 import { Deferred, Duration, Effect, Fiber, Layer, Schema, SubscriptionRef } from "effect"
 import { TestClock } from "effect/testing"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Settings } from "../src/project/settings.ts"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import { noHolds, shownHolds, withPressureHold } from "../src/run/holds.ts"
@@ -241,7 +241,7 @@ describe("what the run says of the cap", () => {
 })
 
 describe("the load line", () => {
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
   const text = (segments: Segments) => segments.map((each) => each.text).join("")
   const totals = { ...emptyView.totals, workers: 3, slots: 4 }
 

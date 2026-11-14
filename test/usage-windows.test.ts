@@ -18,7 +18,7 @@ import {
   withFigures,
 } from "../src/agent/UsageLimits.ts"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { emptyState } from "../src/run/ledger.ts"
 import { run } from "../src/run/run.ts"
 import {
@@ -146,7 +146,7 @@ describe("UsageLimits keeps the account's windows", () => {
   })
 })
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const title: TitleView = {
   version: "0.1.0",

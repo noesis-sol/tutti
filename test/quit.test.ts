@@ -6,7 +6,7 @@ import { Duration, Effect, Exit, Fiber, Queue, Ref, type Scope } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Line } from "../src/core/log.ts"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   atOnceText,
   catchSignals,
@@ -707,7 +707,7 @@ describe("the lines", () => {
   })
 
   test("the dashboard's title says Quitting… in place of · stopping", () => {
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
     const title = {
       version: "0.1.0",
       branch: "",

@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Notifier } from "../src/services/Notifier.ts"
 import { Tty } from "../src/services/Tty.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 import { advance, scenario, tty } from "./harness.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 describe("the harness's terminal", () => {
   test("is an 80×24 256-colour TTY unless the setup gives one", async () => {

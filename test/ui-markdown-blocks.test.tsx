@@ -4,13 +4,13 @@
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
 import { useSyncExternalStore } from "react"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { ruleWidth, useSyntaxStyles } from "../src/ui/worker/Looks.tsx"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 /** Markdown as the worker view draws an entry's text: streaming while the text is live. */
 const Markdown = ({

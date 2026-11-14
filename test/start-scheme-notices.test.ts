@@ -2,7 +2,7 @@
 // a line per notice (§ 7.11).
 import { describe, expect, test } from "bun:test"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { type LoadedScheme, orchestra } from "../src/project/scheme.ts"
+import { type LoadedScheme, tuttiScheme } from "../src/project/scheme.ts"
 import type { Started } from "../src/run/startup.ts"
 import { orchestraWarning, startBlock } from "../src/run/startup.ts"
 import * as TestAccount from "../src/testing/Account.ts"
@@ -23,12 +23,11 @@ const notes = (s: Started): ReadonlyArray<string> => startBlock(s, "0.1.0").slic
 
 const fallback =
   "colour scheme 'dusk' isn't used: 'colours.frame': 'ansi:300' is not a palette slot (0–255)"
-const ignored =
-  "/work/project/.tutti/colour-schemes/orchestra.json is ignored: orchestra is built in"
+const ignored = "/work/project/.tutti/colour-schemes/tutti.json is ignored: tutti is built in"
 
 describe("the START block's colour scheme notices", () => {
   test("says nothing of a scheme in use as asked", () => {
-    expect(notes(started({ scheme: orchestra, fallback: null, warnings: [] }))).toEqual([
+    expect(notes(started({ scheme: tuttiScheme, fallback: null, warnings: [] }))).toEqual([
       "  billing: subscription",
       "  permission mode: auto",
       `  ${noServersNote}`,
@@ -39,7 +38,9 @@ describe("the START block's colour scheme notices", () => {
 
   test("gives the fallback, then each ignored file, a line each, before the run's warnings", () => {
     const lines = notes(
-      started({ scheme: orchestra, fallback, warnings: [ignored] }, [orchestraWarning(["tut-1"])]),
+      started({ scheme: tuttiScheme, fallback, warnings: [ignored] }, [
+        orchestraWarning(["tut-1"]),
+      ]),
     )
     expect(lines.slice(-3)).toEqual([
       `  ${fallback}`,
@@ -49,15 +50,15 @@ describe("the START block's colour scheme notices", () => {
   })
 
   test("gives the ignored files' warnings when the scheme is used", () => {
-    expect(notes(started({ scheme: orchestra, fallback: null, warnings: [ignored] })).at(-1)).toBe(
-      `  ${ignored}`,
-    )
+    expect(
+      notes(started({ scheme: tuttiScheme, fallback: null, warnings: [ignored] })).at(-1),
+    ).toBe(`  ${ignored}`)
   })
 
   test("keeps a notice to its line when a file's name carries control characters", () => {
     const lines = notes(
       started({
-        scheme: orchestra,
+        scheme: tuttiScheme,
         fallback: "colour scheme 'du\nsk\u001b[2J' isn't used: its name isn't found",
         warnings: [],
       }),

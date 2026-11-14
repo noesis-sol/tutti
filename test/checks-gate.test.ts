@@ -12,7 +12,7 @@ import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { line } from "../src/core/log.ts"
 import { summary } from "../src/print/summary.ts"
 import { fastScript, fullScript } from "../src/project/runners.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   emptyWhy,
   environmentOf,
@@ -440,7 +440,7 @@ describe("the summary's line on the gate", () => {
     figures: [],
     rows: [],
   }
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
   test("says how it went, styled and plain; nothing where it didn't run", () => {
     // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR sequences are what is stripped

@@ -11,7 +11,7 @@ import { createCliRenderer, RGBA } from "@opentui/core"
 import { Effect } from "effect"
 import fc from "fast-check"
 import { createElement } from "react"
-import { orchestra, type Scheme } from "../src/project/scheme.ts"
+import { type Scheme, tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
@@ -201,7 +201,7 @@ describe("the desktop's command", () => {
 
 describe("the selection's colours", () => {
   const themeOf = (appearance: Appearance, noColor = false) =>
-    makeTheme(orchestra, { appearance, depth: "truecolor", noColor })
+    makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor })
 
   test("are the selection and selectionText roles", () => {
     const theme = themeOf("dark")
@@ -223,9 +223,9 @@ describe("the selection's colours", () => {
   test("are orchestra's for a role a scheme leaves to the terminal's default", () => {
     const own = { _tag: "Hex", hex: "#123456" } as const
     const scheme: Scheme = {
-      ...orchestra,
+      ...tuttiScheme,
       colours: {
-        ...orchestra.colours,
+        ...tuttiScheme.colours,
         selection: { light: { _tag: "Default" }, dark: { _tag: "Default" } },
         selectionText: { light: own, dark: own },
       },
@@ -255,7 +255,8 @@ const shellOf = (clipboard?: Clipboard): ShellValue => ({
   screen: external<Screen>(Screen.Dashboard()),
   commands: Effect.runSync(makeCommands),
   appearance: external<Appearance>("dark"),
-  themeOf: (appearance) => makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false }),
+  themeOf: (appearance) =>
+    makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false }),
   now: () => 0,
   ...(clipboard === undefined ? {} : { clipboard }),
 })
@@ -319,7 +320,7 @@ describe("a drag", () => {
         await setup.mockMouse.moveTo(7, 0)
       })
       const { spans } = await rendered.capture()
-      const selection = makeTheme(orchestra, {
+      const selection = makeTheme(tuttiScheme, {
         appearance: "dark",
         depth: "truecolor",
         noColor: false,

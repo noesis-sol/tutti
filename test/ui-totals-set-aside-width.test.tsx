@@ -2,14 +2,14 @@
 // cells' width, so Completed and Needs you line up at a fifth of the strip while Set aside goes past
 // them, and the queue keeps the room the note would have taken from it (tutti-iolm).
 import { describe, expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { emptyView, type Totals } from "../src/run/runView.ts"
 import type { Segments } from "../src/ui/line.tsx"
 import { boxPad } from "../src/ui/spacing.ts"
 import { totalsStrip } from "../src/ui/Totals.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const textOf = (line: Segments) => line.map((each) => each.text).join("")
 

@@ -6,14 +6,14 @@ import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { renderMarkdown } from "../src/print/markdown.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { boxed, cut, fit, type Segments, seg, tabWidth, widthOf, wrap } from "../src/ui/line.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { PanelBox, panelParts } from "../src/ui/worker/Panel.tsx"
 import { renderFrame } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 /** Graphemes a split would break: a flag, a family joined by ZWJ, an accent that combines. */
 const joined = ["🇺🇸", "👨‍👩‍👧", "🏳️‍🌈", "é"]

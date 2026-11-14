@@ -11,7 +11,7 @@ import { Duration, Effect, Fiber, SubscriptionRef } from "effect"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { line } from "../src/core/log.ts"
 import { fastScript, fullScript } from "../src/project/runners.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   fingerprint,
   type GateAsk,
@@ -45,7 +45,7 @@ const full = "scripts/check-full.sh"
 const spec = "shop.md"
 const defaults = appConfig().settings
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const folder = (name: string) =>
   realpathSync(mkdtempSync(join(tmpdir(), `tutti-checks-gate-terminal-${name}-`)))

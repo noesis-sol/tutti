@@ -1,6 +1,6 @@
 // The account's windows on the title line in `quiet` (§ 7.11): a grey a step above faint, the
 // grey typeChore reads as text with; faint as before under NO_COLOR or a scheme giving it the
-// default. A scheme without extends written before the role takes orchestra's.
+// default. A scheme without extends written before the role takes tutti's.
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, writeFileSync } from "node:fs"
@@ -9,7 +9,7 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { TextAttributes } from "@opentui/core"
 import { Effect } from "effect"
-import { loadScheme, orchestra, type Role, roles, type Scheme } from "../src/project/scheme.ts"
+import { loadScheme, type Role, roles, type Scheme, tuttiScheme } from "../src/project/scheme.ts"
 import type { Banner, TitleView } from "../src/run/runView.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { type Appearance, makeTheme } from "../src/ui/theme.ts"
@@ -35,7 +35,7 @@ const windows: Banner = {
   ],
 }
 
-const themeOf = (appearance: Appearance, noColor = false, scheme: Scheme = orchestra) =>
+const themeOf = (appearance: Appearance, noColor = false, scheme: Scheme = tuttiScheme) =>
   makeTheme(scheme, { appearance, depth: "truecolor", noColor })
 
 const ints = (hex: string): [number, number, number, number] => [
@@ -96,9 +96,9 @@ describe("the account's windows are quiet", () => {
 
   test("is faint where a scheme gives quiet the default", () => {
     const scheme: Scheme = {
-      ...orchestra,
+      ...tuttiScheme,
       colours: {
-        ...orchestra.colours,
+        ...tuttiScheme.colours,
         quiet: { light: { _tag: "Default" }, dark: { _tag: "Default" } },
       },
     }
@@ -118,7 +118,7 @@ describe("a scheme written before quiet", () => {
   const every = (colour: string, leaving: ReadonlyArray<Role>) =>
     Object.fromEntries(roles.filter((r) => !leaving.includes(r)).map((role) => [role, colour]))
 
-  test("without extends and without quiet, loads, taking orchestra's", async () => {
+  test("without extends and without quiet, loads, taking tutti's", async () => {
     const where = folders()
     writeFileSync(
       join(where.project, "mono.json"),
@@ -126,8 +126,8 @@ describe("a scheme written before quiet", () => {
     )
     const loaded = await load("mono", where)
     expect(loaded.fallback).toBeNull()
-    expect(loaded.scheme.colours.quiet).toEqual(orchestra.colours.quiet)
-    expect(loaded.scheme.from.quiet).toBe("orchestra")
+    expect(loaded.scheme.colours.quiet).toEqual(tuttiScheme.colours.quiet)
+    expect(loaded.scheme.from.quiet).toBe("tutti")
     expect(loaded.scheme.colours.live.dark).toEqual({ _tag: "Slot", slot: 7 })
     expect(loaded.scheme.from.live).toBe("mono")
   })
@@ -151,7 +151,7 @@ describe("a scheme written before quiet", () => {
       JSON.stringify({ name: "mono", colours: every("ansi:7", ["quiet", "live"]) }),
     )
     const loaded = await load("mono", where)
-    expect(loaded.scheme).toBe(orchestra)
+    expect(loaded.scheme).toBe(tuttiScheme)
     expect(loaded.fallback).toBe(
       "colour scheme 'mono' isn't used: 'colours': roles are missing and there's no 'extends': live",
     )

@@ -10,7 +10,7 @@ import { Effect, Layer, Result } from "effect"
 import { cannotRunSpec, readChosenSpec, takeSpec } from "../src/cli/choose.ts"
 import { eraseLine } from "../src/print/organLine.ts"
 import { screenOut } from "../src/print/screenOut.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Git, GitWriter } from "../src/services/Git.ts"
 import { OrganScreen, organLines } from "../src/ui/OrganScreen.tsx"
 import { chosenLines, specLine, Work } from "../src/ui/questions.ts"
@@ -19,7 +19,7 @@ import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
 import { withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 describe("the spec chosen, kept in sight", () => {
   test("names its path or URL, and whether it is refined first", () => {

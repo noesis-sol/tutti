@@ -10,7 +10,7 @@ import { talkLeftWhy } from "../src/agent/answerTalk.ts"
 import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { talkLeaveAbout, talkLeaveQuestion, talkName } from "../src/run/answerTalk.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { interviewCard, interviewView } from "../src/run/interview.ts"
@@ -34,7 +34,7 @@ import { external, type Settable, type ShellValue, type TalkShown } from "../src
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 9, 27, 13, 0, 0).getTime()
 

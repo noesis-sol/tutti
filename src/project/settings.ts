@@ -362,7 +362,7 @@ export const Settings = Schema.Struct({
   }).pipe(withDefault({})),
   ui: Schema.Struct({
     /** The project's default colour scheme (§ 7.11); the user config's choice wins over it. */
-    colour_scheme: Text.pipe(withDefault("orchestra")),
+    colour_scheme: Text.pipe(withDefault("tutti")),
   }).pipe(withDefault({})),
 }).annotate({ title: "tutti settings", description: "a project's .tutti/settings.json" })
 

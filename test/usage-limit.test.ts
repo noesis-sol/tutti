@@ -7,7 +7,7 @@ import { rateLimitOf, UsageLimits } from "../src/agent/UsageLimits.ts"
 import { resetLabel } from "../src/core/localTime.ts"
 import { line } from "../src/core/log.ts"
 import { OrganHold } from "../src/organs/Organs.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { run } from "../src/run/run.ts"
 import { countdown, type RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
@@ -475,7 +475,7 @@ describe("what the hold says", () => {
   })
 
   test("the title line: the usage with its limit and overage, the hold counting down", () => {
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
     const title = {
       version: "0.1.0",
       branch: "",

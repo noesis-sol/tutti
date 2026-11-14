@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Option, Queue } from "effect"
 import fc from "fast-check"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
@@ -136,7 +136,7 @@ describe("every key a screen binds has a row in its key help", () => {
 })
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const shellOf = (view: RunView): ShellValue => ({
   view: external(view),

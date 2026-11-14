@@ -17,7 +17,7 @@ import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { interviewWorker } from "../src/agent/inView.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Answer, type BreakdownState, type BreakdownTools } from "../src/run/breakdownTools.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { exitCodes } from "../src/run/holds.ts"
@@ -76,7 +76,7 @@ import { type External, external, type Settable, type ShellValue } from "../src/
 import { drawnFrame, type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const description = "Add a --json flag to list.\nIt prints the list as JSON."

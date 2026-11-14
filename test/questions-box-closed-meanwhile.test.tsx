@@ -10,7 +10,7 @@ import { type BaseRenderable, type TextNodeRenderable, TextRenderable } from "@o
 import { Effect, Queue } from "effect"
 import fc from "fast-check"
 import { Profiler } from "react"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -26,7 +26,7 @@ import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 10, 10, 9, 0, 0).getTime()
 

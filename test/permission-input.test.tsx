@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { type Segments, widthOf } from "../src/ui/line.tsx"
 import { permissionLines } from "../src/ui/requestInput.ts"
@@ -13,7 +13,7 @@ import { makeTheme } from "../src/ui/theme.ts"
 import { PanelBox, panelParts } from "../src/ui/worker/Panel.tsx"
 import { renderFrame } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const permission = (tool: string, input: Record<string, unknown>): AttentionRequest => ({
   id: "r1",

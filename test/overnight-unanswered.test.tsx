@@ -13,7 +13,7 @@ import { noServersNote } from "../src/agent/mcp.ts"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { updateTemplates } from "../src/init/update.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { answerLimit, clockOf, countdownText, leavesOpen } from "../src/run/answerLimit.ts"
 import { unknownKernel } from "../src/run/load.ts"
 import { type Ask, type Cleared, type Night, preflight } from "../src/run/overnight.ts"
@@ -34,7 +34,7 @@ import type { OpenQuestion, Reply } from "../src/ui/questions.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 import { idleFrame, withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, {
+const theme = makeTheme(tuttiScheme, {
   appearance: "dark",
   depth: "256",
   noColor: true,

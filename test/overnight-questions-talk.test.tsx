@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Option } from "effect"
 import { TalkEnd, talkLeftWhy } from "../src/agent/answerTalk.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   openQuestions,
   type Put,
@@ -20,7 +20,7 @@ import { choicesOf, FormCancelled, type OpenQuestion, type Reply } from "../src/
 import { makeTheme } from "../src/ui/theme.ts"
 import { idleFrame, withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, {
+const theme = makeTheme(tuttiScheme, {
   appearance: "dark",
   depth: "256",
   noColor: true,

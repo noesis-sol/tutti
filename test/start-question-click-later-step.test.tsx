@@ -5,14 +5,14 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type SpecAsk, TicketCount, type Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 const size = { width: 100, height: 32 }
 
 /** A folder of its own with a spec file in it, the repository the spec field starts at. */

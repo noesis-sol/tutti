@@ -14,12 +14,12 @@ import type { InitForm, TrustOffer } from "../src/init/init.ts"
 import { lineForm } from "../src/init/lineForm.ts"
 import { readmeSteps, requiresSteps } from "../src/init/requires.ts"
 import type { WorkersQuestions } from "../src/init/workers.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import type { Requirement } from "../src/project/settings.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const plainTheme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const plainTheme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 /** Bold and faint, which NO_COLOR keeps, left out, to read the output as text. */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the output's escape sequences

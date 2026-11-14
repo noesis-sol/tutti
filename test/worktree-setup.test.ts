@@ -20,7 +20,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber } from "effect"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { probeFile, probeWorker } from "../src/run/environment.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { countsUnder, Move, TicketPhase, WaitFor } from "../src/run/phase.ts"
@@ -767,7 +767,7 @@ describe("the dashboard", () => {
     expect(
       countsUnder(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1" as TicketId] }) })),
     ).toEqual([])
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
     const totals = { ...emptyView.totals, slots: 2, queued: 1, unclosed: 3, setupFailed: 1 }
     const segments = totalsLine(totals, theme, 80)
     expect(segments.map((each) => each.text).join("")).toContain("queue 1 of 3 · 1 setup failed")

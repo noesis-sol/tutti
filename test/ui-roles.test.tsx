@@ -14,7 +14,7 @@ import { type ReactNode, useEffect } from "react"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra, type Role, roles, type Scheme } from "../src/project/scheme.ts"
+import { type Role, roles, type Scheme, tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, type WindDown } from "../src/run/ledger.ts"
 import {
@@ -1011,14 +1011,14 @@ const scenes: ReadonlyArray<Scene> = [
 ]
 
 describe("each state's cells carry § 7.11's role", () => {
-  test("the orchestra scheme's colours are § 7.11's", () => {
+  test("the tutti scheme's colours are § 7.11's", () => {
     for (const role of roles) {
       const [light, dark] = orchestraColours[role]
       for (const [appearance, colour] of [
         ["light", light],
         ["dark", dark],
       ] as const) {
-        const theme = themeIn(orchestra)(appearance)
+        const theme = themeIn(tuttiScheme)(appearance)
         expect(`${role}: ${recordOf(theme.rgba(role))}`).toBe(`${role}: ${recorded(colour)}`)
       }
     }
@@ -1028,7 +1028,7 @@ describe("each state's cells carry § 7.11's role", () => {
     test.each(variants)(
       `${scene.name}, %s`,
       async (appearance) => {
-        const frame = await draw(scene, themeIn(orchestra), appearance)
+        const frame = await draw(scene, themeIn(tuttiScheme), appearance)
         for (const [each, want] of scene.checks) {
           const at = where(each)
           for (const cell of find(frame, at)) {
@@ -1107,11 +1107,11 @@ describe("a scheme's roles", () => {
       async (appearance) => {
         const map = rolesIn(await draw(scene, themeIn(marked), appearance))
         const used = new Set(map.flat().flatMap((cell) => [cell.fg, cell.bg]))
-        const before = cellsOf(await draw(scene, themeIn(orchestra), appearance))
+        const before = cellsOf(await draw(scene, themeIn(tuttiScheme), appearance))
         const recolour = "#123456"
         for (const role of roles.filter((each) => used.has(each))) {
           const after = cellsOf(
-            await draw(scene, themeIn(changed(orchestra, role, recolour)), appearance),
+            await draw(scene, themeIn(changed(tuttiScheme, role, recolour)), appearance),
           )
           const differences = before.flatMap((line, y) =>
             line.flatMap((was, x) => {
@@ -1143,8 +1143,8 @@ describe("NO_COLOR", () => {
     test.each(variants)(
       `keeps every glyph, word, bold and faint, in the terminal's colours: ${scene.name}, %s`,
       async (appearance) => {
-        const coloured = await draw(scene, themeIn(orchestra), appearance)
-        const plain = await draw(scene, themeIn(orchestra, true), appearance)
+        const coloured = await draw(scene, themeIn(tuttiScheme), appearance)
+        const plain = await draw(scene, themeIn(tuttiScheme, true), appearance)
         expect(plain.chars).toBe(coloured.chars)
         const was = cellsOf(coloured)
         const differences = cellsOf(plain).flatMap((line, y) =>
@@ -1195,10 +1195,10 @@ const variantOf = (appearance: Appearance): 0 | 1 => (appearance === "light" ? 0
 describe("NO_COLOR's focus", () => {
   test("paints the focused button bold and reversed, and only under NO_COLOR", () => {
     const options = { appearance: "dark", depth: "truecolor" } as const
-    const plain = makeTheme(orchestra, { ...options, noColor: true }).form
+    const plain = makeTheme(tuttiScheme, { ...options, noColor: true }).form
     expect(plain.focusedButton.paint("[ Deny ]")).toBe("\x1b[1m\x1b[7m[ Deny ]\x1b[0m")
     expect(plain.button.paint("[ Allow ]")).toBe("[ Allow ]")
-    const coloured = makeTheme(orchestra, { ...options, noColor: false }).form.focusedButton
+    const coloured = makeTheme(tuttiScheme, { ...options, noColor: false }).form.focusedButton
     expect(coloured.attributes).toBe(0)
   })
 
@@ -1206,7 +1206,7 @@ describe("NO_COLOR's focus", () => {
     test.each(variants)(
       `the focused button is bold and reversed, the others plain: ${name}, %s`,
       async (appearance) => {
-        const plain = await draw(sceneOf(name), themeIn(orchestra, true), appearance)
+        const plain = await draw(sceneOf(name), themeIn(tuttiScheme, true), appearance)
         const attributesOf = (text: string) => [
           ...new Set(find(plain, { text }).map((cell) => cell.attributes)),
         ]
@@ -1222,8 +1222,8 @@ describe("NO_COLOR's focus", () => {
 const layout = async (scene: Omit<Scene, "name" | "checks">): Promise<string> => {
   const drawn = { ...scene, name: "", checks: [] }
   // One after the other: a test renderer's act() environment is its own until it is disposed.
-  const light = await draw(drawn, themeIn(orchestra), "light")
-  const dark = await draw(drawn, themeIn(orchestra), "dark")
+  const light = await draw(drawn, themeIn(tuttiScheme), "light")
+  const dark = await draw(drawn, themeIn(tuttiScheme), "dark")
   expect(light.chars).toBe(dark.chars)
   const lines = light.chars.split("\n").map((line) => line.trimEnd())
   while (lines.at(-1) === "") lines.pop()
@@ -1926,7 +1926,7 @@ test(
 test(
   "NO_COLOR draws selected text in orchestra's selection colours",
   async () => {
-    const frame = await draw(sceneOf("selected text"), themeIn(orchestra, true), "dark")
+    const frame = await draw(sceneOf("selected text"), themeIn(tuttiScheme, true), "dark")
     const [, text] = orchestraColours.selectionText
     const [, background] = orchestraColours.selection
     for (const cell of find(frame, { text: "Title of tut-1" })) {

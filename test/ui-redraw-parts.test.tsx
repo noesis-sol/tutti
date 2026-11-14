@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { Profiler } from "react"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -32,7 +32,7 @@ import { withRender } from "./render.ts"
 import { cardsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 

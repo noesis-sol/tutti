@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import type { InputRenderable } from "@opentui/core"
 import { useRef, useState } from "react"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   type Asking,
   checklistCommands,
@@ -27,7 +27,7 @@ import { makeTheme } from "../src/ui/theme.ts"
 import { type Frame, withRender } from "./render.ts"
 import { fieldActions, noSpecAsk } from "./specAsk.ts"
 
-const dark = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const dark = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const size = { width: 90, height: 30 }
 

@@ -6,12 +6,12 @@ import type { TextareaRenderable } from "@opentui/core"
 import type { TestRendererSetup } from "@opentui/core/testing"
 import { useTerminalDimensions } from "@opentui/react"
 import { act, useRef, useState } from "react"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Composer, composerLines } from "../src/ui/Composer.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { type Rendered, withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 /**
  * The composer as a view holds it, the terminal's width and its height the view's; `height` reports

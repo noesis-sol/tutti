@@ -297,7 +297,7 @@ export const runFlags = {
   colourScheme: runFlag("colour-scheme", text("a scheme's name"), {
     metavar: "name",
     description:
-      "the colour scheme (default: the user config, else .tutti/settings.json, else orchestra)",
+      "the colour scheme (default: the user config, else .tutti/settings.json, else tutti)",
   }),
 } as const
 

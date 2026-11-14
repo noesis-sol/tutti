@@ -11,7 +11,7 @@ import {
   plainLines,
   themeStyles,
 } from "../src/print/nothing.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import * as free from "../src/run/deferredFree.ts"
 import {
   check,
@@ -207,7 +207,7 @@ describe("the box and its lines", () => {
   })
 
   test("all done is framed done, ✓ done bold; nothing ready is framed frame, ○ faint", () => {
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
     const styles = themeStyles(theme)
     const done = box(make({ allDone: true, stillOpen: ["k-1"] }), 80, styles)
     expect(done).toContain(`${theme.ansi("done")}╭`)
@@ -224,7 +224,7 @@ describe("the box and its lines", () => {
   })
 
   test("under NO_COLOR the box keeps its bold and faint, and no colour", () => {
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     const drawn = box(make({ allDone: true }), 80, themeStyles(theme))
     expect(drawn).not.toContain("\x1b[38;")
     expect(drawn).not.toContain("\x1b[48;")

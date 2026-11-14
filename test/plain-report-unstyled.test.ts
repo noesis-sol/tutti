@@ -3,11 +3,11 @@ import { Effect } from "effect"
 import fc from "fast-check"
 import { printReport, renderMarkdown } from "../src/print/markdown.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra, roles } from "../src/project/scheme.ts"
+import { roles, tuttiScheme } from "../src/project/scheme.ts"
 import { type Appearance, makeTheme, printedTheme, styleNames } from "../src/ui/theme.ts"
 
 const themeOf = (appearance: Appearance, styled: boolean) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false, styled })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false, styled })
 const unstyled = themeOf("dark", false)
 
 /** Output written to a pipe: not a terminal. */
@@ -39,7 +39,7 @@ describe("an unstyled theme", () => {
   })
 
   test("a theme is styled unless told otherwise", () => {
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "256", noColor: false })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "256", noColor: false })
     expect(theme.styled).toBe(true)
     expect(theme.styles.done.paint("x")).toContain("\x1b[")
   })

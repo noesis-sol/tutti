@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { separator } from "../src/text/marks.ts"
 import { type Segments, sectionLabel, seg } from "../src/ui/line.tsx"
 import { needsListLabel } from "../src/ui/NeedsList.tsx"
@@ -12,7 +12,7 @@ import { labelIndent } from "../src/ui/spacing.ts"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const root = resolve(import.meta.dir, "..")
 

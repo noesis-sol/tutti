@@ -3,13 +3,13 @@
 
 import { describe, expect, test } from "bun:test"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 import { PanelBox, panelParts } from "../src/ui/worker/Panel.tsx"
 import { renderFrame } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const elicitation = (url: string | undefined): AttentionRequest => ({
   id: "r1",

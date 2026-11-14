@@ -31,7 +31,7 @@ import { lineForm } from "../src/init/lineForm.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { fastScript, fullScript } from "../src/project/runners.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -292,7 +292,7 @@ describe("the form's fourth option", () => {
   })
 
   test("picked in the line form, it answers the checks with later, asking nothing more", async () => {
-    const plainTheme = makeTheme(orchestra, {
+    const plainTheme = makeTheme(tuttiScheme, {
       appearance: "dark",
       depth: "truecolor",
       noColor: true,

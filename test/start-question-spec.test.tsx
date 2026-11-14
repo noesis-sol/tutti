@@ -9,7 +9,7 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer, Result } from "effect"
 import { specAsk } from "../src/cli/choose.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   fetchOnce,
   fetchSpec,
@@ -24,7 +24,7 @@ import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 const size = { width: 100, height: 32 }
 
 /** A folder of its own, the repository the field starts at, with `files` (a `/` ends a folder). */

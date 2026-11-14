@@ -8,7 +8,7 @@ import fc from "fast-check"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import {
@@ -239,7 +239,7 @@ describe("the follow-ups filed outside a scoped run", () => {
 
 // Whole runs, with organs: what the reviewer is given.
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 const folder = (name: string) =>
   realpathSync(mkdtempSync(join(tmpdir(), `tutti-evidence-${name}-`)))
 const report = "The run ended.\n"

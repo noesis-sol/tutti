@@ -579,7 +579,7 @@ for a project that sets them all; the table below gives each one's default:
     "early_check": true
   },
   "environment_hold": { "count": 2, "window": "2m", "probe": "10m" },
-  "ui": { "colour_scheme": "orchestra" }
+  "ui": { "colour_scheme": "tutti" }
 }
 ```
 

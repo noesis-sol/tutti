@@ -8,7 +8,7 @@ import { PassThrough } from "node:stream"
 import { Effect, Exit, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { asking, askLines, type Deciding, decided, ticketCount } from "../src/cli/choose.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { noHolds, type Options } from "../src/run/nothing.ts"
 import { Beads, BeadsFailed, type TicketId } from "../src/services/Beads.ts"
 import { type Holder, parseHolder, RunLock } from "../src/services/RunLock.ts"
@@ -149,7 +149,7 @@ describe("what it says of the current tickets", () => {
 })
 
 describe("the line form over stdin", () => {
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
   const ask = async (typed: string) => {
     const stdin = new PassThrough()

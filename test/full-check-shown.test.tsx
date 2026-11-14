@@ -9,7 +9,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Clock, Deferred, Duration, Effect, Fiber, Queue, SubscriptionRef } from "effect"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import type { FullCheckRun } from "../src/run/fullcheck.ts"
 import { Load, type LoadSource, parseProcesses } from "../src/run/load.ts"
@@ -35,7 +35,7 @@ import { renderFrame } from "./render.ts"
 const fullCommand = "scripts/check-full.sh"
 const setupCommand = "bun install --frozen-lockfile"
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
 const gb = 1024 ** 3
 

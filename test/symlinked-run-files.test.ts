@@ -26,7 +26,7 @@ import { Log, line, logFile } from "../src/core/log.ts"
 import { NotAFileRefused, SymlinkRefused, writeFileUnder } from "../src/native/libc.ts"
 import { OrganHold, Organs } from "../src/organs/Organs.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { type ReportRun, reportsDir, runReport } from "../src/run/report.ts"
 import { Ending } from "../src/run/summary.ts"
@@ -181,7 +181,7 @@ describe("state.json", () => {
 })
 
 describe("the run report", () => {
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
   /** Runs the report of an empty run in `repo`; gives the log and what was printed. */
   const reported = async (repo: string) => {

@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { summary } from "../src/print/summary.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { summaryLines } from "../src/run/endOfRun.ts"
 import { emptyStatus, emptyView, project } from "../src/run/runView.ts"
 import type { Spec } from "../src/run/spec.ts"
@@ -15,7 +15,7 @@ import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 const spec: Spec = {
   given: "~/specs/shop.md",

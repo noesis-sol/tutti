@@ -17,7 +17,7 @@ import { section } from "../src/organs/evidence.ts"
 import { OrganHold, Organs } from "../src/organs/Organs.ts"
 import { reviewer } from "../src/organs/reviewer.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import {
@@ -41,7 +41,7 @@ import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src
 import { makeTheme } from "../src/ui/theme.ts"
 import { openFibers } from "./fibers.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 const body = "The run ended with nothing left to do.\n\n## Finished\n- t-1: the parser, abc123\n"
 

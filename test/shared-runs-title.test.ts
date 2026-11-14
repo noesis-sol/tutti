@@ -8,7 +8,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, Effect, Fiber, SubscriptionRef } from "effect"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { run } from "../src/run/run.ts"
 import type { RunView, TitleView } from "../src/run/runView.ts"
 import { readyPoll } from "../src/run/schedule.ts"
@@ -23,7 +23,7 @@ import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { advance, expectExitCode, scenario } from "./harness.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const title: TitleView = {
   version: "0.1.0",

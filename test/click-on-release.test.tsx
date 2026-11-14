@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { type Card, emptyView } from "../src/run/runView.ts"
@@ -17,7 +17,7 @@ import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, ShellContext, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Rendered, withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 /** A target on the first line, with a button on the second inside it; what each click ran. */
 const target = (ran: Array<string>) => (

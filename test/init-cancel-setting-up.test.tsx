@@ -11,7 +11,7 @@ import { ConfigProvider, Deferred, Effect, Exit, Fiber, Scope } from "effect"
 import { act } from "react"
 import { init } from "../src/init/init.ts"
 import type { Machine } from "../src/init/steps.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -24,7 +24,7 @@ import { external } from "../src/ui/useRunView.ts"
 import { idleFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const actEnvironment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 

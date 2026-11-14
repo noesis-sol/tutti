@@ -4,13 +4,13 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { resetLabel } from "../src/core/localTime.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import type { Banner, TitleView } from "../src/run/runView.ts"
 import { widthOf } from "../src/ui/line.tsx"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const title: TitleView = {
   version: "0.1.0",

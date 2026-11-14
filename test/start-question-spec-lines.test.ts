@@ -8,11 +8,11 @@ import { join } from "node:path"
 import { PassThrough } from "node:stream"
 import { Effect, Exit } from "effect"
 import { askLines } from "../src/cli/choose.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type SpecAsk, TicketCount, Work } from "../src/ui/questions.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the output's escape sequences
 const unstyled = (output: string) => output.replace(/\x1b\[[0-9;]*m/g, "")

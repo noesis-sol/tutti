@@ -47,7 +47,7 @@ import {
 export interface Preview {
   /** The scheme asked for: the name given, else the one in use by default. */
   readonly asked: string
-  /** The scheme loaded for it: that one, or orchestra with the reason it isn't used. */
+  /** The scheme loaded for it: that one, or tutti with the reason it isn't used. */
   readonly loaded: LoadedScheme
   /** The terminal's own variant, which the mock is drawn in. */
   readonly appearance: Appearance

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, Effect, Fiber, SubscriptionRef } from "effect"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { run } from "../src/run/run.ts"
 import { Banner, type RunView, type TitleView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
@@ -21,7 +21,7 @@ import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { advance, expectExitCode, scenario } from "./harness.ts"
 
 const themeIn = (appearance: Appearance, noColor = false) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor })
 
 const theme = themeIn("dark")
 
@@ -90,8 +90,8 @@ describe("the keep-awake badge", () => {
       expect(drawn.styles.keepAwake.fg?.toInts()).toEqual(drawn.rgba("keepAwakeText").toInts())
     }
     const hex = (appearance: Appearance) => ({
-      fill: orchestra.colours.keepAwake[appearance],
-      text: orchestra.colours.keepAwakeText[appearance],
+      fill: tuttiScheme.colours.keepAwake[appearance],
+      text: tuttiScheme.colours.keepAwakeText[appearance],
     })
     expect(hex("light")).toEqual({
       fill: { _tag: "Hex", hex: "#B45309" },
@@ -105,9 +105,9 @@ describe("the keep-awake badge", () => {
 
   test("is warmer than, and set apart from, the roles near it", () => {
     for (const appearance of ["light", "dark"] as const) {
-      const fill = orchestra.colours.keepAwake[appearance]
+      const fill = tuttiScheme.colours.keepAwake[appearance]
       for (const near of ["notice", "windingDown", "needsYou", "pill"] as const) {
-        expect({ near, fill }).not.toEqual({ near, fill: orchestra.colours[near][appearance] })
+        expect({ near, fill }).not.toEqual({ near, fill: tuttiScheme.colours[near][appearance] })
       }
     }
   })

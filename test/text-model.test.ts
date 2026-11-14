@@ -7,7 +7,7 @@ import { TextAttributes } from "@opentui/core"
 import fc from "fast-check"
 import { initSummary } from "../src/print/initSummary.ts"
 import { summary } from "../src/print/summary.ts"
-import { orchestra, roles } from "../src/project/scheme.ts"
+import { roles, tuttiScheme } from "../src/project/scheme.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { attentionOf, emptyView, type Row, RowDetail, rowStatus } from "../src/run/runView.ts"
 import type { Summary } from "../src/run/summary.ts"
@@ -18,9 +18,9 @@ import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { boxWith } from "./screen.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
-const noColour = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
-const unstyled = makeTheme(orchestra, {
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
+const noColour = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
+const unstyled = makeTheme(tuttiScheme, {
   appearance: "dark",
   depth: "truecolor",
   noColor: false,

@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { PassThrough } from "node:stream"
 import { Effect, Exit, Option } from "effect"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   confirm,
   type LineIO,
@@ -17,8 +17,12 @@ import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { makeTheme, type Theme } from "../src/ui/theme.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
-const plainTheme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
-const colourTheme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const plainTheme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
+const colourTheme = makeTheme(tuttiScheme, {
+  appearance: "dark",
+  depth: "truecolor",
+  noColor: false,
+})
 
 /** Bold and faint, which NO_COLOR keeps, left out, to read the output as text. */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the output's escape sequences

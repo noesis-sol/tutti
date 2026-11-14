@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { Effect, Fiber, Result } from "effect"
 import { line } from "../src/core/log.ts"
 import { summary } from "../src/print/summary.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { summaryLines } from "../src/run/endOfRun.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
@@ -35,7 +35,7 @@ import { makeTheme } from "../src/ui/theme.ts"
 import { machineWhich, testEnv } from "./env.ts"
 import { backlog, expectExitCode, expectLog, type Ran, scenario, type World } from "./harness.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR sequences are what is stripped
 const sgr = /\x1b\[[0-9;]*m/g

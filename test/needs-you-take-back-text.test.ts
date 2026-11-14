@@ -2,7 +2,7 @@
 // branch fixed by hand (tutti-w4ds): the key where it does something, what it does, and the take-back
 // only while the run takes anything back.
 import { describe, expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, type Need, project, runGoes } from "../src/run/runView.ts"
@@ -10,7 +10,7 @@ import type { TicketId } from "../src/services/Beads.ts"
 import { clearsOf, needsLines } from "../src/ui/SidePanel.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 const began = new Date(2026, 10, 4, 3, 0, 0).getTime()
 const about = { worktree: "/wt/a", files: ["a.ts"], reason: "2 hand-backs used" }
 

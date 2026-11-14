@@ -12,12 +12,12 @@ import {
   type Colour,
   type LoadedScheme,
   loadScheme,
-  orchestra,
   parseColour,
   type Role,
   roles,
   type SchemeFolders,
   schemeNotices,
+  tuttiScheme,
 } from "../src/project/scheme.ts"
 import { load } from "../src/run/resolveConfig.ts"
 import {
@@ -30,7 +30,7 @@ import {
   styleNames,
 } from "../src/ui/theme.ts"
 
-/** § 7.11's three tables: each role's light and dark colour in the orchestra scheme. */
+/** § 7.11's three tables: each role's light and dark colour in the tutti scheme. */
 const orchestraTable: Record<Role, readonly [string, string]> = {
   live: ["#0E7490", "#22D3EE"],
   done: ["#15803D", "#4ADE80"],
@@ -86,17 +86,17 @@ const orchestraTable: Record<Role, readonly [string, string]> = {
 
 const colourOf = (text: string): Colour => Result.getOrThrow(parseColour(text))
 
-describe("the orchestra scheme", () => {
+describe("the tutti scheme", () => {
   test("holds § 7.11's colours exactly, light and dark", () => {
     expect(Object.keys(orchestraTable).sort()).toEqual([...roles].sort())
     for (const role of roles) {
       const [light, dark] = orchestraTable[role]
-      expect({ role, ...orchestra.colours[role] }).toEqual({
+      expect({ role, ...tuttiScheme.colours[role] }).toEqual({
         role,
         light: colourOf(light),
         dark: colourOf(dark),
       })
-      expect(orchestra.from[role]).toBe("orchestra")
+      expect(tuttiScheme.from[role]).toBe("tutti")
     }
   })
 })
@@ -175,20 +175,20 @@ const allRoles = (colour: string) => Object.fromEntries(roles.map((role) => [rol
 describe("the lookup order", () => {
   test("the project's folder, then the user's, then the built-ins", async () => {
     const both = foldersWith({
-      project: { dusk: scheme("dusk", { live: "#111111" }, { extends: "orchestra" }) },
-      user: { dusk: scheme("dusk", { live: "#222222" }, { extends: "orchestra" }) },
+      project: { dusk: scheme("dusk", { live: "#111111" }, { extends: "tutti" }) },
+      user: { dusk: scheme("dusk", { live: "#222222" }, { extends: "tutti" }) },
     })
     const fromProject = await loadIn("dusk", both)
     expect(fromProject.fallback).toBeNull()
     expect(fromProject.scheme.colours.live.dark).toEqual(colourOf("#111111"))
 
     const userOnly = foldersWith({
-      user: { dusk: scheme("dusk", { live: "#222222" }, { extends: "orchestra" }) },
+      user: { dusk: scheme("dusk", { live: "#222222" }, { extends: "tutti" }) },
     })
     expect((await loadIn("dusk", userOnly)).scheme.colours.live.dark).toEqual(colourOf("#222222"))
 
-    const builtIn = await loadIn("orchestra", foldersWith({}))
-    expect(builtIn).toEqual({ scheme: orchestra, fallback: null, warnings: [] })
+    const builtIn = await loadIn("tutti", foldersWith({}))
+    expect(builtIn).toEqual({ scheme: tuttiScheme, fallback: null, warnings: [] })
   })
 
   test("the first file found is the one used, even when it can't be", async () => {
@@ -197,7 +197,7 @@ describe("the lookup order", () => {
       user: { dusk: scheme("dusk", allRoles("#222222")) },
     })
     const loaded = await loadIn("dusk", folders)
-    expect(loaded.scheme).toBe(orchestra)
+    expect(loaded.scheme).toBe(tuttiScheme)
     expect(loaded.fallback).toStartWith(
       `colour scheme 'dusk' isn't used: ${join(folders.project, "dusk.json")} isn't valid JSON: `,
     )
@@ -205,28 +205,28 @@ describe("the lookup order", () => {
 
   test("a file with a built-in's name is ignored with a warning", async () => {
     const folders = foldersWith({
-      project: { orchestra: scheme("orchestra", { live: "#111111" }, { extends: "orchestra" }) },
-      user: { orchestra: "not even JSON" },
+      project: { tutti: scheme("tutti", { live: "#111111" }, { extends: "tutti" }) },
+      user: { tutti: "not even JSON" },
     })
-    const loaded = await loadIn("orchestra", folders)
-    expect(loaded.scheme).toEqual(orchestra)
+    const loaded = await loadIn("tutti", folders)
+    expect(loaded.scheme).toEqual(tuttiScheme)
     expect(loaded.fallback).toBeNull()
     expect(loaded.warnings).toEqual([
-      `${join(folders.project, "orchestra.json")} is ignored: orchestra is a built-in colour scheme's name`,
-      `${join(folders.user, "orchestra.json")} is ignored: orchestra is a built-in colour scheme's name`,
+      `${join(folders.project, "tutti.json")} is ignored: tutti is a built-in colour scheme's name`,
+      `${join(folders.user, "tutti.json")} is ignored: tutti is a built-in colour scheme's name`,
     ])
     expect(schemeNotices(loaded)).toEqual(loaded.warnings)
 
     // Reached through extends too, and said once.
     const extending = foldersWith({
       project: {
-        orchestra: scheme("orchestra", {}),
-        dusk: scheme("dusk", { live: "#111111" }, { extends: "orchestra" }),
+        tutti: scheme("tutti", {}),
+        dusk: scheme("dusk", { live: "#111111" }, { extends: "tutti" }),
       },
     })
     const dusk = await loadIn("dusk", extending)
     expect(dusk.fallback).toBeNull()
-    expect(dusk.scheme.colours.done).toEqual(orchestra.colours.done)
+    expect(dusk.scheme.colours.done).toEqual(tuttiScheme.colours.done)
     expect(dusk.warnings).toHaveLength(1)
   })
 })
@@ -241,7 +241,7 @@ describe("extends", () => {
           { extends: "base", description: "teal" },
         ),
       },
-      user: { base: scheme("base", { done: "default" }, { extends: "orchestra" }) },
+      user: { base: scheme("base", { done: "default" }, { extends: "tutti" }) },
     })
     const { scheme: dusk, fallback, warnings } = await loadIn("dusk", folders)
     expect(fallback).toBeNull()
@@ -252,8 +252,8 @@ describe("extends", () => {
     expect(dusk.colours.pill).toEqual({ light: colourOf("#E11D48"), dark: colourOf("#E11D48") })
     expect(dusk.colours.frame).toEqual({ light: colourOf("ansi:8"), dark: colourOf("ansi:8") })
     expect(dusk.colours.done).toEqual({ light: colourOf("default"), dark: colourOf("default") })
-    expect(dusk.colours.merging).toEqual(orchestra.colours.merging)
-    expect(dusk.from).toMatchObject({ live: "dusk", done: "base", merging: "orchestra" })
+    expect(dusk.colours.merging).toEqual(tuttiScheme.colours.merging)
+    expect(dusk.from).toMatchObject({ live: "dusk", done: "base", merging: "tutti" })
   })
 
   test("a file without extends that gives every role is a whole scheme", async () => {
@@ -265,11 +265,11 @@ describe("extends", () => {
 })
 
 describe("a scheme that can't be used", () => {
-  /** Loads `name` from the project's folder holding `files`, expecting orchestra and `reason`. */
+  /** Loads `name` from the project's folder holding `files`, expecting tutti and `reason`. */
   const refused = async (name: string, files: Record<string, unknown>, reason: string) => {
     const loaded = await loadIn(name, foldersWith({ project: files }))
     expect(loaded).toEqual({
-      scheme: orchestra,
+      scheme: tuttiScheme,
       fallback: `colour scheme '${name}' isn't used: ${reason}`,
       warnings: [],
     })
@@ -278,7 +278,7 @@ describe("a scheme that can't be used", () => {
   test("its name isn't found", async () => {
     const folders = foldersWith({})
     expect(await loadIn("dusk", folders)).toEqual({
-      scheme: orchestra,
+      scheme: tuttiScheme,
       fallback: `colour scheme 'dusk' isn't used: it isn't found in ${folders.project}, ${folders.user} or the built-in schemes`,
       warnings: [],
     })
@@ -297,7 +297,7 @@ describe("a scheme that can't be used", () => {
   test("the file isn't valid JSON", async () => {
     const folders = foldersWith({ project: { dusk: "{" } })
     const loaded = await loadIn("dusk", folders)
-    expect(loaded.scheme).toBe(orchestra)
+    expect(loaded.scheme).toBe(tuttiScheme)
     expect(loaded.fallback).toMatch(
       /^colour scheme 'dusk' isn't used: .*dusk\.json isn't valid JSON: .+$/,
     )
@@ -306,7 +306,7 @@ describe("a scheme that can't be used", () => {
   test("a key isn't one the format knows", async () => {
     await refused(
       "dusk",
-      { dusk: scheme("dusk", {}, { extends: "orchestra", colors: {} }) },
+      { dusk: scheme("dusk", {}, { extends: "tutti", colors: {} }) },
       `'colors': unknown key "colors"`,
     )
   })
@@ -314,7 +314,7 @@ describe("a scheme that can't be used", () => {
   test("a role is unknown", async () => {
     await refused(
       "dusk",
-      { dusk: scheme("dusk", { lve: "#000000" }, { extends: "orchestra" }) },
+      { dusk: scheme("dusk", { lve: "#000000" }, { extends: "tutti" }) },
       `'colours.lve': unknown key "lve"`,
     )
   })
@@ -322,22 +322,22 @@ describe("a scheme that can't be used", () => {
   test("a colour can't be read, with the message the dashboard shows", async () => {
     await refused(
       "dusk",
-      { dusk: scheme("dusk", { frame: "ansi:300" }, { extends: "orchestra" }) },
+      { dusk: scheme("dusk", { frame: "ansi:300" }, { extends: "tutti" }) },
       "'colours.frame': 'ansi:300' is not a palette slot (0–255)",
     )
     await refused(
       "dusk",
-      { dusk: scheme("dusk", { live: { light: "#12345", dark: 4 } }, { extends: "orchestra" }) },
+      { dusk: scheme("dusk", { live: { light: "#12345", dark: 4 } }, { extends: "tutti" }) },
       "'colours.live.light': '#12345' is not a colour: use #RRGGBB, ansi:N (0–255) or default; 'colours.live.dark': Expected string, got 4",
     )
   })
 
   test("every problem in the file is in its one reason", async () => {
     const folders = foldersWith({
-      project: { dusk: { colours: { frame: "ansi:300" }, extends: "orchestra", theme: 1 } },
+      project: { dusk: { colours: { frame: "ansi:300" }, extends: "tutti", theme: 1 } },
     })
     const loaded = await loadIn("dusk", folders)
-    expect(loaded.scheme).toBe(orchestra)
+    expect(loaded.scheme).toBe(tuttiScheme)
     const prefix = "colour scheme 'dusk' isn't used: "
     expect(loaded.fallback).toStartWith(prefix)
     expect((loaded.fallback ?? "").slice(prefix.length).split("; ").sort()).toEqual(
@@ -352,7 +352,7 @@ describe("a scheme that can't be used", () => {
   test("its name doesn't match the file's", async () => {
     await refused(
       "dusk",
-      { dusk: scheme("dawn", {}, { extends: "orchestra" }) },
+      { dusk: scheme("dawn", {}, { extends: "tutti" }) },
       "'name': 'dawn' doesn't match the file's name, 'dusk'",
     )
   })
@@ -378,7 +378,7 @@ describe("a scheme that can't be used", () => {
       "dusk",
       {
         dusk: scheme("dusk", {}, { extends: "dawn" }),
-        dawn: scheme("dawn", { frame: "ansi:300" }, { extends: "orchestra" }),
+        dawn: scheme("dawn", { frame: "ansi:300" }, { extends: "tutti" }),
       },
       "'extends': 'dawn' can't be used: 'colours.frame': 'ansi:300' is not a palette slot (0–255)",
     )
@@ -431,7 +431,7 @@ describe("AppConfig", () => {
     const { project, xdg } = dirs()
     writeFileSync(
       join(project, ".tutti", "colour-schemes", "dusk.json"),
-      JSON.stringify(scheme("dusk", { live: "#111111" }, { extends: "orchestra" })),
+      JSON.stringify(scheme("dusk", { live: "#111111" }, { extends: "tutti" })),
     )
     writeFileSync(
       join(xdg, "tutti", "colour-schemes", "mine.json"),
@@ -442,13 +442,13 @@ describe("AppConfig", () => {
     expect(dusk.scheme.fallback).toBeNull()
     expect(dusk.scheme.scheme.colours.live.dark).toEqual(colourOf("#111111"))
     const mine = await loadConfig(project, xdg, { TUTTI_COLOUR_SCHEME: "mine" })
-    expect(mine.scheme.scheme.from).toMatchObject({ live: "mine", done: "orchestra" })
+    expect(mine.scheme.scheme.from).toMatchObject({ live: "mine", done: "tutti" })
   })
 
-  test("a scheme that can't be used gives orchestra and its reason, not a setup problem", async () => {
+  test("a scheme that can't be used gives tutti and its reason, not a setup problem", async () => {
     const { project, xdg } = dirs()
     const config = await loadConfig(project, xdg, { TUTTI_COLOUR_SCHEME: "dusk" })
-    expect(config.scheme.scheme).toBe(orchestra)
+    expect(config.scheme.scheme).toBe(tuttiScheme)
     expect(config.scheme.fallback).toStartWith("colour scheme 'dusk' isn't used: it isn't found")
   })
 
@@ -461,9 +461,13 @@ describe("AppConfig", () => {
 })
 
 describe("styles", () => {
-  test("are orchestra's, with its roles' colours, as OpenTUI colours", () => {
-    const dark = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
-    const light = makeTheme(orchestra, { appearance: "light", depth: "truecolor", noColor: false })
+  test("are tutti's, with its roles' colours, as OpenTUI colours", () => {
+    const dark = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
+    const light = makeTheme(tuttiScheme, {
+      appearance: "light",
+      depth: "truecolor",
+      noColor: false,
+    })
     expect(Object.keys(dark.styles)).toEqual([...styleNames])
     const ints = (hex: string): [number, number, number, number] => [
       Number.parseInt(hex.slice(1, 3), 16),
@@ -515,20 +519,20 @@ describe("styles", () => {
   })
 
   test("paint ANSI strings for output outside the renderer", () => {
-    const dark = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+    const dark = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
     expect(dark.styles.picked.paint("tutti-1")).toBe("\x1b[1m\x1b[38;2;34;211;238mtutti-1\x1b[0m")
     expect(dark.styles.deferred.paint("↷")).toBe("\x1b[38;2;250;204;21m↷\x1b[0m")
     expect(dark.styles.dim.paint("12s")).toBe("\x1b[2m12s\x1b[0m")
     expect(dark.styles.title.paint(" tutti ")).toBe(
       "\x1b[1m\x1b[38;2;250;250;250m\x1b[48;2;125;86;244m tutti \x1b[0m",
     )
-    const in256 = makeTheme(orchestra, { appearance: "dark", depth: "256", noColor: false })
+    const in256 = makeTheme(tuttiScheme, { appearance: "dark", depth: "256", noColor: false })
     expect(in256.styles.picked.open).toBe("\x1b[1m\x1b[38;5;45m")
     expect(in256.ansi("pill")).toBe("\x1b[48;5;99m")
   })
 
   test("NO_COLOR draws every role in the default colour, keeping bold, faint and the text", () => {
-    const plain = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const plain = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     for (const role of roles) {
       expect(plain.rgba(role, "fg").intent).toBe("default")
       expect(plain.rgba(role, "bg").intent).toBe("default")
@@ -561,7 +565,7 @@ describe("ANSI for each colour form and depth", () => {
 
   test("a scheme's default on a background role is the default background", () => {
     const theme = makeTheme(
-      { ...orchestra, colours: { ...orchestra.colours, pill: orchestra.colours.formMuted } },
+      { ...tuttiScheme, colours: { ...tuttiScheme.colours, pill: tuttiScheme.colours.formMuted } },
       { appearance: "light", depth: "truecolor", noColor: false },
     )
     expect(theme.ansi("pill")).toBe("\x1b[49m")

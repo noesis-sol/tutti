@@ -14,7 +14,7 @@ import { type InitForm, type InitSummary, init } from "../src/init/init.ts"
 import { lineForm } from "../src/init/lineForm.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import type { Scouting } from "../src/organs/scout.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { skillPath, skillText } from "../src/project/templateFiles.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
@@ -185,7 +185,11 @@ describe("the Checks step in lines", () => {
             write: (text) => {
               output += text
             },
-            theme: makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true }),
+            theme: makeTheme(tuttiScheme, {
+              appearance: "dark",
+              depth: "truecolor",
+              noColor: true,
+            }),
           })
           return yield* form.checks(questions)
         }),

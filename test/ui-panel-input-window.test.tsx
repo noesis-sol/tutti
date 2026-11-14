@@ -6,14 +6,14 @@ import { describe, expect, test } from "bun:test"
 import type { BaseRenderable } from "@opentui/core"
 import { useState } from "react"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import type { Segments } from "../src/ui/line.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { PanelBox, panelInput, panelParts, usePanelParts } from "../src/ui/worker/Panel.tsx"
 import { withRender } from "./render.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 /** A Write of `count` numbered lines. */
 const write = (count: number): AttentionRequest => ({

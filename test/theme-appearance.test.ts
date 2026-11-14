@@ -10,8 +10,8 @@ import { TestClock } from "effect/testing"
 import {
   type LoadedScheme,
   loadScheme,
-  orchestra,
   type SchemeFolders,
+  tuttiScheme,
 } from "../src/project/scheme.ts"
 import { backgroundQueryLimit, queryAppearance, type TerminalStreams } from "../src/ui/theme.ts"
 
@@ -207,7 +207,7 @@ describe("a scheme file that can't be read", () => {
         place(folders[where], "dusk")
         const loaded = await loadIn("dusk", folders)
         const path = join(folders[where], "dusk.json")
-        expect(loaded.scheme).toBe(orchestra)
+        expect(loaded.scheme).toBe(tuttiScheme)
         expect(loaded.warnings).toEqual([])
         expect(
           loaded.fallback?.startsWith(`colour scheme 'dusk' isn't used: ${path} can't be read: `),
@@ -220,15 +220,15 @@ describe("a scheme file that can't be read", () => {
       place(folders.project, "dusk")
       writeFileSync(join(folders.user, "dusk.json"), dusk)
       const loaded = await loadIn("dusk", folders)
-      expect(loaded.scheme).toBe(orchestra)
+      expect(loaded.scheme).toBe(tuttiScheme)
       expect(loaded.fallback).toContain(`${join(folders.project, "dusk.json")} can't be read: `)
     })
 
     test.skipIf(skip)(`${what}, with a built-in's name: the built-in, quietly`, async () => {
       const folders = emptyFolders()
-      place(folders.project, "orchestra")
-      expect(await loadIn("orchestra", folders)).toEqual({
-        scheme: orchestra,
+      place(folders.project, "tutti")
+      expect(await loadIn("tutti", folders)).toEqual({
+        scheme: tuttiScheme,
         fallback: null,
         warnings: [],
       })

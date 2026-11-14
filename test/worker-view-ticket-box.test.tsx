@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
 import fc from "fast-check"
-import { orchestra, type Role } from "../src/project/scheme.ts"
+import { type Role, tuttiScheme } from "../src/project/scheme.ts"
 import { type TicketText, ticketText } from "../src/run/runView.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { sanitizeLine } from "../src/text/sanitize.ts"
@@ -14,9 +14,9 @@ import { plainFg, type Segments, widthOf } from "../src/ui/line.tsx"
 import { badgeLabel, badgesOf, priorityLook, ticketEdge, typeRole } from "../src/ui/TicketHead.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
-const light = makeTheme(orchestra, { appearance: "light", depth: "truecolor", noColor: false })
-const noColor = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
+const light = makeTheme(tuttiScheme, { appearance: "light", depth: "truecolor", noColor: false })
+const noColor = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 const issueOf = (fields: Partial<Issue> = {}): TicketText =>
   ticketText({

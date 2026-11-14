@@ -9,7 +9,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Exit, Fiber, Queue, type Scope, SubscriptionRef } from "effect"
 import { line, Tag } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { UiCommand } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -131,7 +131,7 @@ const viewOf = (handBack: boolean) =>
   })
 
 describe("the box", () => {
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
   const text = (waiting: NonNullable<RunView["endOfRun"]>, height?: number) =>
     endOfRunLines(waiting, theme, 400, height)
       .map((each) => each.map((part) => part.text).join(""))

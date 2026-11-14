@@ -15,7 +15,7 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { Transcripts } from "../src/agent/Transcripts.ts"
 import { settled } from "../src/agent/WorkerState.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { recorded } from "../src/run/check.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
@@ -312,7 +312,7 @@ describe("a whole run", () => {
   test("records the turn, the merge check, what the ticket spent as it merged, and the run's totals", async () => {
     const repo = folder("repo")
     const root = folder("worktrees")
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     const { settings } = appConfig()
     const fast = { ...settings.checks.fast, command: "scripts/check-fast.sh" }
     const ran = await scenario(

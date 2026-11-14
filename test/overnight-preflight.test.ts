@@ -14,7 +14,7 @@ import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { updateTemplates } from "../src/init/update.ts"
 import { ProbeAnswer } from "../src/organs/UsageProbe.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { unknownKernel } from "../src/run/load.ts"
 import {
   type Ask,
@@ -36,7 +36,7 @@ import { Probed, layer as probeLayer, type Scripted } from "../src/testing/Usage
 import * as TestWorktrees from "../src/testing/Worktrees.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, {
+const theme = makeTheme(tuttiScheme, {
   appearance: "dark",
   depth: "256",
   noColor: true,

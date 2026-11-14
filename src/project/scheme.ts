@@ -2,11 +2,11 @@
 // each with a light and a dark variant, and src/ui/theme.ts builds the styles from one. A scheme is
 // looked up in the project's `.tutti/colour-schemes/`, then the user's
 // `$XDG_CONFIG_HOME/tutti/colour-schemes/`, then the built-ins. A scheme that can't be used never
-// stops a run: tutti uses `orchestra` instead and says why once.
+// stops a run: tutti uses the built-in `tutti` instead and says why once.
 import { join } from "node:path"
 import { Effect, Exit, FileSystem, Option, Result, Schema } from "effect"
 import { decodeConfig } from "./configFile.ts"
-import orchestraFile from "./schemes/orchestra.json" with { type: "json" }
+import tuttiFile from "./schemes/tutti.json" with { type: "json" }
 import { userConfigDir } from "./userConfig.ts"
 
 /**
@@ -141,12 +141,11 @@ export const ColourScheme = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   extends: Schema.optionalKey(
     Schema.NonEmptyString.annotate({
-      description: "the scheme every role this file leaves out comes from, such as orchestra",
+      description: "the scheme every role this file leaves out comes from, such as tutti",
     }),
   ),
   colours: Colours.annotate({
-    description:
-      "roles to colours; without extends, every role but quiet, which comes from orchestra",
+    description: "roles to colours; without extends, every role but quiet, which comes from tutti",
   }),
 }).annotate({ title: "tutti colour scheme" })
 
@@ -171,7 +170,7 @@ export interface Scheme {
 export interface LoadedScheme {
   readonly scheme: Scheme
   /**
-   * Why the scheme asked for isn't used and orchestra is, as the START block, the dashboard's
+   * Why the scheme asked for isn't used and tutti is, as the START block, the dashboard's
    * warning line and init's summary say it: `colour scheme 'dusk' isn't used: <reason>`. Null
    * when it is used.
    */
@@ -196,7 +195,7 @@ const variantOf = (value: string | { readonly light: string; readonly dark: stri
 
 /**
  * The roles added since schemes were first written, which a file without `extends` may leave out:
- * it takes orchestra's colour for them, so that no scheme written before one becomes unusable.
+ * it takes tutti's colour for them, so that no scheme written before one becomes unusable.
  */
 const addedRoles: ReadonlySet<Role> = new Set<Role>(["quiet"])
 
@@ -245,21 +244,21 @@ const decodeBuiltIn = (json: unknown): ColourScheme => {
   return exit.value
 }
 
-/** The built-in schemes' files, by name: only orchestra (§ 15, Q10). */
+/** The built-in schemes' files, by name: only tutti (§ 15, Q10). */
 const builtInFiles: ReadonlyMap<string, ColourScheme> = new Map([
-  ["orchestra", decodeBuiltIn(orchestraFile)],
+  ["tutti", decodeBuiltIn(tuttiFile)],
 ])
 
 /** The names no file can take. */
 export const builtInNames: ReadonlyArray<string> = [...builtInFiles.keys()]
 
-/** The default scheme, orchestra's colours exactly. */
-export const orchestra: Scheme = Result.getOrThrow(
-  over(builtInFiles.get("orchestra") as ColourScheme, null),
+/** The default scheme, the built-in tutti. */
+export const tuttiScheme: Scheme = Result.getOrThrow(
+  over(builtInFiles.get("tutti") as ColourScheme, null),
 )
 
-/** orchestra in use as asked, with nothing to say. */
-export const orchestraLoaded: LoadedScheme = { scheme: orchestra, fallback: null, warnings: [] }
+/** tutti in use as asked, with nothing to say. */
+export const tuttiSchemeLoaded: LoadedScheme = { scheme: tuttiScheme, fallback: null, warnings: [] }
 
 /** The folders schemes are looked up in, in order, before the built-ins. */
 export interface SchemeFolders {
@@ -286,7 +285,7 @@ const unusable = (reason: string): Unused => ({ _tag: "Unusable", reason })
 
 /**
  * Loads the scheme `name` from `folders` or the built-ins, resolving `extends`. Every reason it
- * can't be used gives orchestra with one sentence saying why; it never fails.
+ * can't be used gives tutti with one sentence saying why; it never fails.
  */
 export const loadScheme = (
   name: string,
@@ -346,7 +345,7 @@ export const loadScheme = (
         if (Result.isFailure(found)) return Result.fail(found.failure)
         const file = found.success
         const base = file.extends
-        if (base === undefined) return Result.mapError(over(file, null, orchestra), unusable)
+        if (base === undefined) return Result.mapError(over(file, null, tuttiScheme), unusable)
         const seen = [...chain, name]
         if (seen.includes(base)) {
           return Result.fail(unusable(`'extends' loops back: ${[...seen, base].join(" → ")}`))
@@ -370,7 +369,7 @@ export const loadScheme = (
     const why = scheme.failure
     const reason = why._tag === "NotFound" ? `it isn't found in ${looked}` : why.reason
     return {
-      scheme: orchestra,
+      scheme: tuttiScheme,
       fallback: `colour scheme '${name}' isn't used: ${reason}`,
       warnings,
     }

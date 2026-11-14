@@ -63,7 +63,7 @@ These were settled with the maintainer while writing this spec. Each one shapes 
 | D18 | Ctrl+Z | **Disabled.** Suspending tutti would freeze the run loop and every worker's output | Ctrl+Z shows a toast; SIGTSTP is ignored (§7.4) |
 | D19 | Requests at the end of a run | **With a dashboard, the run waits for you.** A run with nothing left but workers waiting on you stays open; `q` ends it, suspending them. Plain mode ends as usual | §5, item 14 |
 | D20 | Answering without a dashboard | **`tutti answer`.** Open requests are listed in `.tutti/run/attention/`; `tutti answer` (from you, a script or an agent) answers them | §4.5, §8.1 |
-| D21 | Colours | **A colour scheme, set in the settings.** tutti is as colourful as orchestra's Bubble Tea dashboard. Its colours come from a colour scheme, chosen in `.tutti/settings.json` or the user config. The default, `orchestra`, is orchestra's colour scheme exactly: the same colours, each with its light and dark variant, meaning the same things. Other schemes are JSON files a project or a person adds | §7.11: the roles a scheme gives colours to, where each role goes, how a scheme is chosen and how one is written |
+| D21 | Colours | **A colour scheme, set in the settings.** tutti is as colourful as orchestra's Bubble Tea dashboard. Its colours come from a colour scheme, chosen in `.tutti/settings.json` or the user config. The default is the built-in scheme `tutti`: each role's colour with its light and dark variant, meaning the same thing wherever it is drawn. Other schemes are JSON files a project or a person adds | §7.11: the roles a scheme gives colours to, where each role goes, how a scheme is chosen and how one is written |
 
 ---
 
@@ -744,7 +744,7 @@ On a subscription login, many workers at once reach the account's usage limits. 
 
 **Always.** The dashboard's title line shows the account's windows, in `quiet` grey (§7.11; faint until tutti-04sn), in Claude Desktop's words: `Current usage ━───────  17% · This week 41%`, the five-hour window (`five_hour`) first with a gauge of eight cells, a heavy line `━` for each eighth used, to the nearest, and a light one `─` for each left, two spaces before its figure, then the seven-day one (`seven_day`); a model's weekly window names the model, `seven_day_opus` being `This week (Opus)`. A narrow pane puts the tighter window first without the gauge, `This week 41% · Current usage 17%`, then shows it alone, before it drops it as it drops the usage banner. The gauge was `▰▱` until tutti-1l30, a departure on purpose: common terminal fonts lack both, so the terminal drew them from a fallback font, and in Ghostty the gauge's first and last cells looked off-colour against the others, likely where the faint glyphs spilled over their cells and overlapped; terminals draw box-drawing lines themselves, to the cell. It was ten cells, one a tenth, until tutti-tgfm, shortened as it was long beside the rest of the title line's right side. A window whose reset has passed is left out until an event gives its next figure. Each window's figure is a `usage_window` event (§10): the first the run hears, then each that differs, so that a ticket's share of a window can be estimated from how it rose while its worker ran.
 
-**`allowed_warning`.** In place of the windows, the dashboard's title line shows `usage 85% of the five-hour limit · resets 14:05` in `notice` (yellow in the `orchestra` scheme; `windingDown` is for winding down only, §7.11), and the log says it once per limit. Dispatch doesn't change (§15, Q9).
+**`allowed_warning`.** In place of the windows, the dashboard's title line shows `usage 85% of the five-hour limit · resets 14:05` in `notice` (yellow in the `tutti` scheme; `windingDown` is for winding down only, §7.11), and the log says it once per limit. Dispatch doesn't change (§15, Q9).
 
 **`rejected`** holds the run with `USAGE_LIMIT`, as does an organ call refused for the limit: its session's turn ends on it as a worker's would, and it fails with the limit's name and reset from that session's `rate_limit_event`, which the hold takes as a rejection (unknown when it came with none). The reset lifts it as below, whether or not workers are still running, as in orchestra 0.9.0 (orchestra-8jw3):
 
@@ -1433,7 +1433,7 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
   - Why: OpenTUI's `scrollbox` culls but still lays out every child, and OpenTUI's native memory grows with the mounted items (#1493). With OpenTUI 0.6.6, frequently updated texts (16 cards at 10 Hz, a streamed message) leave it flat. What grows it is each mounted transcript item once drawn: about 0.75 MB an item, 0.12 MB when an item is on screen only briefly. Unmounting gives it back: going from 600 items to 200 dropped it from 389 to 166 MB within a minute. So the bounds hold it: 200 items level off at about 170 MB of native memory, 600 at about 470 MB, while unbounded it grows 46 MB a minute (docs/spikes/05-opentui-soak.md, §§ 1–3). OpenTUI 0.7.0 costs about a fifth less, 135 MB at 200 items and 365 MB at 600, but unbounded it still grows, 35 MB a minute (§ 8 there), though #1493 was closed upstream: its script churns rows, where a transcript keeps them mounted. OpenTUI 0.8.1 allocates it through libc and costs about a fifteenth of 0.7.0's, 12 MB at 200 items and 27 MB at 600, flat; unbounded it grows 2.4 MB a minute, and the process 3.2 MB a minute, with half again the CPU of 600 items, as every mounted item is still laid out each frame (§ 9 there). The bounds stay for that.
   - Scrolled back, 600 items cost about 300 MB more than the view at the bottom, and native memory still creeps about 3 MB a minute after 30 minutes. That is acceptable for a view you only visit: once the view is back to 200 items, the memory goes back to the system.
   - Collapsed items have a fixed height. tutti wraps a tool call or a message itself, to the pane's width, and gives its box the height of its lines, rather than leaving OpenTUI to wrap and measure the text: so it cuts an item at `itemLines` with `…` and puts a call's mark at the end of its last line, which OpenTUI's wrapping can't. The height changes only with the pane's width, and grows, never shrinks, as a call's result comes. It also kept clear of `stickyScroll`'s pull back to the bottom after the scroll range shrank (#1514), which OpenTUI 0.8.0 fixed: scrolled back, a pane grown taller keeps the place as new items come (`test/ui-worker-view-range-shrink.test.tsx`).
-- **Branding** (the Agent SDK's guidelines): no Claude Code-branded ASCII art or "visual elements that mimic Claude Code". The view uses tutti's own glyphs and layout, and the colour scheme's colours (§7.11; `orchestra` by default). The SDK's guidelines allow "Claude" in a menu already labelled "Agents" and "Powered by Claude", and forbid naming the product "Claude Code". tutti's chrome names neither.
+- **Branding** (the Agent SDK's guidelines): no Claude Code-branded ASCII art or "visual elements that mimic Claude Code". The view uses tutti's own glyphs and layout, and the colour scheme's colours (§7.11; `tutti` by default). The SDK's guidelines allow "Claude" in a menu already labelled "Agents" and "Powered by Claude", and forbid naming the product "Claude Code". tutti's chrome names neither.
 
 ### 7.6 Plain output
 
@@ -1484,13 +1484,13 @@ Text tutti puts in Markdown, such as the report, is escaped for Markdown first. 
 
 ### 7.11 Colours and colour schemes
 
-tutti is as colourful as orchestra's Bubble Tea dashboard (D21). Its colours come from a **colour scheme**, a setting of its own (§8.4, §8.5). The default scheme, `orchestra`, is orchestra's colour scheme carried over exactly: the colours of its `internal/tui/style.go`, and for forms those of `huh`'s Charm theme, which orchestra's forms use, lighter on dark on purpose (the form roles, below). Other schemes are files in the same format (below).
+tutti is as colourful as orchestra's Bubble Tea dashboard (D21). Its colours come from a **colour scheme**, a setting of its own (§8.4, §8.5). The default scheme, `tutti`, is built in: the colours of orchestra's `internal/tui/style.go` carried over exactly, and for forms those of `huh`'s Charm theme, which orchestra's forms use, lighter on dark on purpose (the form roles, below). Other schemes are files in the same format (below).
 
 **A scheme sets colours only.** What a scheme gives a colour to is a **role**, a meaning such as `live` (live work) or `needsYou`, never a screen element. Each screen element uses a role. The rest is fixed by tutti and is the same in every scheme, so every state reads the same whatever the colours: bold, faint, italic, the glyphs, the words and the border shapes.
 
-#### The roles, and the `orchestra` scheme
+#### The roles, and the `tutti` scheme
 
-As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 ANSI palette slots, "which terminal themes remap (one theme draws "cyan" as near-white)". Each role has a variant for light and for dark backgrounds. The *orchestra colour* column names the colour in orchestra's code.
+As orchestra does, the `tutti` scheme uses exact colours rather than the 16 ANSI palette slots, "which terminal themes remap (one theme draws "cyan" as near-white)". Each role has a variant for light and for dark backgrounds. The *orchestra colour* column names the colour in orchestra's code.
 
 **Status and structure roles:**
 
@@ -1507,7 +1507,7 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `toMerge` | blue | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | pink | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`, bold) |
 | `emphasis` | chalk | `#374151` | `#E5E7EB` | emphasis near the text's own colour: keys to press, the label of the panel with the focus (§7.3), tool names, `steered` |
-| `quiet` | grey | `#6B7280` | `#9CA3AF` | secondary text a step above faint: the title line's account windows, the labels of the panels without the focus (§7.3), and Up next's reasons, `ready`, `nothing queued` and `+N more` in the panel beside the tickets table, its IDs keeping their style (§7.2; faint until tutti-dzbv). tutti's own, the grey `typeChore` reads as text with: faint (SGR 2) is drawn too dark beside the text's colour on a dark terminal, half opacity in Ghostty (the maintainer, 2026-10-27, tutti-04sn). Faint where its colour is `default`, as under `NO_COLOR`. A scheme file without `extends` written before it may leave it out, and takes `orchestra`'s |
+| `quiet` | grey | `#6B7280` | `#9CA3AF` | secondary text a step above faint: the title line's account windows, the labels of the panels without the focus (§7.3), and Up next's reasons, `ready`, `nothing queued` and `+N more` in the panel beside the tickets table, its IDs keeping their style (§7.2; faint until tutti-dzbv). tutti's own, the grey `typeChore` reads as text with: faint (SGR 2) is drawn too dark beside the text's colour on a dark terminal, half opacity in Ghostty (the maintainer, 2026-10-27, tutti-04sn). Faint where its colour is `default`, as under `NO_COLOR`. A scheme file without `extends` written before it may leave it out, and takes `tutti`'s |
 | `estimate` | sand | `#8A6D3B` | `#D4B483` | an estimate, in italics beside its word `(estimate)`: dollars at API prices on a subscription login, a ticket's share of the five-hour window. tutti's own, apart from the status colours (worker-view design, tutti-cxgo D2) |
 | `pill` | Charm purple | `#7D56F4` | `#7D56F4` | the title pill's background and init's **Next** frame: the Charm purple of the Bubble Tea and Lip Gloss examples |
 | `pillText` | | `#FAFAFA` | `#FAFAFA` | text on the pill |
@@ -1516,7 +1516,7 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `autoAnswer` | | `#0F766E` | `#2DD4BF` | the auto-answer pill's background (§7.2): tutti's own, a teal fill, apart from the keep-awake badge's amber and `live`'s cyan text |
 | `autoAnswerText` | | `#F0FDFA` | `#042F2E` | text on the auto-answer pill: near-white on the light variant's darker teal, near-black on the dark's brighter one |
 
-**Ticket roles**: a ticket's type and priority, in the worker view's ticket box (§7.5, tutti-cxgo.6). tutti's own, a colour a type, so that the type reads at a glance; the urgent priorities take the colours of their urgency. In `orchestra` they take the status colours named.
+**Ticket roles**: a ticket's type and priority, in the worker view's ticket box (§7.5, tutti-cxgo.6). tutti's own, a colour a type, so that the type reads at a glance; the urgent priorities take the colours of their urgency. In `tutti` they take the status colours named.
 
 | Role | orchestra colour | Light | Dark | Means |
 |---|---|---|---|---|
@@ -1528,7 +1528,7 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `priorityUrgent` | red | `#B91C1C` | `#F87171` | priority P0 |
 | `priorityHigh` | amber | `#C2410C` | `#FB923C` | priority P1; P2 to P4 are faint |
 
-**Report, transcript and selection roles.** In `orchestra` these take the status colours named:
+**Report, transcript and selection roles.** In `tutti` these take the status colours named:
 
 | Role | orchestra colour | Light | Dark | Used for |
 |---|---|---|---|---|
@@ -1655,7 +1655,7 @@ The first of these that is set wins:
 | `TUTTI_COLOUR_SCHEME=<name>` | | this run |
 | the user config (§8.5) | `"colour_scheme"` | your runs, in every project |
 | `.tutti/settings.json` (§8.4) | `"ui": { "colour_scheme": … }` | the project's default, committed and shared with its team |
-| | | `orchestra` |
+| | | `tutti` |
 
 Your own choice wins over the project's, since colours are a matter of taste and sight.
 
@@ -1667,7 +1667,7 @@ A name is looked up in this order:
 2. `$XDG_CONFIG_HOME/tutti/colour-schemes/<name>.json` (`~/.config/tutti/colour-schemes/`, yours)
 3. the built-in schemes
 
-`orchestra` is the only built-in scheme (§15, Q10). Built-in names are reserved: a file named `orchestra.json` is ignored with a warning.
+`tutti` is the only built-in scheme (§15, Q10). Built-in names are reserved: a file named `tutti.json` is ignored with a warning.
 
 #### Writing a scheme
 
@@ -1677,8 +1677,8 @@ A scheme is a JSON file defined with Effect Schema, with a published JSON Schema
 {
   "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/colour-scheme.json",
   "name": "dusk",
-  "description": "orchestra's scheme with a teal live colour and a rose pill",
-  "extends": "orchestra",
+  "description": "tutti's scheme with a teal live colour and a rose pill",
+  "extends": "tutti",
   "colours": {
     "live": { "light": "#0F766E", "dark": "#2DD4BF" },
     "heading2": { "light": "#0F766E", "dark": "#2DD4BF" },
@@ -1690,10 +1690,10 @@ A scheme is a JSON file defined with Effect Schema, with a published JSON Schema
 ```
 
 - **`name`** matches the file's name. **`description`** is optional.
-- **`extends`** names another scheme, such as `orchestra`. Every role the file leaves out comes from that scheme, so a scheme can change one colour and keep the rest. Without `extends`, the file must give every role but those added since schemes were first written, which come from `orchestra` where it leaves them out, so that an older scheme still loads: so far only `quiet` (tutti-04sn).
+- **`extends`** names another scheme, such as `tutti`. Every role the file leaves out comes from that scheme, so a scheme can change one colour and keep the rest. Without `extends`, the file must give every role but those added since schemes were first written, which come from `tutti` where it leaves them out, so that an older scheme still loads: so far only `quiet` (tutti-04sn).
 - **`colours`** maps roles to values. A value is one colour for both variants, or `{ "light": …, "dark": … }`. A colour is:
   - **`#RRGGBB`**: exact. On a 256-colour terminal it becomes the nearest of the 256.
-  - **`ansi:N`**, with N from 0 to 255: a palette slot. Slots 0 to 15 follow the terminal's own theme. The `orchestra` scheme avoids those, but a scheme that wants to follow the terminal's theme can use them. Slots 16 to 255 are the standard cube and greys.
+  - **`ansi:N`**, with N from 0 to 255: a palette slot. Slots 0 to 15 follow the terminal's own theme. The `tutti` scheme avoids those, but a scheme that wants to follow the terminal's theme can use them. Slots 16 to 255 are the standard cube and greys.
   - **`default`**: the terminal's default foreground, or its background for a background role (`pill`, `formAccent`, `formButton`, `selection`).
 
   In OpenTUI these become `RGBA.fromHex`, `RGBA.fromIndex(N)` and `RGBA.defaultForeground()` or `defaultBackground()`. Outside the renderer they become `Bun.color(hex, "ansi-16m")` (or `"ansi-256"` on a 256-colour terminal), `\x1b[38;5;Nm` (or `48;5;N` for a background), and `\x1b[39m` (or `49`).
@@ -1706,7 +1706,7 @@ A scheme is a JSON file defined with Effect Schema, with a published JSON Schema
 - `name` doesn't match the file's name
 - roles are missing and there's no `extends`, or `extends` names a scheme that can't be found or loops back
 
-tutti then uses `orchestra` and says why once: in the `START` block, on the dashboard's warning line (` ! colour scheme 'dusk' isn't used: 'colours.frame': 'ansi:300' is not a palette slot (0–255)`) and in `tutti init`'s summary.
+tutti then uses `tutti` and says why once: in the `START` block, on the dashboard's warning line (` ! colour scheme 'dusk' isn't used: 'colours.frame': 'ansi:300' is not a palette slot (0–255)`) and in `tutti init`'s summary.
 
 **`tutti colours [<name>]`** previews a scheme without a run. It reports:
 
@@ -1727,17 +1727,17 @@ A role's light or dark variant is picked from the terminal's background, as Lip 
 
 #### Colour depth and `NO_COLOR`
 
-On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI uses the nearest, as Lip Gloss degrades (§7.7). With `NO_COLOR` set, every role becomes the terminal's default colour, whatever the scheme; bold, faint, italics, glyphs and words remain. Selected text is the one exception: under `NO_COLOR`, and for a scheme that leaves `selection` or `selectionText` to `default`, it takes `orchestra`'s `selection` and `selectionText` colours (`#FAFAFA` on `#7D56F4`), so that a selection stays visible. A focused button, which colour alone marks otherwise (`formAccentText` on `formAccent`), is drawn bold and reversed where its background is the terminal's default, under `NO_COLOR` or a scheme that leaves `formAccent` to `default`, so that you can see which button Enter presses. Colour is never the only signal: every state also has its glyph and its word, as in orchestra (`■ blocked`, `◼ to merge`).
+On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI uses the nearest, as Lip Gloss degrades (§7.7). With `NO_COLOR` set, every role becomes the terminal's default colour, whatever the scheme; bold, faint, italics, glyphs and words remain. Selected text is the one exception: under `NO_COLOR`, and for a scheme that leaves `selection` or `selectionText` to `default`, it takes `tutti`'s `selection` and `selectionText` colours (`#FAFAFA` on `#7D56F4`), so that a selection stays visible. A focused button, which colour alone marks otherwise (`formAccentText` on `formAccent`), is drawn bold and reversed where its background is the terminal's default, under `NO_COLOR` or a scheme that leaves `formAccent` to `default`, so that you can see which button Enter presses. Colour is never the only signal: every state also has its glyph and its word, as in orchestra (`■ blocked`, `◼ to merge`).
 
 #### One module
 
 - **The roles and the loader.** `src/project/scheme.ts` holds:
   - the roles, as a `Schema.Literal` union, so a role that is misspelt in the code doesn't compile
-  - the scheme format and its loader: lookup, `extends`, validation, the fallback to `orchestra`
+  - the scheme format and its loader: lookup, `extends`, validation, the fallback to `tutti`
 
   and `src/ui/theme.ts` the styles built from the active scheme, named as orchestra names its styles: `picked`, `closed`, `deferred`, `stop`, `windDown`, `heldBack`, `done`, `organ`, `say`, `testing`, `toMerge`, `merging`, `key`, `tickets`, `dim`, `title`, and tutti's own `estimate`
 
-  The `orchestra` scheme is `src/project/schemes/orchestra.json`, embedded in the binary.
+  The `tutti` scheme is `src/project/schemes/tutti.json`, embedded in the binary.
 - **Who resolves the scheme.** `AppConfig` resolves the scheme once at startup, with the rest of the settings.
 - **Components** use the styles, never a scheme, a role's raw value or a hex colour.
 - **Output outside the renderer** uses the same styles: the printer after the dashboard (§7.1), `tutti init`'s summary, the nothing-to-run box, the line-based forms, `tutti colours`. Their variant is the one the renderer detected. Where no renderer ran, tutti sends an OSC 11 query of its own with a 250 ms limit, and assumes dark without an answer.
@@ -1854,7 +1854,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
   "vendored": [],
   "merge": { "resolve_conflicts": true, "resolve_timeout": "20m", "conflict_wait": "15m", "check_hand_backs": 2, "train": 1, "early_check": true },
   "environment_hold": { "count": 2, "window": "2m", "probe": "10m" },
-  "ui": { "colour_scheme": "orchestra" }
+  "ui": { "colour_scheme": "tutti" }
 }
 ```
 
@@ -1873,7 +1873,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
 - `workers.effort` absent means `high`, as orchestra's (orchestra-jvi4), for workers, the login probe and the feature interview; `null` leaves the effort to Claude Code.
 - `templates.worker_prompt`, `templates.verifier` and `templates.check_suite_skill` are the versions of tutti's templates the worker prompt, the verifier and the create-check-suite skill came from (§8.3); 0 by default, for files whose text is read instead.
 - `workers.permission_mode` is `auto` (default), `default` or `acceptEdits`; anything else is a setup problem.
-- `ui.colour_scheme` is the project's default colour scheme (§7.11). Your user config's choice wins over it. A scheme that can't be used falls back to `orchestra` with a warning, never a setup problem.
+- `ui.colour_scheme` is the project's default colour scheme (§7.11). Your user config's choice wins over it. A scheme that can't be used falls back to `tutti` with a warning, never a setup problem.
 
 The JSON Schema is generated from the Effect Schema (`JsonSchema`) and published, so editors complete it.
 
@@ -2087,7 +2087,7 @@ Its last line is its verdict, its exit status unchanged: `scripts/check.sh: PASS
 
   `Beads` and `Git` are in memory. Git-subject scenarios use real git in a temp folder and are marked slow. Spinners and animations take their clock from a test service, so frames are deterministic.
 - **Leaks fail tests**, as goleak does in orchestra. Effect 4 has no `Supervisor`. Every fiber the run forks into a scope as long as its own belongs to a `FiberSet` in the run's scope (`src/run/fibers.ts`), and one forked with `Effect.forkScoped` into a scope that closes with its work (a ticket's watchers as its worker settles, the screen's followers) is interrupted as that scope closes; each scenario asserts that every set is empty and no child process is left once the scope closes. The trash's deletions (`src/run/trash.ts`) are the one exception, on purpose: they run in a `FiberSet` of its layer, as long as tutti's, so a merged worktree's files can still be going as the run ends, and what tutti's exit cuts short the next run deletes.
-- **UI tests.** `@opentui/react/test-utils`' `testRender` with `captureCharFrame()` snapshots per layout (narrow, 120 columns or wider, the smallest size, attention cards including `defaultToNo`, the end-of-run box, the usage banner, wind-down). `mockInput` and `mockMouse` drive keys and clicks, including the 500 ms guard (§4.5). Run them at fixed sizes, with colours checked through `captureSpans()`, in both the light and the dark variant. Each renders through `test/render.ts` (`withRender`, `renderFrame`), which drives input and disposes inside React's `act()`: testRender's `dispose()` unmounts the root from the renderer's `destroy` event, and a key that updates state does so, outside `act()`, so React warns "not wrapped in act(…)" and the frame misses the update (docs/spikes/05-opentui-soak.md, § 5). Its renderers run on a `TestClock`, OpenTUI's `ManualClock` kept in step with real time (a `ManualClock` alone stops the frames, which are timers on it, so `flush()` and `waitForVisualIdle()` never return): a lone Esc reaches the keys after the stdin parser's 20 ms and the Esc hold (§7.3), both on the renderer's clock, so `pressEscape` and the Esc hold's tests leap the clock past them instead of waiting in real time. A test that drives many frames in turn, the worker view's scroll and the Markdown that streams, raises its renderer's `maxFps` to 1000, so that each key, wheel turn or streamed character waits for the frames it causes, not for the 60 fps gap between frames in real time. Their transcripts highlight with OpenTUI's `MockTreeSitterClient`, given to the worker view's looks through `HighlighterContext` and resolved by `capture()`, so a frame never waits on tree-sitter, whose highlighting runs off the render loop: the Markdown is drawn as written, unstyled. The tests of what highlighting draws (the Markdown's styles, its marks concealed) render with the real tree-sitter (`{ treeSitter: "real" }`), and `capture()` waits for it, up to 4 s. Each state's spans must carry the role §7.11 gives it, in the `orchestra` scheme's colours (a test table, state by state, from orchestra's styles). A scheme that changes one role must change only that role's spans, and `NO_COLOR` must leave every glyph and word in place. The scheme loader has tests of its own: the lookup order, `extends`, every reason a scheme isn't used, and the fallback to `orchestra`.
+- **UI tests.** `@opentui/react/test-utils`' `testRender` with `captureCharFrame()` snapshots per layout (narrow, 120 columns or wider, the smallest size, attention cards including `defaultToNo`, the end-of-run box, the usage banner, wind-down). `mockInput` and `mockMouse` drive keys and clicks, including the 500 ms guard (§4.5). Run them at fixed sizes, with colours checked through `captureSpans()`, in both the light and the dark variant. Each renders through `test/render.ts` (`withRender`, `renderFrame`), which drives input and disposes inside React's `act()`: testRender's `dispose()` unmounts the root from the renderer's `destroy` event, and a key that updates state does so, outside `act()`, so React warns "not wrapped in act(…)" and the frame misses the update (docs/spikes/05-opentui-soak.md, § 5). Its renderers run on a `TestClock`, OpenTUI's `ManualClock` kept in step with real time (a `ManualClock` alone stops the frames, which are timers on it, so `flush()` and `waitForVisualIdle()` never return): a lone Esc reaches the keys after the stdin parser's 20 ms and the Esc hold (§7.3), both on the renderer's clock, so `pressEscape` and the Esc hold's tests leap the clock past them instead of waiting in real time. A test that drives many frames in turn, the worker view's scroll and the Markdown that streams, raises its renderer's `maxFps` to 1000, so that each key, wheel turn or streamed character waits for the frames it causes, not for the 60 fps gap between frames in real time. Their transcripts highlight with OpenTUI's `MockTreeSitterClient`, given to the worker view's looks through `HighlighterContext` and resolved by `capture()`, so a frame never waits on tree-sitter, whose highlighting runs off the render loop: the Markdown is drawn as written, unstyled. The tests of what highlighting draws (the Markdown's styles, its marks concealed) render with the real tree-sitter (`{ treeSitter: "real" }`), and `capture()` waits for it, up to 4 s. Each state's spans must carry the role §7.11 gives it, in the `tutti` scheme's colours (a test table, state by state, from orchestra's styles). A scheme that changes one role must change only that role's spans, and `NO_COLOR` must leave every glyph and word in place. The scheme loader has tests of its own: the lookup order, `extends`, every reason a scheme isn't used, and the fallback to `tutti`.
 - **The ticket state machine** has a table test of every transition in §5.1 and of every one it rejects. A property test (`fast-check`) drives random sequences of loop events from every phase and checks two things: the machine never takes a transition the table doesn't list, and a ticket reaches `Done{merged}` only through `Merging`. Dashboard snapshots are taken per phase.
 - **Property tests** (`fast-check`) cover the functions that read text a model, worker or ticket author wrote: footprint parsing, ticket-ID validation, plan parsing, `bd` output decoding, `tutti answer`'s file parsing, and the sanitiser (§7.10: no control sequence survives, printable text is kept). These replace orchestra's Go fuzz tests.
 - **Contract tests against the real SDK** are gated by `TUTTI_LIVE=1`. Each runs one tiny session in a temp repository and checks the behaviour tutti's state machine relies on:
@@ -2145,7 +2145,7 @@ Each milestone ends with the check passing and a short demo run. Parity is measu
 | Q7 | Should the worker view show thinking blocks (collapsed)? | Hidden |
 | Q8 | Daemon later? (§1.2) | Not planned; the `RunView` and `UiCommand` boundary keeps it possible |
 | Q9 | On a usage warning (`allowed_warning`), should tutti start fewer workers? | No: it shows the warning and keeps dispatching |
-| Q10 | Which other built-in colour schemes should tutti ship? A `terminal` scheme, giving each role one of the 16 ANSI slots so that it follows the terminal's own theme, is the obvious second | Only `orchestra`; files cover the rest |
+| Q10 | Which other built-in colour schemes should tutti ship? A `terminal` scheme, giving each role one of the 16 ANSI slots so that it follows the terminal's own theme, is the obvious second | Only `tutti`; files cover the rest |
 
 Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (embedding Claude Code) by the SDK's README (§12).
 
@@ -2245,7 +2245,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | | summary, closing line, report rendered, organ spinners | Kept, printed after the renderer is gone (§7.1) |
 | | ticket states (`▶ working`, `◷ to merge`, `◆ merging`, `⟳ resolving`, `⟳ fixing`, `✓ done`, …) | Kept, made an explicit state machine with typed phases and listed transitions (§5.1); `■ answer?`, `▶ retrying` and `◷ limit` added |
 | | control sequences stripped from untrusted text | Kept (§7.10) |
-| | colour scheme: exact colours with light and dark variants, their meanings, the Charm form theme, glyphs and spinner | Kept as the default scheme, `orchestra` (§7.11); other schemes can be chosen in the settings or written as files; the variant follows a change of terminal theme live |
+| | colour scheme: exact colours with light and dark variants, their meanings, the Charm form theme, glyphs and spinner | Kept as the default scheme, `tutti` (§7.11); other schemes can be chosen in the settings or written as files; the variant follows a change of terminal theme live |
 | | plain output, `TERM=dumb` | Kept (§7.6, §7.1) |
 | | notifications (macOS) | Kept, plus Linux and OSC 9 or 777 (§7.9) |
 | Init | two steps, flags, Beads install, `bd init`, prefix rename | Kept (§8.3) |
@@ -2369,7 +2369,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | `internal/herdr`, `internal/tmux`, `internal/cmux`, `internal/hookterm`, `internal/claude` (hooks) | dropped; `src/agent/` (`AgentHost`, `ClaudeCode`, `WorkerState`, `Attention`, `Account`, `Transcripts`, the embedded binary; `options.ts` names the workers' requires tools) |
 | `internal/mcp` | `src/agent/mcp.ts` |
 | `internal/organ` (+ `prompts/`) | `src/organs/` (+ `prompts/`), `src/organs/AgentSdkLanguageModel.ts`, `src/organs/UsageProbe.ts` (one organ-like turn, § 4.12) |
-| `internal/project` (settings, prompt, init files) | `src/project/` (Schema-defined settings and user config, `flags.ts` (the run flags, § 8.2), templates, `templateFiles.ts` (the files init writes from them) and `templateVersions.ts` (their versions and what a project's copies lack, § 8.3), `runners.ts` (the check runners init writes), `scheme.ts` (the colour roles, the scheme format and its loader, § 7.11) and `schemes/orchestra.json`) |
+| `internal/project` (settings, prompt, init files) | `src/project/` (Schema-defined settings and user config, `flags.ts` (the run flags, § 8.2), templates, `templateFiles.ts` (the files init writes from them) and `templateVersions.ts` (their versions and what a project's copies lack, § 8.3), `runners.ts` (the check runners init writes), `scheme.ts` (the colour roles, the scheme format and its loader, § 7.11) and `schemes/tutti.json`) |
 | `internal/tui` (Bubble Tea) | `src/ui/` (OpenTUI React: `Dashboard`, `Card`, `AttentionCard`, `TicketsTable`, `WorkerView`, `Composer`, `InterviewView`, `InitForm`, `StartQuestion`), `src/ui/worker/` (the worker view's pieces, taking plain props: its head, the transcript's items, the request panel and the Markdown's looks; `useWorkerScreen`, its worker and the commands it sends), `src/ui/plain/` (the line-based forms), `src/print/` (summary and report after the renderer, the Nothing to run box, the Getting ready line), `src/ui/theme.ts` (the styles, from `src/project/scheme.ts`'s roles and schemes; orchestra's are from `internal/tui/style.go` and huh's Charm theme) |
 | — (text helpers scattered through the packages) | `src/text/`, the base every layer reads: `sanitize.ts` (untrusted text made safe to show, § 7.10), `marks.ts` (the glyphs, the ellipsis and the separator, § 7.11), `oneLine.ts` (text cut to one line), `joinAnd.ts` (items listed as a sentence); it imports nothing from the other areas of `src/`, so `src/services`, `src/agent` and `src/run` take their text helpers from it, never from `src/ui` |
 | — (the logger, the config and the clock, read everywhere) | `src/core/`, the base below `src/services`, `src/agent` and `src/run`: `log.ts` (the Log service and its line builders, § 3.3), `AppConfig.ts` (the AppConfig service, its value and its defaults; `src/run/resolveConfig.ts` resolves it), `localTime.ts` (times for people, § 9.1), `answerWith.ts` (how a request is answered with `tutti answer`, § 7.6), `env.ts` (the environment of what tutti starts, § 4.13, and a check's share of the machine, § 3.2), `atomicFile.ts` (files written whole, § 3.3), `gitEnv.ts` (git's local variables), `evidenceId.ts` (the ID an evidence or pasted_content tag carries, § 6.2); it imports values only from `src/text`, `src/native` and Effect, never from the layers above it |

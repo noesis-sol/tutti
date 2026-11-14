@@ -162,8 +162,8 @@ export interface AppConfigValue {
   /** The colour scheme's name, in § 7.11's order. */
   readonly colourScheme: string
   /**
-   * The colour scheme in use: `colourScheme` loaded at startup, or orchestra with the reason it
-   * isn't. `resolve` reads no files, and leaves it orchestra; `load` loads it.
+   * The colour scheme in use: `colourScheme` loaded at startup, or tutti with the reason it
+   * isn't. `resolve` reads no files, and leaves it tutti; `load` loads it.
    */
   readonly scheme: LoadedScheme
   readonly appearance: (typeof appearances)[number]

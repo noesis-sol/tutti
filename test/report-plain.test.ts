@@ -7,7 +7,7 @@ import { Console, Effect, Fiber, Layer, Ref } from "effect"
 import { TestClock } from "effect/testing"
 import { OrganHold, Organs } from "../src/organs/Organs.ts"
 import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { type ReportRun, runReport } from "../src/run/report.ts"
 import { Ending } from "../src/run/summary.ts"
@@ -21,7 +21,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { type Answers, layer as cannedLayer } from "../src/testing/Organs.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 const body = "The run ended with nothing left to do.\n"
 

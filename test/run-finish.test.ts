@@ -7,7 +7,7 @@ import { TestClock } from "effect/testing"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { finish, type Outcome, run } from "../src/run/run.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -21,7 +21,7 @@ import { makeTheme } from "../src/ui/theme.ts"
 import { backlog, type Ran, scenario, type World } from "./harness.ts"
 import { rowsIn } from "./screen.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-finish-${name}-`)))
 

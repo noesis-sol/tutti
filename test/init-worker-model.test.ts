@@ -16,7 +16,7 @@ import { lineForm } from "../src/init/lineForm.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import { type WorkersAnswers, type WorkersQuestions, workerModels } from "../src/init/workers.ts"
 import { noFlags } from "../src/project/flags.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { loadLenient } from "../src/run/resolveConfig.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
@@ -25,7 +25,7 @@ import * as TestBeads from "../src/testing/Beads.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const plain = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const plain = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 const fixture = resolve(import.meta.dir, "fixtures/orchestra-project")
 

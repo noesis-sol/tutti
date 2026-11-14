@@ -30,7 +30,7 @@ import { stepLine } from "../src/init/steps.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { type Scouting, type Suite as ScoutSuite, tidy } from "../src/organs/scout.ts"
 import { fullScript, runnerCommands, type Suite } from "../src/project/runners.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { verifierPath } from "../src/project/templateFiles.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
@@ -250,7 +250,11 @@ describe("the form, in lines", () => {
             write: (text) => {
               output += text
             },
-            theme: makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true }),
+            theme: makeTheme(tuttiScheme, {
+              appearance: "dark",
+              depth: "truecolor",
+              noColor: true,
+            }),
           })
           return yield* form.checks(questions)
         }),

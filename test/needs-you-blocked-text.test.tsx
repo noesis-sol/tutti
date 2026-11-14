@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import fc from "fast-check"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -22,7 +22,7 @@ import { panelOf } from "./screen.ts"
 type Rendered = Parameters<Parameters<typeof withRender>[2]>[0]
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
 const began = new Date(2026, 10, 4, 3, 0, 0).getTime()
 

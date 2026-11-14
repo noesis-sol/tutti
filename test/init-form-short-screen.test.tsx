@@ -2,7 +2,7 @@
 // draws on a tall screen, none drawn over another; the field is drawn whole, and above it the done
 // lines give up their top lines first, then the title, init's words and the stepper.
 import { describe, expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   type Asking,
   aboveField,
@@ -14,7 +14,7 @@ import { seg } from "../src/ui/line.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { type Size, withRender } from "./render.ts"
 
-const dark = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const dark = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const never = () => {}
 

@@ -1,14 +1,14 @@
 // The start question's keys that arrive in one read (§ 7.1): each sees the ones before it, so Downs
 // and Enter together choose what Down moved to, not what was highlighted when the read began.
 import { expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { withRender } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 const size = { width: 100, height: 24 }
 
 test("Down, Down and Enter in one read ask for a new feature's description", async () => {

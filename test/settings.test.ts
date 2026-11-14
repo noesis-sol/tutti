@@ -59,7 +59,7 @@ const example = {
   queue: { exclude_types: ["epic"], footprint: true, shared_files: [] },
   merge: { resolve_conflicts: true, resolve_timeout: "20m", check_hand_backs: 2 },
   environment_hold: { count: 2, window: "2m", probe: "10m" },
-  ui: { colour_scheme: "orchestra" },
+  ui: { colour_scheme: "tutti" },
 }
 
 const project = (settings?: unknown): string => {
@@ -156,7 +156,7 @@ describe("settings", () => {
         early_check: true,
       },
       environment_hold: { count: 2, window: minutes(2), probe: minutes(10) },
-      ui: { colour_scheme: "orchestra" },
+      ui: { colour_scheme: "tutti" },
     })
   })
 
@@ -212,7 +212,7 @@ describe("settings", () => {
       early_check: true,
     },
     environment_hold: { count: 2, window: minutes(2), probe: minutes(10) },
-    ui: { colour_scheme: "orchestra" },
+    ui: { colour_scheme: "tutti" },
   }
 
   test("a missing file gives the defaults", async () => {

@@ -11,7 +11,7 @@ import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import type { ToolAnswer } from "../src/agent/callbacks.ts"
 import { serverName } from "../src/agent/ticketTools.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { breakdownWorker } from "../src/run/breakdown.ts"
 import type { Spec } from "../src/run/spec.ts"
 import type { SpecOutcome } from "../src/run/specRun.ts"
@@ -124,7 +124,7 @@ export const scenario = (options: {
   const out: Array<string> = []
   const errors: Array<string> = []
   const stdout: Out = { write: (text) => void out.push(text), columns: () => 100, tty: false }
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
   const recording = Effect.runSync(Deferred.make<Recording["Service"]>())
   return Effect.runPromise(
     Effect.gen(function* () {

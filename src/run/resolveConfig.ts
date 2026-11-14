@@ -38,7 +38,7 @@ import {
   retiredFlags,
   runFlags,
 } from "../project/flags.ts"
-import { loadScheme, orchestraLoaded, schemeFolders } from "../project/scheme.ts"
+import { loadScheme, schemeFolders, tuttiSchemeLoaded } from "../project/scheme.ts"
 import { readSettings, retiredOrganNotes, Settings, settingsFile } from "../project/settings.ts"
 import { currentHome, readUserConfig, UserConfig, userConfigShown } from "../project/userConfig.ts"
 import {
@@ -347,10 +347,10 @@ export const resolveAll = (
     billing: pick("billing", user.billing),
     usageLimitWait: pick("usageLimitWait", defaultUsageLimitWait),
     claude: claude === null || !claude.includes("/") ? claude : pathOf("claude", claude),
-    // § 7.11: the flag, TUTTI_COLOUR_SCHEME, the user config, the settings, orchestra. The
-    // settings' own default is orchestra too.
+    // § 7.11: the flag, TUTTI_COLOUR_SCHEME, the user config, the settings, tutti. The
+    // settings' own default is tutti too.
     colourScheme: pick("colourScheme", user.colour_scheme ?? settings.ui.colour_scheme),
-    scheme: orchestraLoaded,
+    scheme: tuttiSchemeLoaded,
     appearance,
     noColor: Option.isSome(variable(noColorVariable)),
   }
@@ -419,7 +419,7 @@ export const load = (flags: RunFlags, repo: string, cwd: string = repo) =>
  * (`problems`), the user config's (`userProblems`) and the settings' (`settingsProblems`), a
  * file with problems giving its defaults. With `only`, it reads only those variables, as though
  * the others were unset. A flag's relative path is taken from `cwd`. It leaves the colour scheme
- * orchestra; `withScheme` loads it.
+ * tutti; `withScheme` loads it.
  */
 export const loadLenient = (
   flags: RunFlags,

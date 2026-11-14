@@ -18,7 +18,7 @@ import {
   stamp,
 } from "../src/core/localTime.ts"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { interviewStatus } from "../src/run/interview.ts"
 import { compose, ranFrom } from "../src/run/report.ts"
 import { run } from "../src/run/run.ts"
@@ -152,7 +152,7 @@ describe("the log's stamp", () => {
 })
 
 describe("where the reset is shown", () => {
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
   const title = {
     version: "0.1.0",
     branch: "",

@@ -3,7 +3,7 @@
 // and may fold into `+N earlier tickets`, until a later look finds it not answered after all.
 
 import { describe, expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type Row, type Status } from "../src/run/runView.ts"
@@ -13,7 +13,7 @@ import { byAttention, shownRows, ticketsLines } from "../src/ui/TicketsTable.tsx
 import { makeTheme } from "../src/ui/theme.ts"
 import { rowsIn } from "./screen.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const blocked = TicketPhase.Blocked({ why: "MERGE_CONFLICT" })
 const deferred = TicketPhase.Deferred({ why: "gave up" })

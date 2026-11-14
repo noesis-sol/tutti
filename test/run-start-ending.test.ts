@@ -7,7 +7,7 @@ import { Console, Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { askLines, askThenBegin, cancelled, cancelledMessage } from "../src/cli/choose.ts"
 import { endWith, noStyles } from "../src/print/nothing.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { exitCodes } from "../src/run/holds.ts"
 import { check, noHolds, type Options } from "../src/run/nothing.ts"
 import { EventStream } from "../src/services/EventStream.ts"
@@ -89,7 +89,7 @@ const start = (seeds: ReadonlyArray<Seed>, ask: Effect.Effect<Work, FormCancelle
 const askedAsLines = (typed: string) => {
   const stdin = new PassThrough()
   stdin.end(typed)
-  const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+  const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
   return askLines(stdin, () => {}, theme, TicketCount.AllDone(), noSpecAsk)
 }
 

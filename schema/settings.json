@@ -598,7 +598,7 @@
         "colour_scheme": {
           "type": "string",
           "minLength": 1,
-          "default": "orchestra"
+          "default": "tutti"
         }
       },
       "additionalProperties": false,

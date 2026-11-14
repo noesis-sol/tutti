@@ -7,7 +7,7 @@ import { type CliRenderer, TextAttributes, type TextareaRenderable } from "@open
 import { createTestRenderer } from "@opentui/core/testing"
 import { Effect, Exit, Option, Queue, Scope } from "effect"
 import fc from "fast-check"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
@@ -43,7 +43,7 @@ import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
 
 const size = { width: 80, height: 24 }

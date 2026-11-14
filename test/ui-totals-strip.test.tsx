@@ -2,7 +2,7 @@
 // the first three cells lined up and the queue's the widest, giving up width as the pane narrows,
 // and the totals on one line below the width the strip needs.
 import { describe, expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { emptyView, type Totals } from "../src/run/runView.ts"
 import type { Segments } from "../src/ui/line.tsx"
 import { boxPad } from "../src/ui/spacing.ts"
@@ -10,7 +10,7 @@ import { totalsLines, totalsStrip } from "../src/ui/Totals.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { totalsIn } from "./screen.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const totals = (over: Partial<Totals>): Totals => ({ ...emptyView.totals, slots: 3, ...over })
 

@@ -19,7 +19,7 @@ import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import type { Line } from "../src/core/log.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import {
   type FullChecked,
   fullCheckEnd,
@@ -45,7 +45,7 @@ import { backlog, expectLog, type Ran, scenario, type World } from "./harness.ts
 
 const fullCommand = "scripts/check-full.sh"
 const setupCommand = "bun install"
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 const reviewerText = "The run merged t-1; the full check failed.\n"
 
 const folder = (name: string) =>

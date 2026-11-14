@@ -1,7 +1,7 @@
 // A question answered, its ticket with no slot, as the run quits (tutti-0ucl, § 5.1): a quit takes
 // nothing back, so its row and Up next say the next run, not the next free slot.
 import { describe, expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, resumesAt } from "../src/run/runView.ts"
@@ -10,7 +10,7 @@ import type { Segments } from "../src/ui/line.tsx"
 import { upNextLines } from "../src/ui/SidePanel.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const quitting = "Quitting… waiting for t-1's worker"
 

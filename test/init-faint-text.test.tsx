@@ -5,13 +5,13 @@ import { describe, expect, test } from "bun:test"
 import { type RGBA, TextAttributes } from "@opentui/core"
 import { stepNames } from "../src/init/form.ts"
 import { initHeader, initSummary } from "../src/print/initSummary.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { InitView } from "../src/ui/InitForm.tsx"
 import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { type Frame, renderFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 /** How a cell's colour is recorded: the terminal's default, a palette slot, or exact. */
 const recordOf = (colour: RGBA): string =>
@@ -49,7 +49,7 @@ describe("the formFaint style", () => {
   })
 
   test("stays faint under NO_COLOR, where every role is the default", () => {
-    const plain = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const plain = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     expect(plain.form.faint.paint("x")).toBe("\x1b[2mx\x1b[0m")
   })
 })

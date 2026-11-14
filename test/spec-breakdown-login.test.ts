@@ -8,7 +8,7 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber, Layer, Option } from "effect"
 import { TestClock } from "effect/testing"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { breakdownWorker } from "../src/run/breakdown.ts"
 import { exitCodes } from "../src/run/holds.ts"
 import { SpecOutcome, specRun } from "../src/run/specRun.ts"
@@ -41,7 +41,7 @@ describe("a breakdown whose turn is refused for the login", () => {
     const spec = specOf()
     const errors: Array<string> = []
     const stdout: Out = { write: () => {}, columns: () => 100, tty: false }
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(

@@ -13,7 +13,7 @@ import { step } from "../src/init/steps.ts"
 import type { WorkersQuestions } from "../src/init/workers.ts"
 import type { Scouting } from "../src/organs/scout.ts"
 import { initHeader, initSummary } from "../src/print/initSummary.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { initFormKind, openInitForm } from "../src/ui/InitForm.tsx"
 import { scoutClock, tildify } from "../src/ui/initTitle.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
@@ -23,8 +23,8 @@ import { external } from "../src/ui/useRunView.ts"
 import { drawnFrame, pressEscape, TestClock } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
-const plain = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
+const plain = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 const size = { width: 90, height: 30 }
 

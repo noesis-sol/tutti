@@ -3,7 +3,7 @@
 // lighter than bubbles'.
 import { describe, expect, test } from "bun:test"
 import type { RGBA } from "@opentui/core"
-import { orchestra, type Role } from "../src/project/scheme.ts"
+import { type Role, tuttiScheme } from "../src/project/scheme.ts"
 import { formHintSegments } from "../src/ui/Form.tsx"
 import { scoutCommands } from "../src/ui/InitForm.tsx"
 import { hintOf } from "../src/ui/keyCommands.ts"
@@ -14,7 +14,7 @@ import { withRender } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const variants: ReadonlyArray<Appearance> = ["light", "dark"]
 

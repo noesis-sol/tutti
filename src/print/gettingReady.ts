@@ -6,7 +6,7 @@
 // start shows nothing. Only a terminal that isn't dumb gets it. The appearance is read later, so
 // the line is drawn in styles that don't depend on it: the terminal's own colour, the time faint.
 import { Effect } from "effect"
-import { orchestra } from "../project/scheme.ts"
+import { tuttiScheme } from "../project/scheme.ts"
 import { frameInterval } from "../ui/spinner.ts"
 import { makeTheme } from "../ui/theme.ts"
 import { makePrinter, type Out } from "./organLine.ts"
@@ -44,7 +44,7 @@ const quiet: GettingReady = {
 }
 
 /** The line's styles: every colour the terminal's own, the spinner bold and the time faint. */
-const readyTheme = makeTheme(orchestra, { appearance: "dark", depth: "256", noColor: true })
+const readyTheme = makeTheme(tuttiScheme, { appearance: "dark", depth: "256", noColor: true })
 
 /**
  * Starts the line on `out`, at the step checking. Its spinner is a fiber of the caller's, so an

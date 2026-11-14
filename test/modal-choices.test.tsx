@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Option, Queue } from "effect"
 import fc from "fast-check"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
@@ -16,7 +16,7 @@ import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const shellOf = (): ShellValue => ({
   view: external(emptyView),

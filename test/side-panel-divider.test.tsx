@@ -4,7 +4,7 @@
 // from Totals.tsx's queueDivider, and that bar stays put as Set aside's triage note comes in, the
 // note cut to ` · ◆ n`, then left out, rather than widen its cell past its fifth.
 import { describe, expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Totals } from "../src/run/runView.ts"
@@ -15,7 +15,7 @@ import { panelWidth } from "../src/ui/SidePanel.tsx"
 import { queueDivider, totalsStrip } from "../src/ui/Totals.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const textOf = (line: Segments) => line.map((each) => each.text).join("")
 

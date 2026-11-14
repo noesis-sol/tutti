@@ -9,7 +9,7 @@ import type { ReactNode } from "react"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { initMouse, readInitFlags } from "../src/cli/commands.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands, UiCommand } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -29,7 +29,7 @@ import { type Frame, leap, parserWait, type Rendered, withRender } from "./rende
 import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const dark = themeOf("dark")
 
 const size = { width: 90, height: 30 }

@@ -8,7 +8,7 @@ import { scoutCostSteps } from "../src/init/checks.ts"
 import { cancelledLine, summaryLines } from "../src/init/init.ts"
 import { InitFailed, InitStopped, step } from "../src/init/steps.ts"
 import { costOf } from "../src/organs/AgentSdkLanguageModel.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { noCost, OrganCost, type Total } from "../src/services/OrganCost.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { makeTheme } from "../src/ui/theme.ts"
@@ -36,7 +36,7 @@ const stepsAfter = (...results: ReadonlyArray<SDKResultMessage>) =>
 
 const total = (fields: Partial<Total>): Total => ({ ...noCost, ...fields })
 
-const plain = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+const plain = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
 
 describe("the scout's step", () => {
   test("a successful call says what it cost", () => {

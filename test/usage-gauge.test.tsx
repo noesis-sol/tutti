@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
 import { Effect } from "effect"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyState } from "../src/run/ledger.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
@@ -15,7 +15,7 @@ import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { renderFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 /** The dashboard of a run whose account has used 41% of its five-hour window. */
 const value: ShellValue = {

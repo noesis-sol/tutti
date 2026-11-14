@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import { WorkerState } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
@@ -20,7 +20,7 @@ import { withRender } from "./render.ts"
 import { cardOn, cardsIn, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 9, 22, 13, 0, 0).getTime()
 const now = began + 67_000

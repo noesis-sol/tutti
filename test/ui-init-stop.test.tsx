@@ -6,7 +6,7 @@ import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testin
 import { Deferred, Effect, Exit, Fiber, Scope } from "effect"
 import { act } from "react"
 import type { InitForm } from "../src/init/init.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { openInitForm } from "../src/ui/InitForm.tsx"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { type Appearance, makeTheme } from "../src/ui/theme.ts"
@@ -14,7 +14,7 @@ import { external } from "../src/ui/useRunView.ts"
 import { drawnFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const actEnvironment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 

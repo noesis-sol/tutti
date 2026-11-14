@@ -218,11 +218,11 @@ describe("precedence", () => {
     expect(configOf({ settings, env, flags: { concurrent: "3" } }).settings.concurrent).toBe(3)
   })
 
-  test("the colour scheme: flag, TUTTI_COLOUR_SCHEME, user config, settings, orchestra (§ 7.11)", () => {
+  test("the colour scheme: flag, TUTTI_COLOUR_SCHEME, user config, settings, tutti (§ 7.11)", () => {
     const settings = (s: Settings): Settings => ({ ...s, ui: { colour_scheme: "project" } })
     const user = { colour_scheme: "mine" }
     const env = { TUTTI_COLOUR_SCHEME: "this-shell" }
-    expect(configOf({}).colourScheme).toBe("orchestra")
+    expect(configOf({}).colourScheme).toBe("tutti")
     expect(configOf({ settings }).colourScheme).toBe("project")
     expect(configOf({ settings, user }).colourScheme).toBe("mine")
     expect(configOf({ settings, user, env }).colourScheme).toBe("this-shell")
@@ -633,7 +633,7 @@ describe("the live layer", () => {
 describe("the test layer", () => {
   test("provides a literal value, the defaults with overrides laid over them", async () => {
     const value = appConfig({ limit: 3, plain: true })
-    expect(value).toMatchObject({ repo, limit: 3, plain: true, colourScheme: "orchestra" })
+    expect(value).toMatchObject({ repo, limit: 3, plain: true, colourScheme: "tutti" })
     const read = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {

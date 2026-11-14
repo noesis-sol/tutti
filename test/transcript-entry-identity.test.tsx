@@ -15,7 +15,7 @@ import {
   transcriptVersion,
 } from "../src/agent/Transcripts.ts"
 import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
@@ -349,7 +349,8 @@ const shellOf = (state: ReturnType<typeof external<TranscriptState>>): ShellValu
   screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
   commands: Effect.runSync(makeCommands),
   appearance: external<Appearance>("dark"),
-  themeOf: (appearance) => makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false }),
+  themeOf: (appearance) =>
+    makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false }),
   now: () => began,
   transcripts: {
     open: (): OpenTranscript => ({

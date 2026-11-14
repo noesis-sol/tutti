@@ -2,14 +2,14 @@
 // chose New feature are the description's, and those after Shift+Tab are the select's, though
 // React hasn't drawn either step yet.
 import { expect, test } from "bun:test"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { makeTheme } from "../src/ui/theme.ts"
 import { type Rendered, withRender } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 const size = { width: 100, height: 24 }
 
 /** The start question with three tickets ready, and the answers it gave. */

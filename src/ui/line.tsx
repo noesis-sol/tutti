@@ -3,7 +3,7 @@
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
 import { RGBA } from "@opentui/core"
 import { createContext, memo, type ReactNode, useContext } from "react"
-import { orchestra } from "../project/scheme.ts"
+import { tuttiScheme } from "../project/scheme.ts"
 import { ellipsis, separator } from "../text/marks.ts"
 import { oneLine } from "../text/oneLine.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
@@ -366,14 +366,14 @@ export interface SelectionColours {
  * Selected text in the theme's `selection` and `selectionText` roles (§ 7.11). A role left to the
  * terminal's default colour, as every role is under NO_COLOR, would draw selected text as the text
  * around it (OpenTUI's own selection swaps a cell's colours, and both are the terminal's): it is
- * the default scheme's, orchestra's, instead, so that what is selected still shows.
+ * the default scheme's, tutti's, instead, so that what is selected still shows.
  */
 export const selectionLookOf = (theme: Theme): SelectionColours => {
   const colourOf = (role: "selection" | "selectionText", layer: "fg" | "bg") => {
     const given = theme.scheme.colours[role][theme.appearance]
     return !theme.noColor && given._tag !== "Default"
       ? theme.rgba(role)
-      : rgbaOf(orchestra.colours[role][theme.appearance], layer)
+      : rgbaOf(tuttiScheme.colours[role][theme.appearance], layer)
   }
   return {
     selectionBg: colourOf("selection", "bg"),

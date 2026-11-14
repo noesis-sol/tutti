@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type Row, type RunView } from "../src/run/runView.ts"
@@ -17,7 +17,7 @@ import { makeTheme } from "../src/ui/theme.ts"
 import { workersDoing } from "./activity.ts"
 import { rowsIn } from "./screen.ts"
 
-const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
+const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: false })
 
 const blocked = TicketPhase.Blocked({ why: "MERGE_CONFLICT" })
 const asked = TicketPhase.Asked({ question: "q-1" })

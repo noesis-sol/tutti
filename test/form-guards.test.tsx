@@ -8,7 +8,7 @@ import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { createRoot } from "@opentui/react"
 import { Effect, Exit, Fiber } from "effect"
 import { act } from "react"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { escapeHold, guardInput, InputGuards } from "../src/ui/keys.ts"
 import { TicketCount, type Work } from "../src/ui/questions.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
@@ -19,7 +19,7 @@ import { leap, parserWait, TestClock } from "./render.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const size = { width: 100, height: 24 }
 

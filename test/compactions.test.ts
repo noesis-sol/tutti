@@ -16,7 +16,7 @@ import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { noteCompaction, noteCompactions } from "../src/run/compactions.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
@@ -199,7 +199,7 @@ describe("a whole run", () => {
     const organs = Organs.layer.pipe(
       Layer.provideMerge(cannedLayer({ reviewer: { report: "The run merged t-1.\n" } }, calls)),
     )
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     // Claims its ticket, is compacted, commits and closes it.
     const compactsAndCloses = (world: World): SessionScript =>
       turn(

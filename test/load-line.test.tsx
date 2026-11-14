@@ -10,7 +10,7 @@ import { join } from "node:path"
 import { Deferred, Effect, Fiber, SubscriptionRef } from "effect"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import { line } from "../src/core/log.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import {
@@ -49,7 +49,7 @@ import { renderFrame } from "./render.ts"
 import { cardHead } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
 const gb = 1024 ** 3
 

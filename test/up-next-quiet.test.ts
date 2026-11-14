@@ -4,14 +4,14 @@
 
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import type { QueueRow, Totals } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { upNextLines } from "../src/ui/SidePanel.tsx"
 import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 
 const themeOf = (appearance: Appearance, noColor = false) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor })
 
 const row = (label: string, held: string | null): QueueRow => ({
   ticket: label as TicketId,

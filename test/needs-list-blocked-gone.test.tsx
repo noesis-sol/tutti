@@ -3,7 +3,7 @@
 // list at the next one, with no `h` to send a stale hand-back; its need changing redraws the box.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
 import { emptyTallies, type Entry as LedgerEntry } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
@@ -18,7 +18,7 @@ import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 10, 8, 9, 0, 0).getTime()
 

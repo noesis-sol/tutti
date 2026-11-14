@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
 import { Effect } from "effect"
 import fc from "fast-check"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
@@ -23,7 +23,7 @@ import { type Frame, type Rendered, withRender } from "./render.ts"
 import { rowsIn } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 
 const began = new Date(2026, 10, 6, 13, 0, 0).getTime()
 
@@ -171,7 +171,7 @@ describe("the note's cell", () => {
     )
 
   test("under NO_COLOR a faint note is bold and no longer faint, the row's cue no colour", () => {
-    const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
+    const theme = makeTheme(tuttiScheme, { appearance: "dark", depth: "truecolor", noColor: true })
     const line = linesOf(theme, view.rows, 80, "d-1" as TicketId).find((each) =>
       each.some((part) => part.text.includes("55ea1b1")),
     )
