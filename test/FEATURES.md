@@ -19,7 +19,7 @@ its section.
 `TUTTI_SLOW=1`, so the slow tests too. CI (`.github/workflows/ci.yml`) runs `scripts/check-full.sh`
 on Linux and macOS, and builds the host binary with `scripts/build.sh` and checks its `--version`.
 
-How long each takes, at 368899e (2026-10-22, `ORCHESTRA_CORES=2`, other workers' checks running
+How long each takes, at 368899e (2026-10-22, a share of 2 cores, other workers' checks running
 beside it):
 
 - `scripts/check-fast.sh`: 117 s, exit 0; 3452 tests in 276 files, 3360 pass, 92 skipped (slow and

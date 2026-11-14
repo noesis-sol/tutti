@@ -24,7 +24,6 @@ import {
   memoryVariable,
   memoryVariables,
   mergeWeight,
-  orchestraMemoryVariable,
   sharedEnv,
   shareFileVariable,
 } from "../src/core/env.ts"
@@ -132,13 +131,12 @@ describe("memoryShare", () => {
 })
 
 describe("the variables", () => {
-  test("give the memory share in MiB, under orchestra's name too, and the share file", () => {
+  test("give the memory share in MiB and the share file", () => {
     expect(memoryVariables(3584, "/repo/.tutti/run/share.json")).toEqual({
       TUTTI_MEMORY_MB: "3584",
-      ORCHESTRA_MEMORY_MB: "3584",
       TUTTI_SHARE_FILE: "/repo/.tutti/run/share.json",
     })
-    expect(memoryVariables(1024)).toEqual({ TUTTI_MEMORY_MB: "1024", ORCHESTRA_MEMORY_MB: "1024" })
+    expect(memoryVariables(1024)).toEqual({ TUTTI_MEMORY_MB: "1024" })
   })
 
   test("a worker's environment has them beside its cores", () => {
@@ -149,7 +147,6 @@ describe("the variables", () => {
     expect(env).toMatchObject({
       TUTTI_CORES: "3",
       TUTTI_MEMORY_MB: "2048",
-      ORCHESTRA_MEMORY_MB: "2048",
       TUTTI_SHARE_FILE: "/r/share.json",
     })
     const without = sharedEnv(
@@ -561,7 +558,11 @@ const loggedEnv = (file: string): ReadonlyArray<Record<string, string | null>> =
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
-const memoryNames = [memoryVariable, orchestraMemoryVariable, shareFileVariable] as const
+// orchestra's name for the memory share, which tutti no longer sets (tutti-h75j.2), spelt in parts
+// so that git grep finds it only in the changelog.
+const orchestraMemory = ["ORCHESTRA", "MEMORY", "MB"].join("_")
+
+const memoryNames = [memoryVariable, orchestraMemory, shareFileVariable] as const
 
 /** The memory variables a worker's session starts with, the run keeping `kept` (none: null). */
 const sessionMemory = (kept: Share | null) => {
@@ -632,7 +633,7 @@ describe("a worker's session", () => {
     expect(await logged).toEqual([
       {
         TUTTI_MEMORY_MB: "2560",
-        ORCHESTRA_MEMORY_MB: "2560",
+        [orchestraMemory]: null,
         TUTTI_SHARE_FILE: shareFileOf(repo),
       },
     ])

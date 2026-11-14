@@ -902,10 +902,9 @@ the other runs' workers changed, or the readings moved the memory share by half 
 the run writes it to `.tutti/run/share.json`, a single JSON line, `{"cores":3,"memory_mb":3584,"at":"2026-11-03T09:12:40.000Z"}`,
 and the merge check's to `.tutti/run/merge-share.json`, and says so: `share: cores 5 → 3, memory
 6.0 → 3.5 GB; merge check cores 10 → 6, memory 12.0 → 7.0 GB: workers allowed 2 → 1`, a `share`
-record in the event stream. Each worker's environment has `TUTTI_MEMORY_MB` (and `ORCHESTRA_MEMORY_MB`), the
-memory share in MB as its session started, beside `TUTTI_CORES`, and `TUTTI_SHARE_FILE`, the file's
-path, which a check script reads as it starts, so that a check started under pressure starts
-smaller ([Setup](setup.md#sizing-a-check-to-its-share)). The merge check, and the early and train
+record in the event stream. Each worker's environment has `TUTTI_MEMORY_MB`, the memory share in
+MB as its session started, beside `TUTTI_CORES`, and `TUTTI_SHARE_FILE`, the file's path, which a
+check script reads as it starts, so that a check started under pressure starts smaller ([Setup](setup.md#sizing-a-check-to-its-share)). The merge check, and the early and train
 checks that take its slot, get the same variables as each starts, the merge check's share and its
 file, `.tutti/run/merge-share.json`: the budget counts its two parts for them.
 

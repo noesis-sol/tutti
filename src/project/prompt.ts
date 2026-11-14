@@ -6,13 +6,7 @@
 import { isAbsolute, join, relative, resolve, sep } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
 import { type AppConfigValue, SetupProblem, workerPromptFile } from "../core/AppConfig.ts"
-import {
-  coresVariable,
-  memoryVariable,
-  orchestraCoresVariable,
-  orchestraMemoryVariable,
-  shareFileVariable,
-} from "../core/env.ts"
+import { coresVariable, memoryVariable, shareFileVariable } from "../core/env.ts"
 import { settingsFile } from "./settings.ts"
 import builtIn from "./templates/worker-prompt.md" with { type: "text" }
 
@@ -111,14 +105,13 @@ export const checkNote = (command: string | null): string =>
  */
 export const coresNote =
   `Other workers' checks run on this machine beside yours: ${coresVariable} in your environment ` +
-  `(and ${orchestraCoresVariable}, for scripts written for orchestra) is your share of its cores, ` +
-  `so a check that runs things side by side (test files or packages, a linter's jobs, a build) ` +
-  `runs no more than that many at once; GOFLAGS has Go's commands keep to it already (-p). ` +
-  `${memoryVariable} (and ${orchestraMemoryVariable}) is your checks' share of its memory, in MB: ` +
-  `a check that starts several processes starts no more than fit in it. Both are the share as ` +
-  `your session started; ${shareFileVariable}, where it is set, names a file tutti keeps your ` +
-  `share in as it changes, a JSON line ({"cores":3,"memory_mb":3584,"at":"…"}), which a check ` +
-  `script reads as it starts.`
+  `is your share of its cores, so a check that runs things side by side (test files or packages, ` +
+  `a linter's jobs, a build) runs no more than that many at once; GOFLAGS has Go's commands keep ` +
+  `to it already (-p). ${memoryVariable} is your checks' share of its memory, in MB: a check ` +
+  `that starts several processes starts no more than fit in it. Both are the share as your ` +
+  `session started; ${shareFileVariable}, where it is set, names a file tutti keeps your share ` +
+  `in as it changes, a JSON line ({"cores":3,"memory_mb":3584,"at":"…"}), which a check script ` +
+  `reads as it starts.`
 
 /** The words of the worker prompt's rule on the requires list, as orchestra's RequiresRule. */
 export const requiresRule = "never by hand outside the list"

@@ -81,9 +81,6 @@ export const workerVariables = (
 /** The variable that gives a worker its share of the machine's cores, for its checks to keep to. */
 export const coresVariable = "TUTTI_CORES"
 
-/** orchestra's name for it (orchestra 0.9.0), set too, for check scripts written for orchestra. */
-export const orchestraCoresVariable = "ORCHESTRA_CORES"
-
 /**
  * A worker's share of the machine's `cores`: divided among the run's `concurrent` workers and
  * `others`, those running in the machine's other runs, no more workers than `limit`, the cap on
@@ -109,9 +106,6 @@ export const mebibyte = 1024 ** 2
 
 /** The variable that gives a worker its share of the memory checks may use, in MiB. */
 export const memoryVariable = "TUTTI_MEMORY_MB"
-
-/** orchestra's name for it, set too, as for the cores. */
-export const orchestraMemoryVariable = "ORCHESTRA_MEMORY_MB"
 
 /** The variable naming the file tutti keeps a worker's current share in (src/run/share.ts). */
 export const shareFileVariable = "TUTTI_SHARE_FILE"
@@ -148,13 +142,12 @@ export const memoryShare = (budget: number, allowed: number, others = 0, limit =
 }
 
 /**
- * A worker's share of the memory in its environment: TUTTI_MEMORY_MB and ORCHESTRA_MEMORY_MB, in
- * MiB, as the share stood as its session started; and TUTTI_SHARE_FILE, the file its current share
- * is kept in, where tutti keeps one.
+ * A worker's share of the memory in its environment: TUTTI_MEMORY_MB, in MiB, as the share stood
+ * as its session started; and TUTTI_SHARE_FILE, the file its current share is kept in, where tutti
+ * keeps one.
  */
 export const memoryVariables = (memory: number, file?: string): Record<string, string> => ({
   [memoryVariable]: String(memory),
-  [orchestraMemoryVariable]: String(memory),
   ...(file === undefined ? {} : { [shareFileVariable]: file }),
 })
 
@@ -163,15 +156,14 @@ export const setsParallel = (flags: ReadonlyArray<string>): boolean =>
   flags.some((flag) => /^-+p(=|$)/.test(flag))
 
 /**
- * A worker's share of the cores (coreShare) in its environment: TUTTI_CORES and ORCHESTRA_CORES,
- * for a project's check scripts, and `-p=<share>` after the GOFLAGS `goflags` has, unless those
+ * A worker's share of the cores (coreShare) in its environment: TUTTI_CORES, for a project's check
+ * scripts, and `-p=<share>` after the GOFLAGS `goflags` has, unless those
  * set -p already, so that `go test ./...` runs no more packages at once than that.
  */
 export const coreVariables = (share: number, goflags = ""): Record<string, string> => {
   const flags = goflags.split(/\s+/).filter((flag) => flag !== "")
   return {
     [coresVariable]: String(share),
-    [orchestraCoresVariable]: String(share),
     ...(setsParallel(flags) ? {} : { GOFLAGS: [...flags, `-p=${share}`].join(" ") }),
   }
 }

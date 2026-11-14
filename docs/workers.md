@@ -76,16 +76,15 @@ for the worker to run with Bash, so the permission mode sees its commands), and 
 worktree's list, as `tutti requires --readme` does. A worker needn't have tutti on its PATH.
 
 The check note's last sentence gives the worker its share of the machine's cores: other workers' checks
-run beside its own, so tutti sets `TUTTI_CORES` in its environment, and `ORCHESTRA_CORES` for check
-scripts written for orchestra, to the cores divided among the run's `concurrent` workers and those
-running in the machine's other tutti and orchestra runs ([Runs that share a
-machine](running.md#runs-that-share-a-machine)), no more than `--machine-workers` unless it is `0`
+run beside its own, so tutti sets `TUTTI_CORES` in its environment to the cores divided among the
+run's `concurrent` workers and those running in the machine's other tutti and orchestra runs ([Runs
+that share a machine](running.md#runs-that-share-a-machine)), no more than `--machine-workers` unless it is `0`
 (at least one), and adds `-p=<share>` to `GOFLAGS` unless that sets `-p` already. A check script that runs
 things side by side (a test runner's workers, a linter's jobs) keeps to it; Go's commands do
 already. Left alone, each check runs as many at once as there are cores, and several workers' checks
 crowd the machine until tests time out in code no ticket touched.
 
-The note goes on with its share of the memory: `TUTTI_MEMORY_MB` (and `ORCHESTRA_MEMORY_MB`), in MB,
+The note goes on with its share of the memory: `TUTTI_MEMORY_MB`, in MB,
 the memory checks may use divided among the workers allowed, the other runs' and the merge check
 ([The checks' share](running.md#the-checks-share)), so that a check starting several processes
 starts no more than fit in it. Both variables are the share as the worker's session started;

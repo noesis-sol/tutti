@@ -55,7 +55,7 @@ describe("machineVariable", () => {
       "CLAUDE_PID",
       "AI_AGENT",
       "BASH_DEFAULT_TIMEOUT_MS",
-      "ORCHESTRA_CORES",
+      "ORCHESTRA_RUNS_DIR",
       "BD_JSON_ENVELOPE",
       "BEADS_DIR",
       "TUTTI_CONCURRENT",

@@ -1,6 +1,6 @@
 // Each worker gets its share of the machine's cores for its checks (tutti-kkb.24): the cores
-// divided among the run's workers, in TUTTI_CORES and ORCHESTRA_CORES and as -p in GOFLAGS, and
-// the rules' note on checks says so. tutti's own test runner keeps bun's threads to it.
+// divided among the run's workers, in TUTTI_CORES and as -p in GOFLAGS, and the rules' note
+// on checks says so. tutti's own test runner keeps bun's threads to it.
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
@@ -25,7 +25,6 @@ import {
   coreShare,
   coresVariable,
   coreVariables,
-  orchestraCoresVariable,
   probeEnv,
   setsParallel,
   workerEnv,
@@ -46,7 +45,11 @@ setDefaultTimeout(30_000)
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
-const shareVariables = [coresVariable, orchestraCoresVariable, "GOFLAGS"] as const
+const shareVariables = [coresVariable, "GOFLAGS"] as const
+
+// orchestra's name for the cores, which tutti no longer sets or reads (tutti-h75j.2), spelt in parts
+// so that git grep finds it only in the changelog.
+const orchestraCores = ["ORCHESTRA", "CORES"].join("_")
 
 describe("coreShare", () => {
   test("gives one worker all the cores", () => {
@@ -96,8 +99,8 @@ describe("coreShare", () => {
 })
 
 describe("coreVariables", () => {
-  test("sets TUTTI_CORES, ORCHESTRA_CORES and Go's -p", () => {
-    expect(coreVariables(3)).toEqual({ TUTTI_CORES: "3", ORCHESTRA_CORES: "3", GOFLAGS: "-p=3" })
+  test("sets TUTTI_CORES and Go's -p", () => {
+    expect(coreVariables(3)).toEqual({ TUTTI_CORES: "3", GOFLAGS: "-p=3" })
   })
 
   test("puts -p after the GOFLAGS the environment has", () => {
@@ -122,7 +125,7 @@ describe("coreVariables", () => {
 describe("workerEnv", () => {
   test("lays the share over the environment's own, after its GOFLAGS", () => {
     const result = workerEnv({
-      env: { PATH: "/usr/bin", TUTTI_CORES: "16", ORCHESTRA_CORES: "16", GOFLAGS: "-mod=mod" },
+      env: { PATH: "/usr/bin", TUTTI_CORES: "16", GOFLAGS: "-mod=mod" },
       subscription: true,
       billing: "subscription",
       cores: 4,
@@ -130,7 +133,6 @@ describe("workerEnv", () => {
     expect(result).toMatchObject({
       PATH: "/usr/bin",
       TUTTI_CORES: "4",
-      ORCHESTRA_CORES: "4",
       GOFLAGS: "-mod=mod -p=4",
     })
   })
@@ -215,15 +217,11 @@ const sessionShare = (concurrent: number, cores: number) => {
 
 describe("a worker's session", () => {
   test("gets all the cores in a run of one worker", async () => {
-    expect(await sessionShare(1, 10)).toEqual([
-      { TUTTI_CORES: "10", ORCHESTRA_CORES: "10", GOFLAGS: "-p=10" },
-    ])
+    expect(await sessionShare(1, 10)).toEqual([{ TUTTI_CORES: "10", GOFLAGS: "-p=10" }])
   })
 
   test("gets its share of the cores in a run of several workers", async () => {
-    expect(await sessionShare(4, 10)).toEqual([
-      { TUTTI_CORES: "2", ORCHESTRA_CORES: "2", GOFLAGS: "-p=2" },
-    ])
+    expect(await sessionShare(4, 10)).toEqual([{ TUTTI_CORES: "2", GOFLAGS: "-p=2" }])
   })
 })
 
@@ -231,8 +229,9 @@ describe("the check note", () => {
   test("tells the worker its share of the cores is in its environment", () => {
     expect(coresNote).toContain(
       "Other workers' checks run on this machine beside yours: TUTTI_CORES in your environment " +
-        "(and ORCHESTRA_CORES, for scripts written for orchestra) is your share of its cores",
+        "is your share of its cores",
     )
+    expect(coresNote).not.toContain(orchestraCores)
     expect(coresNote).toContain("GOFLAGS has Go's commands keep to it already (-p).")
     expect(checkNote("scripts/check-fast.sh")).toEndWith(`exit status. ${coresNote}\n`)
     expect(checkNote(null)).toContain(coresNote)
@@ -240,10 +239,10 @@ describe("the check note", () => {
 })
 
 describe("the test runner", () => {
-  test("reads the share from TUTTI_CORES, or orchestra's ORCHESTRA_CORES", () => {
-    expect(coreShareOf({ TUTTI_CORES: "3", ORCHESTRA_CORES: "5" })).toBe(3)
-    expect(coreShareOf({ ORCHESTRA_CORES: " 5 " })).toBe(5)
-    expect(coreShareOf({ TUTTI_CORES: "", ORCHESTRA_CORES: "2" })).toBe(2)
+  test("reads the share from TUTTI_CORES alone", () => {
+    expect(coreShareOf({ TUTTI_CORES: "3", [orchestraCores]: "5" })).toBe(3)
+    expect(coreShareOf({ TUTTI_CORES: " 5 " })).toBe(5)
+    expect(coreShareOf({ [orchestraCores]: "2" })).toBeUndefined()
     expect(coreShareOf({})).toBeUndefined()
   })
 
@@ -268,7 +267,7 @@ describe("the test runner", () => {
       BUN_JSC_numberOfGCMarkers: "2",
       BUN_JSC_numberOfFTLCompilerThreads: "2",
     })
-    expect(Object.keys(coreThreadVariables({ ORCHESTRA_CORES: "1" }, 10))).toEqual([
+    expect(Object.keys(coreThreadVariables({ TUTTI_CORES: "1" }, 10))).toEqual([
       ...jscThreadVariables,
     ])
   })
@@ -323,7 +322,6 @@ describe("the test runner", () => {
 describe("the test runner's worker processes", () => {
   test("are the run's share of the cores, or half the cores without one", () => {
     expect(testWorkers({ TUTTI_CORES: "3" }, [], 10)).toBe(3)
-    expect(testWorkers({ ORCHESTRA_CORES: "2" }, [], 10)).toBe(2)
     expect(testWorkers({}, [], 10)).toBe(5)
     expect(testWorkers({}, [], 7)).toBe(3)
     expect(testWorkers({}, [], 1)).toBe(1)

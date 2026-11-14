@@ -124,10 +124,13 @@ describe("testProcesses", () => {
 })
 
 describe("the memory share", () => {
-  test("is TUTTI_MEMORY_MB, or ORCHESTRA_MEMORY_MB, in MiB", () => {
-    expect(memoryShareOf({ TUTTI_MEMORY_MB: "2048", ORCHESTRA_MEMORY_MB: "1024" })).toBe(2 * gb)
-    expect(memoryShareOf({ ORCHESTRA_MEMORY_MB: " 1024 " })).toBe(gb)
-    expect(memoryShareOf({ TUTTI_MEMORY_MB: "", ORCHESTRA_MEMORY_MB: "512" })).toBe(512 * mebibyte)
+  test("is TUTTI_MEMORY_MB alone, in MiB", () => {
+    // orchestra's name for it, spelt in parts so that git grep finds it only in the changelog
+    const orchestraMemory = ["ORCHESTRA", "MEMORY", "MB"].join("_")
+    expect(memoryShareOf({ TUTTI_MEMORY_MB: "2048", [orchestraMemory]: "1024" })).toBe(2 * gb)
+    expect(memoryShareOf({ TUTTI_MEMORY_MB: " 1024 " })).toBe(gb)
+    expect(memoryShareOf({ TUTTI_MEMORY_MB: "512" })).toBe(512 * mebibyte)
+    expect(memoryShareOf({ [orchestraMemory]: "512" })).toBeUndefined()
     for (const value of ["0", "-1", "1.5", "lots", ""]) {
       expect(memoryShareOf({ TUTTI_MEMORY_MB: value })).toBeUndefined()
     }

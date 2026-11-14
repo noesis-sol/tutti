@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- tutti sets only `TUTTI_CORES` and `TUTTI_MEMORY_MB` for a worker's checks and the merge check, no longer `ORCHESTRA_CORES` and `ORCHESTRA_MEMORY_MB` beside them, and its own `scripts/test.sh` reads only the `TUTTI_` names (§ 3.2, § 4.11, § 13; `src/core/env.ts`' `coreVariables` and `memoryVariables`, `src/project/prompt.ts`'s `coresNote`, `scripts/test.ts`' `coreShareOf` and `memoryShareOf`, `docs/setup.md`, `docs/workers.md`, `docs/running.md`; tutti-h75j.2). A project's check script that reads `ORCHESTRA_CORES` or `ORCHESTRA_MEMORY_MB` must read `TUTTI_CORES` and `TUTTI_MEMORY_MB` instead, or `TUTTI_SHARE_FILE`'s file; `ORCHESTRA_MACHINE_WORKERS` and `ORCHESTRA_RUNS_DIR`, for running beside orchestra, work as before. The worker prompt's note on checks names only the `TUTTI_` variables. `test/core-share.test.ts`, `test/memory-share.test.ts` and `test/merge-check-share.test.ts` cover it.
+
 ## [0.8.4] - 2026-11-14
 
 - A check's recent passes are kept across runs, so that a run's first check of a kind has an estimate for its bar (§ 7.2; `src/run/checking.ts`' `Checking.layer`, `withPass`, `State`'s `passes` in `src/services/Store.ts`; tutti-nh1g): the median the bar of a suite that prints no `PROGRESS:` line fills by came only from the passes of the run, so the end-of-run full check, which runs once a run, never had one, and its tsc, biome and shellcheck showed their name with no bar. `.tutti/run/state.json` now keeps the seconds of each kind's last five passes in an optional `passes` section, its version still 1: the run reads them as it starts and writes each pass as it comes. `test/check-passes-carried.test.ts` covers it.

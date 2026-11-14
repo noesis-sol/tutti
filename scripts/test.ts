@@ -22,18 +22,17 @@
 // Such a run can leave bun test's workers running too, each in a process group of its own: the next
 // run kills those whose TMPDIR is the folder of a run that has gone (killLeftWorkers).
 //
-// A worker's run is given its share of the machine's cores, TUTTI_CORES (or ORCHESTRA_CORES, under
-// orchestra), as other workers' checks run beside it (tutti-kkb.24). bun test runs the files in
-// that many worker processes at once (--parallel), or in half the machine's cores without a share
-// (testWorkers): one after another, the suites kept one core busy while the machine had ten, and
-// took 139 s where six workers took 89 s on the same loaded machine (2026-10-22). Each worker's
-// JavaScriptCore starts nearly as many garbage collector markers and FTL compiler threads as the
-// machine has cores (8 and 7 of 10, Bun 1.4.3), and so does each bun the suites start: the run keeps
-// them to the workers' part of the share (coreThreadVariables). A file's failed tests are rerun
-// together, in one process, and the files side by side, as many at a time as the first run's
-// workers. TUTTI_TEST_PARALLEL gives the workers' number instead (1 for one process). As the files
-// load the machine themselves, a test's time limit is 15 s where its file sets none (testTimeLimit),
-// not bun's 5 s.
+// A worker's run is given its share of the machine's cores, TUTTI_CORES, as other workers' checks
+// run beside it (tutti-kkb.24). bun test runs the files in that many worker processes at once
+// (--parallel), or in half the machine's cores without a share (testWorkers): one after another,
+// the suites kept one core busy while the machine had ten, and took 139 s where six workers took
+// 89 s on the same loaded machine (2026-10-22). Each worker's JavaScriptCore starts nearly as many
+// garbage collector markers and FTL compiler threads as the machine has cores (8 and 7 of 10, Bun
+// 1.4.3), and so does each bun the suites start: the run keeps them to the workers' part of the
+// share (coreThreadVariables). A file's failed tests are rerun together, in one process, and the
+// files side by side, as many at a time as the first run's workers. TUTTI_TEST_PARALLEL gives the
+// workers' number instead (1 for one process). As the files load the machine themselves, a test's
+// time limit is 15 s where its file sets none (testTimeLimit), not bun's 5 s.
 //
 // The processes follow the memory too (testProcesses; tutti-epza.19): each stays alive across many
 // files, and one worker's whole-suite check started five of 1.3-1.7 GB on a 16 GB Mac, swap near
@@ -86,7 +85,6 @@ import {
   mebibyte,
   memoryReserve,
   memoryVariable,
-  orchestraMemoryVariable,
   paneVariable,
   sessionVariable,
   shareFileVariable,
@@ -517,17 +515,14 @@ export const progressCounter = (
 }
 
 /**
- * The run's share of the machine's cores: TUTTI_CORES, or orchestra's ORCHESTRA_CORES, a whole
- * number of at least 1; undefined when neither holds one.
+ * The run's share of the machine's cores: TUTTI_CORES, a whole number of at least 1; undefined when
+ * it holds none.
  */
 export const coreShareOf = (
   env: Readonly<Record<string, string | undefined>>,
 ): number | undefined => {
-  for (const name of ["TUTTI_CORES", "ORCHESTRA_CORES"]) {
-    const value = env[name]?.trim() ?? ""
-    if (/^\d+$/.test(value) && Number(value) >= 1) return Number(value)
-  }
-  return undefined
+  const value = env[coresVariable]?.trim() ?? ""
+  return /^\d+$/.test(value) && Number(value) >= 1 ? Number(value) : undefined
 }
 
 /**
@@ -715,17 +710,14 @@ export const shareFileVariables = (
 }
 
 /**
- * The run's share of the memory, in bytes: TUTTI_MEMORY_MB, or orchestra's ORCHESTRA_MEMORY_MB, in
- * MiB, a whole number of at least 1; undefined when neither holds one.
+ * The run's share of the memory, in bytes: TUTTI_MEMORY_MB, in MiB, a whole number of at least 1;
+ * undefined when it holds none.
  */
 export const memoryShareOf = (
   env: Readonly<Record<string, string | undefined>>,
 ): number | undefined => {
-  for (const name of [memoryVariable, orchestraMemoryVariable]) {
-    const value = env[name]?.trim() ?? ""
-    if (/^\d+$/.test(value) && Number(value) >= 1) return Number(value) * mebibyte
-  }
-  return undefined
+  const value = env[memoryVariable]?.trim() ?? ""
+  return /^\d+$/.test(value) && Number(value) >= 1 ? Number(value) * mebibyte : undefined
 }
 
 /** The number on vm_stat's or /proc/meminfo's line that starts with `name`. */
