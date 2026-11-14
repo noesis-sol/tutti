@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.8.5] - 2026-11-14
+
 - tutti sets only `TUTTI_CORES` and `TUTTI_MEMORY_MB` for a worker's checks and the merge check, no longer `ORCHESTRA_CORES` and `ORCHESTRA_MEMORY_MB` beside them, and its own `scripts/test.sh` reads only the `TUTTI_` names (§ 3.2, § 4.11, § 13; `src/core/env.ts`' `coreVariables` and `memoryVariables`, `src/project/prompt.ts`'s `coresNote`, `scripts/test.ts`' `coreShareOf` and `memoryShareOf`, `docs/setup.md`, `docs/workers.md`, `docs/running.md`; tutti-h75j.2). A project's check script that reads `ORCHESTRA_CORES` or `ORCHESTRA_MEMORY_MB` must read `TUTTI_CORES` and `TUTTI_MEMORY_MB` instead, or `TUTTI_SHARE_FILE`'s file; `ORCHESTRA_MACHINE_WORKERS` and `ORCHESTRA_RUNS_DIR`, for running beside orchestra, work as before. The worker prompt's note on checks names only the `TUTTI_` variables. `test/core-share.test.ts`, `test/memory-share.test.ts` and `test/merge-check-share.test.ts` cover it.
 
 ## [0.8.4] - 2026-11-14
