@@ -13,7 +13,7 @@ import fc from "fast-check"
 import { fileOfHeader, filesPicked, progressCounter, tee, testFilesUnder } from "../scripts/test.ts"
 import { Log } from "../src/core/log.ts"
 import { fastScript, fullScript } from "../src/project/runners.ts"
-import { orchestra } from "../src/project/scheme.ts"
+import { tuttiScheme } from "../src/project/scheme.ts"
 import { checkOnce } from "../src/run/check.ts"
 import {
   Checking,
@@ -57,7 +57,7 @@ import { advance, backlog, scenario, type World } from "./harness.ts"
 import { renderFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
-  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+  makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
 
 const text = (segments: Segments) => segments.map((each) => each.text).join("")
