@@ -96,12 +96,27 @@ const TicketRecord = TicketRecordFields.pipe(
 
 export type TicketRecord = Schema.Schema.Type<typeof TicketRecord>
 
+/** The seconds a kind of check's last passes took, oldest first. */
+const PassTimes = Schema.optionalKey(Schema.Array(Schema.Number))
+
+/**
+ * The seconds the last passes of each kind of check took, which the bar of a check running is
+ * estimated from (src/run/checking.ts), kept across runs so that a run's first check of a kind has
+ * them too (tutti-nh1g).
+ */
+const Passes = Schema.Struct({ setup: PassTimes, fast: PassTimes, full: PassTimes })
+
+/** What state.json keeps of the last passes of each kind of check, by kind. */
+export type Passes = Schema.Schema.Type<typeof Passes>
+
 export const State = Schema.Struct({
   version: Schema.Literal(stateVersion),
   /** The run that last wrote the file; absent until a run has. */
   run: Schema.optionalKey(RunStamp),
   /** By ticket ID. */
   tickets: Schema.Record(Schema.String, TicketRecord),
+  /** The last passes of each kind of check; absent until a check has passed in a run. */
+  passes: Schema.optionalKey(Passes),
 })
 
 export type State = Schema.Schema.Type<typeof State>

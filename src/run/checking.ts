@@ -7,7 +7,9 @@
 // by the time it has run against the median of that check's recent passes, which the run keeps
 // (`passed`, by the check's kind, so that every merge check's passes count for the next), marked as
 // an estimate and stopping short of full until the check ends. With no pass to go by there is no
-// bar: the suite's name alone.
+// bar: the suite's name alone. The passes are carried over in state.json (the Store's `passes`):
+// read as the run starts and written as each check passes, so that a run's first check of a kind,
+// the end-of-run full check above all, which runs once a run, has its last runs' to go by.
 //
 // Nothing here is an Effect in the hot path: a check's output moves its entry through a plain
 // callback, as CheckOutput takes its chunks, and the run's watchers read `now` as they draw
@@ -20,6 +22,7 @@ import { detail, type Log } from "../core/log.ts"
 import type { CheckAt, CheckKind, CheckProgress, RunOptions } from "../services/Checks.ts"
 import { noCheckAt } from "../services/Checks.ts"
 import type { checkSuites } from "../services/events.ts"
+import { type Passes, Store } from "../services/Store.ts"
 import { median } from "../services/scorecard.ts"
 import { marks } from "../text/marks.ts"
 import { same } from "./same.ts"
@@ -46,7 +49,7 @@ export interface CheckShown {
   readonly suite: string | null
   /** The latest PROGRESS: line of that suite; null where it has printed none. */
   readonly progress: CheckProgress | null
-  /** The median of the recent passes of its kind, in seconds; null before any passed in the run. */
+  /** The median of the recent passes of its kind, in seconds; null before any has passed. */
   readonly usual: number | null
   /** How full its bar is and what the count beside it says; null where no bar is drawn for it. */
   readonly fill: CheckFill | null
@@ -110,17 +113,35 @@ interface Entry {
 }
 
 /**
- * The checks running and the recent passes their bars are estimated from, as a value: the run
- * provides it as the Checking service, and what runs a check picks it up where there is one.
+ * The last recentPasses of `times` that a bar can be estimated from: those of more than no time,
+ * as state.json, which a person may edit, can hold others.
  */
-export const makeChecking = (): Checking["Service"] => {
+const recentOf = (times: ReadonlyArray<number> = []): ReadonlyArray<number> =>
+  times.filter((time) => Number.isFinite(time) && time > 0).slice(-recentPasses)
+
+/** `passes` with a pass of `kind` in `seconds` after its kind's others, the recent ones kept. */
+export const withPass = (passes: Passes, kind: CheckKind, seconds: number): Passes => ({
+  ...passes,
+  [kind]: recentOf([...(passes[kind] ?? []), seconds]),
+})
+
+/**
+ * The checks running and the recent passes their bars are estimated from, as a value: the run
+ * provides it as the Checking service, and what runs a check picks it up where there is one. It
+ * starts from the passes `carried` over from the last runs, and gives `keep` each pass, to carry
+ * it over to the next.
+ */
+export const makeChecking = (
+  carried: Passes = {},
+  keep: (kind: CheckKind, seconds: number) => Effect.Effect<void> = () => Effect.void,
+): Checking["Service"] => {
   const entries = new Map<string, Entry>()
-  const passes = new Map<CheckKind, Array<number>>()
+  let passes = carried
   // The last snapshot, kept until something changes, so that showing it publishes nothing new.
   let snapshot: ReadonlyMap<string, CheckShown> | null = null
   const usualOf = (kind: CheckKind): number | null => {
-    const times = passes.get(kind)
-    return times === undefined || times.length === 0 ? null : median(times)
+    const times = recentOf(passes[kind])
+    return times.length === 0 ? null : median(times)
   }
   const take = (now: number): ReadonlyMap<string, CheckShown> => {
     const taken = new Map<string, CheckShown>()
@@ -159,10 +180,9 @@ export const makeChecking = (): Checking["Service"] => {
           }),
       ),
     passed: (kind, seconds) =>
-      Effect.sync(() => {
-        const times = passes.get(kind) ?? []
-        times.push(seconds)
-        passes.set(kind, times.slice(-recentPasses))
+      Effect.suspend(() => {
+        passes = withPass(passes, kind, seconds)
+        return keep(kind, seconds)
       }),
     now: Effect.map(Clock.currentTimeMillis, take),
   }
@@ -187,7 +207,10 @@ export class Checking extends Context.Service<
         readonly at: CheckAt
       },
     ): Effect.Effect<Watched, never, Scope.Scope>
-    /** A check of `kind` passed in `seconds`: its kind's recent passes, which the estimate is of. */
+    /**
+     * A check of `kind` passed in `seconds`: its kind's recent passes, which the estimate is of,
+     * kept for the next run too.
+     */
     passed(kind: CheckKind, seconds: number): Effect.Effect<void>
     /**
      * The checks running now, by key, their bars filled at the time it is read; the map read before
@@ -196,8 +219,26 @@ export class Checking extends Context.Service<
     readonly now: Effect.Effect<ReadonlyMap<string, CheckShown>>
   }
 >()("tutti/run/Checking") {
-  /** The run's checks, none running yet. */
-  static readonly layer: Layer.Layer<Checking> = Layer.sync(Checking, makeChecking)
+  /**
+   * The run's checks, none running yet, from the passes state.json carried over, which each pass
+   * writes back: a write that fails leaves the next run the passes before it, and the run goes on.
+   */
+  static readonly layer: Layer.Layer<Checking, never, Store> = Layer.effect(
+    Checking,
+    Effect.gen(function* () {
+      const store = yield* Store
+      const carried = (yield* store.state).passes ?? {}
+      // Each pass is added to the state as the write commits, so that two at once keep both.
+      return makeChecking(carried, (kind, seconds) =>
+        Effect.ignore(
+          store.update((state) => ({
+            ...state,
+            passes: withPass(state.passes ?? {}, kind, seconds),
+          })),
+        ),
+      )
+    }),
+  )
 }
 
 /** Which check a `check` record's suite is of: every merge check's passes count for the next. */
