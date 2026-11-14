@@ -46,7 +46,7 @@ export interface QuitRequest {
   readonly again: string
 }
 
-/** The request a signal makes. A SIGINT is Ctrl+C in plain mode, as orchestra says it. */
+/** The request a signal makes. A SIGINT is Ctrl+C in plain mode. */
 export const quitBy = (signal: QuitSignal): QuitRequest =>
   signal === "SIGINT"
     ? { how: "with Ctrl+C", again: "press Ctrl+C again" }

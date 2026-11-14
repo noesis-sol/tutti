@@ -1,10 +1,10 @@
 // A ticket closed where the run didn't see it close (by hand, by another tool, under an earlier
-// tutti) went through no merge: bd counts it done, but its work may be only on its branch. So, as
-// orchestra's closed_unmerged.go has it, a closed blocker is not merged while git says so: tutti/<id>
-// exists, has commits the base doesn't have, and the base doesn't hold its changes (squash-merged by
-// hand), the tests unmerged.ts's mergedSince makes of a branch. A branch with nothing beyond the
-// base, or no branch at all, holds nothing back: deleting it frees the tickets it blocks. Where git
-// fails to tell, the blocker is not merged either, until git can.
+// tutti) went through no merge: bd counts it done, but its work may be only on its branch. So a
+// closed blocker is not merged while git says so: tutti/<id> exists, has commits the base doesn't
+// have, and the base doesn't hold its changes (squash-merged by hand), the tests unmerged.ts's
+// mergedSince makes of a branch. A branch with nothing beyond the base, or no branch at all, holds
+// nothing back: deleting it frees the tickets it blocks. Where git fails to tell, the blocker is
+// not merged either, until git can.
 //
 // What git said is kept for each ticket and the commit the base is on, so that a fill asks git once
 // for each blocker, not once for each ready ticket it blocks, and again once the base moves; one
@@ -138,8 +138,8 @@ export const asking = (closed: ClosedBranches): Branches => {
 }
 
 /**
- * Asks git, before the run, as the run's ClosedBranches would (orchestra's startBranches): once for
- * each ticket, again only where git failed to tell, and without CLOSED_UNMERGED, the run's to say.
+ * Asks git, before the run, as the run's ClosedBranches would: once for each ticket, again only
+ * where git failed to tell, and without CLOSED_UNMERGED, the run's to say.
  */
 export const startBranches = (where: Where): Branches => {
   const known = new Map<string, string | undefined>()

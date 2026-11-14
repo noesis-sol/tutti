@@ -1,9 +1,8 @@
-// The merge train (orchestra 0.8.6's train.go, with 0.9.0's blame): while the ticket whose turn it
-// is in the merge queue is checked, the next in line, waiting for its first turn in its merge, is
-// rebased onto that ticket's branch as it is checked, in its own worktree, and checked there beside
-// it, outside the queue (merge.train of them, each on the branch of the one before it). Merges go one
-// at a time, each holding the queue through its check, so without it the queue bounds how many
-// tickets an hour merge.
+// The merge train: while the ticket whose turn it is in the merge queue is checked, the next in
+// line, waiting for its first turn in its merge, is rebased onto that ticket's branch as it is
+// checked, in its own worktree, and checked there beside it, outside the queue (merge.train of
+// them, each on the branch of the one before it). Merges go one at a time, each holding the queue
+// through its check, so without it the queue bounds how many tickets an hour merge.
 //
 // When the ticket ahead merges as it was checked, the next one's branch is on top of the base exactly
 // as it was checked, and it merges in its turn with no second check (board). When it doesn't (its
@@ -73,8 +72,8 @@ import { type SetUps, setUp } from "./setup.ts"
 export { aheadJson, aheadKey, type RebasedAhead, rebasedAheadOf } from "./ahead.ts"
 
 /**
- * How the check of a ticket ahead of its turn goes, for the dashboard (orchestra's
- * mergeTrain.activity): rebased onto the branch ahead, checked on top of it, passed, or failed.
+ * How the check of a ticket ahead of its turn goes, for the dashboard: rebased onto the branch
+ * ahead, checked on top of it, passed, or failed.
  */
 export interface CheckAhead {
   readonly step: "rebase" | "check" | "passed" | "failed"

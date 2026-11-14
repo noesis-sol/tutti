@@ -176,7 +176,7 @@ export const summarise = (
     // The full check, after a run that ended by itself and merged a ticket (fullcheck.ts).
     const phases: Record<string, TicketPhase> = {}
     for (const entry of state.tickets.values()) phases[entry.ticket] = entry.phase
-    // The report's evidence beside the log, in orchestra's order: the failed checks, the full
+    // The report's evidence beside the log, in this order: the failed checks, the full
     // check, the follow-ups filed outside the scope, the feature request; then the early checks.
     const sections = [...failedChecksSection(state.tickets, yield* queue.rechecks.failures)]
     // No early check runs beside the full check, nor after it.

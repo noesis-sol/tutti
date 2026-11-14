@@ -1,7 +1,6 @@
-// What --overnight's pre-flight reads of the machine beside the kernel's figures (src/run/load.ts),
-// as orchestra 0.9.5's overnight_machine.go has it: the processes by name, for the three that use
-// the most CPU or memory on a busy machine and for a large virtual machine among them, and the free
-// disk where the worktrees go.
+// What --overnight's pre-flight reads of the machine beside the kernel's figures (src/run/load.ts):
+// the processes by name, for the three that use the most CPU or memory on a busy machine and for a
+// large virtual machine among them, and the free disk where the worktrees go.
 import { statfs } from "node:fs/promises"
 import { basename, dirname } from "node:path"
 import { Effect } from "effect"

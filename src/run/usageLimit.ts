@@ -87,7 +87,7 @@ export const liftAfter: Duration.Duration = Duration.minutes(1)
 
 /**
  * How long the hold waits at least between two lifts, and before it tries again a reset it doesn't
- * know, as orchestra's 15 minutes.
+ * know: 15 minutes.
  */
 export const retryEvery: Duration.Duration = Duration.minutes(15)
 

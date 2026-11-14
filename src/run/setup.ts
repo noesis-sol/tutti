@@ -1,16 +1,16 @@
-// The setup before the merge check (§ 5 item 7, § 5.1's Merging{setup}, § 8.4's checks.setup), as
-// orchestra's setup.go has it. A finished ticket's worktree has the dependencies its worker
-// installed (node_modules, a virtualenv) for the code as it closed the ticket. Its rebase onto the
-// base can bring in a lockfile another ticket changed meanwhile, and the check would then run the
-// rebased code against the old dependencies and fail on code the ticket never touched. So before
-// the check on a rebased branch, the setup command (checks.setup.command, such as bun install) runs
-// in the worktree when the base's commits since its dependencies were last set up change a file
-// checks.setup.files names; when git can't say what they change, it runs anyway. Before the check
-// on a worker's fix of a failed check, or on its resolution of a rebase, the worker's own commits
-// count too, as orchestra's checkRebased has it ("the rebase, or the fix, may have changed the
-// dependencies"): a fix that changes bun.lock is checked on the dependencies it names. It runs
-// within the check's time limit, its whole output in the worktree's .tutti/run/setup.log, and a
-// setup that fails fails the check: the ticket is set aside as for a failing check (merge.ts).
+// The setup before the merge check (§ 5 item 7, § 5.1's Merging{setup}, § 8.4's checks.setup). A
+// finished ticket's worktree has the dependencies its worker installed (node_modules, a virtualenv)
+// for the code as it closed the ticket. Its rebase onto the base can bring in a lockfile another
+// ticket changed meanwhile, and the check would then run the rebased code against the old
+// dependencies and fail on code the ticket never touched. So before the check on a rebased branch,
+// the setup command (checks.setup.command, such as bun install) runs in the worktree when the
+// base's commits since its dependencies were last set up change a file checks.setup.files names;
+// when git can't say what they change, it runs anyway. Before the check on a worker's fix of a
+// failed check, or on its resolution of a rebase, the worker's own commits count too, as the
+// rebase, or the fix, may have changed the dependencies: a fix that changes bun.lock is checked on
+// the dependencies it names. It runs within the check's time limit, its whole output in the
+// worktree's .tutti/run/setup.log, and a setup that fails fails the check: the ticket is set aside
+// as for a failing check (merge.ts).
 //
 // What a worktree was last set up for is a commit of the base, and one of its branch: the base's
 // where its branch left it, and the branch's before its worker's fix or resolution, until a setup in

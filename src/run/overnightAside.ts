@@ -1,7 +1,6 @@
-// An overnight run's stuck tickets (§ 5 item 10, tutti-kkb.52), as orchestra's overnight run has
-// them: nobody is there to answer until the morning, so a ticket whose worker needs someone doesn't
-// hold the run. Its ticket is set aside instead, as a failed check sets one aside, and the run goes on
-// with the rest:
+// An overnight run's stuck tickets (§ 5 item 10, tutti-kkb.52): nobody is there to answer until the
+// morning, so a ticket whose worker needs someone doesn't hold the run. Its ticket is set aside
+// instead, as a failed check sets one aside, and the run goes on with the rest:
 //
 // - PAUSED: its worker idle with the ticket still in progress after the nudges and the idle grace,
 //   or gone and not to be resumed (work.ts's conclude);

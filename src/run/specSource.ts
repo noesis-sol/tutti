@@ -1,6 +1,6 @@
-// A spec at a web URL (§ 4.14), `tutti --spec https://…`: tutti's own addition to orchestra's --spec,
-// which takes a file only. The URL is read here, and readSpec (spec.ts) checks and names the text
-// fetched as it does a file from outside the repository, committed as a copy in .tutti/specs/.
+// A spec at a web URL (§ 4.14), `tutti --spec https://…`, beside a spec in a file. The URL is read
+// here, and readSpec (spec.ts) checks and names the text fetched as it does a file from outside the
+// repository, committed as a copy in .tutti/specs/.
 //
 // - specUrl: the URL as given, https only, with no user name or password, and the name of its copy,
 //   from its last path segment; a GitHub file page and a one-file gist page are fetched as their raw

@@ -1,9 +1,9 @@
-// The run report's evidence that the run gathers as it goes and at its end (§ 6.2, orchestra's
-// failedChecksSection and outsideScopeSection), given to the report as sections (ReportRun.sections):
-// what the check said of each ticket set aside after its check failed, and, for a run scoped with
-// --ticket, the follow-ups filed in the run outside its scope, left for a later run. From the first
-// the reviewer tells a failure in a ticket's own code from one elsewhere, without sending you to the
-// log; from the second it names the work the run left for a later one.
+// The run report's evidence that the run gathers as it goes and at its end (§ 6.2), given to the
+// report as sections (ReportRun.sections): what the check said of each ticket set aside after its
+// check failed, and, for a run scoped with --ticket, the follow-ups filed in the run outside its
+// scope, left for a later run. From the first the reviewer tells a failure in a ticket's own code
+// from one elsewhere, without sending you to the log; from the second it names the work the run
+// left for a later one.
 import { Effect, Result } from "effect"
 import { branchOn } from "../core/log.ts"
 import { type Section, section } from "../organs/evidence.ts"
@@ -22,7 +22,7 @@ import type { Entry } from "./ledger.ts"
 import { type FinishedTicket, foldersOf, type MergeTarget, type Rechecks } from "./mergeShared.ts"
 import { descendants } from "./scope.ts"
 
-/** The most folders the reviewer is given of those a ticket's own commits change, as orchestra's. */
+/** The most folders the reviewer is given of those a ticket's own commits change. */
 export const maxFolders = 20
 
 /** How many characters of a follow-up's description the reviewer is given. */

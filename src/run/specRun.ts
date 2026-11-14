@@ -112,9 +112,9 @@ export type SpecOutcome = Data.TaggedEnum<{
   Run: { readonly root: TicketId }
   /**
    * The breakdown filed the root epic and the environment ticket first: the run starts on that
-   * ticket while it files the rest, in the scope `earlyIn` gave (orchestra-qd9e.1). `filing` says
-   * what it has filed meanwhile, null once it is over; `rest` is how it ended, Run with the same
-   * root epic, or Stopped, which stops the run.
+   * ticket while it files the rest, in the scope `earlyIn` gave. `filing` says what it has filed
+   * meanwhile, null once it is over; `rest` is how it ended, Run with the same root epic, or
+   * Stopped, which stops the run.
    */
   Early: {
     readonly root: TicketId

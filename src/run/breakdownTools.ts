@@ -4,7 +4,7 @@
 // - tickets_list and ticket_show read the project's tickets (ticketTools.ts);
 // - file_root files the root epic and, where the spec needs one, the environment ticket under it,
 //   P0 and solo, each with the spec's metadata (a feature's carry none): once they are filed the run
-//   can start on that ticket while the session works out the rest (orchestra-qd9e.1). A root epic
+//   can start on that ticket while the session works out the rest. A root epic
 //   filed already, by an earlier breakdown or an earlier call, refuses it;
 // - file_breakdown takes the rest of the tree in one call (src/run/specTree.ts), checks it against
 //   bd's issues and the repository's files, refusing it with every reason and filing nothing, or

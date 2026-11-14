@@ -1,10 +1,10 @@
-// Nothing to run (§ 5 item 4, § 7.11), as orchestra's nothing.go has it. A run with nothing to do
-// says so before it starts, rather than open the dashboard only to end at once: `check` reads what
-// the run would start from (bd ready in its scope, and the workers the last run left) and, when
-// neither gives it anything, says why: everything is done (`✓ All done`), or nothing is ready
-// (`○ Nothing ready to run`, with each reason and its command), and the deferred tickets whose
-// blockers have merged (DEFERRED_FREE). The run then prints that in a box on the main screen, or
-// as plain lines, and exits 0 without a dashboard, triage, a report or a notification.
+// Nothing to run (§ 5 item 4, § 7.11). A run with nothing to do says so before it starts, rather
+// than open the dashboard only to end at once: `check` reads what the run would start from (bd
+// ready in its scope, and the workers the last run left) and, when neither gives it anything, says
+// why: everything is done (`✓ All done`), or nothing is ready (`○ Nothing ready to run`, with each
+// reason and its command), and the deferred tickets whose blockers have merged (DEFERRED_FREE). The
+// run then prints that in a box on the main screen, or as plain lines, and exits 0 without a
+// dashboard, triage, a report or a notification.
 import { Effect, Result } from "effect"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"

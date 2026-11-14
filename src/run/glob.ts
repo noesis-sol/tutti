@@ -127,7 +127,7 @@ export const collapseAny = (glob: string): string =>
 
 /**
  * Whether a glob of .tutti/settings.json matches a file: by its name, or by its path from the
- * repository's top when the glob has a slash (a leading one aside), as orchestra matches them.
+ * repository's top when the glob has a slash (a leading one aside).
  */
 export const settingsGlobMatch = (glob: string, file: string): boolean =>
   glob.includes("/")

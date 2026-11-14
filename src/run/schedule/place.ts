@@ -11,7 +11,7 @@ import { recorded, soloNow } from "./queue.ts"
 import { current, mergingIn, type Slots } from "./slots.ts"
 import type { Scheduling } from "./state.ts"
 
-/** The BAD_TICKET_ID line, as orchestra words it. */
+/** The BAD_TICKET_ID line. */
 export const badTicketIdLine = (id: TicketId, why: string): Line =>
   detail`BAD_TICKET_ID: ${why}: ${id} -> deferred without starting a worker; rename it (bd rename ${id} <new-id>), then bd undefer <new-id>`
 

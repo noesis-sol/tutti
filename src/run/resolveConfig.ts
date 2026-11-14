@@ -3,7 +3,7 @@
 // variable, the user config (§ 8.5), the project's settings (§ 8.4), and its default. Every problem
 // with any of them is collected into one SetupProblem, so a run reports them all at once.
 //
-// A variable's problem counts only when no flag overrides it, as in orchestra: a flag fixes a bad
+// A variable's problem counts only when no flag overrides it: a flag fixes a bad
 // standing choice for one run. An empty variable is unset.
 //
 // A relative path in a flag (--prompt, --worktrees, --claude) is taken from the folder tutti was
@@ -404,7 +404,7 @@ const readVariables = Effect.gen(function* () {
  * Reads the TUTTI_* variables, the user config and the project's settings, and resolves them under
  * `flags` for the project at `repo`, the main checkout's top level, a flag's relative path taken
  * from `cwd`. Then it loads the colour scheme, which never fails: one that can't be used gives
- * orchestra and says why.
+ * the tutti scheme and says why.
  */
 export const load = (flags: RunFlags, repo: string, cwd: string = repo) =>
   Effect.gen(function* () {
@@ -461,7 +461,7 @@ export const loadLenient = (
 
 /**
  * `config` with its colour scheme loaded, which never fails: one that can't be used gives
- * orchestra and says why.
+ * the tutti scheme and says why.
  */
 export const withScheme = (config: AppConfigValue) =>
   Effect.gen(function* () {

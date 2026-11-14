@@ -1,9 +1,8 @@
-// The unmerged label (§ 4.8, § 11, § 5.1's ToMerge → Stopped), as orchestra's unmerged.go has it. A
-// ticket closed in Beads and not merged when the run ends is labelled `unmerged`, so the tickets it
-// blocks wait in later runs too, with where its branch was cut from the base in its metadata
-// (`unmerged_fork`): the commits after it are the branch's own. tutti's workers can't outlive it,
-// so a ticket still in progress isn't labelled, as orchestra labels the ones whose workers it
-// leaves running.
+// The unmerged label (§ 4.8, § 11, § 5.1's ToMerge → Stopped). A ticket closed in Beads and not
+// merged when the run ends is labelled `unmerged`, so the tickets it blocks wait in later runs too,
+// with where its branch was cut from the base in its metadata (`unmerged_fork`): the commits after
+// it are the branch's own. tutti's workers can't outlive it, so a ticket still in progress isn't
+// labelled.
 //
 // As a run starts, each ticket labelled `unmerged` is checked for having merged since, by hand: by
 // tutti on tutti/<id>, or by orchestra on wt/<id>. It has when its branch is on the base with a

@@ -710,7 +710,7 @@ export type ReportSection = "closed" | "setAside" | "inProgress"
 /** A ticket's `■` on the wind-down line (§ 5.1). */
 export type WindDownMark = "windingDown" | "done" | "needsYou" | "faint"
 
-/** One of orchestra's phases that a ticket's time counts in (§ 10). */
+/** One of the scorecard phases that a ticket's time counts in (§ 10). */
 export type PhaseSeconds = (typeof phaseSeconds)[number]
 
 /** How a ticket's part in the run ended, as its `ticket_end` says. */
@@ -776,8 +776,8 @@ export interface Facts<T extends PhaseTag> {
   ends(phase: PhaseOf<T>): T extends EndingPhase | QueuePhase ? TicketOutcome : null
   /** Its part in the run is over for good: its worker is ended as its session closes (§ 4.8). */
   readonly over: boolean
-  /** The phase of orchestra's its time counts in (§ 10), or none. */
-  readonly orchestra: PhaseSeconds | null
+  /** The scorecard phase its time counts in (§ 10), or none. */
+  readonly spentIn: PhaseSeconds | null
   /** Its session's lifetime (§ 4.8). */
   session(phase: PhaseOf<T>, keeps: SessionKeeps): Lifetime
   /**
@@ -845,7 +845,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: true,
     ends: always("queued"),
     over: false,
-    orchestra: null,
+    spentIn: null,
     session: always("closed"),
     row: shows("queued", "queued", "dim", true),
   },
@@ -864,7 +864,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: true,
     ends: always("queued"),
     over: false,
-    orchestra: null,
+    spentIn: null,
     session: always("closed"),
     row: shows("queued", "held back", "dim", true),
   },
@@ -884,7 +884,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always(null),
     over: false,
-    orchestra: "working",
+    spentIn: "working",
     session: always("open"),
     row: (_, activity) => activityRows[activity],
   },
@@ -904,7 +904,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always(null),
     over: false,
-    orchestra: "waiting",
+    spentIn: "waiting",
     session: always("open"),
     row: shows("toMerge", "to merge", "toMerge"),
   },
@@ -923,7 +923,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always(null),
     over: false,
-    orchestra: "merging",
+    spentIn: "merging",
     session: always("open"),
     row: shows("merging", "merging", "merging"),
   },
@@ -942,7 +942,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always(null),
     over: false,
-    orchestra: "resolving",
+    spentIn: "resolving",
     session: always("open"),
     row: shows("reworking", "resolving", "deferred"),
   },
@@ -961,7 +961,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always(null),
     over: false,
-    orchestra: "fixing",
+    spentIn: "fixing",
     session: always("open"),
     row: shows("reworking", "fixing", "deferred"),
   },
@@ -980,7 +980,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: (phase) => (phase.outcome._tag === "Merged" ? "merged" : "no_change"),
     over: true,
-    orchestra: null,
+    spentIn: null,
     session: always("closed"),
     row: shows("done", "done", "closed", true),
   },
@@ -1000,7 +1000,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always("needs_you"),
     over: false,
-    orchestra: null,
+    spentIn: null,
     session: always("closed"),
     row: shows("asked", "for you", "stop"),
   },
@@ -1020,7 +1020,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: true,
     ends: always("queued"),
     over: false,
-    orchestra: null,
+    spentIn: null,
     session: always("closed"),
     row: shows("queued", "waiting", "dim", true),
   },
@@ -1039,7 +1039,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always("set_aside"),
     over: true,
-    orchestra: null,
+    spentIn: null,
     session: always("closed"),
     row: shows("setAside", "deferred", "deferred", true),
   },
@@ -1058,7 +1058,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always("set_aside"),
     over: true,
-    orchestra: null,
+    spentIn: null,
     // A recheck may hand it a conflict.
     session: (phase, { recheck }) =>
       phase.why === "CHECKS_FAILED" && recheck ? "untilRunEnds" : "closed",
@@ -1079,7 +1079,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always("needs_you"),
     over: false,
-    orchestra: null,
+    spentIn: null,
     // You may message, interrupt or release its steered worker while its hand-back waits (§ 4.3).
     session: (phase, { handBackWaits }) =>
       phase.why === "MERGE_CONFLICT" && handBackWaits ? "open" : "closed",
@@ -1101,7 +1101,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     inQueue: false,
     ends: always("stopped"),
     over: false,
-    orchestra: null,
+    spentIn: null,
     session: always("suspended"),
     row: shows("stopped", "stopped", "stop"),
   },

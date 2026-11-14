@@ -75,7 +75,7 @@ export interface RunStop {
   readonly line: Line
 }
 
-/** The exit code of a worker that stopped the run, as orchestra's ExitStuck. */
+/** The exit code of a worker that stopped the run. */
 export const stuckCode = 3
 
 /**

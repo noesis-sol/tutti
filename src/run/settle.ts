@@ -1,8 +1,8 @@
 // Settling (§ 5 item 6, § 4.2 Settled, § 4.3 the continue nudge): the per-ticket fiber waits until
 // its worker has settled (Idle, Closed or Gone; never NeedsYou, Retrying, UsageLimited or
-// ApiUnavailable, which wait for their holds to tell them to carry on), then reads
-// the ticket in Beads and its worktree in git, as orchestra's settle step does. What they say is a
-// Reading, which work.ts turns into the ticket's next phase.
+// ApiUnavailable, which wait for their holds to tell them to carry on), then reads the ticket in
+// Beads and its worktree in git. What they say is a Reading, which work.ts turns into the ticket's
+// next phase.
 //
 // A worker that settles with its ticket still in progress, no question asked and no deferral, is
 // told to continue, at most twice: client_composed nudges, each waited for until it is no longer
@@ -22,8 +22,8 @@
 // hand-back's wait for its worker to settle runs the same watcher (handback.ts), stopping the tasks
 // at once as the worker's turns end but leaving agents working.
 //
-// A worker that stops at the account's usage limit with its ticket deferred, as orchestra 0.8.1 has
-// it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
+// A worker that stops at the account's usage limit with its ticket deferred has
+// the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
 // worker carries on after the reset, rather than the ticket being set aside as deferred.
 import { Data, Duration, Effect, Option, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
@@ -95,8 +95,8 @@ export const unmergedLabel = "unmerged"
 const isIdChar = (c: string): boolean => /^[A-Za-z0-9_]$/.test(c)
 
 /**
- * Whether a commit message names ticket `id` as a whole ID, as orchestra's namesID reads it: not
- * inside a longer one, such as `id3`, `xid`, `id-x` or the child `id.1`.
+ * Whether a commit message names ticket `id` as a whole ID: not inside a longer one, such as `id3`,
+ * `xid`, `id-x` or the child `id.1`.
  */
 export const namesTicket = (message: string, id: TicketId): boolean => {
   if (id === "") return false
@@ -430,7 +430,7 @@ export const sinceCut = (
 
 /**
  * Whether the worker at `path` left nothing of its own: its branch has no commits beyond `base`
- * and its worktree no changes, as orchestra's nothingDone has it.
+ * and its worktree no changes.
  */
 export const nothingDone = (path: string, base: string): Effect.Effect<boolean, GitError, Git> =>
   Effect.gen(function* () {

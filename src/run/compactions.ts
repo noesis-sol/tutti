@@ -1,7 +1,7 @@
 // A worker's compactions (§ 4.2, "The callbacks also record compactions, for triage and the
 // reviewer"): each one its PreCompact hook reports is counted in its ticket's tallies, which the
-// report and the reviewer say ("compacted twice"), and logged as orchestra logs it, with an `info`
-// record. Triage reads them from the worker's transcript instead (src/run/triage.ts).
+// report and the reviewer say ("compacted twice"), and logged with an `info` record. Triage reads
+// them from the worker's transcript instead (src/run/triage.ts).
 import { Effect, Stream } from "effect"
 import { AgentHost, type Compaction } from "../agent/AgentHost.ts"
 import type { Log } from "../core/log.ts"

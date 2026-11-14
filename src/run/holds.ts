@@ -1,12 +1,12 @@
-// What holds a ready ticket back besides a free slot (§ 5 item 5, § 5.1 HeldBack), as orchestra's
-// holds.go and footprint.go have it. A parent runs last: it waits until each of its subtickets is
-// closed and merged, as its worker couldn't close it before and its work builds on theirs. A ticket
-// waits for a blocker, and a follow-up for the ticket it was filed from (discovered-from, which bd
-// doesn't count as blocking), until that one merges: bd ready lists a ticket once its blockers are
-// closed, but their code isn't on the base until they merge. With a slot free, a ticket whose
-// footprint shares an area or a function with a running ticket's is skipped for the next; one
-// sharing only a file starts beside it, warned LIKELY_CONFLICT. A solo ticket runs alone (the
-// scheduler's pick). The log says once why each ticket waits, and again only when that changes.
+// What holds a ready ticket back besides a free slot (§ 5 item 5, § 5.1 HeldBack). A parent runs
+// last: it waits until each of its subtickets is closed and merged, as its worker couldn't close it
+// before and its work builds on theirs. A ticket waits for a blocker, and a follow-up for the
+// ticket it was filed from (discovered-from, which bd doesn't count as blocking), until that one
+// merges: bd ready lists a ticket once its blockers are closed, but their code isn't on the base
+// until they merge. With a slot free, a ticket whose footprint shares an area or a function with a
+// running ticket's is skipped for the next; one sharing only a file starts beside it, warned
+// LIKELY_CONFLICT. A solo ticket runs alone (the scheduler's pick). The log says once why each
+// ticket waits, and again only when that changes.
 //
 // What holds the whole run, its stop reasons and the exit codes they end it with, is below, then
 // the holds that come with time: TICKET_LIMIT, LONG_RUNNING and BLOCKED.
@@ -256,7 +256,7 @@ export const sharedChanges = (
   return both
 }
 
-/** The LIKELY_CONFLICT line, as orchestra words it. */
+/** The LIKELY_CONFLICT line. */
 export const likelyConflictLine = (edit: SharedChange): Line =>
   detail`LIKELY_CONFLICT: ${edit.a} and ${edit.b} both edit ${edit.file}; the second to merge may conflict`
 
@@ -291,11 +291,11 @@ export const unsaid = (said: Said, id: TicketId): Said => {
 // The run's stops (§ 5 item 10): what holds the run, then ends it with an exit code. A stop holds
 // the run as it comes: no new tickets start, the running ones finish (`HOLD … no new tickets while
 // the N running finish`), and once nothing runs or merges the run ends with the first stop's line,
-// then `; also` and each of the others. The first decides the exit code, which is orchestra's: 4
-// covers Beads and git, without orchestra's TERMINAL_FAILED (an Agent SDK that can't start
-// sessions holds the run as ENVIRONMENT, exit 7), and 8 is the usage limit's.
+// then `; also` and each of the others. The first decides the exit code: 4 covers Beads and git, an
+// Agent SDK that can't start sessions having no code of its own (it holds the run as ENVIRONMENT,
+// exit 7), and 8 is the usage limit's.
 
-/** orchestra's exit codes, as tutti exits with them. */
+/** The exit codes tutti exits with. */
 export const exitCodes = {
   /** Nothing left to run, the limit reached, or wound down as asked. */
   ok: 0,
@@ -488,9 +488,8 @@ export const takesBack = (gate: Gate): boolean => !holds(gate) && !gate.windingD
 export const takesNew = (gate: Gate): boolean => takesBack(gate) && !gate.limitReached
 
 /**
- * Why the run takes on no more work, as the merges say it when they hand no failed check back
- * (orchestra's sayNoMore): a stop holds it, the usage limit does, or it winds down. Undefined when
- * it takes work.
+ * Why the run takes on no more work, as the merges say it when they hand no failed check back: a
+ * stop holds it, the usage limit does, or it winds down. Undefined when it takes work.
  */
 export const noMoreWork = (gate: Gate): string | undefined =>
   gate.stop !== null
@@ -539,7 +538,7 @@ export const extendFirst = (stops: Stops, parts: ReadonlyArray<string>): Stops =
 // SubscriptionRef and changes only through the functions below: its stops, BLOCKED among them once
 // per ticket, the tickets past --ticket-limit, the hold at --machine-workers and the usage limit's
 // view. The title line's `· stopping`, its banners and the usage line are what it shows
-// (shownHolds), as orchestra keeps its stops and holds in one gate.
+// (shownHolds), the stops and holds kept in one gate.
 
 /** What holds the whole run. */
 export interface RunHolds {
@@ -694,13 +693,13 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
 // The holds that come with time (§ 4.3, § 4.5). A worker still going --ticket-limit after its
 // dispatch holds the run with TICKET_LIMIT: it isn't interrupted and goes on, the run doesn't wait
 // for it to end, and the run's end suspends it (§ 4.8). Without a limit, one still going after
-// longRunning is said once, LONG_RUNNING. As orchestra's overTime, the time a worker waits for the
-// usage limit to reset (UsageLimited, § 4.12) doesn't count, nor the time it waits for Claude's API
-// to answer again (ApiUnavailable, § 4.2), nor the time the machine sleeps (Wake.ts). An attention
-// request unanswered for Attention's blockedAfter, with the machine awake, holds the run with
-// BLOCKED, for its ticket (a question --auto-answer takes after a time, only blockedAfter past it:
-// Attention's blocksAfter); once that ticket has no request open, the hold is lifted, as what held
-// the run is gone. run.ts keeps these stops.
+// longRunning is said once, LONG_RUNNING. The time a worker waits for the usage limit to reset
+// (UsageLimited, § 4.12) doesn't count, nor the time it waits for Claude's API to answer again
+// (ApiUnavailable, § 4.2), nor the time the machine sleeps (Wake.ts). An attention request
+// unanswered for Attention's blockedAfter, with the machine awake, holds the run with BLOCKED, for
+// its ticket (a question --auto-answer takes after a time, only blockedAfter past it: Attention's
+// blocksAfter); once that ticket has no request open, the hold is lifted, as what held the run is
+// gone. run.ts keeps these stops.
 
 /** How long a worker may go on, without a ticket limit, before the log says LONG_RUNNING. */
 export const longRunning: Duration.Duration = Duration.hours(2)

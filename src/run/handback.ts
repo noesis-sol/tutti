@@ -1,38 +1,35 @@
 // The conflict hand-back (§ 4.7, § 5 item 7's MERGE_CONFLICT with hand-back, § 5.1's Merging →
-// Resolving and Resolving → ToMerge, Blocked), as orchestra's handback.go has it. A finished
-// ticket's rebase that stops on conflicts is handed back to its worker to resolve when it can take
-// it: hand-backs on, a check command set to check the resolution with, attempts left, git able to say
-// what the rebase stopped on, and its worker Idle or Failed and not steered, or at the account's usage
-// limit, handed it once the limit lifts, or its session closed by tutti, which is resumed for it (not
-// a Gone resume, so it counts toward no resume limit). A worker
-// whose session ended unexpectedly (Gone) takes it too while the ticket's one Gone resume of the run
-// is left (§ 4.8): its session is resumed for the hand-back, and one that can't be is WORKER_GONE.
-// Either resume is recorded as sessions.ts has it (RESUMED, `resumed`). The rebase is left in
-// progress, the ticket moves Merging → Resolving{attempt} with the RESOLVING line, and the merge
-// queue goes on with the tickets behind it meanwhile.
+// Resolving and Resolving → ToMerge, Blocked). A finished ticket's rebase that stops on conflicts
+// is handed back to its worker to resolve when it can take it: hand-backs on, a check command set
+// to check the resolution with, attempts left, git able to say what the rebase stopped on, and its
+// worker Idle or Failed and not steered, or at the account's usage limit, handed it once the limit
+// lifts, or its session closed by tutti, which is resumed for it (not a Gone resume, so it counts
+// toward no resume limit). A worker whose session ended unexpectedly (Gone) takes it too while the
+// ticket's one Gone resume of the run is left (§ 4.8): its session is resumed for the hand-back,
+// and one that can't be is WORKER_GONE. Either resume is recorded as sessions.ts has it (RESUMED,
+// `resumed`). The rebase is left in progress, the ticket moves Merging → Resolving{attempt} with
+// the RESOLVING line, and the merge queue goes on with the tickets behind it meanwhile.
 //
-// The hand-back is a client_composed message with orchestra's instructions. It is under way from
-// its push until its send is no longer outstanding and the worker has settled, within
-// resolve_timeout from the push, the time its worker waits at the account's usage limit left out, as
-// orchestra 0.8.0 has it, and the time it waits for Claude's API to answer again (apiOutage.ts), and the time the machine is loaded, up to resolve_timeout again, as
-// orchestra 0.9.0 has it; the reset tells it to carry on with the hand-back (usageLimit.ts). A worker
-// at the limit already is handed it once the limit lifts, as orchestra 0.8.0 has it: the usage-limit
-// hold keeps the hand-back and sends it at the reset as the worker's carry-on, the wait not counting
-// toward resolve_timeout either. A worker seen at the limit with what it was asked done in git, its
-// turn having ended on the limit as it finished, has given its answer, and one past resolve_timeout
-// has what git shows done taken as it is, or is stopped and told the hand-back is over before its
-// branch is put back, as orchestra's orchestra-nr1v.1 and -nr1v.2 have it. Then tutti looks at what
-// the worker left without taking its word
-// for it: the rebase finished, the worktree clean and on its branch, the branch on top of the base
-// it was rebased onto with only the ticket's own commits, and, set up if need be (setup.ts), the
-// check passing. The check runs once, where the branch merges, as orchestra 0.8.5 has it: when the
-// base moved on while the worker resolved, the resolution goes back in line unchecked, for the
-// merge to rebase it onto the base and check it there. A resolution verified goes back in the merge
-// queue, ToMerge; one that leaves the branch changing nothing, its worker having skipped every
-// commit the base has already, is closed at once, Done{noChange}, unchecked; one rejected, or not
-// done in time, is Blocked (MERGE_CONFLICT), the branch put back as the ticket closed it and the
-// ticket's notes saying why. One whose check fails goes on to checkback.ts, which hands the failure
-// back too, Fixing{afterResolution}, or blocks it.
+// The hand-back is a client_composed message. It is under way from its push until its send is no
+// longer outstanding and the worker has settled, within resolve_timeout from the push, the time its
+// worker waits at the account's usage limit left out, and the time it waits for Claude's API to
+// answer again (apiOutage.ts), and the time the machine is loaded, up to resolve_timeout again; the
+// reset tells it to carry on with the hand-back (usageLimit.ts). A worker at the limit already is
+// handed it once the limit lifts: the usage-limit hold keeps the hand-back and sends it at the
+// reset as the worker's carry-on, the wait not counting toward resolve_timeout either. A worker
+// seen at the limit with what it was asked done in git, its turn having ended on the limit as it
+// finished, has given its answer, and one past resolve_timeout has what git shows done taken as it
+// is, or is stopped and told the hand-back is over before its branch is put back. Then tutti looks
+// at what the worker left without taking its word for it: the rebase finished, the worktree clean
+// and on its branch, the branch on top of the base it was rebased onto with only the ticket's own
+// commits, and, set up if need be (setup.ts), the check passing. The check runs once, where the
+// branch merges: when the base moved on while the worker resolved, the resolution goes back in line
+// unchecked, for the merge to rebase it onto the base and check it there. A resolution verified
+// goes back in the merge queue, ToMerge; one that leaves the branch changing nothing, its worker
+// having skipped every commit the base has already, is closed at once, Done{noChange}, unchecked;
+// one rejected, or not done in time, is Blocked (MERGE_CONFLICT), the branch put back as the ticket
+// closed it and the ticket's notes saying why. One whose check fails goes on to checkback.ts, which
+// hands the failure back too, Fixing{afterResolution}, or blocks it.
 //
 // A conflict in a file that what merged since the ticket's last hand-back changed is the merge queue's
 // race, not its worker's failure: what merged came after the base its worker resolved on. It counts
@@ -843,13 +840,14 @@ interface Late {
 }
 
 /**
- * The hand-back's clock: `limit` of the time its worker isn't at the account's usage limit, as
- * orchestra 0.8.0 counts it, nor waiting for Claude's API to answer again (apiOutage.ts), and of that, the time the machine is loaded (`options.loaded`, sampled
- * every loadEvery) left out too, up to `limit` again, as orchestra 0.9.0 has it. Each time the
- * worker is seen at the limit, git is asked whether it has done what it was asked, its turn having
- * ended on the limit as it finished (a turn that has ended can't change git): "taken" when it has.
- * Late once the time is up, or once the worker has been at the limit for --usage-limit-wait. Its
- * wait for the limit is one of `options.atReset`'s, and ends too when the worker's states do.
+ * The hand-back's clock: `limit` of the time its worker isn't at the account's usage limit, nor
+ * waiting for Claude's API to answer again (apiOutage.ts), and of that, the time the machine is
+ * loaded (`options.loaded`, sampled every loadEvery) left out too, up to `limit` again. Each time
+ * the worker is seen at the limit, git is asked whether it has done what it was asked, its turn
+ * having ended on the limit as it finished (a turn that has ended can't change git): "taken" when
+ * it has. Late once the time is up, or once the worker has been at the limit for
+ * --usage-limit-wait. Its wait for the limit is one of `options.atReset`'s, and ends too when the
+ * worker's states do.
  */
 const clock = (
   handBack: HandBack,
@@ -952,12 +950,12 @@ const interruptWith = (id: TicketId, text: string): Effect.Effect<void, never, G
   })
 
 /**
- * Ends the hand-back of its worker before it settles, `ending` saying why (its time limit up, or its
- * worker blocked on a request overnight), as orchestra does since tutti-nrg.5.9's worker lost a
- * resolution it had committed, and worked an hour on a ticket set aside: what git shows done already
- * is taken as it is, the worker stopped and told so; otherwise the worker is stopped and told the
- * hand-back is over and where its attempt is kept, before the caller puts its branch back. Why it
- * failed, `why`; undefined when it is taken.
+ * Ends the hand-back of its worker before it settles, `ending` saying why (its time limit up, or
+ * its worker blocked on a request overnight), since tutti-nrg.5.9's worker lost a resolution it had
+ * committed, and worked an hour on a ticket set aside: what git shows done already is taken as it
+ * is, the worker stopped and told so; otherwise the worker is stopped and told the hand-back is
+ * over and where its attempt is kept, before the caller puts its branch back. Why it failed, `why`;
+ * undefined when it is taken.
  */
 const endEarly = (
   handBack: HandBack,
@@ -1005,12 +1003,12 @@ const sendNow = (id: TicketId, prompt: string): Effect.Effect<Sent, never, Agent
   })
 
 /**
- * Sends the hand-back to the ticket's worker, at the account's usage limit, once the limit lifts, as
- * orchestra 0.8.0 has it: `atReset` keeps it for the reset to send as the worker's carry-on, the wait
- * not counting toward `limit`, and the hand-back's turn starts its clock. A worker you steered
- * meanwhile is sent nothing (steer.ts), and the hand-back is over. Its send's uuid, or why it
- * wasn't sent; undefined when the worker left the limit without it, not steered (its session
- * ended), for the caller to give it as to any worker.
+ * Sends the hand-back to the ticket's worker, at the account's usage limit, once the limit lifts:
+ * `atReset` keeps it for the reset to send as the worker's carry-on, the wait not counting toward
+ * `limit`, and the hand-back's turn starts its clock. A worker you steered meanwhile is sent
+ * nothing (steer.ts), and the hand-back is over. Its send's uuid, or why it wasn't sent; undefined
+ * when the worker left the limit without it, not steered (its session ended), for the caller to
+ * give it as to any worker.
  */
 const sendAtReset = (
   handBack: HandBack,
@@ -1200,10 +1198,10 @@ export type Stopped = Pick<RebaseStop, "ticket" | "onto" | "fork">
 /**
  * Carries what the worker left on its hand-back, its `fix`, to the merge's check when the base
  * moved on from `stop.onto` meanwhile, or git can't tell whether it did (the merge then reads where
- * the branch is again): the branch is rebased onto the base and checked once there, as orchestra
- * 0.8.5 has it, rather than checked here and again there. The setup's commits are kept as
- * checkWithFix's setup would have them, and what `rest` gives with the fix, read only then, for
- * that check (the memory's fixes). `did` says what its worker did, for the line. True when carried.
+ * the branch is again): the branch is rebased onto the base and checked once there, rather than
+ * checked here and again there. The setup's commits are kept as checkWithFix's setup would have
+ * them, and what `rest` gives with the fix, read only then, for that check (the memory's fixes).
+ * `did` says what its worker did, for the line. True when carried.
  */
 export const carryIfBaseMoved = (
   stop: Stopped,
@@ -1403,12 +1401,11 @@ export const rejectResolution = (
  * The hand-back of `stop`'s conflicts to the ticket's worker, Resolving: the hand-back given, what
  * the worker left verified, set up if need be (the memory's setUps, setup.ts) and checked, the
  * commit it passed on kept in the memory's passes; when the base moved on meanwhile, it is left
- * unchecked, for the merge to rebase it onto the base and check it once there, as orchestra 0.8.5
- * has it, the setup's commits and any fix's tries carried to that check (the memory's fixes).
- * Verified: the caller puts it back in the merge queue; Unchanged, the branch left changing
- * nothing, unchecked: the caller closes it so; its setup or check failing: the caller hands that
- * back, or blocks it (checkback.ts). Else it is Blocked here, its branch put back and its notes
- * saying why.
+ * unchecked, for the merge to rebase it onto the base and check it once there, the setup's commits
+ * and any fix's tries carried to that check (the memory's fixes). Verified: the caller puts it back
+ * in the merge queue; Unchanged, the branch left changing nothing, unchecked: the caller closes it
+ * so; its setup or check failing: the caller hands that back, or blocks it (checkback.ts). Else it
+ * is Blocked here, its branch put back and its notes saying why.
  */
 export const resolve = (
   stop: HandedRebase,

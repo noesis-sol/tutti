@@ -1,7 +1,7 @@
 // The run's scope (§ 2 Scope, § 5 items 5 and 14): which of bd ready a run may take, and, for a run
-// scoped with --ticket <id>, where that ticket and its descendants stand at the end: SCOPE_DONE when
-// they are all closed and merged, SCOPE_OPEN naming each one that isn't and why, as orchestra's
-// scope.go says it. A run without a scope takes the whole of bd ready and has no scope line.
+// scoped with --ticket <id>, where that ticket and its descendants stand at the end: SCOPE_DONE
+// when they are all closed and merged, SCOPE_OPEN naming each one that isn't and why. A run without
+// a scope takes the whole of bd ready and has no scope line.
 import { Effect } from "effect"
 import {
   type Beads,
@@ -44,7 +44,7 @@ export const byPriority = (issues: ReadonlyArray<Issue>): ReadonlyArray<Issue> =
  * bd ready within `scope` (null: all of it), minus questions and the excluded types, highest
  * priority first. A scope is its ticket and its descendants: bd ready --parent names the
  * descendants, taken with the ticket itself from the whole of bd ready in its order. bd filters,
- * and the result is filtered again, as orchestra does.
+ * and the result is filtered again.
  */
 export const ready = (
   beads: Beads["Service"],
@@ -317,10 +317,10 @@ export const end = (
 const subtickets = (n: number): string => (n === 1 ? "1 subticket" : `${n} subtickets`)
 
 /**
- * The scope line, as orchestra words it: `SCOPE_DONE: <id> and its 3 subtickets are merged`,
- * `SCOPE_OPEN: <id>: 2 of its 5 subtickets not done: <id>.2 (blocked by x-7 outside the scope), …`,
- * or `SCOPE_UNREADABLE: could not read <id>: …`. The texts are Beads' IDs and words: the Log's
- * `line` sanitises them where they are logged.
+ * The scope line: `SCOPE_DONE: <id> and its 3 subtickets are merged`, `SCOPE_OPEN: <id>: 2 of its 5
+ * subtickets not done: <id>.2 (blocked by x-7 outside the scope), …`, or `SCOPE_UNREADABLE: could
+ * not read <id>: …`. The texts are Beads' IDs and words: the Log's `line` sanitises them where they
+ * are logged.
  */
 export const line = (scope: End): string => {
   const { root } = scope

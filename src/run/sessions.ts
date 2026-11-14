@@ -21,15 +21,14 @@
 //
 // A session tutti closed may be resumed any number of times: for a hand-back, an answered question,
 // the next run. A session that ended unexpectedly (Gone) with its ticket still in progress is
-// resumed once per ticket per run, as orchestra resumes a worker gone from its tab, and told to
-// carry on; gone again, the run holds with PAUSED (settle.ts), and the next run resumes it again.
-// Resuming fails when the ticket has no saved session, its worktree is gone, the spawn fails, the
-// transcript is gone, or Claude Code reports a startup_failure_reason (cwd_unavailable, …): the
-// ticket is then warned about (WORKER_GONE), noted, and dropped, left for review, its record in
-// state.json forgotten. A failure that may pass (Claude Code not spawned, or no initialize answer
-// within its limit, as on a machine short of memory) is tried once more resumeRetry later; failing
-// again, its ticket is left for review all the same, but its record is kept, suspended, for a later
-// run to resume.
+// resumed once per ticket per run and told to carry on; gone again, the run holds with PAUSED
+// (settle.ts), and the next run resumes it again. Resuming fails when the ticket has no saved
+// session, its worktree is gone, the spawn fails, the transcript is gone, or Claude Code reports a
+// startup_failure_reason (cwd_unavailable, …): the ticket is then warned about (WORKER_GONE),
+// noted, and dropped, left for review, its record in state.json forgotten. A failure that may pass
+// (Claude Code not spawned, or no initialize answer within its limit, as on a machine short of
+// memory) is tried once more resumeRetry later; failing again, its ticket is left for review all
+// the same, but its record is kept, suspended, for a later run to resume.
 import { Data, Duration, Effect, Result, Schema } from "effect"
 import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "../core/log.ts"

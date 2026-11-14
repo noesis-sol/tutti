@@ -92,8 +92,8 @@ export const dispatch = (
   })
 
 /**
- * Logs a resumed or carried-over ticket's footprint as a dispatched ticket's is, as orchestra's
- * startFootprint does for a ticket it adopts or resumes, and remembers what its branch changed.
+ * Logs a resumed or carried-over ticket's footprint as a dispatched ticket's is, and
+ * remembers what its branch changed.
  */
 export const carriedFootprint = (
   sched: Scheduling,

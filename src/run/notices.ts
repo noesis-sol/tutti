@@ -1,13 +1,12 @@
-// The run's notifications (§ 7.9), as orchestra's: what a notice says of each record of the event
-// stream, in a few words, and the layer that sends them. Only the outcomes that matter to you
-// notify: a ticket merged, set aside or waiting on a question, the run stopping or finishing, the
-// full check failing, the battery down to 10% (battery.ts), and, at most once in 30 seconds, a
-// worker needing you (§ 4.5). The usage
-// limit's hold notifies by itself (usageLimit.ts), and the run's end says how it finished with its
-// totals (run.ts). The other holds, probes, warnings that set no ticket aside, triage and a run with
-// nothing to run don't notify: they are in the log, the event stream and the dashboard. Nor does a
-// question --auto-answer answers at once (`auto_answering`), already answered as the notice shows;
-// with a time it notifies, so you can answer first.
+// The run's notifications (§ 7.9): what a notice says of each record of the event stream, in a few
+// words, and the layer that sends them. Only the outcomes that matter to you notify: a ticket
+// merged, set aside or waiting on a question, the run stopping or finishing, the full check
+// failing, the battery down to 10% (battery.ts), and, at most once in 30 seconds, a worker needing
+// you (§ 4.5). The usage limit's hold notifies by itself (usageLimit.ts), and the run's end says
+// how it finished with its totals (run.ts). The other holds, probes, warnings that set no ticket
+// aside, triage and a run with nothing to run don't notify: they are in the log, the event stream
+// and the dashboard. Nor does a question --auto-answer answers at once (`auto_answering`), already
+// answered as the notice shows; with a time it notifies, so you can answer first.
 import { Clock, Duration, Effect, Layer } from "effect"
 import { EventStream } from "../services/EventStream.ts"
 import type { Event } from "../services/events.ts"

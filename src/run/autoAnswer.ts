@@ -14,8 +14,6 @@
 // the run is remembered as such for the run (`before`), from the first look that shows it or from
 // carry-over's autoAnswerOf, and not shown again: its creation time and the run's start never
 // change. One left to you for another reason is shown at each look, as its metadata may change.
-//
-// orchestra has no such option: a departure on purpose (spec § 8.2).
 import { Context, Duration, Effect, Ref, Result } from "effect"
 import { type Line, type Log, line, Tag, ticketLine } from "../core/log.ts"
 import {

@@ -26,7 +26,7 @@ export const scopedTo =
 
 /**
  * A feature request on one line, its white space collapsed and cut after 200 characters, for the
- * START block, as orchestra's FeatureLine.
+ * START block.
  */
 export const featureLine = (request: string): string => {
   const characters = [

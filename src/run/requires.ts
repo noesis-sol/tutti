@@ -1,16 +1,16 @@
-// The check of the project's requires list (src/project/requires.ts), as orchestra 0.9.1's: every
-// check runs in the main checkout, side by side, each within a minute, its output dropped; for a
-// failed check with an install, the install runs, one at a time (package managers lock their own
-// state), within the merge check's time limit, its whole output kept in .tutti/run/requires-<name>.log,
-// and the check runs again. A requirement limited to other operating systems isn't checked.
+// The check of the project's requires list (src/project/requires.ts): every check runs in the main
+// checkout, side by side, each within a minute, its output dropped; for a failed check with an
+// install, the install runs, one at a time (package managers lock their own state), within the
+// merge check's time limit, its whole output kept in .tutti/run/requires-<name>.log, and the check
+// runs again. A requirement limited to other operating systems isn't checked.
 //
 // A run checks the list as it starts, before its first ticket or any worker it carries over, and
 // stops REQUIREMENTS_MISSING, exit 2, for what is still missing, rather than leave every ticket to
 // fail on it one by one (runRequires). A merge that changes the list on the base has the run take
 // the new one (setup.ts's takeSettings) and check it again, as at its start, before the next ticket
-// starts: what is still missing stops the run REQUIREMENTS_MISSING too, the running tickets finishing
-// first (a HOLD line), as orchestra's takeRequires and recheckRequires have it. `tutti init` lists
-// the requirements among what the machine needs, and `tutti requires` prints each one's state.
+// starts: what is still missing stops the run REQUIREMENTS_MISSING too, the running tickets
+// finishing first (a HOLD line). `tutti init` lists the requirements among what the machine needs,
+// and `tutti requires` prints each one's state.
 import { join } from "node:path"
 import { Duration, Effect } from "effect"
 import { BranchEnv } from "../core/env.ts"

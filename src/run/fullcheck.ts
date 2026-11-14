@@ -1,13 +1,12 @@
 // The full check (§ 5 item 12, § 2): the project's check_full (checks.full.command, such as
-// scripts/check-full.sh), every suite, those too slow to run on every merge included, as orchestra's
-// fullcheck.go has it. It runs once a run has ended by itself (READY_EMPTY, LIMIT_REACHED, DRAINED)
-// having merged a ticket, after the closing line and before the end record, on the base's head in a
-// worktree of its own on no branch, so the main checkout stays as it is; the worktree is removed
-// afterwards, whatever the check left in it. Nothing is installed in a new worktree, so the setup
-// command (checks.setup.command, such as bun install) runs there first, within check_full's time
-// limit; a setup that fails is said as such and files no ticket: it is not a suite's failure. Nor
-// is a command that couldn't be run (it didn't start, or its output couldn't be kept): that is
-// FULL_CHECK_NOT_RUN, and files none.
+// scripts/check-full.sh), every suite, those too slow to run on every merge included. It runs once
+// a run has ended by itself (READY_EMPTY, LIMIT_REACHED, DRAINED) having merged a ticket, after the
+// closing line and before the end record, on the base's head in a worktree of its own on no branch,
+// so the main checkout stays as it is; the worktree is removed afterwards, whatever the check left
+// in it. Nothing is installed in a new worktree, so the setup command (checks.setup.command, such
+// as bun install) runs there first, within check_full's time limit; a setup that fails is said as
+// such and files no ticket: it is not a suite's failure. Nor is a command that couldn't be run (it
+// didn't start, or its output couldn't be kept): that is FULL_CHECK_NOT_RUN, and files none.
 //
 // A failure keeps the whole output in the main checkout's .tutti/run/check-full.log (§ 9.1), and
 // its last 40 lines go to the log, the reviewer and the run report, after the reviewer's text; it
@@ -44,7 +43,7 @@ import { fullCheckKey, watchCheck } from "./checking.ts"
 import type { TicketPhase } from "./phase.ts"
 import { say, warn } from "./say.ts"
 
-/** Marks the ticket filed for a suite the full check failed in; orchestra's label too (§ 11). */
+/** Marks the ticket filed for a suite the full check failed in (§ 11). */
 export const fullCheckLabel = "check-full"
 
 /** The file in the main checkout's .tutti/run/ that holds the last failing full check's output. */

@@ -1,9 +1,9 @@
-// DEFERRED_FREE (§ 5 item 4), as orchestra's deferred_free.go has it. A ticket deferred because it
-// started before its blocker merged, or deferred by hand, stays deferred once the blocker merges:
-// nothing brings it back. The run's START block, and the box of a run with nothing to run, list
-// each such ticket with the command that reopens it. Only list: a deferral can have other reasons,
-// so the maintainer decides. One deferred until a later date (bd defer --until) was deferred on
-// purpose, with a time to look again, and isn't listed until that time has come.
+// DEFERRED_FREE (§ 5 item 4). A ticket deferred because it started before its blocker merged, or
+// deferred by hand, stays deferred once the blocker merges: nothing brings it back. The run's START
+// block, and the box of a run with nothing to run, list each such ticket with the command that
+// reopens it. Only list: a deferral can have other reasons, so the maintainer decides. One deferred
+// until a later date (bd defer --until) was deferred on purpose, with a time to look again, and
+// isn't listed until that time has come.
 import { Clock, Effect, Result } from "effect"
 import { detail, Log, line } from "../core/log.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type TicketId } from "../services/Beads.ts"

@@ -87,9 +87,8 @@ export const apiBackText =
   "it answers again. Carry on where you left off."
 
 /**
- * The message a worker waiting for the limit on its hand-back onto `base` (handback.ts) is sent once
- * it has reset: the hand-back to carry on with, not its ticket, which it closed already, as orchestra
- * tells it.
+ * The message a worker waiting for the limit on its hand-back onto `base` (handback.ts) is sent
+ * once it has reset: the hand-back to carry on with, not its ticket, which it closed already.
  */
 export const resetHandBackText = (
   id: TicketId,
@@ -109,12 +108,12 @@ export const resetHandBackText = (
 }
 
 /**
- * What the worker is asked to do with a rebase stopped on conflicts, as orchestra asks it: the
- * tests of its change and of the files that conflicted, the whole check left to tutti's, which
- * follows; `setup` says when to run the project's setup, if it is to (setup.ts's setupToResolve).
- * A stop on documents alone (repoFiles.ts's isDocument) asks for the resolution only, the check
- * following anyway, unless a later commit stops on conflicts in code: a departure from orchestra,
- * whose worker ran the tests of its change after a conflict in the spec alone (tutti-gr4z.4).
+ * What the worker is asked to do with a rebase stopped on conflicts: the tests of its change and of
+ * the files that conflicted, the whole check left to tutti's, which follows; `setup` says when to
+ * run the project's setup, if it is to (setup.ts's setupToResolve). A stop on documents alone
+ * (repoFiles.ts's isDocument) asks for the resolution only, the check following anyway, unless a
+ * later commit stops on conflicts in code: a conflict in the spec alone doesn't cost the tests of
+ * the change (tutti-gr4z.4).
  */
 export const resolvePrompt = (
   stop: RebaseStop,
@@ -155,10 +154,10 @@ export const resolvePrompt = (
 export const maxLanded = 30
 
 /**
- * What the worker is asked to do with the failure on its rebased branch, as orchestra asks it: what
- * failed, what the output says, and what the rebase brought in from the base (`landed`, newest
- * first; undefined when git couldn't list it). On a branch on top of the base already, nothing
- * landed, and the prompt says only that the check fails before it merges.
+ * What the worker is asked to do with the failure on its rebased branch: what failed, what the
+ * output says, and what the rebase brought in from the base (`landed`, newest first; undefined when
+ * git couldn't list it). On a branch on top of the base already, nothing landed, and the prompt
+ * says only that the check fails before it merges.
  */
 export const fixPrompt = (
   stop: HandedCheck,
@@ -179,8 +178,7 @@ export const fixPrompt = (
       : listed.length > maxLanded
         ? [...listed.slice(0, maxLanded), `… and ${listed.length - maxLanded} more`].join("\n")
         : listed.join("\n")
-  // What failed and the tests of its change: the whole check is tutti's, run next (orchestra
-  // 0.8.5).
+  // What failed and the tests of its change: the whole check is tutti's, run next.
   const steps =
     "Run what failed (the tests or other checks the output names) and the tests of the code you " +
     `changed in the foreground until they pass, then commit the fix on ${branch} with ${id} in ` +

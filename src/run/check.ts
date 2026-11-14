@@ -14,9 +14,9 @@
 // clears the mark: a branch on top of the base that is still marked is checked before it merges.
 //
 // A branch on top of the base already, as when nothing merged while its ticket ran, is checked
-// before it merges too, as orchestra 0.8.5 has it: no ticket reaches the base unchecked. A run
-// keeps the commit of each ticket's branch its check last passed on (Passes), so a branch checked
-// as its worker fixed it, or resolved its rebase, isn't checked again while it stays on top.
+// before it merges too: no ticket reaches the base unchecked. A run keeps the commit of each
+// ticket's branch its check last passed on (Passes), so a branch checked as its worker fixed it, or
+// resolved its rebase, isn't checked again while it stays on top.
 import { join } from "node:path"
 import {
   Clock,

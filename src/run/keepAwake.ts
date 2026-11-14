@@ -1,13 +1,13 @@
-// The machine kept awake while a run goes (§ 8.2), as orchestra's keep_awake: by default, unless
-// keep_awake is false in the project's settings or the user config (which wins over them), and
-// always with --overnight (AppConfig's keepAwake). The system's keep-awake command, given tutti's
-// PID, starts as the run begins, or before an overnight run's pre-flight (tutti-epza.17), and stops
-// as the run's scope closes, after the report's organs (src/main.ts). It goes through exec, in a
-// process group of its own that the scope kills; given the PID, it also ends by itself should tutti
-// end some other way.
+// The machine kept awake while a run goes (§ 8.2): by default, unless keep_awake is false in the
+// project's settings or the user config (which wins over them), and always with --overnight
+// (AppConfig's keepAwake). The system's keep-awake command, given tutti's PID, starts as the run
+// begins, or before an overnight run's pre-flight (tutti-epza.17), and stops as the run's scope
+// closes, after the report's organs (src/main.ts). It goes through exec, in a process group of its
+// own that the scope kills; given the PID, it also ends by itself should tutti end some other way.
 // Where the system has none, or it isn't on the PATH, the START block warns once (`keepAwakePlan`),
 // and the run goes on all the same. While the command holds, the title line says so (§ 7.2). The
-// START block also says when keeping awake is off, and of a retired --keep-awake (`keepAwakeNotes`).
+// START block also says when keeping awake is off, and of a retired --keep-awake
+// (`keepAwakeNotes`).
 import { Duration, Effect, SubscriptionRef } from "effect"
 import type { AppConfigValue } from "../core/AppConfig.ts"
 import { type Line, Log, line } from "../core/log.ts"

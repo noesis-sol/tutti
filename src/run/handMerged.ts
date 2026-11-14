@@ -1,14 +1,14 @@
-// A ticket merged by hand while the run goes on (§ 5 item 8, orchestra 0.9.0's handmerged.go). A
-// ticket closed but not merged, set aside or blocked in this run, or left `unmerged` by an earlier
-// one, may be merged by hand meanwhile: you review it and merge its branch. So each time the base
-// has moved on, before the tickets set aside for a failed check are checked once more, and once more
-// as the run ends, the run asks git of each such ticket, as loadUnmerged does as the run starts
-// (unmerged.ts's mergedSince). One on the base now is Done, merged by hand: it isn't checked again,
-// its session is closed, and it is retired as after a merge (merge.ts's retire): its worktree and
-// branch removed (removeMerged, as byHand says), its `unmerged` label removed, and the epics above it
-// closed; the tickets it blocks start, and the end line and the report count it closed rather than
-// set aside. One left `unmerged` by an earlier run loses its label and the record that run left of
-// it in state.json (unmerged.ts's forgetLeft). A ticket being merged, handed back, or blocked on a
+// A ticket merged by hand while the run goes on (§ 5 item 8). A ticket closed but not merged, set
+// aside or blocked in this run, or left `unmerged` by an earlier one, may be merged by hand
+// meanwhile: you review it and merge its branch. So each time the base has moved on, before the
+// tickets set aside for a failed check are checked once more, and once more as the run ends, the
+// run asks git of each such ticket, as loadUnmerged does as the run starts (unmerged.ts's
+// mergedSince). One on the base now is Done, merged by hand: it isn't checked again, its session is
+// closed, and it is retired as after a merge (merge.ts's retire): its worktree and branch removed
+// (removeMerged, as byHand says), its `unmerged` label removed, and the epics above it closed; the
+// tickets it blocks start, and the end line and the report count it closed rather than set aside.
+// One left `unmerged` by an earlier run loses its label and the record that run left of it in
+// state.json (unmerged.ts's forgetLeft). A ticket being merged, handed back, or blocked on a
 // conflict whose hand-back waits for its steered worker, is left to its merge.
 //
 // byHand and removedText are also the cleanup of a carried-over ticket dropped as merged by hand

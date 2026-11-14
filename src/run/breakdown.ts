@@ -3,18 +3,17 @@
 // breakdownWorker, or with the user in the Interview view (--refine); or a feature's, typed at the
 // start question (New feature), always with the user, in its feature mode. One with the user is
 // known as interviewWorker (inView.ts). Its instructions are the breakdown's
-// (templates/spec-prompt.md, orchestra's adapted) appended to the claude_code preset, in the mode
-// it is in; its tools are enforced (Read, Grep, Glob and Agent, with AskUserQuestion when the user
-// is there; `dontAsk` when nobody is) and tutti's own server (breakdownTools.ts) is its one MCP
-// server.
+// (templates/spec-prompt.md) appended to the claude_code preset, in the mode it is in; its tools
+// are enforced (Read, Grep, Glob and Agent, with AskUserQuestion when the user is there; `dontAsk`
+// when nobody is) and tutti's own server (breakdownTools.ts) is its one MCP server.
 //
 // A spec's first message names the spec, its SHA-256 and commit, and for a headless one its time
 // limit; a breakdown carried on lists what the earlier one filed, and an update names the root epic
-// and the version of the spec its tree was filed for, the change being in .tutti/run/spec-update.md.
-// A feature's is the description typed at the start question, saved to .tutti/run/feature-request.md
-// and pasted between pasted_content tags carrying a fresh ID (inView.ts), as orchestra sends it.
-// tutti composed it, so it goes client_composed (§ 4.1), as written, an `@path` in the description
-// not expanded; what you type in the composer after it goes as yours.
+// and the version of the spec its tree was filed for, the change being in
+// .tutti/run/spec-update.md. A feature's is the description typed at the start question, saved to
+// .tutti/run/feature-request.md and pasted between pasted_content tags carrying a fresh ID
+// (inView.ts). tutti composed it, so it goes client_composed (§ 4.1), as written, an `@path` in the
+// description not expanded; what you type in the composer after it goes as yours.
 //
 // It ends once file_breakdown has filed the tree (or said there is none) and the session's turn is
 // over: tutti closes the session. A headless session whose turn ends without that is told once to

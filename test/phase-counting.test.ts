@@ -234,12 +234,12 @@ describe("the facts each phase.ts set and switch was", () => {
     expect(where((tag) => phaseFacts[tag].over)).toEqual(["Done", "Deferred", "Review"])
   })
 
-  test("orchestra: the ledger's countsIn", () => {
+  test("spentIn: the ledger's countsIn", () => {
     expect(
       Object.fromEntries(
-        where((tag) => phaseFacts[tag].orchestra !== null).map((tag) => [
+        where((tag) => phaseFacts[tag].spentIn !== null).map((tag) => [
           tag,
-          phaseFacts[tag].orchestra,
+          phaseFacts[tag].spentIn,
         ]),
       ),
     ).toEqual({

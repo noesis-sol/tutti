@@ -1,7 +1,7 @@
 // A spec's tree (§ 4.14): what the breakdown's session hands tutti to file, checked and filed here.
-// The session files the root epic and the environment ticket itself (file_root), so that the run can
-// start on that ticket early; the rest of the tree comes in one answer (file_breakdown), which tutti
-// files with bd, saving the session a turn for each issue (orchestra-aehg: 46 of 56 turns).
+// The session files the root epic and the environment ticket itself (file_root), so that the run
+// can start on that ticket early; the rest of the tree comes in one answer (file_breakdown), which
+// tutti files with bd, saving the session a turn for each issue.
 //
 // checkTree reads the answer as a model wrote it, any value at all, and never throws: each issue
 // has a key of its own, a parent (the key of an epic in the answer, the ID of an epic of the spec's

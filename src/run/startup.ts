@@ -306,7 +306,7 @@ const beadsReason = (error: BeadsError): string => {
 
 /**
  * Why a run can't be scoped to ticket `id` (--ticket), or null: the ticket must be one bd shows,
- * open, and work rather than a question for the maintainer, as orchestra's scopeProblem has it.
+ * open, and work rather than a question for the maintainer.
  */
 const scopeProblem = (id: TicketId) =>
   Effect.gen(function* () {
@@ -438,8 +438,8 @@ export const check = <R>(checking: Checking<R>) =>
     const claude = yield* checking.claude(given.claude)
     const config: AppConfigValue = { ...given, claude: claude.path }
     const organs = organProvider(checking.env)
-    // A worker prompt of its own (--prompt) is enough to run in a project init hasn't set up, as
-    // in orchestra; without one, such a project has no worker prompt to check.
+    // A worker prompt of its own (--prompt) is enough to run in a project init hasn't set up;
+    // without one, such a project has no worker prompt to check.
     const ownPrompt = config.prompt !== resolvePath(repo, workerPromptFile)
     const notSetUp = !ownPrompt && !(yield* setUp(repo))
     // A spec run's spec (§ 4.14): read before the tree is checked, which it may be uncommitted in.
@@ -588,8 +588,8 @@ export const startBlock = (
     version,
     repo: config.repo,
     base: started.base,
-    // A feature run is scoped to the epic it filed, as orchestra's ScopeLabel says, the request it
-    // was talked through from in a note; a spec run is named by its spec, its root epic in a note.
+    // A feature run is scoped to the epic it filed, the request it was talked through from in a
+    // note; a spec run is named by its spec, its root epic in a note.
     ...(spec !== null
       ? { scope: `spec ${spec.path}${spec.url === undefined ? "" : ` from ${spec.url}`}` }
       : config.ticket === null
@@ -613,7 +613,7 @@ export const startBlock = (
       ["pressure cap", config.settings.pressure_cap ? "on" : "off"],
       ...(servers.length === 0 ? [] : [["MCP servers", servers.join(", ")] as const]),
     ],
-    // --auto-answer, at the line's end, as orchestra has nothing there.
+    // --auto-answer, at the line's end.
     ...(config.autoAnswer === null
       ? {}
       : { ends: autoAnswerName(config.autoAnswer, formatDuration(config.autoAnswer)) }),

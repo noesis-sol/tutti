@@ -1,20 +1,20 @@
-// Setting a ticket aside (§ 2, § 5.1), as orchestra does, either way with a note on the ticket:
+// Setting a ticket aside (§ 2, § 5.1), either way with a note on the ticket:
 //
-// - deferred (Working → Deferred by tutti), as orchestra's putAside: the ticket's notes say what
+// - deferred (Working → Deferred by tutti): the ticket's notes say what
 //   happened and how to bring it back, bd defers it (a note bd can't add says so in the log, and
 //   doesn't keep it from being deferred), and its phase moves to Deferred with a
 //   `deferred` record and its log line. A ticket bd can't defer is still kept out of this run:
 //   DEFER_FAILED says so, in the log, in a `warn` record with `aside` and on its row, which has no
 //   `bd undefer` to offer (the ledger's `deferFailed`).
-// - left for review (Working or Merging → Review{why}), as orchestra's leaveFor: the log's line goes
+// - left for review (Working or Merging → Review{why}): the log's line goes
 //   in the ticket's notes too, and its phase moves to Review with a `warn` record with `aside`. A
 //   note bd can't add doesn't keep it from review. Its record in state.json gets the phase at once,
 //   so a crash after it doesn't have the next run take it up as a worker still at it (carry.ts).
 //
 // A ticket set aside as its worker settled (deferred by its worker, or by tutti for a worker that
 // left it unfinished) with nothing done, no commits beyond the base and a clean worktree, has its
-// worktree and branch removed once triage has its evidence, as orchestra 0.8.1's dropNothingDone:
-// nothing there is left to review. Its lines say so (nothingLeft) in place of `left open`.
+// worktree and branch removed once triage has its evidence: nothing there is left to review. Its
+// lines say so (nothingLeft) in place of `left open`.
 import { Effect, Result } from "effect"
 import type { Line, Log } from "../core/log.ts"
 import * as log from "../core/log.ts"

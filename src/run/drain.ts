@@ -1,7 +1,7 @@
-// The drain (§ 5 item 10, § 7.4, orchestra's drain.go): asked to wind down (SIGUSR1, or the
-// dashboard's `s` once it exists), the run starts no new tickets, the running ones finish and merge
-// as usual, and the run ends DRAINED with exit code 0. Taken back, it takes tickets again. Only the
-// latest request counts, and one that changes nothing says nothing.
+// The drain (§ 5 item 10, § 7.4): asked to wind down (SIGUSR1, or the dashboard's `s` once it
+// exists), the run starts no new tickets, the running ones finish and merge as usual, and the run
+// ends DRAINED with exit code 0. Taken back, it takes tickets again. Only the latest request
+// counts, and one that changes nothing says nothing.
 //
 // The wind-down itself is the ledger's (it notes the tickets running as it begins, for the
 // wind-down line), and the scheduler takes no new tickets while it lasts. Beginning, it gives up the

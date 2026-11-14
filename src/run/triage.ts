@@ -1,13 +1,13 @@
-// Triage in the background (§ 5 items 11 and 13, § 6.2), as orchestra v0.7.7's: each ticket set
-// aside as its worker settles (deferred by its worker, or by tutti for a worker that left it
-// unfinished) is handed to the triage organ, unless its worker reached the usage limit in its
-// attempt (§ 4.12). Its evidence is gathered as it is set aside, in the ticket's own fiber: the
-// ticket as bd show gives it, the end of tutti's transcript of its worker (the last 40 items, at
-// most 8,000 characters of their text), the attention requests the worker raised and their answers
-// and the calls Claude Code denied it without asking (Attention's tally and the log's lines), its
-// compactions (the transcript's compact_boundary messages), its worktree's changes, and the error
-// its last turn failed with. One fiber in the run's scope triages the queue one ticket at a time,
-// so the run never waits for a model's answer.
+// Triage in the background (§ 5 items 11 and 13, § 6.2): each ticket set aside as its worker
+// settles (deferred by its worker, or by tutti for a worker that left it unfinished) is handed to
+// the triage organ, unless its worker reached the usage limit in its attempt (§ 4.12). Its evidence
+// is gathered as it is set aside, in the ticket's own fiber: the ticket as bd show gives it, the
+// end of tutti's transcript of its worker (the last 40 items, at most 8,000 characters of their
+// text), the attention requests the worker raised and their answers and the calls Claude Code
+// denied it without asking (Attention's tally and the log's lines), its compactions (the
+// transcript's compact_boundary messages), its worktree's changes, and the error its last turn
+// failed with. One fiber in the run's scope triages the queue one ticket at a time, so the run
+// never waits for a model's answer.
 //
 // A verdict is written to the ticket's notes (`Triage (tutti): cause = …`), shown on its row
 // (`◆ environment · high · …`, in place of its note), logged (`  triage <id>: …`) and recorded as a

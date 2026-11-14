@@ -21,7 +21,7 @@ import { type Again, retrying } from "./again.ts"
 import type { FinishedTicket, MergeTarget } from "./mergeShared.ts"
 import { warn } from "./say.ts"
 
-/** How many times a git read that steers a merge is made while it fails, as orchestra asks git. */
+/** How many times a git read that steers a merge is made while it fails. */
 export const gitTries = 3
 
 /** How long after a failed read, or one past its time limit, git is asked again. */

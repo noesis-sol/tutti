@@ -140,7 +140,7 @@ export const statsOf = (
     why: null,
     took,
     seconds: null,
-    counting: ended ? null : facts.orchestra,
+    counting: ended ? null : facts.spentIn,
     verifier: verifierOf(t),
     handBacks: entry.account?.handBacks ?? { resolve: 0, fix: 0 },
     resolving: secondsIn("resolving"),

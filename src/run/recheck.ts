@@ -1,9 +1,9 @@
-// The recheck (§ 5 item 8, § 5.1's Review{CHECKS_FAILED} → ToMerge), as orchestra's recheck.go
-// has it. A ticket's check can fail on something the ticket didn't change: a flaky test, or a bug
-// another ticket fixes later in the run. So a ticket set aside because its check failed on its
-// branch rebased onto the base is kept, and once the base has moved on from where its check failed
-// (another ticket merged), it goes back in the merge queue, ToMerge by RECHECK, to be rebased and
-// checked once more: it merges if the check passes now, and is set aside again if it fails again.
+// The recheck (§ 5 item 8, § 5.1's Review{CHECKS_FAILED} → ToMerge). A ticket's check can fail on
+// something the ticket didn't change: a flaky test, or a bug another ticket fixes later in the run.
+// So a ticket set aside because its check failed on its branch rebased onto the base is kept, and
+// once the base has moved on from where its check failed (another ticket merged), it goes back in
+// the merge queue, ToMerge by RECHECK, to be rebased and checked once more: it merges if the check
+// passes now, and is set aside again if it fails again.
 //
 // Each ticket is checked again at most once a run, set up first if its setup failed (setup.ts). One
 // whose check failed in a folder its own commits change isn't kept: another ticket's change won't

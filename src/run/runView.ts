@@ -1033,7 +1033,7 @@ const probeCard = (
   }
 }
 
-/** What a card says of its ticket's check ahead of its turn to merge, as orchestra's dashboard. */
+/** What a card says of its ticket's check ahead of its turn to merge. */
 export const checkAheadText = (ahead: CheckAhead): string => {
   const behind = sanitizeLine(ahead.behind)
   switch (ahead.step) {

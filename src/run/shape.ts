@@ -1,8 +1,8 @@
-// The shape of an epic's open tickets, as orchestra v0.9.5's: how the blocks links among them let
-// them run, by their count, their longest chain of tickets each waiting on the one before, and their
-// hubs, the tickets that hubHolds or more of them wait on directly. Its tickets over its chain is the
-// most that run at a time on average, the tickets taken as equal (widthOf). A spec's breakdown warns
-// of a narrow tree from it (narrowWarning, § 4.14 'Checked'): the run goes on all the same.
+// The shape of an epic's open tickets: how the blocks links among them let them run, by their
+// count, their longest chain of tickets each waiting on the one before, and their hubs, the tickets
+// that hubHolds or more of them wait on directly. Its tickets over its chain is the most that run
+// at a time on average, the tickets taken as equal (widthOf). A spec's breakdown warns of a narrow
+// tree from it (narrowWarning, § 4.14 'Checked'): the run goes on all the same.
 import type { Issue, TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 

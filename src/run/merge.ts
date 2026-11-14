@@ -11,7 +11,7 @@
 //   failing setup too). A branch on top of the base already, as when nothing merged while its
 //   ticket ran, is checked too (set up first if a dependency file changed since its last setup; a
 //   worktree with uncommitted changes set aside, DIRTY_WORKTREE, as they would be checked but not
-//   merged), so that no ticket reaches the base unchecked, as orchestra 0.8.5 has it; one whose
+//   merged), so that no ticket reaches the base unchecked; one whose
 //   commits change nothing needs none. A rebase interrupted is aborted, putting the branch back; a
 //   setup or check interrupted is killed. Their time limits leave out the time the machine is
 //   loaded, up to the limit again, and one that times out while it was loaded runs once more before
@@ -911,13 +911,12 @@ export const keptChanging = (
 /**
  * A ticket's merge in its turn: its steps (Step) driven from Enter to how the merge ends, each but
  * the fast-forward through `interruptible`, the fast-forward under the merge queue's mask, and the
- * budgets spent over the whole turn. Merged once its branch, on top of the base and checked as
- * orchestra 0.8.5 has it (unless the check passed on it as it is in this run, the memory's passes,
- * or its commits change nothing), is fast-forwarded onto it; Over when it was set aside (kept in the
- * memory's rechecks when its check failed), blocked or stopped the merges; HandBack when its rebase
- * stopped on conflicts its worker can take; FixBack when its check failed in a way its worker can
- * take; Unchanged when its branch changes nothing beyond the base, as when git's rebase dropped
- * every commit.
+ * budgets spent over the whole turn. Merged once its branch, on top of the base and checked (unless
+ * the check passed on it as it is in this run, the memory's passes, or its commits change nothing),
+ * is fast-forwarded onto it; Over when it was set aside (kept in the memory's rechecks when its
+ * check failed), blocked or stopped the merges; HandBack when its rebase stopped on conflicts its
+ * worker can take; FixBack when its check failed in a way its worker can take; Unchanged when its
+ * branch changes nothing beyond the base, as when git's rebase dropped every commit.
  */
 export const mergeTurn = (
   ticket: FinishedTicket,

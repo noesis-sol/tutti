@@ -1,6 +1,5 @@
 // --overnight's pre-flight (§ 5, § 8.2; tutti-kkb.46): a run left going through the night can stop
-// at 1am on something that could have been settled at 11pm. orchestra 0.9.5's --overnight is the
-// reference for what is wanted; this is built in tutti's terms.
+// at 1am on something that could have been settled at 11pm.
 //
 // It runs once the startup checks have passed and the run holds its lock, before the run's services
 // are made (src/main.ts), so that a fix made here (concurrent, the permission mode) reaches the

@@ -6,8 +6,8 @@
 // Every phase change goes through transition(), which asks the state machine (phase.ts) for the
 // next phase; a ticket that leaves the machine leaves the ledger. A change the machine doesn't have
 // is a bug: it is logged once as PHASE_BUG, the ticket keeps its phase, and no record is written. A
-// valid one writes a `phase` record to the event stream, then the orchestra-era records the caller
-// gives beside it (`dispatch`, `closed`, …), all while the state is held, so records come out in
+// valid one writes a `phase` record to the event stream, then the records the caller gives
+// beside it (`dispatch`, `closed`, …), all while the state is held, so records come out in
 // the order the phases changed. The lines the caller gives are logged with the records, in one
 // write (Log's writeWith), so the log has them in the records' order.
 import {
@@ -130,7 +130,7 @@ export interface BlockedAbout {
 export interface Account {
   /** When the run first took it up (it entered Working, ToMerge, …); null before. */
   readonly took: number | null
-  /** How long it spent in each of orchestra's phases it entered (§ 10), in milliseconds. */
+  /** How long it spent in each of the scorecard's phases it entered (§ 10), in milliseconds. */
   readonly spentIn: { readonly [P in PhaseSeconds]?: number }
   /** Its hand-backs in the run: for conflicts, and for a failing check. */
   readonly handBacks: { readonly resolve: number; readonly fix: number }
@@ -165,7 +165,7 @@ const carriedIn: ReadonlySet<Move["_tag"]> = new Set([
 
 /**
  * What the record that ends `entry`'s part in the run says of what it spent, `spent` its workers'
- * turns: orchestra's `phases`, `hand_backs`, `carried` and `tokens`, and tutti's `cost_usd`.
+ * turns: `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd`.
  */
 export const spentFields = (
   entry: Entry,
@@ -235,7 +235,7 @@ export const ending = (
   ]
 }
 
-/** The wind-down (orchestra's drain): when it began, and the tickets running then. */
+/** The wind-down (the drain, drain.ts): when it began, and the tickets running then. */
 export interface WindDown {
   readonly since: number
   readonly tickets: ReadonlyArray<TicketId>
@@ -395,11 +395,11 @@ export const accounted = (entry: Entry, phase: TicketPhase, move: Move, now: num
   const fresh = entry.account === undefined
   const account = entry.account ?? newAccount()
   const spentIn = { ...account.spentIn }
-  const left = phaseFacts[entry.phase._tag].orchestra
+  const left = phaseFacts[entry.phase._tag].spentIn
   if (left !== null && !fresh) {
     spentIn[left] = (spentIn[left] ?? 0) + Math.max(0, now - entry.since)
   }
-  const entered = phaseFacts[phase._tag].orchestra
+  const entered = phaseFacts[phase._tag].spentIn
   if (entered !== null) spentIn[entered] = spentIn[entered] ?? 0
   // A hand-back counts by its move, as Fixing hands back to Fixing on a second failed check.
   const handedBack = (tag: Move["_tag"]) => (move._tag === tag ? 1 : 0)
@@ -449,13 +449,12 @@ export class Ledger extends Context.Service<
   {
     /**
      * Moves `ticket` by `move`, as the state machine says, and writes its `phase` record, then
-     * `said` and `beside` (the orchestra-era records its row names), with each of `said`'s texts
-     * and then `lines` logged in the same write.
-     * `title` sets its title, as a ticket entering the run needs, `issue` the issue it was read as,
-     * `about` what stopped its merge, as it is Blocked, `checkLog` where its failed check's or setup's
-     * output is, as it is set aside, and `deferFailed` what the line saying bd couldn't defer it says;
-     * a ticket leaving it (null) leaves the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
-     * was.
+     * `said` and `beside` (the records its row names), with each of `said`'s texts and then `lines`
+     * logged in the same write. `title` sets its title, as a ticket entering the run needs, `issue`
+     * the issue it was read as, `about` what stopped its merge, as it is Blocked, `checkLog` where
+     * its failed check's or setup's output is, as it is set aside, and `deferFailed` what the line
+     * saying bd couldn't defer it says; a ticket leaving it (null) leaves the ledger. An invalid
+     * change logs PHASE_BUG once, writes nothing, and leaves the ticket as it was.
      */
     transition(
       ticket: TicketId,

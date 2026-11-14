@@ -1,13 +1,12 @@
 // The run report (§ 5 item 13 and 14, § 6.2, § 9.1): at the end of a run that wasn't quit, the
 // reviewer (organs/reviewer.ts) writes what finished, what was set aside and why, and what needs
-// you, from the run's evidence, gathered as orchestra gathers it: the final line, the run's log,
-// the commits merged, the tickets closed, set aside and still in progress, the tickets still ready,
-// and what the organs cost before it. In place of orchestra's hook tallies, it is given each
-// ticket's tallies of attention requests and their answers (Attention's), the calls Claude Code
-// denied without asking, by type, your messages and its compactions, and whether a person
-// steered it, with the requests and denials as the log has them (the last of them, past a cap),
-// from which its Needs you section recommends rules for the calls that kept being asked about or
-// denied. Each list and section is capped to the last of it that fits, and a set-aside ticket's
+// you, from the run's evidence: the final line, the run's log, the commits merged, the tickets
+// closed, set aside and still in progress, the tickets still ready, and what the organs cost before
+// it. It is given each ticket's tallies of attention requests and their answers (Attention's), the
+// calls Claude Code denied without asking, by type, your messages and its compactions, and whether
+// a person steered it, with the requests and denials as the log has them (the last of them, past a
+// cap), from which its Needs you section recommends rules for the calls that kept being asked about
+// or denied. Each list and section is capped to the last of it that fits, and a set-aside ticket's
 // notes to their end, so that an overnight run's evidence keeps within the reviewer's context.
 //
 // The report is titled with the run's date, times, base and scope (escaped for Markdown, § 7.10),
@@ -44,7 +43,7 @@ import { listedOrShown } from "./ticketReads.ts"
 /** Where the reports go, below the repository. */
 export const reportsDir = ".tutti/reports"
 
-/** How many characters of a closed ticket's close reason the reviewer is given, as orchestra's. */
+/** How many characters of a closed ticket's close reason the reviewer is given. */
 export const closeReasonWidth = 400
 
 /**

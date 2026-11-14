@@ -1,11 +1,10 @@
 // Recording the maintainer's answer to a question ticket (§ 4.11, tutti-kkb.35), however it was
 // given: the overnight pre-flight's form (overnightQuestions.ts), the dashboard's Shift+A
-// (Box.Questions), or `tutti answer <question> <answer>`. As orchestra's answer talk does, the
-// blocked tickets come first: the decision is added to the design of each open ticket the question
-// blocks, below what is there, under `Decided (<the question's ID>)`, so that the worker that takes
-// a ticket up reads it there; then bd human respond records the answer on the question, which
-// closes it and frees what it blocked. A run going on takes a ticket that waited on it back at its
-// next look (asked.ts).
+// (Box.Questions), or `tutti answer <question> <answer>`. The blocked tickets come first: the
+// decision is added to the design of each open ticket the question blocks, below what is there,
+// under `Decided (<the question's ID>)`, so that the worker that takes a ticket up reads it there;
+// then bd human respond records the answer on the question, which closes it and frees what it
+// blocked. A run going on takes a ticket that waited on it back at its next look (asked.ts).
 import { Effect, Schema } from "effect"
 import { Beads, type BeadsError, beadsWhy, HumanLabel, type TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../text/sanitize.ts"

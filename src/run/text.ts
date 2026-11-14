@@ -1,6 +1,6 @@
 // The heuristics a footprint reads a ticket's text with (footprint.ts): the words that may be
 // paths, the functions it names, its sentences, and whether a sentence asks to change a document
-// it names or only cites it. Each is a guess at what an author meant, as orchestra v0.9.0 makes it.
+// it names or only cites it. Each is a guess at what an author meant.
 
 // The rest of a run of a path token outside brackets: letters, digits, marks, _ . / -, and a +
 // starting a name after a /.

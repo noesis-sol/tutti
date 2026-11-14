@@ -1,11 +1,11 @@
-// The machine's load (orchestra 0.8.5's internal/load): whether the workers are overloading the
-// machine. The memory each worker's processes take (its Claude Code, the leader of a process group of
-// its own, § 3.2, and everything in that group or below it) and what tutti itself runs besides (its
-// merge check above all), from one process listing; and the kernel's memory pressure, swapping and
-// 1-minute load average, on macOS (sysctl and vm_stat) and Linux (/proc). On macOS memory used against the total
-// says little, as the kernel keeps spare memory full of cache and compressed pages: the pressure
-// level and the swap rate do. The dashboard shows a reading on its load line, each figure in the
-// colour of its own level (src/ui/LoadLine.tsx), and each worker's memory on its line in Current.
+// The machine's load: whether the workers are overloading the machine. The memory each worker's
+// processes take (its Claude Code, the leader of a process group of its own, § 3.2, and everything
+// in that group or below it) and what tutti itself runs besides (its merge check above all), from
+// one process listing; and the kernel's memory pressure, swapping and 1-minute load average, on
+// macOS (sysctl and vm_stat) and Linux (/proc). On macOS memory used against the total says little,
+// as the kernel keeps spare memory full of cache and compressed pages: the pressure level and the
+// swap rate do. The dashboard shows a reading on its load line, each figure in the colour of its
+// own level (src/ui/LoadLine.tsx), and each worker's memory on its line in Current.
 //
 // The run reads it every loadEvery while it runs, with the dashboard or plain output, through
 // LoadSource: main.ts gives the live one, and a run without one (the tests') reads nothing. Its
@@ -427,12 +427,12 @@ export const levelsOf = (
 }
 
 /**
- * Whether `levels` have the machine pressed hard enough to slow a worker's tests several times over,
- * as orchestra 0.9.0 has it: the kernel's memory pressure red or the load red. A load in amber alone
- * doesn't: a run's workers keep it there. Nor does swapping, as the pressure cap's strain doesn't
- * (pressureCap.ts, tutti-epza.14): with gigabytes in swap the machine swaps far past
- * swappingPerMinute long after the pressure has passed. A hand-back's time limit leaves out the time
- * it is (handback.ts's clock).
+ * Whether `levels` have the machine pressed hard enough to slow a worker's tests several times
+ * over: the kernel's memory pressure red or the load red. A load in amber alone doesn't: a run's
+ * workers keep it there. Nor does swapping, as the pressure cap's strain doesn't (pressureCap.ts,
+ * tutti-epza.14): with gigabytes in swap the machine swaps far past swappingPerMinute long after
+ * the pressure has passed. A hand-back's time limit leaves out the time it is (handback.ts's
+ * clock).
  */
 export const pressing = (levels: Levels): boolean =>
   levels.pressure === "red" || levels.cpu === "red"

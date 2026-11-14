@@ -109,7 +109,7 @@ export const Start = Data.taggedEnum<Start>()
 /** What a start can fail with: info/exclude, or state.json. */
 export type StartError = ExcludeUnwritable | StoreWriteFailed
 
-/** The metadata key naming the spec a ticket comes from, as orchestra's spec runs set it. */
+/** The metadata key naming the spec a ticket comes from. */
 export const specKey = "spec"
 
 /** The most commits, and the most files, the first message lists of an earlier attempt. */

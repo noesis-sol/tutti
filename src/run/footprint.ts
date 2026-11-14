@@ -1,25 +1,25 @@
-// Footprints (§ 5 item 5, § 2): where a ticket works, as orchestra v0.9.0 reads it. The files and
-// functions its title, description, design and acceptance criteria name, its area:<name> labels and
-// the files its `files` metadata lists (folders and globs among them), resolved against git
-// ls-files, and the globs it lists, which hold the files other tickets add where they match; with
-// none of these, its `predicted_files`, left by an earlier tutti or by orchestra's predictor (tutti
-// writes none since tutti-wxvk). Not its notes: they say what happened to it
-// (the run's notes, its workers', a reopening's), naming files and functions it doesn't change. The
-// files the project's check commands name are left out unless the metadata lists them, as is the
-// spec the ticket's `spec` metadata cites: nearly every ticket asks for the check to pass, and cites
-// its spec, without changing them. The files git merges by union (`merge=union` in .gitattributes,
-// as tutti init offers for the changelog) are left out always: two tickets' lines in one can't
-// conflict, git keeps both. So are vendored paths (vendored.ts), copies of other projects' files: a
-// ticket naming one, or a prediction holding one, makes only false overlaps. A ticket with
-// commits on its branch (reopened, carried over) is footprinted from what its branch changes, its
-// files metadata, the functions its text names that the files its branch changes declare, and its
-// area labels (`branchFootprint`). A running ticket's footprint also grows with the files its
-// worktree has changed (§ 5). Two tickets whose footprints share an area or a function don't run
-// side by side (`holdsApart`); two sharing only a file do, the second warned LIKELY_CONFLICT as it
-// starts. A file both name counts only when one of them is to change it
-// (`sharedFile`), and never when the settings' `queue.shared_files` name it (`RepoFiles.shared`),
-// though it stays in their footprints: their worktrees both changing it still warns
-// LIKELY_CONFLICT, and a rebase conflict in it is handed back.
+// Footprints (§ 5 item 5, § 2): where a ticket works. The files and functions its title,
+// description, design and acceptance criteria name, its area:<name> labels and the files its
+// `files` metadata lists (folders and globs among them), resolved against git ls-files, and the
+// globs it lists, which hold the files other tickets add where they match; with none of these, its
+// `predicted_files`, left by an earlier tutti's predictor or another's (tutti writes none since
+// tutti-wxvk). Not its notes: they say what happened to it (the run's notes, its workers', a
+// reopening's), naming files and functions it doesn't change. The files the project's check
+// commands name are left out unless the metadata lists them, as is the spec the ticket's `spec`
+// metadata cites: nearly every ticket asks for the check to pass, and cites its spec, without
+// changing them. The files git merges by union (`merge=union` in .gitattributes, as tutti init
+// offers for the changelog) are left out always: two tickets' lines in one can't conflict, git
+// keeps both. So are vendored paths (vendored.ts), copies of other projects' files: a ticket naming
+// one, or a prediction holding one, makes only false overlaps. A ticket with commits on its branch
+// (reopened, carried over) is footprinted from what its branch changes, its files metadata, the
+// functions its text names that the files its branch changes declare, and its area labels
+// (`branchFootprint`). A running ticket's footprint also grows with the files its worktree has
+// changed (§ 5). Two tickets whose footprints share an area or a function don't run side by side
+// (`holdsApart`); two sharing only a file do, the second warned LIKELY_CONFLICT as it starts. A
+// file both name counts only when one of them is to change it (`sharedFile`), and never when the
+// settings' `queue.shared_files` name it (`RepoFiles.shared`), though it stays in their footprints:
+// their worktrees both changing it still warns LIKELY_CONFLICT, and a rebase conflict in it is
+// handed back.
 //
 // The text is read with text.ts's heuristics, the names resolved with repoFiles.ts, the globs
 // matched with glob.ts; whether two footprints overlap is overlap.ts's.
@@ -191,7 +191,7 @@ const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string>
 /**
  * Where the ticket works: the files and functions named in its title and text, its area labels and
  * the files its metadata lists; with none of these, the files predicted for it (`predicted_files`,
- * which orchestra's predictor writes; tutti's own is gone, tutti-wxvk).
+ * which a predictor wrote; tutti's own is gone, tutti-wxvk).
  *
  * - **Text** is the title, description, design and acceptance criteria, not the notes. It names a
  *   file by its path (`src/run/ledger.ts:120`), its base name (`ledger.ts`, every file of that
@@ -297,7 +297,7 @@ export const branchFootprint = (
 /**
  * The ticket's footprint as the run reads it: for a ticket whose branch changes files on top of the
  * base (`branch`), branchFootprint's; else ticketFootprint's, which, for a ticket naming nothing,
- * reads the `predicted_files` an earlier tutti or orchestra's predictor left on it.
+ * reads the `predicted_files` a predictor left on it.
  */
 export const footprintOf = (
   issue: FootprintTicket,

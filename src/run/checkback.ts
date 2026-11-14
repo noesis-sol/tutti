@@ -1,31 +1,30 @@
 // The check hand-back (§ 4.7, § 5 item 7's CHECKS_FAILED with hand-back, § 5.1's Merging → Fixing,
-// Resolving → Fixing{afterResolution}, and Fixing → ToMerge, Fixing, Review, Blocked), as
-// orchestra's checkback.go has it. A check that fails on a finished ticket's branch rebased onto
-// the base, after a clean rebase or once its worker has resolved the rebase's conflicts, often
-// fails where its change meets what landed meanwhile: a test another ticket added for the code as
-// it was. A check that fails on a branch on top of the base already, as its worker left it, is
-// handed back as well, its prompt saying only that the check fails before the branch merges. So the
-// failure is handed back to the ticket's worker, which has the change in mind, when
-// it can take it: hand-backs on (merge.check_hand_backs), attempts left of them, a failure to show
-// it (the check finished), git able to say what the check failed on, the run neither holding nor winding down, and
-// its worker Idle or Failed and not steered, or its session closed by tutti, which is resumed, or
-// Gone with its ticket's one Gone resume of the run left, resumed too (handback.ts's give). A worker
-// at the account's usage limit takes it too, though that limit holds the run: it is handed the
-// failure once the limit lifts, as orchestra 0.8.0 has it.
+// Resolving → Fixing{afterResolution}, and Fixing → ToMerge, Fixing, Review, Blocked). A check that
+// fails on a finished ticket's branch rebased onto the base, after a clean rebase or once its
+// worker has resolved the rebase's conflicts, often fails where its change meets what landed
+// meanwhile: a test another ticket added for the code as it was. A check that fails on a branch on
+// top of the base already, as its worker left it, is handed back as well, its prompt saying only
+// that the check fails before the branch merges. So the failure is handed back to the ticket's
+// worker, which has the change in mind, when it can take it: hand-backs on
+// (merge.check_hand_backs), attempts left of them, a failure to show it (the check finished), git
+// able to say what the check failed on, the run neither holding nor winding down, and its worker
+// Idle or Failed and not steered, or its session closed by tutti, which is resumed, or Gone with
+// its ticket's one Gone resume of the run left, resumed too (handback.ts's give). A worker at the
+// account's usage limit takes it too, though that limit holds the run: it is handed the failure
+// once the limit lifts.
 //
-// The hand-back is a client_composed message with orchestra's instructions: what failed, the lines
-// that say so, what landed on the base since the branch was cut, and to commit a fix naming the
-// ticket and nothing else. The ticket moves to Fixing{attempt, afterResolution} with the FIXING
-// line, and the merge queue goes on with the tickets behind it meanwhile. Once the worker has
-// settled, within resolve_timeout from the push, tutti looks at what it left without taking its
-// word for it: no rebase in progress, the worktree clean and on its branch, and the branch as the
-// check failed on it with new commits on top, each naming the ticket. When the base moved on
-// meanwhile, the fix goes back in line unchecked, carried (Carried) to the merge's check on the
-// branch rebased onto the base, which says whether it fixed it, so that a hand-back costs one
-// check, as orchestra 0.8.5 has it. Else tutti sets it up and checks it again: a check that passes
-// puts the ticket back in the merge queue, ToMerge; one that fails again is handed back again while
-// attempts are left, Fixing again. A worker that finds nothing to fix (a test timing out on a
-// loaded machine, say) commits nothing: the check then runs a second time, as orchestra's does, a
+// The hand-back is a client_composed message: what failed, the lines that say so, what landed on
+// the base since the branch was cut, and to commit a fix naming the ticket and nothing else. The
+// ticket moves to Fixing{attempt, afterResolution} with the FIXING line, and the merge queue goes
+// on with the tickets behind it meanwhile. Once the worker has settled, within resolve_timeout from
+// the push, tutti looks at what it left without taking its word for it: no rebase in progress, the
+// worktree clean and on its branch, and the branch as the check failed on it with new commits on
+// top, each naming the ticket. When the base moved on meanwhile, the fix goes back in line
+// unchecked, carried (Carried) to the merge's check on the branch rebased onto the base, which says
+// whether it fixed it, so that a hand-back costs one check. Else tutti sets it up and checks it
+// again: a check that passes puts the ticket back in the merge queue, ToMerge; one that fails again
+// is handed back again while attempts are left, Fixing again. A worker that finds nothing to fix (a
+// test timing out on a loaded machine, say) commits nothing: the check then runs a second time, a
 // pass putting the ticket back in the merge queue and a failure setting it aside with no further
 // hand-back, as its worker found nothing to fix. Each pass through Merging counts toward the
 // attempts, which a run keeps per ticket.
@@ -109,9 +108,9 @@ export interface HandedCheck extends CheckStop {
 }
 
 /**
- * What a hand-back leaves for the merge's check when the base moved on while its worker worked, as
- * orchestra's fixes has it: the branch is rebased onto the base and checked once there, rather than
- * checked where it was, then rebased and checked again.
+ * What a hand-back leaves for the merge's check when the base moved on while its worker worked: the
+ * branch is rebased onto the base and checked once there, rather than checked where it was, then
+ * rebased and checked again.
  */
 export interface Carried {
   /** Its worker's fix or resolution, whose own changes to a setup file count before that check. */
@@ -452,8 +451,8 @@ export const fixFailed = (
  * the check fails on its fix with attempts left. A worker that committed nothing has the check run
  * once more, and is handed nothing again. When the base moved on while its worker worked, what it
  * left isn't checked here: it is carried to the merge's check on the branch rebased onto the base
- * (the memory's fixes), so that a hand-back costs one check, as orchestra 0.8.5 has it. Verified:
- * the caller puts it back in the merge queue. Else it is set aside here, a rejected fix undone.
+ * (the memory's fixes), so that a hand-back costs one check. Verified: the caller puts it back in
+ * the merge queue. Else it is set aside here, a rejected fix undone.
  */
 export const fixCheck = (
   first: HandedCheck,

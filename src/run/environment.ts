@@ -1,10 +1,9 @@
-// The environment hold and the probe (§ 2, § 4.9, § 5 item 11, § 5.1), as orchestra's
-// environment.go. An environment-wide failure (a safety classifier refusing every command, a login
-// that fails every turn) fails each worker the same way at once, whichever ticket it has. Setting
-// each ticket aside in turn would burn through the queue, so the run holds instead: no new
-// tickets, the running ones finish, and the tickets that failed this way are reopened (Deferred →
-// Waiting), as they did nothing. Either signal holds it, with environment_hold.count tickets in a
-// row:
+// The environment hold and the probe (§ 2, § 4.9, § 5 item 11, § 5.1). An environment-wide failure
+// (a safety classifier refusing every command, a login that fails every turn) fails each worker the
+// same way at once, whichever ticket it has. Setting each ticket aside in turn would burn through
+// the queue, so the run holds instead: no new tickets, the running ones finish, and the tickets
+// that failed this way are reopened (Deferred → Waiting), as they did nothing. Either signal holds
+// it, with environment_hold.count tickets in a row:
 //
 // - their workers settled within environment_hold.window of dispatch with the ticket still open
 //   (never claimed), no commits and a clean worktree;

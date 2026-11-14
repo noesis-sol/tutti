@@ -6,14 +6,13 @@
 // marked, Other to type your own, and Leave open. In a terminal they are asked in the answer form
 // in the command's renderer (src/ui/OpenQuestion.tsx), or as lines in plain output
 // (src/ui/plain/forms.ts's openQuestion); without one, nothing is asked. An answer is recorded as
-// answerQuestion.ts does: the decision in each blocked ticket's design, then bd human respond, which
-// closes the question and frees what it blocked; those left open are listed
-// with the tickets they keep waiting and how to answer them later. A cancel (Esc, Ctrl+C, the end
-// of input) stops the run before it starts, the answers already given kept. orchestra's pre-flight
-// puts them in a Claude Code session; this is tutti's own. In the renderer, the form also offers
-// Talk it through (tutti-i0sz): the question talked through in a session in the Interview view
-// (answerTalk.ts), whose answer is recorded as the form's; a talk that ends without one puts the
-// question again.
+// answerQuestion.ts does: the decision in each blocked ticket's design, then bd human respond,
+// which closes the question and frees what it blocked; those left open are listed with the tickets
+// they keep waiting and how to answer them later. A cancel (Esc, Ctrl+C, the end of input) stops
+// the run before it starts, the answers already given kept. The form is tutti's own, not a Claude
+// Code session. In the renderer, the form also offers Talk it through (tutti-i0sz): the question
+// talked through in a session in the Interview view (answerTalk.ts), whose answer is recorded as
+// the form's; a talk that ends without one puts the question again.
 import { Console, type Duration, Effect, Option, Result } from "effect"
 import { type TalkEnd, talkLeftWhy } from "../agent/answerTalk.ts"
 import { Log, line } from "../core/log.ts"
