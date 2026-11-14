@@ -633,7 +633,7 @@ for a project that sets them all; the table below gives each one's default:
 | `environment_hold.count` | `2` | tickets in a row failing at once that hold the run; `0` turns the hold off |
 | `environment_hold.window` | `"2m"` | how soon after dispatch a failure counts as at once |
 | `environment_hold.probe` | `"10m"` | how long after the hold the machine is probed; `"0"` for no probe |
-| `ui.colour_scheme` | `"orchestra"` | the project's colour scheme; yours wins over it; [Colour schemes](colour-schemes.md) |
+| `ui.colour_scheme` | `"tutti"` | the project's colour scheme; yours wins over it; [Colour schemes](colour-schemes.md) |
 
 A run's flags override the settings for that run; [Running](running.md#options) lists them.
 

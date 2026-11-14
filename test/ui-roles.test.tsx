@@ -1,6 +1,6 @@
 // The UI's colours and layouts (§ 7.11, § 13 "UI tests", § 14 M3): scenes drawn at fixed sizes, in
 // the light and the dark variant. Each state's cells carry the role § 7.11 gives it, in the
-// `orchestra` scheme's colours as § 7.11's tables give them; a scheme that changes one role changes
+// `tutti` scheme's colours as § 7.11's tables give them; a scheme that changes one role changes
 // only that role's cells; NO_COLOR leaves every glyph, word, bold and faint in place, in the
 // terminal's own colours; and every colour drawn is a role's. Then a snapshot of each layout: narrow,
 // 120 columns, the smallest size, attention cards (with defaultToNo), the end-of-run box, the usage
@@ -47,7 +47,7 @@ import { type Frame, type Rendered, type Size, withRender } from "./render.ts"
 import { boxLine, cardHead, cardLine } from "./screen.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
-/** § 7.11's tables: each role's colour in the `orchestra` scheme, light and dark. */
+/** § 7.11's tables: each role's colour in the `tutti` scheme, light and dark. */
 const orchestraColours: { readonly [R in Role]: readonly [light: string, dark: string] } = {
   live: ["#0E7490", "#22D3EE"],
   done: ["#15803D", "#4ADE80"],
@@ -405,7 +405,7 @@ const recordOf = (colour: RGBA): string => {
   }
 }
 
-/** What a cell drawn in `look` records in `appearance`, the `orchestra` scheme's colours. */
+/** What a cell drawn in `look` records in `appearance`, the `tutti` scheme's colours. */
 const expected = (look: Look, appearance: Appearance) => {
   const variant = appearance === "light" ? 0 : 1
   return {
@@ -1167,7 +1167,7 @@ describe("NO_COLOR", () => {
                 : quiet
                   ? before.attributes | TextAttributes.DIM
                   : before?.attributes)
-            // Selected text is the one exception: orchestra's selection colours (§ 7.11).
+            // Selected text is the one exception: tutti's selection colours (§ 7.11).
             const selected =
               fg === recorded(orchestraColours.selectionText[1]) &&
               bg === recorded(orchestraColours.selection[1])
@@ -1924,7 +1924,7 @@ test(
 )
 
 test(
-  "NO_COLOR draws selected text in orchestra's selection colours",
+  "NO_COLOR draws selected text in tutti's selection colours",
   async () => {
     const frame = await draw(sceneOf("selected text"), themeIn(tuttiScheme, true), "dark")
     const [, text] = orchestraColours.selectionText

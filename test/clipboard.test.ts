@@ -211,7 +211,7 @@ describe("the selection's colours", () => {
     })
   })
 
-  test("are orchestra's under NO_COLOR, so the selection still shows", () => {
+  test("are tutti's under NO_COLOR, so the selection still shows", () => {
     for (const appearance of ["light", "dark"] as const) {
       expect(selectionLookOf(themeOf(appearance, true))).toEqual({
         selectionBg: RGBA.fromHex("#7D56F4"),
@@ -220,7 +220,7 @@ describe("the selection's colours", () => {
     }
   })
 
-  test("are orchestra's for a role a scheme leaves to the terminal's default", () => {
+  test("are tutti's for a role a scheme leaves to the terminal's default", () => {
     const own = { _tag: "Hex", hex: "#123456" } as const
     const scheme: Scheme = {
       ...tuttiScheme,
