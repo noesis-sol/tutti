@@ -8,7 +8,7 @@
 // flag on the same runner) stands for check-fast.sh: check-full.sh runs it, not check-fast.sh first,
 // so each test runs once.
 //
-// Their format is orchestra's, so runners orchestra wrote work as they are: a suite a line, each in
+// Their format: a suite a line, each in
 // a subshell under a comment saying where it was found, after a line printing `SUITE: <name>`; a
 // suite that can't run in two worktrees at once between `lock <name>` and `unlock`. A runner with no
 // suites is `exit 0`. The headers are the templates beside the worker prompt.
@@ -46,7 +46,7 @@ export interface Suite {
   readonly coversFast?: boolean
 }
 
-/** The shell functions a runner with a serial suite starts with, orchestra's. */
+/** The shell functions a runner with a serial suite starts with. */
 export const lockFunctions = `
 # lock NAME: take turns on suite NAME with the checks running at once in this repository's other
 # worktrees, until unlock or the end of the script. The lock is a directory in the temp directory,

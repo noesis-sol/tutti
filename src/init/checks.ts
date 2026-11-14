@@ -1,4 +1,4 @@
-// tutti init's Checks step (§ 8.3), as orchestra init's stage 2: the scout (§ 6.3) looks for the
+// tutti init's Checks step (§ 8.3): the scout (§ 6.3) looks for the
 // suites the project has, which the form runs under a spinner and Esc skips; then one of four
 // choices, the one that fits what it found selected:
 //
@@ -13,7 +13,7 @@
 // prefix and the verifier, a Claude Code subagent that checks each ticket's change in a fresh
 // context. Once the form is answered init writes the runners, and this part the rest: the skill
 // where test work needs it, the verifier and the worker prompt's section that runs it, and the
-// test-work tickets, labelled tutti-tests as orchestra labels its own orchestra-tests.
+// test-work tickets, labelled tutti-tests.
 import { join } from "node:path"
 import { Duration, Effect, FileSystem, Option } from "effect"
 import { writeFileAtomic } from "../core/atomicFile.ts"
@@ -419,8 +419,8 @@ export const verifierDescription = (stack: ReadonlyArray<string>): string =>
 // --- The setup command ---
 
 /**
- * The lockfiles init offers a setup command for, each with the command installing what it pins,
- * orchestra's: a repository with two of one ecosystem's gets the first's command.
+ * The lockfiles init offers a setup command for, each with the command installing what it pins:
+ * a repository with two of one ecosystem's gets the first's command.
  */
 export const setupLockfiles: ReadonlyArray<{
   readonly ecosystem: string

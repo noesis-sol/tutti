@@ -1,4 +1,4 @@
-// tutti plan [--apply] (§ 8.1), as orchestra v0.9.0's plan: blocks links that order the open
+// tutti plan [--apply] (§ 8.1): blocks links that order the open
 // tickets touching the same code, so they run one after the other instead of side by side, the
 // higher-priority ticket first. Tickets are linked when they name the same function the repository
 // declares (declared.ts), as a run holds them apart, or work on the same small file and aren't
@@ -56,7 +56,7 @@ const inOrder = (open: ReadonlyArray<Issue>): ReadonlyArray<Issue> =>
 /**
  * The ticket's footprint for planning: for a ticket whose branch changes files on top of the
  * checked-out branch (`branch`), branchFootprint's, as a run's. A predicted footprint (the
- * `predicted_files` orchestra's predictor leaves) is a guess: good enough to warn of two tickets
+ * `predicted_files` metadata) is a guess: good enough to warn of two tickets
  * starting side by side, not to order them for good.
  */
 const planFootprint = (

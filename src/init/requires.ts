@@ -1,7 +1,7 @@
-// tutti init's steps for the project's requires list (§ 8.4's `requires`, src/project/requires.ts),
-// as orchestra 0.9.1's init takes them: it writes the README's section on what to install from the
-// list where the README has none, or keeps it in step, and, once the login probe has run, checks
-// the list as a run's start does, installing what it can, a line of the summary for each
+// tutti init's steps for the project's requires list (§ 8.4's `requires`,
+// src/project/requires.ts): it writes the README's section on what to install from the list where
+// the README has none, or keeps it in step, and, once the login probe has run, checks the list as
+// a run's start does, installing what it can, a line of the summary for each
 // requirement among what the machine needs.
 import { Effect } from "effect"
 import {

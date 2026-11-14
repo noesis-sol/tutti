@@ -1,4 +1,4 @@
-// A box over the middle of the view, as orchestra draws its stop question: a rounded frame, its
+// A box over the middle of the view: a rounded frame, its
 // paragraphs wrapped to its width, then the keys it answers to, named as the hint names its own (each key `emphasis` bold,
 // its words faint, ` · ` faint) and wrapped as the hint wraps (Hint.tsx hintLines). Each key's
 // words are a click target too, a single click (D9).

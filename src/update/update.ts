@@ -1,5 +1,5 @@
-// tutti update (§ 12, § 8.1): replaces the tutti binary with the latest GitHub Release's, as
-// orchestra update does. It reads the latest release, downloads checksums.txt and its signature,
+// tutti update (§ 12, § 8.1): replaces the tutti binary with the latest GitHub Release's.
+// It reads the latest release, downloads checksums.txt and its signature,
 // checksums.txt.sig, verifies the signature with the release keys built into the binary (keys.ts)
 // before trusting a sum in it, downloads the archive of its own build's target and checks its
 // SHA-256 against checksums.txt, writes the tutti in it to a file beside the binary, checks that it

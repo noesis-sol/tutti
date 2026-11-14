@@ -1,6 +1,6 @@
 // A line of the dashboard as segments of text, each in a style of the theme's, measured and cut to
-// the pane's width before it is drawn, so that no line wraps (§ 7.2). Frames are drawn as text too,
-// as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
+// the pane's width before it is drawn, so that no line wraps (§ 7.2). Frames are drawn as text
+// too: a rounded frame of columns with their borders shared.
 import { RGBA } from "@opentui/core"
 import { createContext, memo, type ReactNode, useContext } from "react"
 import { tuttiScheme } from "../project/scheme.ts"

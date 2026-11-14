@@ -30,7 +30,7 @@ const guarded = new WeakSet<NodeJS.WriteStream>()
  * event, not a throw, and without a listener it ends the process with exit 1, cutting the run's
  * report, its end and its finalizers short. One listener on each, installed as tutti starts, marks
  * the stream closed instead, and `stdout` writes nothing to it after that: the run goes on to its
- * own end and exit code, as orchestra's printer drops EPIPE. Installing it again adds none.
+ * own end and exit code. Installing it again adds none.
  */
 export const guardOutput: Effect.Effect<void> = Effect.sync(() => {
   for (const stream of [process.stdout, process.stderr]) {

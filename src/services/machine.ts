@@ -1,4 +1,4 @@
-// The machine's runs (orchestra 0.8.5's machine.go): runs share the machine, and their checks slow
+// The machine's runs: runs share the machine, and their checks slow
 // each other down. Each run registers itself while it runs, a file of its own in the folder the
 // machine's orchestra runs register in (`runs/` in orchestra's cache folder, or ORCHESTRA_RUNS_DIR),
 // in orchestra's format, so that tutti and orchestra see each other's runs: its PID, repository,
@@ -78,7 +78,7 @@ export interface Registration {
   readonly started: number
   /**
    * Its workers running: the slots it has taken (schedule.ts's slotsTaken), tickets waiting to
-   * merge or merging counted only beyond its `concurrent`, as orchestra 0.9.4 counts them, and
+   * merge or merging counted only beyond its `concurrent`, and
    * those handed back to their workers each counted.
    */
   readonly running: number
@@ -234,8 +234,8 @@ export interface Machine {
 /**
  * The workers running in the machine's other runs, as the run last read them (Machine.others), for
  * each worker's share of the cores as it starts (src/core/env.ts's coreShare, AgentHostLive): the
- * run sets it each time it reads them, and a worker keeps the share it started with, as orchestra
- * 0.9.0's do. With them, the other runs' processes (Machine.runs), whose checks' memory the
+ * run sets it each time it reads them, and a worker keeps the share it started with.
+ * With them, the other runs' processes (Machine.runs), whose checks' memory the
  * checks' budget counts (share.ts' budgetOf).
  */
 export interface OtherWorkersValue {
@@ -271,8 +271,8 @@ export const orchestraMachineWorkersVariable = "ORCHESTRA_MACHINE_WORKERS"
 
 /**
  * The cap on the workers across the machine's runs on a machine of `cores` cores when neither
- * --machine-workers nor its variables give it: half the cores, at least 2, as orchestra 0.9.3's
- * DefaultMachineWorkers. Workers mostly wait on the model, but their checks are CPU-heavy, and runs
+ * --machine-workers nor its variables give it: half the cores, at least 2.
+ * Workers mostly wait on the model, but their checks are CPU-heavy, and runs
  * slowed sharply past about 4 checks at once on 10 cores.
  */
 export const defaultMachineWorkers = (cores: number): number => Math.max(Math.floor(cores / 2), 2)
@@ -282,15 +282,15 @@ export const defaultMachineWorkersFrom = (cores: number): string =>
   `default: half of ${cores} cores`
 
 /**
- * The cap as the START line says it: the number, or none, and what gave it, as orchestra's
- * machineWorkersLabel: `5 (default: half of 10 cores)`, `none (--machine-workers)`.
+ * The cap as the START line says it: the number, or none, and what gave it:
+ * `5 (default: half of 10 cores)`, `none (--machine-workers)`.
  */
 export const machineWorkersLabel = (cap: number, from: string): string =>
   `${cap > 0 ? String(cap) : "none"}${from === "" ? "" : ` (${from})`}`
 
 /**
  * What the START block says under its line when the run's own `concurrent` is above the cap: it is
- * held at the cap, as orchestra 0.9.3 says it.
+ * held at the cap.
  */
 export const aboveCapNote = (concurrent: number, cap: number): string =>
   `concurrent ${concurrent} is above the machine's cap of ${cap} workers: the run holds at it (HOLD: MACHINE), with fewer of its own as the machine's other runs have workers running`

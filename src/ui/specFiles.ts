@@ -1,6 +1,6 @@
 // What the start question's Spec file field reads of this machine (§ 5 item 3, § 7.1): a folder's
 // entries, for Tab's completions and the file browser, and whether a path names a spec it can run,
-// a file of text with something in it. Read as a key is pressed, as orchestra's field reads them:
+// a file of text with something in it. Read as a key is pressed:
 // a folder or a spec is small, and the field waits on nothing else.
 import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"

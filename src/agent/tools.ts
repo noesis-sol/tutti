@@ -4,7 +4,7 @@
 import { Predicate } from "effect"
 import { asRecord } from "./untrusted.ts"
 
-/** What a working worker is doing, from its hook callbacks, as orchestra classifies it. */
+/** What a working worker is doing, from its hook callbacks. */
 export type Doing = "testing" | "editing" | "reading" | "subagent" | "working"
 
 /** A tool: what a call of it is doing, and the input field that says what the call is about. */

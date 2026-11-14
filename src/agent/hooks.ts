@@ -1,8 +1,8 @@
 // A worker's in-process hook callbacks (§ 4.2): PreToolUse, PostToolUse, PostToolUseFailure,
 // PermissionDenied, SubagentStart, SubagentStop and PreCompact. They tell tutti what the worker is doing and when it compacts. They
 // run while the tool call waits, so each returns at once with no decision ({}), records in a fiber
-// of the session's FiberSet (callbacks.ts), and never fails: an error inside one, thrown or failed, is logged and swallowed, as
-// orchestra's hooks always exit 0.
+// of the session's FiberSet (callbacks.ts), and never fails: an error inside one, thrown or failed, is logged and swallowed, so
+// that a hook never holds up the tool call.
 //
 // One more PreToolUse callback, matcher Agent, keeps the verifier in the foreground (§ 4.1): agents
 // the main thread launches run in the background by default, and neither an agent definition's

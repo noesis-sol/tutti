@@ -1,5 +1,5 @@
 // The quit box (D15, § 4.8, § 7.3): Ctrl+C opens it, over the view. `s` stops after the running
-// tickets (Drain, orchestra's drain), `q` quits now (Quit{now}), `Esc` cancels; a second Ctrl+C
+// tickets (Drain), `q` quits now (Quit{now}), `Esc` cancels; a second Ctrl+C
 // quits now (Input.tsx's global keys).
 import { UiCommand } from "../run/commands.ts"
 import { type Command, useCommands } from "./keyCommands.ts"

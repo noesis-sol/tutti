@@ -1,4 +1,4 @@
-// The Log service (§ 3.3): .tutti/tutti.log, for people. Each line is orchestra's: the local time
+// The Log service (§ 3.3): .tutti/tutti.log, for people. Each line is the local time
 // as `2006-01-02 15:04:05`, a space, and the text. A run-level line starts at the margin (START,
 // HOLD, the stop reasons); a line about one ticket is indented two spaces under it (RESOLVING,
 // CHECKS_FAILED, PERMISSION, …) and names the ticket by its ID, not a tab (§ 5 "Changed").
@@ -46,7 +46,7 @@ export const line = (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>)
 export const detail = (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>): Line =>
   `  ${compose(strings, args)}` as Line
 
-/** The words tutti's lines start with, as orchestra's do; scripts and people search for them. */
+/** The words tutti's lines start with; scripts and people search for them. */
 export const Tag = {
   start: "START",
   hold: "HOLD",
@@ -385,7 +385,7 @@ export const denied = (d: {
   readonly reason: string
 }): Marked => marked(Tag.denied, d.id)`${d.id}'s worker: ${d.what}, by ${denier(d.by)}: ${d.reason}`
 
-/** A worker's context was compacted, `trigger` its PreCompact hook's (§ 4.2), as orchestra says it. */
+/** A worker's context was compacted, `trigger` its PreCompact hook's (§ 4.2). */
 export const compacted = (id: TicketId, trigger: string): Line =>
   detail`${id}'s worker's context was compacted (${trigger})`
 
@@ -546,7 +546,7 @@ export class Log extends Context.Service<
    * appending through the symlink guard (§ 9.1): a symbolic link in its path or at its name, which
    * a merged ticket can leave where the ignored log was, is refused, and the run doesn't start,
    * rather than have its lines appended to the file the link points at. A line that can't be
-   * written is dropped, as orchestra drops it: the run goes on. With `sink: "stdout"`, each line is
+   * written is dropped: the run goes on. With `sink: "stdout"`, each line is
    * printed as well.
    */
   static readonly layer = (options: {

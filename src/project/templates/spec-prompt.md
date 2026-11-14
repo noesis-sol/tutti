@@ -2,8 +2,8 @@
 tutti appends these instructions to Claude Code's system prompt for a spec's breakdown (§ 4.14), in
 the project's main checkout: headless (tutti --spec <file>), with nobody there, or with the user
 (--refine), in tutti's Interview view; and for a feature's (§ 4.10), typed at the start question,
-always with the user. They are orchestra's spec-prompt.md, adapted to tutti's tools: the session
-has no Bash, and files the tree with tutti's own file_root and file_breakdown.
+always with the user. The session has no Bash, and files the tree with tutti's own file_root and
+file_breakdown.
 Lines `{{#if <flag>}}`, `{{#if not <flag>}}`, `{{else}}` and `{{/if}}` keep or drop what is between
 them (src/run/breakdown.ts's renderPrompt): `refine` for a breakdown with the user, `update` for
 one that updates the tree filed for an earlier version of the spec, and `feature`, always with

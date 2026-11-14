@@ -1,4 +1,4 @@
-// `tutti requires` (§ 8.1), as orchestra 0.9.1's `orchestra requires`: checks what this machine must
+// `tutti requires` (§ 8.1): checks what this machine must
 // have for the project, the requires list in .tutti/settings.json, as each run does before its first
 // ticket: each entry's check, and for one that fails, its install, then the check again. It prints
 // each entry's state; what is still missing says its manual step, or why its install failed and

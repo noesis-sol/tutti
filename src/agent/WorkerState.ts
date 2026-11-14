@@ -138,7 +138,7 @@ export const WorkerEvent = Data.taggedEnum<WorkerEvent>()
 export const reportWait: Duration.Input = "30 seconds"
 
 // testRunner matches commands that run a test suite, for projects whose check command is not the
-// one being run: orchestra's pattern (internal/dispatch/activity.go), as it is.
+// one being run.
 const testRunner = new RegExp(
   "(^|[\\s;&|(])(" +
     "go test|swift test|cargo test|py\\.?test|jest|vitest|rspec|phpunit|mix test|dotnet test|ctest|tox|" +
@@ -147,9 +147,9 @@ const testRunner = new RegExp(
 )
 
 /**
- * What a tool call is doing, as orchestra's DoingOf classifies it: testing (Bash running one of
- * the `checks` commands or a known test runner), editing, reading, subagent (the Agent tool), or
- * working, as the table of tools (tools.ts) has it for the rest.
+ * What a tool call is doing: testing (Bash running one of the `checks` commands or a known test
+ * runner), editing, reading, subagent (the Agent tool), or working, as the table of tools
+ * (tools.ts) has it for the rest.
  */
 export const classify = (
   tool: string,

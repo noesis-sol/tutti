@@ -1,6 +1,6 @@
 // tutti init's Workers step (§ 8.3): how many tickets run at once, the model and effort every worker
 // uses, the MCP servers workers get, and CHANGELOG.md merge=union, asked through init's form; then
-// Beads, as orchestra init sets it up (bd installed where it is missing, with your consent; bd init
+// Beads (bd installed where it is missing, with your consent; bd init
 // where Beads isn't set up; the ticket prefix bd init gives, or every ticket renamed to it), and the
 // login probe (§ 4.13), whose account, billing and permission mode the summary reports. It asks
 // nothing about a terminal: tutti runs its workers itself.
@@ -159,8 +159,8 @@ export const chromeNotSetUp = "Claude in Chrome isn't set up on this machine"
 export const notDefinedHere = "not defined on this machine"
 
 /**
- * What the MCP servers question says beside each of `available` that needs it, as orchestra's
- * does: Claude in Chrome, built in where it is `defined` (set up here) and not set up where it
+ * What the MCP servers question says beside each of `available` that needs it:
+ * Claude in Chrome, built in where it is `defined` (set up here) and not set up where it
  * isn't, and a server chosen but not `defined` here.
  */
 export const serverNotes = (

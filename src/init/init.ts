@@ -1,4 +1,4 @@
-// tutti init (§ 8.3): sets a project up, as orchestra init does, with its flags. It refuses while
+// tutti init (§ 8.3): sets a project up, with its flags. It refuses while
 // a run holds the repository's lock, asks what the flags don't answer through init's form (the
 // renderer's, or its line-based version; none without a terminal, when it asks nothing), then,
 // holding the lock itself (`"init": true`) so that no run starts in a tree it writes into, sets
@@ -7,7 +7,7 @@
 //   .tutti/settings.json      the settings, with the answers; existing ones kept unless changed
 //   .tutti/worker-prompt.md   the built-in template; an existing one replaced only with --force
 //   .tutti/.gitignore         ignoring the log, the reports and the run's files
-//   scripts/check-fast.sh     the runners, in orchestra's format; one there is kept unless its
+//   scripts/check-fast.sh     the runners (src/project/runners.ts); one there is kept unless its
 //   scripts/check-full.sh     flag gives it a command
 //
 // The setup is written as one (./staged.ts): its files staged as init plans them, then written

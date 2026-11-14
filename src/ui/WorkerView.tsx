@@ -1,5 +1,5 @@
 // The worker view (§ 7.5, § 7.3, § 7.11): tutti's transcript of one worker, drawn by tutti, under
-// orchestra-style chrome: a blank line, then line 1, `← Dashboard`, the worker's mark, ticket and
+// its chrome: a blank line, then line 1, `← Dashboard`, the worker's mark, ticket and
 // status and what it consumes (worker/figures.ts), on one line (worker/Head.tsx); a blank line, and
 // the ticket's box, `Ticket` in its top border with the type and priority, the title in bold, a
 // blank line and the description, which `t` grows into the whole ticket (TicketHead.tsx); over a

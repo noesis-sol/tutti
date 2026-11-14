@@ -1,4 +1,4 @@
-// The stop question (§ 7.2, § 7.3, orchestra's drain question): `s` on the dashboard asks whether
+// The stop question (§ 7.2, § 7.3): `s` on the dashboard asks whether
 // to stop after the running tickets, or, while the run winds down, whether to take tickets again.
 // `y` sends Drain or Undrain; `n` or `Esc` leaves things as they are. While the run winds down the
 // queue is marked `held` (the totals strip).

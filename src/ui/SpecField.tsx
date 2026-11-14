@@ -1,4 +1,4 @@
-// The start question's Spec file field (§ 5 item 3, § 7.1), as orchestra's spec field: a line to
+// The start question's Spec file field (§ 5 item 3, § 7.1): a line to
 // type or paste a spec's path in, or its https:// URL. Tab completes folders and spec files in the
 // folder typed so far, filling in the part the completions share and listing them under the field,
 // where ↓ or Ctrl+N goes to the next and ↑ or Ctrl+P to the one before. Ctrl+O opens the file

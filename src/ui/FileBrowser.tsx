@@ -1,7 +1,7 @@
 // The start question's file browser (§ 5 item 3, § 7.1), which Ctrl+O opens from the Spec file
 // field: drawn in tutti, over the question, as the answer form is drawn over the dashboard, rather
-// than macOS's Open dialog, so that it works the same over SSH, in tmux and on Linux. As orchestra's
-// Ctrl+O (bubbles' file picker): its folder in its top border, `..` first, then its folders, then
+// than macOS's Open dialog, so that it works the same over SSH, in tmux and on Linux. It has
+// its folder in its top border, `..` first, then its folders, then
 // its files, ten rows at a time; dotfiles hidden, and files other than specs greyed, with the note
 // `.md, .markdown and .txt files only`. It doesn't go into a folder it can't read, and says why.
 //

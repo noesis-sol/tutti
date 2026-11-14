@@ -1,13 +1,13 @@
 // The scout (§ 6.3, § 5 item 13): the organ that finds the checks a project already has, its test
-// suites, lints, type checks and builds, for tutti init to choose from, as orchestra v0.7.7's scout
-// does. Unlike the other organs, which read only the evidence tutti gathers, it reads the
+// suites, lints, type checks and builds, for tutti init to choose from.
+// Unlike the other organs, which read only the evidence tutti gathers, it reads the
 // repository itself: package scripts, Makefiles, CI workflows, test configs and the project's own
 // scripts are too many and too varied to gather. So it is the one organ with tools, and only
 // read-only ones, Read, Glob and Grep, listed explicitly, in the repository's root. Its prompt
-// (prompts/scout.md) is orchestra's, adapted, and ends with the evidence rule for files it reads.
+// (prompts/scout.md) ends with the evidence rule for files it reads.
 //
 // It is confined to the repository by a PreToolUse hook, which hooks being first in the SDK's
-// evaluation order holds whatever the settings allow, as orchestra's --restricted did: a call
+// evaluation order holds whatever the settings allow: a call
 // whose path argument, resolved from the root with `~` expanded and then through realpath, lies
 // outside the repository is denied, so a symlink inside that points out is denied too. A call the
 // hook can't read, or a tool it doesn't know, is denied as well, except StructuredOutput, the tool
@@ -70,7 +70,7 @@ export const Suite = Schema.Struct({
 })
 export type Suite = typeof Suite.Type
 
-/** The scout's answer: orchestra's schema. */
+/** The scout's answer. */
 export const ScoutAnswer = Schema.Struct({
   /** Empty when none was found. */
   suites: Schema.Array(Suite),
@@ -100,7 +100,7 @@ export const hasHiddenCharacter = (command: string): boolean =>
   /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(command)
 
 /**
- * The answer tidied, as orchestra's: names, commands, places and costs trimmed, a command for part
+ * The answer tidied: names, commands, places and costs trimmed, a command for part
  * of the project without a placeholder dropped, covers_fast kept only on a full suite, blank needs
  * and stack items dropped, stack items' spaces
  * collapsed and duplicates dropped. A suite whose command or command for part of the project holds

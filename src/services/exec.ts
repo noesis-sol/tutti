@@ -37,7 +37,10 @@ import { descendantGroups, killTree, ownGroup, processAlive, processTable } from
 import { startReaper, stopReaper } from "./reaper.ts"
 import { sleepAwake, sleepAwakeUnloaded } from "./Wake.ts"
 
-/** orchestra's limits: 30 s for a read, 2 min for a git write or a `bd` update. Checks pass their own. */
+/**
+ * How long a command may take: 30 s for a read, 2 min for a git write or a `bd` update. Checks pass
+ * their own.
+ */
 export const TimeLimit = {
   read: Duration.seconds(30),
   write: Duration.minutes(2),

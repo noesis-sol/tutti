@@ -91,7 +91,7 @@ const clockTime = (started: string): string | undefined => {
 /**
  * Another run holds a lock: tutti's (`program` "tutti") or orchestra's. The caller exits 2 with
  * the message, `tutti is already running in <repo> (pid 44497, since 08:31, main)`, or with
- * `(tutti init, pid 44497, …)` when init holds it, as orchestra says `(orchestra init, pid …)`.
+ * `(tutti init, pid 44497, …)` when init holds it.
  */
 export class AlreadyRunning extends Schema.TaggedError<AlreadyRunning>()("AlreadyRunning", {
   program: Schema.Literals(["tutti", "orchestra"]),

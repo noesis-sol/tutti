@@ -129,7 +129,7 @@ export const printedTheme = (
 /** How many colours the terminal draws: exact colours, or the nearest of 256. */
 export type ColourDepth = "truecolor" | "256"
 
-/** The orchestra styles' names, as its `internal/tui/style.go` names them. */
+/** The styles' names. */
 export const styleNames = [
   "picked",
   "closed",
@@ -182,7 +182,7 @@ const spec = (
   focus: attributes.focus === true,
 })
 
-/** orchestra's styles, each with the role its colour now comes from. */
+/** The styles, each with the role its colour comes from. */
 export const styleSpecs: { readonly [S in StyleName]: StyleSpec } = {
   picked: spec("live", { bold: true }),
   closed: spec("done", { bold: true }),
@@ -277,7 +277,7 @@ export interface Theme {
   /** The forms' styles, from the form roles. */
   readonly form: { readonly [S in FormStyleName]: Style }
   /**
-   * A role's colour as the text's, regular or bold, for what no style of orchestra's draws: a
+   * A role's colour as the text's, regular or bold, for what no style draws: a
    * frame, a mark; null for the text's own colour. Built once: the same role and weight give the
    * same look, a style's own where one draws the same.
    */

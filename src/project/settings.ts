@@ -1,5 +1,5 @@
 // The project's settings, `.tutti/settings.json` (§ 8.4): committed, so everyone running tutti on
-// the project shares them. Every key has a default, orchestra's where the spec's example is silent,
+// the project shares them. Every key has a default,
 // so a missing file or section decodes to a whole value. Times are strings ("30m"), decoded to
 // Durations.
 import { join } from "node:path"
@@ -39,7 +39,7 @@ const unsuitedModes = {
 
 /**
  * The dependency manifests and lockfiles whose change in a rebase has the setup command run, when
- * the settings name none: orchestra's.
+ * the settings name none.
  */
 export const defaultSetupFiles = [
   "package.json",
@@ -111,8 +111,8 @@ export const personAsked = (install: string): string | undefined => {
 }
 
 /**
- * What is wrong with a requirement that a run couldn't check or install, as orchestra's
- * requirementErr has it: a name that couldn't name a file, a check that is blank, neither an
+ * What is wrong with a requirement that a run couldn't check or install:
+ * a name that couldn't name a file, a check that is blank, neither an
  * install nor a manual step or both, an install that runs sudo; true where nothing is.
  */
 const requirementProblem = (r: {
@@ -185,7 +185,7 @@ const IssueType = Schema.String.check(
 export const Settings = Schema.Struct({
   $schema: Schema.optionalKey(Schema.String),
   version: Schema.Literal(1).pipe(withDefault(1)),
-  /** How many tickets run at once, unless --concurrent says otherwise: 1 by default, as orchestra's. */
+  /** How many tickets run at once, unless --concurrent says otherwise: 1 by default. */
   concurrent: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: maxConcurrent })).pipe(
     withDefault(1),
   ),
@@ -224,14 +224,14 @@ export const Settings = Schema.Struct({
   }).pipe(withDefault({})),
   /**
    * What the project's machine must have, checked at each run's start, before any ticket runs, and
-   * in `tutti init` (Requirement); none by default, as orchestra's "requires".
+   * in `tutti init` (Requirement); none by default.
    */
   requires: Requires.pipe(withDefault([])),
   workers: Schema.Struct({
     /** The MCP servers workers get, by name; none by default (§ 15, Q5). */
     mcp_servers: Schema.Array(Text).pipe(withDefault([])),
     permission_mode: choice(permissionModes, unsuitedModes).pipe(withDefault("auto")),
-    /** high by default, as orchestra's; null: Claude Code's own default. */
+    /** high by default; null: Claude Code's own default. */
     effort: Effort.pipe(withDefault("high")),
     /** null: Claude Code's own default. */
     model: Schema.NullOr(Text).pipe(withDefault(null)),

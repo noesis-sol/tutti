@@ -1,6 +1,6 @@
 // Times as tutti writes them for people, in local time: the log's stamp, the event stream's
 // RFC 3339 time, dates, `14:05`, the report's name and span, and a usage limit's reset. A time on
-// another day than the one it is read against says its day, as orchestra's ResetLabel does: a
+// another day than the one it is read against says its day: a
 // seven-day limit's reset on Friday, or a five-hour one's after midnight, isn't read as today's.
 
 /** `n` padded with zeros to `width` digits: `05`, `007`. */

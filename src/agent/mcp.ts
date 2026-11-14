@@ -15,10 +15,10 @@
 // turn, leaving the rest to checkInit.
 //
 // Claude in Chrome, claude-in-chrome, is built into Claude Code rather than defined in a config
-// file: choosing it gives sessions --chrome, and leaving it out --no-chrome (chromeArgs), as
-// orchestra does. Claude Code turns Chrome on by itself, past strict MCP config, once it is set up
-// on the machine. With --chrome, system/init lists it with source dynamic. tutti init offers it, as
-// orchestra does, once the user's .claude.json records it set up (chromeSetUp).
+// file: choosing it gives sessions --chrome, and leaving it out --no-chrome (chromeArgs).
+// Claude Code turns Chrome on by itself, past strict MCP config, once it is set up on the machine.
+// With --chrome, system/init lists it with source dynamic. tutti init offers it once the user's
+// .claude.json records it set up (chromeSetUp).
 import { join, resolve } from "node:path"
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
 import { Config, Effect, FileSystem, Option, Predicate, Result, Schema } from "effect"

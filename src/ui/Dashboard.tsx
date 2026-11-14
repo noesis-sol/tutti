@@ -5,7 +5,7 @@
 // The tickets table's height comes from the pane's and the workers the run may have alone, so it
 // stays put while workers come and go: Current is kept room for a full card for each of up to 6 of
 // them and a line for each of the rest (Card.tsx's keptLines), and the table takes what is left,
-// 3 to 10 rows, where orchestra's takes a third of the pane (§ 7.2). Tickets waiting to merge or
+// 3 to 10 rows (§ 7.2). Tickets waiting to merge or
 // merging have cards without a worker's slot (schedule.ts), so where the cards outnumber the slots,
 // Current is kept a line for each card. The table is left out of a pane too short for it and a line
 // for each worker or card. The cards take what is left, one line each when they don't fit, and a

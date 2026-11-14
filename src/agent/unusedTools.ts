@@ -1,5 +1,5 @@
 // The tools Claude Code describes in every request a worker makes that workers never call (§ 4.1).
-// orchestra's workers called none of them in 484 sessions, and their descriptions, Artifact's above
+// Workers called none of them in 484 sessions, and their descriptions, Artifact's above
 // all, came to about 28k tokens a call: a worker's first call opened with 11.9k tokens rather than
 // 39.2k once they were left out (Claude Code 2.1.303). The SDK runs the same Claude Code. A worker
 // keeps the rest, and any tool a later Claude Code adds: Bash, Read, Edit and Write; Agent, which

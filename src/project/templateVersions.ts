@@ -1,4 +1,4 @@
-// The versions of tutti's templates (§ 8.3), as orchestra 0.9.0 records its own: init writes the
+// The versions of tutti's templates (§ 8.3): init writes the
 // worker prompt, the verifier and the create-check-suite skill from tutti's templates, and from then
 // on they are the project's, kept as they are. So that a project still hears of what tutti changes
 // in its templates later, .tutti/settings.json records the version of each template its copy came

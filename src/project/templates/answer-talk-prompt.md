@@ -1,9 +1,8 @@
 <!--
 tutti appends these instructions to Claude Code's system prompt for a question's talk: a session in
 the project's main checkout, in tutti's Interview view, where the maintainer talks one question
-through before answering it (src/agent/answerTalk.ts). They are orchestra's answer talk's
-(internal/project/answer-prompt.md), adapted to one question and to tutti's tools: tutti, not the
-session, records the answer.
+through before answering it (src/agent/answerTalk.ts). tutti, not the session, records the
+answer.
 -->
 # Talking a question through
 

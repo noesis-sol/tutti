@@ -7,7 +7,7 @@
 // public half, named after the month it was made. scripts/install.sh holds the same keys in its
 // `release_keys`.
 //
-// Key rotation, as orchestra's: to replace the key (it leaked, or is old), add the new one a release
+// Key rotation: to replace the key (it leaked, or is old), add the new one a release
 // before retiring the old, so that the binaries of both releases verify the next.
 //
 // 1. Make the new pair: `openssl genpkey -algorithm ed25519 -out release-key.pem`, and

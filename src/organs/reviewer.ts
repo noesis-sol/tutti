@@ -1,7 +1,7 @@
-// The reviewer (§ 5 item 13, § 6.2): the organ that writes the run report at the end of a run, as
-// orchestra v0.7.7's report organ does. Its prompt (prompts/reviewer.md) is orchestra's, adapted:
-// tutti's workers are sessions, not tabs, and the hooks' tallies are tutti's own, of attention
-// requests, answers, denials and your messages, with whether a person steered each ticket. Its
+// The reviewer (§ 5 item 13, § 6.2): the organ that writes the run report at the end of a run.
+// Its prompt (prompts/reviewer.md) has tutti's workers as sessions, and the hooks' tallies as
+// tutti's own, of attention requests, answers, denials and your messages, with whether a person
+// steered each ticket. Its
 // answer is the report's Markdown, in a structured `report` field, since organs answer through
 // structured output (§ 6.1). An empty report is a failure: you would read nothing as though it were
 // all. What it is given, and what becomes of its answer, is run/report.ts's.

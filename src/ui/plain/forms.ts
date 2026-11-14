@@ -1,6 +1,6 @@
 // The line forms (§ 7.1): the start question, an open question, and a select, a confirm and a text
-// for init, for TERM=dumb and no TTY. Each asks one question per line, as orchestra's
-// accessible mode (huh's, with TERM=dumb) does: a select lists its options numbered and reads a
+// for init, for TERM=dumb and no TTY. Each asks one question per line:
+// a select lists its options numbered and reads a
 // number, a confirm reads y or n, a text reads a line. An answer that doesn't do is said in the
 // error style and asked again. The end of input (Ctrl+D) cancels the form, as Esc does in the
 // renderer; huh took it for each remaining field's default answer.

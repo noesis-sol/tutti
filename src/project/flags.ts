@@ -5,8 +5,8 @@
 //
 // A flag's variable is TUTTI_ and its name in capitals, with "-" as "_": TUTTI_CONCURRENT,
 // TUTTI_NO_MOUSE. An on-or-off flag takes 1, true, yes or on, or 0, false, no or off, as its
-// variable does: `--triage=false`, `TUTTI_TRIAGE=0`; given alone (`--plain`), it is on. orchestra's
-// unprefixed variables (LIMIT, NOTIFY, WT_ROOT, …) are not read (D5).
+// variable does: `--triage=false`, `TUTTI_TRIAGE=0`; given alone (`--plain`), it is on. No
+// unprefixed variable (LIMIT, NOTIFY, WT_ROOT, …) is read (D5).
 
 import { Duration, Option, Result } from "effect"
 import { Flag } from "effect/cli"
@@ -48,7 +48,7 @@ export const count =
     return Result.fail(`must be ${range} ${got(text)}`)
   }
 
-/** 1, true, yes or on; 0, false, no or off; in any case, as orchestra reads them. */
+/** 1, true, yes or on; 0, false, no or off; in any case. */
 export const onOff: Reader<boolean> = (text) => {
   switch (text.toLowerCase()) {
     case "1":

@@ -1,6 +1,6 @@
-// The Notifier service (§ 3.3, § 7.9): desktop notifications for the run's events, as orchestra's
-// (merged, set aside, needs your answer, stopped, finished), plus needs you (§ 4.5) and usage limit
-// (§ 4.12). A notice is a few words; the line it is about goes to the log.
+// The Notifier service (§ 3.3, § 7.9): desktop notifications for the run's events: merged, set
+// aside, needs your answer, stopped, finished, needs you (§ 4.5) and usage limit (§ 4.12). A
+// notice is a few words; the line it is about goes to the log.
 //
 // How one is shown depends on where tutti runs. In a local session it is the desktop's own: on macOS
 // `osascript`, titled with the repository's folder name in Notification Center, and on Linux
@@ -42,7 +42,7 @@ export class Notifier extends Context.Service<
   }
 >()("tutti/services/Notifier") {}
 
-/** How long a notification may take to show before its command is stopped, as in orchestra. */
+/** How long a notification may take to show before its command is stopped. */
 export const notifyLimit: Duration.Duration = Duration.seconds(10)
 
 /** The desktop's own notification command. */

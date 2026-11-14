@@ -1,6 +1,6 @@
-// The Beads service (§ 3.3): every bd call a run makes, each through exec with orchestra's limits
+// The Beads service (§ 3.3): every bd call a run makes, each through exec with its limits
 // (30 s for a read, 2 min for an update), and bd's --json output decoded with Schema into Issues.
-// A read is judged by its output, as orchestra's are: a list that decodes is bd's answer even when
+// A read is judged by its output: a list that decodes is bd's answer even when
 // bd exits non-zero over something beside the read. An update is judged by its exit code.
 import {
   Clock,
@@ -92,8 +92,8 @@ export interface Issue {
   /** The files the metadata lists under `files`, in any of the forms `metadataList` reads. */
   readonly files: ReadonlyArray<string>
   /**
-   * The files predicted for the ticket, under `predicted_files`: orchestra's predictor writes it,
-   * and tutti's wrote it until tutti-wxvk; tutti reads it, and writes it no more.
+   * The files predicted for the ticket, under `predicted_files`: tutti's
+   * predictor wrote it until tutti-wxvk; tutti reads it, and writes it no more.
    */
   readonly predictedFiles: ReadonlyArray<string>
   /** RFC 3339. */
@@ -104,7 +104,7 @@ export interface Issue {
   readonly closeReason: string
 }
 
-/** The metadata keys tutti reads, shared with orchestra (§ 11) but maintainer_only, tutti's own. */
+/** The metadata keys tutti reads (§ 11). */
 export const MetadataKey = {
   files: "files",
   predictedFiles: "predicted_files",
@@ -218,7 +218,7 @@ const metadataOf = (raw: unknown): Readonly<Record<string, unknown>> =>
   raw === undefined ? {} : Option.getOrElse(Schema.decodeUnknownOption(Metadata)(raw), () => ({}))
 
 /**
- * The paths the metadata lists at key, as orchestra reads them: a list, a list encoded in a string,
+ * The paths the metadata lists at key: a list, a list encoded in a string,
  * or a string of paths separated by commas or white space (`--set-metadata files=a.ts,b.ts`).
  */
 export const metadataList = (
@@ -258,7 +258,7 @@ const metadataValue = (metadata: Readonly<Record<string, unknown>>, key: string)
   Object.hasOwn(metadata, key) ? metadata[key] : undefined
 
 /**
- * The options a question's metadata gives, as orchestra's questionOptions reads them: the
+ * The options a question's metadata gives: the
  * recommended one first and the rest in their order; undefined unless the metadata gives 2 to 4
  * options, each with a label, and `recommended` the index of one of them. A worker wrote them, so
  * each label and description is sanitised to a line, and a label that is nothing once it is, is
@@ -650,7 +650,7 @@ export class Beads extends Context.Service<
             timeLimit,
             cwd: options.cwd,
             maxOutputBytes,
-            // Pins the --json shape. Only bd gets it, as orchestra does.
+            // Pins the --json shape. Only bd gets it.
             env: { BD_JSON_ENVELOPE: "0", NO_COLOR: "1" },
           }
           const shown = showCommand({ command: "bd", args })

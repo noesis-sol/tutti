@@ -1,6 +1,6 @@
 // Worktrees (§ 3.3): a ticket's worktree at <worktrees>/<id> on its branch tutti/<id> (§ 11), made
 // from the base or reused with what an earlier attempt left in it (§ 5 item 6); its .tutti/run/
-// files, kept out of git through the repository's info/exclude as orchestra does, and opened only
+// files, kept out of git through the repository's info/exclude, and opened only
 // through openUnder, the symlink guard (§ 9.1); and its removal with its branch once it is done.
 //
 // A ticket's ID names a folder and a branch, and workers file tickets themselves: Beads checks only
@@ -129,7 +129,7 @@ const notInRef = (char: string): boolean =>
 const notPrintable = /[\p{C}\p{Z}]/u
 
 /**
- * Says why ticket `id` can't be run, or returns undefined, as orchestra's IDProblem does. It must be
+ * Says why ticket `id` can't be run, or returns undefined. It must be
  * a plain name for a folder (no path separator, no `..`, not `.`), one git takes in a branch name,
  * and every character of it printable.
  */

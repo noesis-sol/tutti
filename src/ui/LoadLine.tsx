@@ -1,4 +1,4 @@
-// The dashboard's load line (orchestra 0.8.5, § 7.2), under the title line, a blank line between,
+// The dashboard's load line (§ 7.2), under the title line, a blank line between,
 // says whether the workers are overloading the machine:
 //
 //   ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · load 9.8/10 cores

@@ -1,7 +1,7 @@
 // The start question (§ 5 item 3, § 7.1), in the command's renderer, before the dashboard: a
 // select of the current tickets (with their count), a spec or a new feature; for a spec, the field
 // for its file or URL (SpecField.tsx), then whether to refine it with Claude first; for a new
-// feature, a textarea for its description. As orchestra's huh form: ↑ and ↓ (or k and j) move the
+// feature, a textarea for its description. ↑ and ↓ (or k and j) move the
 // selector, Enter chooses; in the description Enter submits and Alt+Enter or Ctrl+J starts a new
 // line (Ctrl+J for terminals whose legacy encoding can't tell Alt+Enter from Enter, § 7.7), and
 // Shift+Tab goes back a step, keeping what was typed. Esc or Ctrl+C cancels: nothing has started
@@ -143,7 +143,7 @@ export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
   ]
 }
 
-/** How many lines the description's textarea shows, as orchestra's. */
+/** How many lines the description's textarea shows. */
 const descriptionLines = 6
 
 /** The columns a field's text is in from the screen's edges: the form's padding, and the bar's. */

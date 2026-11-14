@@ -99,7 +99,7 @@ export const checkNote = (command: string | null): string =>
 
 /**
  * The check note's last sentences: a worker's environment gives it its share of the machine's
- * cores (src/core/env.ts's coreVariables), for its checks to keep to, as orchestra 0.9.0's does,
+ * cores (src/core/env.ts's coreVariables), for its checks to keep to,
  * and of the memory checks may use (memoryVariables), and names the file tutti keeps the share
  * in as it changes (src/run/share.ts).
  */
@@ -113,7 +113,7 @@ export const coresNote =
   `in as it changes, a JSON line ({"cores":3,"memory_mb":3584,"at":"…"}), which a check script ` +
   `reads as it starts.`
 
-/** The words of the worker prompt's rule on the requires list, as orchestra's RequiresRule. */
+/** The words of the worker prompt's rule on the requires list. */
 export const requiresRule = "never by hand outside the list"
 
 /**
@@ -164,8 +164,8 @@ export const requiresNote = (
 }
 
 /**
- * The note appended to a worker's standing rules after checkNote on the account's usage limit, as
- * orchestra 0.8.1's: a worker stopped by the limit waits in the run's hold and is told to carry on
+ * The note appended to a worker's standing rules after checkNote on the account's usage limit:
+ * a worker stopped by the limit waits in the run's hold and is told to carry on
  * after the reset (§ 4.12), so it commits what it has and stops, rather than deferring or closing
  * its ticket. A note, not a line of the template, so a project's own worker prompt gets it too.
  */
@@ -182,7 +182,7 @@ const shown = (repo: string, file: string): string => {
 /**
  * The run's worker prompt, with workers.ask_user_question applied. A --prompt file that is missing,
  * empty or unreadable is a setup problem; so is a project file that is empty or unreadable, one
- * missing where `tutti init` set the project up (.tutti/settings.json is there), as in orchestra,
+ * missing where `tutti init` set the project up (.tutti/settings.json is there),
  * and a prompt without TICKET_ID. A missing project file in a project init hasn't set up gives the
  * built-in template.
  */

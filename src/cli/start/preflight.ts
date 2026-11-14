@@ -15,7 +15,7 @@ import { version } from "../version.ts"
 
 /**
  * The queues of the run's drains and suspends, their handlers in place: SIGUSR1 and SIGUSR2 wind
- * the run down, as orchestra's drain, and SIGTSTP is ignored. Each handler is in place before
+ * the run down (Drain), and SIGTSTP is ignored. Each handler is in place before
  * tutti's PID is written anywhere, as without one each signal kills or stops tutti.
  */
 export const signalQueues = Effect.gen(function* () {

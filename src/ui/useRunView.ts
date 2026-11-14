@@ -203,7 +203,7 @@ export const useTheme = (): Theme => {
   return useMemo(() => shell.themeOf(appearance), [shell, appearance])
 }
 
-/** How often elapsed times are drawn anew: every 3 seconds, as orchestra's (§ 7.2). */
+/** How often elapsed times are drawn anew: every 3 seconds (§ 7.2). */
 export const tick = 3000
 
 /** Runs `run` every `ms` milliseconds, until the returned function is called. */

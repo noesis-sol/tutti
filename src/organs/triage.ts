@@ -1,7 +1,7 @@
 // Triage (§ 5 item 13, § 6.2, Appendix A): the organ that says, for each ticket set aside, where
-// the cause lies: the environment, the instructions or the problem itself, as orchestra v0.7.7's
-// triage does. Its prompt (prompts/triage.md) and answer schema are orchestra's, adapted to tutti's
-// workers, which are sessions with no terminal. Its evidence is tutti's own record of the worker:
+// the cause lies: the environment, the instructions or the problem itself. Its prompt
+// (prompts/triage.md) and answer schema are written for tutti's workers, which are sessions with no
+// terminal. Its evidence is tutti's own record of the worker:
 // the end of its transcript (§ 4.4), the attention requests it raised and their answers, the calls
 // Claude Code denied it without asking, its compactions and its worktree's changes, with the ticket
 // as bd show gives it. The ticket is named by its ID alone outside the tags, and tutti's line on how

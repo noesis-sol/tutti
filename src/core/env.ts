@@ -20,7 +20,7 @@ export const apiKeyVariable = "ANTHROPIC_API_KEY"
  * Whether `name` names the terminal pane tutti runs in: Herdr's HERDR_*, cmux's CMUX_*, and tmux's
  * TMUX and TMUX_PANE. A Claude Code session that has them, with the user's settings loaded, reports
  * itself as that pane's agent through the terminal's hooks: Herdr then takes the pane's agent as
- * replaced and drops its name, which orchestra finds its workers by (tutti-y0e).
+ * replaced and drops its name, which a tool running agents in panes finds them by (tutti-y0e).
  */
 export const paneVariable = (name: string): boolean =>
   name.startsWith("HERDR_") || name.startsWith("CMUX_") || name === "TMUX" || name === "TMUX_PANE"
@@ -48,8 +48,8 @@ const sessionNames: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Whether `name` is a variable of a Claude Code session tutti was started from (the run skill, an
- * orchestra worker trying tutti, `!tutti`), not the user's configuration: CLAUDE_CONFIG_DIR and
+ * Whether `name` is a variable of a Claude Code session tutti was started from (the run skill, a
+ * worker trying tutti, `!tutti`), not the user's configuration: CLAUDE_CONFIG_DIR and
  * CLAUDE_CODE_TMPDIR, say, are kept. Claude Code reads them as its own: a session given them runs
  * as entrypoint cli, an attended child session, and takes the parent's messaging socket and token
  * for its own; the SDK sets the entrypoint to sdk-ts, and its version, only where they're unset.
@@ -87,7 +87,7 @@ export const coresVariable = "TUTTI_CORES"
  * them across the machine (0 for none); at least 1. Workers' checks share the cores: a test
  * runner, a linter or Go left alone runs as many things at once as there are cores, so several
  * workers' checks crowd the machine, every check takes two or three times as long, and tests time
- * out in code no ticket touched (tutti-0ye, tutti-kkb.24). As orchestra's coreShare.
+ * out in code no ticket touched (tutti-0ye, tutti-kkb.24).
  */
 export const coreShare = (cores: number, concurrent: number, others = 0, limit = 0): number =>
   Math.max(Math.floor(cores / sharers(concurrent, others, limit)), 1)

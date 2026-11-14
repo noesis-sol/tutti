@@ -1,6 +1,5 @@
-// The event stream's records (§ 10), defined with Effect Schema: orchestra v0.7.7's kinds, with
-// their fields as its docs/events.md gives them, and tutti's new and changed ones. Every record has
-// `v` (1), `time`, `run` and `kind`. Field names are snake_case, as orchestra's are, and a field
+// The event stream's records (§ 10), defined with Effect Schema. Every record has
+// `v` (1), `time`, `run` and `kind`. Field names are snake_case, and a field
 // without a value is left out. Text from tickets, models and tools is kept as it came: JSON
 // encoding escapes what a terminal would act on, and keeps each record on one line.
 //
@@ -12,7 +11,7 @@ import { billings } from "../project/flags.ts"
 /** The records' version, `v` in each. */
 export const version = 1
 
-// RFC 3339 with fractional seconds, in local time, as orchestra writes `time` and `run`.
+// RFC 3339 with fractional seconds, in local time, for `time` and `run`.
 const Timestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/u),
 )
@@ -34,7 +33,7 @@ const Seconds = Amount
 export const tenths = (ms: number): number => Math.max(0, Math.round(ms / 100) / 10) || 0
 
 /**
- * What a model's calls used, in tokens, as orchestra's `tokens` gives them: `input` neither written
+ * What a model's calls used, in tokens (`tokens`): `input` neither written
  * to the prompt cache nor read from it, `cache_write` written to it, `cache_read` read from it, and
  * `output`, thinking included.
  */
@@ -50,7 +49,7 @@ export type Tokens = typeof Tokens.Type
 export const TokensByModel = Schema.Record(Schema.String, Tokens)
 export type TokensByModel = typeof TokensByModel.Type
 
-/** The phases orchestra counts a ticket's time in, in seconds to a tenth (§ 10). */
+/** The phases a ticket's time is counted in, in seconds to a tenth (§ 10). */
 export const phaseSeconds = ["working", "waiting", "merging", "resolving", "fixing"] as const
 
 /** How long a ticket spent in each phase it entered. */
@@ -66,9 +65,9 @@ export type Phases = typeof Phases.Type
 /** A ticket's hand-backs in the run: for conflicts and for a failing check, 0 included. */
 export const HandBacks = Schema.Struct({ resolve: Count, fix: Count })
 
-// What the record that ends a ticket's part in the run says of it, as orchestra's closed, deferred
-// and aside records do (`phases`, `hand_backs`, `carried`, `tokens`), and its workers' cost, which
-// only the SDK gives (`cost_usd`). A record about a ticket the run didn't take up has none.
+// What the record that ends a ticket's part in the run (closed, deferred, aside) says of it
+// (`phases`, `hand_backs`, `carried`, `tokens`), and its workers' cost, as the SDK gives it
+// (`cost_usd`). A record about a ticket the run didn't take up has none.
 const spentFields = {
   phases: optional(Phases),
   hand_backs: optional(HandBacks),
@@ -386,7 +385,7 @@ export const Battery = Schema.Struct({
   text: Schema.String,
 })
 
-/** The words a stop's `detail` takes that are tutti's: orchestra's `TERMINAL_FAILED` is gone. */
+/** The word a stop's `detail` takes for the account's usage limit. */
 export const StopWord = { usageLimit: "USAGE_LIMIT" } as const
 
 /** The loop stopped and needs you; `detail` is the word its text starts with (`PAUSED`, …). */
@@ -460,8 +459,8 @@ export const ChecksGate = Schema.Struct({
 export const OrganTotals = Schema.Struct({ calls: Count, turns: Count, cost_usd: Usd })
 
 /**
- * The run's last record: the exit code, and as orchestra's, the run's `tokens` by model and its
- * `organs`' totals, each left out when there is none; tutti adds `cost_usd`, its workers' turns'.
+ * The run's last record: the exit code, the run's `tokens` by model and its `organs`'
+ * totals, each left out when there is none, and `cost_usd`, its workers' turns'.
  */
 export const End = Schema.Struct({
   ...head("end"),
@@ -472,12 +471,12 @@ export const End = Schema.Struct({
 })
 
 /**
- * Which check a `check` record is of, as orchestra's `suite`; `early` is tutti's: a ticket's early
+ * Which check a `check` record is of (`suite`); `early` is a ticket's early
  * check, while its worker's verifier runs (src/run/earlyCheck.ts).
  */
 export const checkSuites = ["merge", "recheck", "fix", "full", "setup", "early"] as const
 
-/** How a check ended, as orchestra's `result`; `not_run` is tutti's: it couldn't start. */
+/** How a check ended (`result`); `not_run`: it couldn't start. */
 export const checkResults = ["passed", "failed", "timed_out", "not_run"] as const
 
 /** A check or a setup tutti ran ended; the log has no line for it. */

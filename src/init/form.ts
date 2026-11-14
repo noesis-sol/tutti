@@ -104,7 +104,7 @@ export interface Fields {
   ) => Effect.Effect<ScoutResult, FormCancelled>
 }
 
-/** The notes of the options for tickets at the same time, 1 to 4, as orchestra's init offers them. */
+/** The notes of the options for tickets at the same time, 1 to 4. */
 export const concurrencyNotes = [
   "one at a time (safest)",
   "checks must cope with running side by side",

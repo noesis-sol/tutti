@@ -1,7 +1,6 @@
 // Organs (§ 3.3, § 6): the one-shot advisers, triage, the reviewer, the critic, the auditor, the
 // reflector and the scout, written against effect/ai's LanguageModel. An organ is a
-// name, a prompt (from prompts/), the Schema of its answer, an effort and a time limit, both as
-// orchestra sets them.
+// name, a prompt (from prompts/), the Schema of its answer, an effort and a time limit.
 // `--organ-model` and `--organ-effort`, or the settings' organs.model and organs.effort, override
 // every organ's model and effort; AppConfig has them resolved.
 //
@@ -29,7 +28,7 @@ import { fromTheRun, type InputPart, renderInput, systemPrompt } from "./evidenc
 export const organNames = ["triage", "reviewer", "critic", "auditor", "reflector", "scout"] as const
 export type OrganName = (typeof organNames)[number]
 
-/** Each organ's effort and time limit, as orchestra sets them (§ 6.1). */
+/** Each organ's effort and time limit (§ 6.1). */
 export const organDefaults: {
   readonly [N in OrganName]: { readonly effort: EffortLevel; readonly timeLimit: Duration.Duration }
 } = {
@@ -64,7 +63,7 @@ export interface OrganSpec<A> {
   readonly answer: Answer<A>
 }
 
-/** The organ `name`, with its effort and time limit as orchestra sets them. */
+/** The organ `name`, with its effort and time limit (organDefaults). */
 export const make = <A>(name: OrganName, spec: OrganSpec<A>): Organ<A> => ({
   name,
   system: systemPrompt(spec.prompt, fromTheRun),

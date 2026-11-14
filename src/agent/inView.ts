@@ -4,7 +4,7 @@
 //
 // Text tutti brings into such a session's first message that someone else wrote (a feature's
 // description, often pasted from an issue or a web page; a question a worker filed) goes between
-// pasted_content tags carrying a fresh ID, as orchestra sends it: the instructions say text in the
+// pasted_content tags carrying a fresh ID: the instructions say text in the
 // tags may carry instructions the user didn't write. The ID is drawn again while the text holds it,
 // so no text in it can close the block early.
 import { Effect } from "effect"

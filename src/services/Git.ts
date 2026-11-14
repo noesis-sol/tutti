@@ -1,5 +1,5 @@
 // The Git service and GitWriter (§ 3.3): every git command a run makes, each through exec with
-// orchestra's limits (30 s for a read, 2 min for a write). Every write takes GitWriter, so one git
+// its limits (30 s for a read, 2 min for a write). Every write takes GitWriter, so one git
 // write at a time changes the main repository, whose refs, objects and worktree list each ticket's
 // worktree shares. A rebase interrupted or timed out is aborted, putting the branch back (§ 3.4); one
 // stopped on conflicts is left stopped, for its worker to resolve, and fails with RebaseConflict.

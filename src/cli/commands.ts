@@ -584,7 +584,7 @@ const initFlag = (
   return Flag.optional(flag)
 }
 
-/** tutti init's flags, orchestra init's, each read by readInitFlags. */
+/** tutti init's flags, each read by readInitFlags. */
 export const initFlags = {
   checkFast: initFlag(
     "check-fast",

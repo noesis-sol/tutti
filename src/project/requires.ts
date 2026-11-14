@@ -1,4 +1,4 @@
-// The project's requires list (§ 8.4's `requires`), as orchestra 0.9.1's: what its machine must
+// The project's requires list (§ 8.4's `requires`): what its machine must
 // have, a tool, a service running, a permission. A run checks it as it starts, `tutti init` and
 // `tutti requires` do too (src/run/requires.ts). People read the README to set a machine up, tutti
 // reads the list; written apart, they drift. So the README's section on what to install is the list

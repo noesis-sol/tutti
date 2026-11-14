@@ -1,6 +1,6 @@
 // The start question's Spec file field (§ 5 item 3, § 7.1), as pure functions: what was typed read
 // as a path or a URL, Tab's completions, the file browser's rows, and paths as the field shows
-// them. As orchestra's spec field (internal/tui/spec_field.go): a path typed or pasted, a relative
+// them. It reads a path typed or pasted, a relative
 // one from the repository, `~` or `~/` for the home folder, a path in quotes, or a file dropped on
 // the terminal with its spaces escaped by backslashes; or an https:// URL, which nothing completes.
 // The folders are read by specFiles.ts.

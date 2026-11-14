@@ -59,7 +59,7 @@ const lowSurrogate = (c: number): boolean => within(c, 0xdc00, 0xdfff)
 
 // sanitize is text without its C0 controls but newline and tab, its C1 controls, its ESC sequences
 // (whole, even when cut short), its bidi overrides and isolates, and its lone surrogates. A carriage
-// return becomes a newline, as in orchestra, so that it can't take a printed line back to its start.
+// return becomes a newline, so that it can't take a printed line back to its start.
 export const sanitize = (text: string): string => {
   let out = ""
   let i = 0

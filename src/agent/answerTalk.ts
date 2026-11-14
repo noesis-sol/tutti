@@ -1,9 +1,9 @@
 // A question's talk, the session side (§ 4.11, tutti-i0sz): Talk it through, in the answer form,
 // talks one question ticket through with Claude in an SDK session in the main checkout before it is
-// answered, as orchestra's answer talk does when the maintainer asks. AgentHost knows the session as
+// answered, when the maintainer asks. AgentHost knows the session as
 // interviewWorker (inView.ts), as it knows a breakdown with the user, for the Interview view shows
-// it. Its instructions are templates/answer-talk-prompt.md (orchestra's answer-prompt.md, adapted
-// to one question), appended to the claude_code preset; its built-in tools are a breakdown's with
+// it. Its instructions are templates/answer-talk-prompt.md, appended
+// to the claude_code preset; its built-in tools are a breakdown's with
 // the user there, read-only, and its one MCP server is tutti's own, with tickets_list and
 // ticket_show (ticketTools.ts) and give_answer, which hands tutti the answer the maintainer settled
 // on.

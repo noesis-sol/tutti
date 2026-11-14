@@ -26,7 +26,7 @@ export const eventsFile = ".tutti/run/events.jsonl"
 export const stamp = (event: Event, run: string, now: number): EventRecord =>
   ({ v: version, time: timestamp(new Date(now)), run, ...event }) as EventRecord
 
-/** The warning for a stream that can't be opened or written, as orchestra words it. */
+/** The warning for a stream that can't be opened or written. */
 export const notRecorded = (reason: string): string =>
   `events not recorded in ${eventsFile}: ${reason}; the run goes on, and later failures aren't logged`
 

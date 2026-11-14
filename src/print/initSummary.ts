@@ -1,4 +1,4 @@
-// tutti init's title and summary on the main screen (§ 7.1, § 7.11), as orchestra init prints them:
+// tutti init's title and summary on the main screen (§ 7.1, § 7.11):
 // the title (the pill, `init` organ bold, the repository faint); each step with its mark, `✓` done,
 // `•` faint, `✗` needsYou bold, `!` notice, its label bold and its detail faint (notice for a
 // caution), wrapped under itself; what's left for you, numbered, in the Next box framed `pill`, its

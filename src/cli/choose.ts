@@ -2,7 +2,7 @@
 // of the current tickets, how a run asks it, and how it reads a spec chosen there. A run asks once the startup checks have passed
 // and it holds the run lock, when stdin and stdout are TTYs and no flag decides: --tickets,
 // --ticket (or TUTTI_TICKET), --feature, --spec and --plain each do, and so does a --limit the run has
-// already reached, as orchestra's. It asks in the command's one renderer, before the dashboard,
+// already reached. It asks in the command's one renderer, before the dashboard,
 // or as lines (plain/forms.ts) when the terminal can't show one: TERM=dumb, or fewer than 256
 // colours. A cancelled question ends the run before it started, exit 130.
 import { Console, type Context, Effect, type FileSystem, Result } from "effect"

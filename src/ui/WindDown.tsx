@@ -1,7 +1,7 @@
 // The wind-down line (§ 5.1 "How the phases are shown", § 7.2, § 7.11): a `■` for each ticket
 // running when the wind-down began, `windingDown` while it runs, `done` once merged, `needsYou` (not
 // bold) once set aside or waiting on you, faint once waiting for a blocker; then `Winding down`
-// `windingDown` bold, and how many still run, faint. It never wraps, as orchestra's doesn't: a
+// `windingDown` bold, and how many still run, faint. It never wraps: a
 // narrow pane drops `, no new tickets`, then the count, then the words, then all but the squares.
 import type { WindDownMark } from "../run/phase.ts"
 import type { WindDownView } from "../run/runView.ts"

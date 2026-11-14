@@ -5,12 +5,12 @@
 // that a check on a loaded machine isn't cut short at the limit it has unloaded. The whole output
 // goes to a file the caller names (check.log or setup.log in a worktree's .tutti/run/, § 9.1), or to
 // a descriptor the caller opened for it through the symlink guard; in
-// memory, only what is said of it is kept, each part bounded, as orchestra keeps it: its last lines,
+// memory, only what is said of it is kept, each part bounded: its last lines,
 // the lines that say what failed, its FLAKY: lines and the suites its SUITE: lines name. Where the
 // caller asks to be told (RunOptions' onAt), it is told as well where the check is as it goes: the
 // suite its last SUITE: line named and the latest PROGRESS: line of that suite, the count the
 // dashboard's bar fills with (§ 7.2). The lines
-// that say what failed are picked as orchestra picks them, for Go's tools, generic errors and the
+// that say what failed are picked for Go's tools, generic errors and the
 // test runners of other languages (bun, jest, vitest, node, pytest, cargo, mocha and TAP), and also
 // for tsc and Biome, the tools of a TypeScript project such as tutti's own. A check
 // that loops printing until its time limit holds no more of tutti's memory than one that prints a
@@ -47,7 +47,7 @@ export const checkLogName = "check.log"
 /** The file in a worktree's .tutti/run/ that holds the whole output of its last setup (§ 9.1). */
 export const setupLogName = "setup.log"
 
-/** How much of a check's output is held in memory: orchestra's bounds. */
+/** How much of a check's output is held in memory. */
 export const OutputBounds = {
   /** How many of its last lines are kept: the most anything says of its end (the full check's). */
   keptLines: 40,
@@ -518,7 +518,7 @@ export interface CheckOptions extends RunOptions {
 }
 
 export interface SetupOptions extends RunOptions {
-  /** The check the setup comes before, whose time limit it runs within, as in orchestra. */
+  /** The check the setup comes before, whose time limit it runs within. */
   readonly before: "fast" | "full"
   /**
    * The command to run in place of checks.setup.command: the run's setup, which a merge that
