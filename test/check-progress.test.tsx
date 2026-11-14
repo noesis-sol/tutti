@@ -475,6 +475,8 @@ describe("the checks that show it", () => {
         taken.write(new TextEncoder().encode("SUITE: test\nPROGRESS: 2/8\n"))
         const shown = (yield* checking.now).get("t-1")
         seen.push(shown === undefined ? null : (checkWords(shown) ?? null))
+        // A pass of no time is none to estimate from: this one takes some.
+        yield* advance("10 seconds")
         return passed("fast")
       })
     const ran = await scenario(
@@ -503,7 +505,7 @@ describe("the checks that show it", () => {
         }),
       ),
     )
-    expect(after?.usual).not.toBeNull()
+    expect(after?.usual).toBe(10)
   })
 
   test("without a Checking, a check runs as ever and is told nothing", async () => {
