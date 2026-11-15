@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.8.7] - 2026-11-15
+
 - With --limit reached and a solo ticket next in line, a ticket set aside for a failed check is checked once more when main moves on, and a conflict rebased by hand is taken back to merge (§ 5; `recheckSlot` in `src/run/schedule/dispatch.ts`; tutti-u9hi): the fill that started the last ticket the limit allows noted the solo ticket as first in line, and no fill ran again to clear the note, though that ticket won't start in this run, so every later recheck and take-back was refused a slot without a line, and a dashboard run stayed open waiting for them. Once the limit is reached the note holds none back; a solo ticket running still does, and so does one first in line while the run takes tickets. `test/schedule-solo-recheck-limit.test.ts` covers it.
 - A run no longer ends with a ticket ready and a slot free when the ticket holding it back ends while a fill reads the holds (§ 5 item 6; `src/run/look.ts`, `whatsLeft` in `src/run/runEnd.ts`, `Scheduler.ends` in `src/run/schedule.ts`; tutti-855y): a ticket held for a solo ticket, for the merge of the ticket it was filed from, or a parent held for its last subticket, was placed HeldBack again by a fill that picked with the slots as it read them before its reads, if the ticket it waited for ended meanwhile without going to the merge queue (a question filed, closed with no change, deferred, a failed start), and the look then found nothing running and ended the run. The scheduler now counts its tickets' fibers as they end, and a look in which one ended since its last fill began leaves the run busy, its freed wake filling again; this replaces the run's end's check for an overlap hold alone. `test/run-end-held-freed.test.ts` covers it.
 
