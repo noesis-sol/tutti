@@ -132,6 +132,7 @@ const runLoop = (w: World, steps: ReadonlyArray<(w: World) => void> = []) => {
     scheduler: {
       running: Effect.sync(() => new Set(w.running)),
       freed: Effect.never,
+      ends: Effect.succeed(0),
       interrupt: Effect.sync(() => calls.push("interrupt")),
     },
     queue: {

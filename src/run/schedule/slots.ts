@@ -177,6 +177,8 @@ export const occupy = (
         ),
       )
       yield* showQueue(sched)
+      // Counted once its slot is free, so that a fill that began before the count saw the slot taken.
+      yield* Ref.update(sched.ends, (n) => n + 1)
       yield* Queue.offer(sched.freed, undefined)
     })
     yield* FiberSet.run(sched.tickets, Effect.ensuring(work, release))

@@ -44,6 +44,7 @@ const arbSnapshot: fc.Arbitrary<Snapshot> = fc
     held: fc.boolean(),
     usageHeld: fc.boolean(),
     endAsked: fc.boolean(),
+    endedSinceFill: fc.boolean(),
   })
   .chain(({ known, running, overLimit, ...rest }) =>
     fc.tuple(...known.map(arbTicket)).map((tickets) => ({
@@ -91,7 +92,14 @@ describe("decide", () => {
           const entry = snapshot.tickets.get(ticket)
           return entry === undefined || entry.phase._tag !== "Working"
         })
-        if (running || !snapshot.mergedBefore || !snapshot.settled || snapshot.triagePending > 0) {
+        const freed = snapshot.endedSinceFill === true && snapshot.canTake
+        if (
+          running ||
+          freed ||
+          !snapshot.mergedBefore ||
+          !snapshot.settled ||
+          snapshot.triagePending > 0
+        ) {
           expect(end._tag).toBe("Busy")
         }
       }),
@@ -196,12 +204,16 @@ describe("decide", () => {
     expect(decide(snapshot)).toEqual(End.WaitOnYou({ tickets: ["a" as TicketId] }))
   })
 
-  test("a ticket held back for an ended one's footprint is to start", () => {
-    const snapshot = look({
-      tickets: tickets(["b" as TicketId, TicketPhase.HeldBack({ why: "overlap" })]),
-    })
-    expect(decide(snapshot)).toEqual(End.Busy())
-    expect(decide({ ...snapshot, canTake: false })).toEqual(End.Done({ asked: false }))
+  test("a ticket held back for one whose fiber ended since the fill began is to start", () => {
+    for (const why of ["overlap", "solo", "merge", "parent"] as const) {
+      const snapshot = look({
+        tickets: tickets(["b" as TicketId, TicketPhase.HeldBack({ why })]),
+        endedSinceFill: true,
+      })
+      expect(decide(snapshot)).toEqual(End.Busy())
+      expect(decide({ ...snapshot, canTake: false })).toEqual(End.Done({ asked: false }))
+      expect(decide({ ...snapshot, endedSinceFill: false })).toEqual(End.Done({ asked: false }))
+    }
   })
 
   test("a worker past its ticket limit is neither waited for nor waited on", () => {

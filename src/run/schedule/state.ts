@@ -42,6 +42,8 @@ export interface Scheduling {
   readonly memo: Ref.Ref<Memo>
   /** Offered as a ticket's fiber ends and frees its slot, so that the slot is filled at once. */
   readonly freed: Queue.Queue<void>
+  /** How many tickets' fibers have ended, each counted once its slot is freed. */
+  readonly ends: Ref.Ref<number>
   /** One fill, carry or recheck at a time. */
   readonly oneFill: Semaphore.Semaphore
   /** Whether the run may take work: the options' gate, or the ledger's wind-down and the limit. */
@@ -75,6 +77,7 @@ export const scheduling = (
     })
     // A ticket's fiber that ends wakes the poll, so its slot is filled at once.
     const freed = yield* Queue.sliding<void>(1)
+    const ends = yield* Ref.make(0)
     const oneFill = yield* Semaphore.make(1)
     const gate =
       options.gate ??
@@ -98,6 +101,7 @@ export const scheduling = (
       slots,
       memo,
       freed,
+      ends,
       oneFill,
       gate,
       beforeStart: options.beforeStart ?? Effect.void,

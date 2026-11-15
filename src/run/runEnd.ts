@@ -51,6 +51,12 @@ export interface Look {
    * for the disk to free rather than end on the tickets it held back, while it would take them.
    */
   readonly diskHeld?: boolean
+  /**
+   * Whether a ticket's fiber ended since the last fill began: the fill may have held a ticket back
+   * for it (a solo ticket, a source or a subticket not merged, an overlap), which the next fill,
+   * its freed wake pending, starts.
+   */
+  readonly endedSinceFill?: boolean
   /** Whether the merge queue is settled now: nothing merging, queued or resolving. */
   readonly settled: boolean
   /** The triage calls under way. */
@@ -119,14 +125,11 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<T
   // With a worker waiting on you in its slot, a ticket queued for a slot is still to start.
   const queued = entries.some((entry) => entry.phase._tag === "Queued")
   const toStart = waiting.length > 0 && queued && look.canTake
-  // A ticket held back for a running one's footprint, when that one ended after the fill read it,
-  // is to start too: the next look fills again.
-  const overlapped =
-    look.running.size === 0 &&
-    entries.some((entry) => entry.phase._tag === "HeldBack" && entry.phase.why === "overlap") &&
-    look.canTake
+  // A ticket held back for one whose fiber ended after the fill read it is to start too: the next
+  // look fills again.
+  const freed = look.endedSinceFill === true && look.canTake
   const done =
-    !overlapped &&
+    !freed &&
     !look.resuming &&
     !look.answering &&
     look.filing !== true &&

@@ -39,7 +39,7 @@ export interface LoopParts {
   readonly holds: Pick<HoldsGate, "now" | "currentStops" | "changeHolds" | "stopped">
   readonly ledger: Pick<Ledger["Service"], "current">
   readonly attention: Pick<Attention["Service"], "current">
-  readonly scheduler: Pick<Scheduler, "running" | "freed" | "interrupt">
+  readonly scheduler: Pick<Scheduler, "running" | "freed" | "ends" | "interrupt">
   readonly queue: Pick<MergeQueue, "state" | "hold">
   readonly triage: Pick<Triage, "pending">
   /** The critic (critic.ts): the run doesn't end while a review runs; none without it. */
@@ -79,6 +79,8 @@ export interface Loop {
 export const make = (parts: LoopParts): Effect.Effect<Loop> =>
   Effect.sync(() => {
     const { wakes, holds, queue, scheduler, usage, commands } = parts
+    // The tickets' fibers ended as the last fill began: one ended since may have held a ticket back.
+    let filledAt = 0
     // Fills the free slots, after the look's other effects, then reads what they left for the end's
     // decision (runEnd.ts). A look woken only for what bd and git can't have changed, an attention
     // change, skips to the reading (wakes.ts).
@@ -87,10 +89,16 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
       // here. A merge that ends during this look frees what it held back after the look has read
       // it: the run is done only when nothing was merging as the look began, and its wake, pending
       // still, has it look again.
+      // So with a ticket's fiber that ends during the fill or after it: the fill may have held a
+      // ticket back for it (a solo ticket, a source or a subticket not merged, an overlap), and the
+      // run is done only when none ended since the last fill began; its freed wake has it look again.
       const why = yield* wakes.take
       const mergedBefore = isSettled(yield* queue.state)
       yield* Effect.logDebug(`look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`)
-      if (reads(why)) yield* parts.fill(why)
+      if (reads(why)) {
+        filledAt = yield* scheduler.ends
+        yield* parts.fill(why)
+      }
       const gate = yield* parts.gate
       const look: Look = {
         mergedBefore,
@@ -115,6 +123,8 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
           parts.setAside === undefined || !takesBack(gate) || (yield* queue.state).stop !== null
             ? []
             : yield* parts.setAside,
+        // Read last: a fiber that ends after it was still running as the look read the scheduler.
+        endedSinceFill: (yield* scheduler.ends) !== filledAt,
       }
       return look
     })

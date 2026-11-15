@@ -342,6 +342,11 @@ export interface Scheduler {
   /** Waits until a ticket's fiber has ended and freed its slot. */
   readonly freed: Effect.Effect<void>
   /**
+   * How many tickets' fibers have ended so far, each counted once its slot is freed: a look reads
+   * whether one ended since its fill began (look.ts).
+   */
+  readonly ends: Effect.Effect<number>
+  /**
    * Runs a resumed or carried-over worker in a slot, counting toward no limit: only with a slot
    * free, the run taking tickets (no hold, the machine under --machine-workers) and not winding
    * down, no solo ticket running or past its work, and, for a solo one, no other ticket either.
@@ -402,6 +407,7 @@ export const make = (
         ),
       betweenReads: betweenReads(sched),
       freed: Queue.take(sched.freed),
+      ends: Ref.get(sched.ends),
       carry: (ticket, start, issue) => carry(sched, ticket, start, issue),
       recheckSlot: (ticket, work) => recheckSlot(sched, ticket, work),
       started: Effect.map(Ref.get(sched.slots), (s) => s.started),
