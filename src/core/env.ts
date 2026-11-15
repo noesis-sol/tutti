@@ -260,7 +260,8 @@ export interface BranchEnvOptions {
  * list's commands (§ 4.13), and what a worker's starts from: `env`'s set variables but the terminal
  * pane's (paneVariable), a parent Claude Code session's (sessionVariable), git's local ones
  * (gitLocalVariable) and Linear's credentials (linearVariable), without ANTHROPIC_API_KEY when
- * there is a subscription login and billing isn't api. A check then sees what it sees run by the worker, and a passing one passes for both.
+ * there is a subscription login and billing isn't api. A check then sees what it sees run by the
+ * worker, and a passing one passes for both.
  */
 export const branchEnv = (options: BranchEnvOptions): Record<string, string> => {
   const result: Record<string, string> = {}

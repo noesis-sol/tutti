@@ -29,7 +29,7 @@ import { testEnv, withVariable } from "./env.ts"
 import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
 
-// Real processes: a check's shell, and in the slow test tutti, its probe's Claude Code and its setup.
+// Real processes: a check's shell, and in the slow test tutti and its probe's Claude Code.
 setDefaultTimeout(90_000)
 
 /** The credentials as the maintainer's shell holds them for the sync. */
@@ -135,7 +135,7 @@ describe("a check's environment", () => {
 })
 
 describe("git's, bd's and tutti's own commands", () => {
-  /** What `sh` prints of the credentials, run by exec from tutti's environment with `env` over it. */
+  /** What `sh` prints of the key, run by exec from tutti's environment with `env` over it. */
   const run = (env?: Readonly<Record<string, string>>) =>
     withVariable("LINEAR_API_KEY", credentials.LINEAR_API_KEY, () =>
       Effect.runPromise(
