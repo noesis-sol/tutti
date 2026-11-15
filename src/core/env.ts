@@ -17,6 +17,15 @@ import { gitLocalVariable } from "./gitEnv.ts"
 /** The variable that holds an Anthropic API key. */
 export const apiKeyVariable = "ANTHROPIC_API_KEY"
 
+/** The variable bd linear reads a person's API key from. */
+export const linearKeyVariable = "LINEAR_API_KEY"
+
+/** The variables of bd linear's OAuth pair, for automation, which it takes over the key. */
+export const linearOAuthVariables = [
+  "LINEAR_OAUTH_CLIENT_ID",
+  "LINEAR_OAUTH_CLIENT_SECRET",
+] as const
+
 /**
  * The variables that hold Linear's credentials: its API key, and bd's OAuth pair for automation.
  * Either reads and writes the team's issues, so only the bd linear processes tutti itself starts
@@ -24,9 +33,8 @@ export const apiKeyVariable = "ANTHROPIC_API_KEY"
  * bd, goes without them (branchEnv, withoutLinear), whether or not the sync is on.
  */
 export const linearVariables: ReadonlySet<string> = new Set([
-  "LINEAR_API_KEY",
-  "LINEAR_OAUTH_CLIENT_ID",
-  "LINEAR_OAUTH_CLIENT_SECRET",
+  linearKeyVariable,
+  ...linearOAuthVariables,
 ])
 
 /** Whether `name` holds one of Linear's credentials (linearVariables). */

@@ -4,19 +4,11 @@
 // status; each lack is a warning in the START block, and the run goes on without the sync.
 // Otherwise the START block names the team and how often the run pulls.
 import { Duration, Effect, Result } from "effect"
+import { linearCredentials, linearKeyVariable, linearOAuthVariables } from "../core/env.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { LinearSettings } from "../project/settings.ts"
 import { Beads, type BeadsError } from "../services/Beads.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
-
-/** The variable bd linear reads a person's API key from. */
-export const linearKeyVariable = "LINEAR_API_KEY"
-
-/** The variables of bd linear's OAuth pair, for automation, which it takes over the key. */
-export const linearOAuthVariables = [
-  "LINEAR_OAUTH_CLIENT_ID",
-  "LINEAR_OAUTH_CLIENT_SECRET",
-] as const
 
 /** Linear's five types of workflow state, each of which bd's push needs a Beads status for. */
 export const linearStateTypes = [
@@ -35,8 +27,8 @@ const notSyncing = "linear: not syncing"
 
 /** Whether `env` gives bd linear credentials: the API key, or both halves of the OAuth pair. */
 export const hasCredentials = (env: Readonly<Record<string, string | undefined>>): boolean => {
-  const set = (name: string) => (env[name] ?? "") !== ""
-  return set(linearKeyVariable) || linearOAuthVariables.every(set)
+  const set = linearCredentials(env)
+  return linearKeyVariable in set || linearOAuthVariables.every((name) => name in set)
 }
 
 /** What a failed bd call says, on one line. */
