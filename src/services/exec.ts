@@ -32,6 +32,7 @@ import {
 } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { withoutLinear } from "../core/env.ts"
 import { withoutGitLocal } from "../core/gitEnv.ts"
 import { descendantGroups, killTree, ownGroup, processAlive, processTable } from "./processTree.ts"
 import { startReaper, stopReaper } from "./reaper.ts"
@@ -155,10 +156,10 @@ export interface Command {
   /**
    * The environment the command starts from, in place of tutti's own: that of a command run on a
    * branch's behalf (src/core/env.ts's BranchEnv). Either goes without git's local variables
-   * (gitEnv.ts).
+   * (gitEnv.ts) and Linear's credentials (env.ts' withoutLinear).
    */
   readonly baseEnv?: Readonly<Record<string, string>>
-  /** Set over the environment it starts from. */
+  /** Set over the environment it starts from: a bd linear call's Linear credentials, say. */
   readonly env?: Readonly<Record<string, string>>
   /** Written to the command's stdin, which is otherwise closed. */
   readonly stdin?: string
@@ -393,7 +394,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         .spawn(
           ChildProcess.make(command.command, command.args, {
             cwd: command.cwd,
-            env: withoutGitLocal(command.baseEnv ?? process.env, command.env),
+            env: withoutGitLocal(withoutLinear(command.baseEnv ?? process.env), command.env),
             detached: true,
             // No forceKillAfter: the SIGKILL is stopGroup's, to the tree, not the spawner's.
             killSignal: "SIGTERM",

@@ -3,7 +3,7 @@
 // whole of tutti's own, adds tutti's variables, and then keeps or removes ANTHROPIC_API_KEY: the
 // key outranks a subscription login and would bill the API without a word. It leaves out the
 // variables naming the terminal pane tutti runs in, and those of a Claude Code session tutti was
-// started from, which its sessions don't own, and git's local variables (src/core/gitEnv.ts),
+// started from, Linear's credentials, which only tutti's own bd linear calls get (linearVariable), which its sessions don't own, and git's local variables (src/core/gitEnv.ts),
 // which would have a worker's git act on another repository than its worktree's. What tutti runs
 // on a branch's behalf, the setup, the checks and the requires list's commands, gets the same
 // environment but tutti's variables (branchEnv), so a check run by tutti sees what it saw run by
@@ -15,6 +15,45 @@ import { gitLocalVariable } from "./gitEnv.ts"
 
 /** The variable that holds an Anthropic API key. */
 export const apiKeyVariable = "ANTHROPIC_API_KEY"
+
+/**
+ * The variables that hold Linear's credentials: its API key, and bd's OAuth pair for automation.
+ * Either reads and writes the team's issues, so only the bd linear processes tutti itself starts
+ * get them (linearCredentials): every other command it starts, a worker, an organ, a check, git or
+ * bd, goes without them (branchEnv, withoutLinear), whether or not the sync is on.
+ */
+export const linearVariables: ReadonlySet<string> = new Set([
+  "LINEAR_API_KEY",
+  "LINEAR_OAUTH_CLIENT_ID",
+  "LINEAR_OAUTH_CLIENT_SECRET",
+])
+
+/** Whether `name` holds one of Linear's credentials (linearVariables). */
+export const linearVariable = (name: string): boolean => linearVariables.has(name)
+
+/** `env`'s set variables but Linear's credentials: the environment every command starts from. */
+export const withoutLinear = (
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> => {
+  const result: Record<string, string | undefined> = {}
+  for (const [name, value] of Object.entries(env)) if (!linearVariable(name)) result[name] = value
+  return result
+}
+
+/**
+ * `env`'s Linear credentials alone, the set ones, for a bd linear call tutti makes to lay over the
+ * environment it starts from (exec's `env`); tutti's own by default.
+ */
+export const linearCredentials = (
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Record<string, string> => {
+  const result: Record<string, string> = {}
+  for (const name of linearVariables) {
+    const value = env[name]
+    if (value !== undefined && value !== "") result[name] = value
+  }
+  return result
+}
 
 /**
  * Whether `name` names the terminal pane tutti runs in: Herdr's HERDR_*, cmux's CMUX_*, and tmux's
@@ -218,8 +257,8 @@ export interface BranchEnvOptions {
 /**
  * The environment of what tutti runs on a branch's behalf, the setup, the checks and the requires
  * list's commands (§ 4.13), and what a worker's starts from: `env`'s set variables but the terminal
- * pane's (paneVariable), a parent Claude Code session's (sessionVariable) and git's local ones
- * (gitLocalVariable), without ANTHROPIC_API_KEY when there is a subscription login and billing
+ * pane's (paneVariable), a parent Claude Code session's (sessionVariable), git's local ones
+ * (gitLocalVariable) and Linear's credentials (linearVariable), without ANTHROPIC_API_KEY when there is a subscription login and billing
  * isn't api. A check then sees what it sees run by the worker, and a passing one passes for both.
  */
 export const branchEnv = (options: BranchEnvOptions): Record<string, string> => {
@@ -229,7 +268,8 @@ export const branchEnv = (options: BranchEnvOptions): Record<string, string> => 
       value !== undefined &&
       !paneVariable(name) &&
       !sessionVariable(name) &&
-      !gitLocalVariable(name)
+      !gitLocalVariable(name) &&
+      !linearVariable(name)
     )
       result[name] = value
   }
