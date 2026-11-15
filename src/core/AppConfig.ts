@@ -8,7 +8,7 @@ import { join } from "node:path"
 import { Context, Duration, Schema } from "effect"
 import type { billings } from "../project/flags.ts"
 import type { LoadedScheme } from "../project/scheme.ts"
-import type { Settings } from "../project/settings.ts"
+import type { LinearSettings, Settings } from "../project/settings.ts"
 import type { TicketId } from "../services/Beads.ts"
 
 /** Every problem with a run's flags, variables, user config and settings, each a sentence. */
@@ -122,6 +122,17 @@ export interface AppConfigValue {
    * config's or `.tutti/settings.json`; null while the machine is kept awake.
    */
   readonly keepAwakeOffBy: string | null
+  /**
+   * The Linear sync this run has: the settings' linear block, none without one, and none with
+   * --no-linear or TUTTI_NO_LINEAR, or once the startup checks found what it lacks
+   * (src/run/linearCheck.ts). Only the project's settings turn it on.
+   */
+  readonly linear: LinearSettings | null
+  /**
+   * What turned off for this run the sync the settings' block turns on, as the START block names
+   * it: `--no-linear` or `TUTTI_NO_LINEAR`; null where nothing did, or there is no block.
+   */
+  readonly linearOffBy: string | null
   /**
    * What the START block says of each retired flag given (src/project/flags.ts's retiredFlags) but a
    * refused one, which is a problem, once each, naming the flag, or its variable where the flag

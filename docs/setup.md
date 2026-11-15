@@ -636,6 +636,34 @@ for a project that sets them all; the table below gives each one's default:
 
 A run's flags override the settings for that run; [Running](running.md#options) lists them.
 
+### The linear block
+
+The Linear sync is off unless the settings hold a `linear` block, which the example above leaves
+out, as `init` does unless you set the sync up. Its presence is what turns the sync on; there is no
+on or off key, and the user config can't turn it on. Without the block a run knows nothing of
+Linear: no `bd linear`, no check and no line of output.
+
+```json
+{
+  "linear": { "team": "NOE", "pull_every": "10m" }
+}
+```
+
+| Key | Default | |
+|---|---|---|
+| `linear.team` | required | the Linear team's key, as its issues' identifiers start with it: `NOE` in `NOE-12` |
+| `linear.pull_every` | `"10m"` | how often a run pulls from Linear after the pull as it starts; `"0"` for that one only |
+
+The credentials come only from the environment: `LINEAR_API_KEY`, or `LINEAR_OAUTH_CLIENT_ID` and
+`LINEAR_OAUTH_CLIENT_SECRET` for automation. With the block there, a run's start checks for them,
+for a `bd` that has `bd linear`, and for bd's state map (`linear.state_map.<type>` for each of
+Linear's `backlog`, `unstarted`, `started`, `completed` and `canceled`), and warns of each one
+missing in its START block, `linear: not syncing: …`, starting without the sync rather than not
+at all. Otherwise the START block names it: `linear: NOE, pull at start and every 10m`.
+`--no-linear` (or `TUTTI_NO_LINEAR=1`) runs once without it, the START block saying
+`linear: off, --no-linear`. Removing the block turns the sync off; tickets already linked keep
+their Linear link.
+
 `keep_awake` is in both places on purpose: the project's settings say whether its runs keep the
 machine awake by default, and your user config overrides that for you, as keeping a machine awake
 is the choice of whoever runs tutti on it. `init` writes `"keep_awake": true`, and `init --update`

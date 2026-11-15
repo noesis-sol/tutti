@@ -130,7 +130,10 @@ describe("the docs", () => {
     const example = blockWith("docs/setup.md", "checks")
     expect(Exit.isSuccess(decodeConfig(Settings, "settings.json", example))).toBe(true)
     const schema = JSON.parse(read("schema/settings.json")) as JsonSchema
-    expect([...keysOf(example)].sort()).toEqual([...schemaKeys(schema)].sort())
+    // The linear block, whose presence turns the Linear sync on, has an example of its own.
+    const linear = blockWith("docs/setup.md", "linear")
+    expect(Exit.isSuccess(decodeConfig(Settings, "settings.json", linear))).toBe(true)
+    expect([...keysOf(example), ...keysOf(linear)].sort()).toEqual([...schemaKeys(schema)].sort())
   })
 
   test("docs/setup.md's example user config is complete, and tutti reads it", () => {

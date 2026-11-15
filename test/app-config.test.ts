@@ -120,6 +120,7 @@ describe("flags", () => {
       "organ-effort",
       "triage",
       "review",
+      "no-linear",
       "notify",
       "check-timeout",
       "check-full-timeout",

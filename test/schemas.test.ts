@@ -35,12 +35,14 @@ test("schema/settings.json has every settings key but the retired, and refuses o
   expect(settings.additionalProperties).toBe(false)
 })
 
-// An object of every key's default, the way a file giving them all would.
+// An object of every key's default, the way a file giving them all would: a section with no
+// default of its own, as the linear block, whose presence turns the Linear sync on, left out.
 const defaults = (schema: JsonSchema): unknown =>
   schema.properties === undefined
     ? schema.default
     : Object.fromEntries(
         Object.entries(schema.properties)
+          .filter(([, inner]) => inner.properties === undefined || inner.default !== undefined)
           .map(([key, inner]) => [key, defaults(inner)] as const)
           .filter(([, value]) => value !== undefined),
       )

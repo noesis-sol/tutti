@@ -243,6 +243,11 @@ export const runFlags = {
     onOff: true,
     description: "have the reviewer organ write a run report at the end (default: on)",
   }),
+  noLinear: runFlag("no-linear", onOff, {
+    onOff: true,
+    description:
+      "run once without the Linear sync the linear block in .tutti/settings.json turns on (default: off)",
+  }),
   notify: runFlag("notify", onOff, {
     onOff: true,
     description: "desktop notifications (default: the user config, else on)",

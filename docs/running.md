@@ -165,6 +165,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `--organ-model <model>`, `--organ-effort <level>` | every organ's model and effort ([Organs](organs.md)) |
 | `--triage=false`, `--review=false` | no triage; no run report |
 | `--notify=false` | no notifications |
+| `--no-linear` | run once without the Linear sync the settings' `linear` block turns on ([The settings](setup.md#the-linear-block)) |
 | `--check-timeout 30m` | stop the merge check after this long |
 | `--check-full-timeout 60m` | stop the full check after this long |
 | `--resolve-conflicts=false` | set a ticket whose rebase conflicts aside, rather than hand it back |

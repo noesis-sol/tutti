@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The project's settings may hold a `linear` block, `{ "team": "NOE", "pull_every": "10m" }`, whose presence turns the Linear sync on (§ 8.4; `LinearSettings` in `src/project/settings.ts`; tutti-qatu.2): `team` is required in it, `pull_every` is a time, 10 minutes by default and `0` for the start's pull only. With it, the startup checks warn in the START block, never failing the start, of Linear's credentials missing from the environment, of a bd without `bd linear` and of bd's configuration without the state map, the run going on without the sync; else the START block says `linear: NOE, pull at start and every 10m` (`src/run/linearCheck.ts`). `--no-linear` and `TUTTI_NO_LINEAR=1` run once without it. Without the block a run is as before: no check, no `bd linear` process, nothing said. This starts no sync yet. `test/linear-settings.test.ts` covers it.
+
 ## [0.8.8] - 2026-11-15
 
 - While the end-of-run full check runs, the dashboard's Current section is titled `Completing the run` (`Starting the run` for a spec run's checks gate), and its box has no frame, so that it doesn't read as a ticket's card: its lines are in the text's own colour, as the load line's memory, and the check's bar takes the room its line has, up to 48 cells, shrinking in a narrow pane with the suite and the count whole, its filled part in the text's colour and the rest faint (§ 7.2; `idleBox`, `boxCheckSegments` and `currentTitle` in `src/ui/Card.tsx`; tutti-vxph). `picking the next ticket…` and `stopping…` are drawn in the same frameless box. A ticket's card and its merge check's 8-cell bar are unchanged. `test/full-check-box.test.tsx` covers it.

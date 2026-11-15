@@ -182,6 +182,27 @@ const IssueType = Schema.String.check(
   Schema.isPattern(/^[^,\s]+$/u, { expected: `an issue type such as "epic"` }),
 )
 
+/** A Linear team's key, which its issues' identifiers start with: NOE in NOE-12. */
+const TeamKey = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z0-9]+$/u, { expected: `a Linear team's key such as "NOE"` }),
+).annotate({ description: `the Linear team's key, such as "NOE"` })
+
+/**
+ * The Linear sync (bd linear, tutti-qatu): a project's settings that hold this block turn it on, and
+ * none turns it on otherwise, the user config included. Without it a run knows nothing of Linear.
+ */
+export const LinearSettings = Schema.Struct({
+  /** The Linear team's key, such as NOE: required in the block. */
+  team: TeamKey,
+  /** How often a run pulls from Linear after the pull at its start; "0": only that one. */
+  pull_every: NonNegativeDuration.pipe(withDefault("10m")),
+}).annotate({
+  description:
+    "the Linear sync: present, it is on; removed, it is off. Linear's credentials come only from the environment",
+})
+
+export type LinearSettings = typeof LinearSettings.Type
+
 export const Settings = Schema.Struct({
   $schema: Schema.optionalKey(Schema.String),
   version: Schema.Literal(1).pipe(withDefault(1)),
@@ -316,6 +337,8 @@ export const Settings = Schema.Struct({
       })
       .pipe(withDefault([])),
   }).pipe(withDefault({})),
+  /** The Linear sync, on with the block and off without it: no default, as no key turns it on. */
+  linear: Schema.optionalKey(LinearSettings),
   /**
    * The paths that are no part of the project's own files, as globs (a name without a slash matches
    * in any folder): copies of other projects', as a subtree, which no footprint names

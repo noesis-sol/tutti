@@ -440,6 +440,27 @@ export const decodeDependencies = (
     })),
   )
 
+const decodeBdConfiguration = decodeWith(
+  Schema.Record(Schema.String, Schema.Unknown),
+  "bd's configuration",
+)
+
+/**
+ * Decodes the output of bd config list: each key set to text, as bd config set sets it. What isn't
+ * text (bd's schema_version) is no key of the configuration.
+ */
+export const decodeConfiguration = (
+  command: string,
+  stdout: string,
+): Effect.Effect<Readonly<Record<string, string>>, BeadsUnreadable> =>
+  Effect.map(decodeBdConfiguration(command, stdout), (data) =>
+    Object.fromEntries(
+      Object.entries(data).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    ),
+  )
+
 /** Whether bd's output says it has no issue by the ID it was given. */
 export const saysNoSuchIssue = (stdout: string): boolean =>
   Option.match(Schema.decodeUnknownOption(BdError)(stdout.trim()), {
@@ -621,6 +642,10 @@ export class Beads extends Context.Service<
     /** Sets one key of the issue's metadata to a string, keeping the others. */
     setMetadata(id: TicketId, key: string, value: string): Effect.Effect<void, BeadsError>
     unsetMetadata(id: TicketId, key: string): Effect.Effect<void, BeadsError>
+    /** bd config list: bd's configuration in the Beads database, each key's text. */
+    configuration(): Effect.Effect<Readonly<Record<string, string>>, BeadsError>
+    /** Whether the installed bd has bd linear, Beads' Linear sync: bd linear --help exits 0. */
+    hasLinear(): Effect.Effect<boolean, BeadsError>
   }
 >()("tutti/services/Beads") {
   /**
@@ -947,6 +972,16 @@ export class Beads extends Context.Service<
           ),
           unsetMetadata: Effect.fn("Beads.unsetMetadata")((id, key) =>
             Effect.asVoid(update(id, { unsetMetadata: [key] })),
+          ),
+          configuration: Effect.fn("Beads.configuration")(() =>
+            read(["config", "list", "--json"], decodeConfiguration),
+          ),
+          // A bd without bd linear refuses it as an unknown command; --help talks to no one.
+          hasLinear: Effect.fn("Beads.hasLinear")(() =>
+            Effect.map(
+              bd(["linear", "--help"], limits.read),
+              ({ output }) => output.exitCode === 0,
+            ),
           ),
         })
       }),

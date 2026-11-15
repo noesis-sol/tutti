@@ -18,6 +18,7 @@ import {
   type BeadsUnreadable,
   bdFailed,
   type DependencyType,
+  decodeConfiguration,
   decodeDependencies,
   decodeIssue,
   decodeIssues,
@@ -242,8 +243,19 @@ const store = (seed: Seed, seq: number, now: number): Stored => {
   }
 }
 
-/** An in-memory Beads, and its Backlog, starting with these issues. */
-export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Backlog> =>
+/** What the test layer's bd has besides its issues. */
+export interface TestBd {
+  /** bd's configuration, as bd config list gives it; none by default. */
+  readonly configuration?: Readonly<Record<string, string>>
+  /** Whether it has bd linear, as bd 1.3.4 does; true by default. */
+  readonly linear?: boolean
+}
+
+/** An in-memory Beads, and its Backlog, starting with these issues, its bd as `bd` says. */
+export const layer = (
+  seeds: ReadonlyArray<Seed> = [],
+  bd: TestBd = {},
+): Layer.Layer<Beads | Backlog> =>
   Layer.effectContext(
     Effect.gen(function* () {
       const start = yield* Clock.currentTimeMillis
@@ -686,6 +698,15 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
           answer("write", "update", id, update(id, { unsetMetadata: [key] }), (command, stdout) =>
             Effect.asVoid(decodeIssue(command, stdout)),
           ),
+        configuration: () =>
+          answer(
+            "read",
+            "config list",
+            undefined,
+            Effect.succeed(ok({ ...bd.configuration, schema_version: 1 })),
+            decodeConfiguration,
+          ),
+        hasLinear: () => Effect.succeed(bd.linear ?? true),
       })
 
       const backlog = Backlog.of({

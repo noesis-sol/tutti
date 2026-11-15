@@ -252,6 +252,14 @@ export const resolveAll = (
     : user.keep_awake !== null
       ? (sources.userFile ?? defaultUserFile)
       : settingsFile
+  // The settings' linear block turns the sync on, and nothing else does; --no-linear turns it off
+  // for one run.
+  const noLinear = pick("noLinear", false) && settings.linear !== undefined
+  const linearOffBy = noLinear
+    ? flagGiven("noLinear")
+      ? `--${runFlags.noLinear.name}`
+      : runFlags.noLinear.variable
+    : null
   // A refused one stops the run, saying so as a problem.
   const retiredNotes: Array<string> = []
   for (const [key, flag] of Object.entries(retiredFlags) as Array<[RetiredFlagName, RetiredFlag]>) {
@@ -337,6 +345,8 @@ export const resolveAll = (
     machineWorkersFrom,
     keepAwake,
     keepAwakeOffBy,
+    linear: noLinear ? null : (settings.linear ?? null),
+    linearOffBy,
     retiredNotes,
     // --overnight turns it on; its own flag or variable, given, says otherwise.
     autoAnswer: pick("autoAnswer", overnight ? Duration.zero : null),

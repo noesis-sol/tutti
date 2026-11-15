@@ -519,6 +519,27 @@
       "additionalProperties": false,
       "default": {}
     },
+    "linear": {
+      "type": "object",
+      "properties": {
+        "team": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]+$",
+          "description": "the Linear team's key, such as \"NOE\""
+        },
+        "pull_every": {
+          "type": "string",
+          "pattern": "^(?:0|(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+)$",
+          "description": "a time such as \"30m\", \"2h\" or \"1h30m\", or \"0\"",
+          "default": "10m"
+        }
+      },
+      "required": [
+        "team"
+      ],
+      "additionalProperties": false,
+      "description": "the Linear sync: present, it is on; removed, it is off. Linear's credentials come only from the environment"
+    },
     "vendored": {
       "type": "array",
       "items": {

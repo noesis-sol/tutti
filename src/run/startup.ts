@@ -10,7 +10,8 @@
 // (src/project/requires.ts).
 //
 // orchestra's run state names workers it left behind, which tutti doesn't adopt (§ 11): a warning,
-// not a problem. A run that passes gets what the checks resolved, and its START block from them.
+// not a problem. So is each lack of the Linear sync, checked only where the settings hold its block
+// (src/run/linearCheck.ts), the run going on without the sync. A run that passes gets what the checks resolved, and its START block from them.
 import { isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path"
 import { Cause, Effect, Exit, FileSystem, Layer, Option, Result, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
@@ -41,6 +42,7 @@ import { sanitizeLine } from "../text/sanitize.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
 import { featureLine } from "./feature.ts"
 import { keepAwakeNotes } from "./keepAwake.ts"
+import { checkLinear, linearLine, linearOffLine } from "./linearCheck.ts"
 import { defaultSettings, defaultUserConfig, load, resolve } from "./resolveConfig.ts"
 import { readSpec, type Spec } from "./spec.ts"
 import type { LiveFetch, SpecFetch } from "./specSource.ts"
@@ -452,7 +454,7 @@ export const check = <R>(checking: Checking<R>) =>
       ...(checking.uncommitted ?? []),
     ]
 
-    const [branch, tree, beads, account, mcp, prompt, leftWorkers] = yield* Effect.all(
+    const [branch, tree, beads, account, mcp, prompt, leftWorkers, linear] = yield* Effect.all(
       [
         checkBranch(repo),
         checkCleanTree(repo, specPath),
@@ -475,6 +477,10 @@ export const check = <R>(checking: Checking<R>) =>
           ? Effect.succeed({ value: Option.none<WorkerPrompt>(), problems: [] })
           : collect("the worker prompt", loadWorkerPrompt(config)),
         orchestraWorkers(repo),
+        // Only with the settings' linear block: without one, nothing of Linear runs.
+        config.linear === null
+          ? Effect.succeed([])
+          : checkLinear(checking.env).pipe(Effect.provide(checking.beads(repo))),
       ],
       { concurrency: "unbounded" },
     )
@@ -499,6 +505,7 @@ export const check = <R>(checking: Checking<R>) =>
       ...(leftWorkers.length > 0 ? [orchestraWarning(leftWorkers)] : []),
       ...retiredIn(given.settings),
       ...keepAwakeNotes(given),
+      ...linear,
     ]
     if (
       notSetUp ||
@@ -522,7 +529,12 @@ export const check = <R>(checking: Checking<R>) =>
     const readme = yield* readmeStaleLine(repo, settings.requires)
     const vendored = yield* readVendoredNote(repo, settings.vendored)
     return {
-      config: { ...configured.value.value, claude: claude.path },
+      // A lack the linear check warned of has the run go on without the sync.
+      config: {
+        ...configured.value.value,
+        claude: claude.path,
+        ...(linear.length > 0 ? { linear: null } : {}),
+      },
       base: branch.success,
       prompt: prompt.value.value,
       mcp: mcp.value.value,
@@ -568,7 +580,7 @@ export const memoryEstimate = (concurrency: number): string =>
  * The START block of a run that passed its checks: `START tutti <version> in <repo> on <base>`,
  * its scope, ` · overnight` for an overnight run, its settings, ` · auto-answer` with --auto-answer, then its billing, its permission mode in effect, its MCP servers when it
  * has none, its `concurrent` above the cap on the machine's workers, its worktrees' root with its
- * exclusions and the move from the old root, the memory its workers take, the workers' `share` of the machine where it is given (src/run/share.ts' shareNote), its vendored paths, why its colour scheme isn't used (a line per notice), and
+ * exclusions and the move from the old root, the memory its workers take, the workers' `share` of the machine where it is given (src/run/share.ts' shareNote), its vendored paths, its Linear sync where the settings have one (linearCheck.ts), why its colour scheme isn't used (a line per notice), and
  * its warnings.
  */
 export const startBlock = (
@@ -635,6 +647,11 @@ export const startBlock = (
       `memory: ${memoryEstimate(concurrency)}`,
       ...(share === null ? [] : [share]),
       ...(started.vendored === undefined || started.vendored === null ? [] : [started.vendored]),
+      ...(config.linear !== null
+        ? [linearLine(config.linear)]
+        : config.linearOffBy === null
+          ? []
+          : [linearOffLine(config.linearOffBy)]),
       ...schemeNotices(config.scheme),
       ...started.warnings,
     ],
