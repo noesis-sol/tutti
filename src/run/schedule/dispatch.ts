@@ -12,7 +12,7 @@ import type { Said as SaidRecord } from "../say.ts"
 import { issueOf, known } from "./place.ts"
 import { recorded, remember, soloState } from "./queue.ts"
 import { claimRoom, current, mergingIn, occupy, slotFree } from "./slots.ts"
-import { progress, type Scheduling } from "./state.ts"
+import { progress, reached, type Scheduling } from "./state.ts"
 
 /** `[n/limit] <id> dispatching: <title>`, the dispatch's log line; `dispatching solo` for one. */
 export const dispatchLine = (n: number, limit: number | null, issue: Issue): Line =>
@@ -145,7 +145,9 @@ export const carry = (
 /**
  * Runs `work` in a slot for a ticket checked once more (Scheduler.recheckSlot), as a running
  * ticket's, counting toward no limit: only with a slot free, no solo ticket running or first in
- * line at the last pick, and the ticket holding none still. Whether it took one.
+ * line at the last pick, and the ticket holding none still. Once --limit is reached no fill picks
+ * again, and the solo ticket first in line won't start in this run: it holds no recheck back.
+ * Whether it took one.
  */
 export const recheckSlot = (
   sched: Scheduling,
@@ -158,7 +160,8 @@ export const recheckSlot = (
       const free =
         slotFree(s, state, sched.options.concurrent) &&
         s.solo === null &&
-        (yield* Ref.get(sched.memo)).soloFirst === null &&
+        ((yield* Ref.get(sched.memo)).soloFirst === null ||
+          reached(s.started, sched.options.limit)) &&
         !s.running.has(ticket)
       // Its issue, read as it takes the slot, so that its footprint and solo label hold the
       // others back from the start, as a dispatched ticket's do.

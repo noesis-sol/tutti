@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- With --limit reached and a solo ticket next in line, a ticket set aside for a failed check is checked once more when main moves on, and a conflict rebased by hand is taken back to merge (§ 5; `recheckSlot` in `src/run/schedule/dispatch.ts`; tutti-u9hi): the fill that started the last ticket the limit allows noted the solo ticket as first in line, and no fill ran again to clear the note, though that ticket won't start in this run, so every later recheck and take-back was refused a slot without a line, and a dashboard run stayed open waiting for them. Once the limit is reached the note holds none back; a solo ticket running still does, and so does one first in line while the run takes tickets. `test/schedule-solo-recheck-limit.test.ts` covers it.
+
 ## [0.8.6] - 2026-11-15
 
 - A run drained from the dashboard, or stopping after its current tickets, shows its end-of-run full check and its bar in Current's box as a run that ended undrained does (§ 7.2; `src/ui/Dashboard.tsx`; tutti-l8wp): the box said `stopping…` in place of the check's step, command and time, and drew no bar, while a wind-down or a stop was set, so the bar was not seen in the runs most often ended by draining. `stopping…` is now for a stop or a wind-down with no check running, and for a quit, whose title says what it waits for. `test/drained-full-check.test.tsx` covers it, and that a full check's pass is kept in `.tutti/run/state.json` under `full` for the next run's estimate.

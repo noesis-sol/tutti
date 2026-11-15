@@ -358,8 +358,9 @@ export interface Scheduler {
   /**
    * Runs `work` in a slot for a ticket checked once more (recheck.ts), as a running ticket's,
    * counting toward no limit: only with a slot free, no solo ticket running or first in line at
-   * the last pick, and the ticket holding none still. Its issue, read from bd as it takes the
-   * slot, has its footprint and solo label count as a dispatched ticket's do. Whether it took one.
+   * the last pick while the run takes new tickets, and the ticket holding none still. Its issue,
+   * read from bd as it takes the slot, has its footprint and solo label count as a dispatched
+   * ticket's do. Whether it took one.
    */
   recheckSlot(ticket: TicketId, work: Effect.Effect<void>): Effect.Effect<boolean>
   /** The tickets this run has started: what --limit counts. */

@@ -66,7 +66,7 @@ export interface Memo {
   readonly soloNext: TicketId | null
   /**
    * The solo ticket first in line at the last pick, even one made with every slot taken: no
-   * recheck takes a slot ahead of it.
+   * recheck takes a slot ahead of it, until --limit is reached and no fill picks again.
    */
   readonly soloFirst: TicketId | null
   /** The solo line last said. */
