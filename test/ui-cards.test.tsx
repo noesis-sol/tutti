@@ -332,16 +332,17 @@ describe("a card for each status", () => {
   test("the box with no worker: picking the next ticket…, or stopping…", () => {
     expect(textOf(idleBox(idleText(false, null, 0), theme, spin, 40))).toMatchInlineSnapshot(`
       "
-      ╭──────────────────────────────────────╮
-      │ ⣾ picking the next ticket…           │
-      │                                      │
-      │                                      │
-      ╰──────────────────────────────────────╯
+        ⣾ picking the next ticket…
+
+
+
+
       "
     `)
     const stopping = idleBox(idleText(true, null, 0), theme, spin, 40)
-    expect(textOf(stopping)).toContain(boxLine("⣾ stopping…"))
-    sameLook(lookOf(stopping, "stopping…"), theme.styles.dim)
+    expect(textOf(stopping)).toContain("\n  ⣾ stopping…\n")
+    // In the text's own colour, as the load line's memory.
+    expect(stopping.flat().find((s) => s.text === "stopping…")?.look).toBeNull()
     sameLook(lookOf(stopping, "⣾"), theme.look("live"))
   })
 
@@ -567,11 +568,11 @@ describe("the Current section", () => {
 
   test("with no worker, the box says the run is picking the next ticket, or stopping", async () => {
     expect(currentOf(await draw(viewOf([]), { width: 80, height: 24 }))).toContain(
-      boxLine(`${turned} picking the next ticket…`),
+      `\n  Current\n  ${turned} picking the next ticket…\n`,
     )
     expect(
       currentOf(await draw(viewOf([], { stopping: true }), { width: 80, height: 24 })),
-    ).toContain(boxLine(`${turned} stopping…`))
+    ).toContain(`\n  Current\n  ${turned} stopping…\n`)
   })
 })
 

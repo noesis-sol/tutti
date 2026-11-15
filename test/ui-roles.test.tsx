@@ -669,10 +669,9 @@ const scenes: ReadonlyArray<Scene> = [
       ["◼ to merge", look("toMerge")],
       ["⟳ resolving", look("notice")],
       ["tut-9", look("toMerge")],
-      // The box with no worker.
-      [{ text: "│", on: boxLine("⣾ picking") }, look("frame")],
+      // The box with no worker, with no frame, its text in the text's own colour.
       [{ text: "⣾", on: "⣾ picking" }, look("live")],
-      ["picking the next ticket…", look("text", "faint")],
+      ["picking the next ticket…", look("text")],
     ],
   },
   {
@@ -799,7 +798,7 @@ const scenes: ReadonlyArray<Scene> = [
       ["USAGE_LIMIT · resets 14:05", look("notice", "bold")],
       [" · held", look("windingDown")],
       [" ! colour scheme 'dusk' isn't used", look("notice")],
-      ["stopping…", look("text", "faint")],
+      ["stopping…", look("text")],
     ],
   },
   {
@@ -1502,11 +1501,11 @@ describe("layouts", () => {
       │ 0 Completed   │ 0 Set aside   │ 0 Needs you   │ 0 In queue                   │
       ╰───────────────┴───────────────┴───────────────┴──────────────────────────────╯
         Current
-      ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ ⣾ picking the next ticket…                                                   │
-      │                                                                              │
-      │                                                                              │
-      ╰──────────────────────────────────────────────────────────────────────────────╯
+        ⣾ picking the next ticket…
+
+
+
+
 
 
         arrows panels · Enter go in · s stop after current · ? keys
@@ -1610,11 +1609,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       arrows panels · Enter go in · s stop after current · ? keys
 
@@ -1633,11 +1632,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       arrows panels · Enter go in · s stop after current · ? keys
 
@@ -1771,11 +1770,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       arrows panels · Enter go in · s stop after current · ? keys
 
@@ -1793,11 +1792,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       Tab select · arrows panels · Enter go in · s stop after current
       A answer questions · ? keys
@@ -1817,11 +1816,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       arrows panels · Enter go in · s stop after current · ? keys
 
@@ -1840,11 +1839,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
@@ -1863,11 +1862,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
@@ -1886,11 +1885,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       Tab select · arrows panels · Enter go in · s stop after current · ? keys
 
@@ -1909,11 +1908,11 @@ test(
     │               │         │                                                    │
     ╰───────────────┴─────────┴────────────────────────────────────────────────────╯
       Current
-    ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ ⣾ picking the next ticket…                                                   │
-    │                                                                              │
-    │                                                                              │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
+      ⣾ picking the next ticket…
+
+
+
+
 
       Tab select · arrows panels · Enter go in · s stop after current · ? keys
     "

@@ -45,6 +45,9 @@ const halfway = ((): CheckShown => {
   }
 })()
 
+/** The bar halfway, as long as Current's box draws it at 110 columns: longestBar's 48 cells. */
+const halfBar = `test ${"━".repeat(24)}${"─".repeat(24)} 424/848`
+
 /** A drain from the dashboard: no new tickets, none left running. */
 const drained: WindDown = { since: 0, tickets: [] }
 
@@ -80,14 +83,14 @@ describe("Current's box while a stopping run's full check runs", () => {
   test("a drained run shows its step, command and time and its bar", async () => {
     const frame = await drawn(viewOf(drained, checking))
     expect(frame).toContain("full check: scripts/check-full.sh · 1m12s")
-    expect(frame).toContain("test ━━━━──── 424/848")
+    expect(frame).toContain(halfBar)
     expect(frame).not.toContain("stopping…")
   })
 
   test("a run stopping after its current tickets shows them too", async () => {
     const frame = await drawn(viewOf(null, { ...checking, stopping: true }))
     expect(frame).toContain("full check: scripts/check-full.sh · 1m12s")
-    expect(frame).toContain("test ━━━━──── 424/848")
+    expect(frame).toContain(halfBar)
     expect(frame).not.toContain("stopping…")
   })
 

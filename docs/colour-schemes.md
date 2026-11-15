@@ -26,7 +26,7 @@ Each role has a variant for light backgrounds and one for dark ones. In the `tut
 | `notice` | `#A16207` | `#FACC15` | worth a look, nothing blocking: set aside, held back, resolving, fixing, testing (bold), retrying, usage, warnings, the stop question |
 | `needsYou` | `#B91C1C` | `#F87171` | needs you: blocked, a permission request or question waiting, stopped, a stop line |
 | `windingDown` | `#C2410C` | `#FB923C` | winding down, and only that |
-| `frame` | `#9CA3AF` | `#6B7280` | frames: the totals strip, the tickets table, the `picking the next ticket…` box |
+| `frame` | `#9CA3AF` | `#6B7280` | frames: the totals strip, the tickets table |
 | `organ` | `#6D28D9` | `#A78BFA` | organs: triage verdicts (`◆`), organ lines, `tutti init`'s marks |
 | `organText` | `#7C3AED` | `#C4B5FD` | the organ lines' text |
 | `toMerge` | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |

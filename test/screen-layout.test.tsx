@@ -310,9 +310,9 @@ describe("drawn", () => {
     )
     const lines = linesOf(frame)
     const current = lines.findIndex((line) => line.trim() === "Current")
-    expect(lines[current + 1]).toStartWith("╭")
-    expect(lines[current + 2]).toContain("picking the next ticket…")
-    expect(lines[current + 3]).toStartWith("╰")
+    // The box with no worker has no frame: its text first, its blank lines under it.
+    expect(lines[current + 1]).toStartWith("  ⣯ picking the next ticket…")
+    expect([lines[current + 2], lines[current + 3]].map((line) => line?.trim())).toEqual(["", ""])
     expect(lines.filter((line) => line.includes("warning"))).toEqual(
       lines.slice(current + 5, 15).filter((line) => line !== ""),
     )

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- While the end-of-run full check runs, the dashboard's Current section is titled `Completing the run` (`Starting the run` for a spec run's checks gate), and its box has no frame, so that it doesn't read as a ticket's card: its lines are in the text's own colour, as the load line's memory, and the check's bar takes the room its line has, up to 48 cells, shrinking in a narrow pane with the suite and the count whole, its filled part in the text's colour and the rest faint (§ 7.2; `idleBox`, `boxCheckSegments` and `currentTitle` in `src/ui/Card.tsx`; tutti-vxph). `picking the next ticket…` and `stopping…` are drawn in the same frameless box. A ticket's card and its merge check's 8-cell bar are unchanged. `test/full-check-box.test.tsx` covers it.
+
 ## [0.8.7] - 2026-11-15
 
 - With --limit reached and a solo ticket next in line, a ticket set aside for a failed check is checked once more when main moves on, and a conflict rebased by hand is taken back to merge (§ 5; `recheckSlot` in `src/run/schedule/dispatch.ts`; tutti-u9hi): the fill that started the last ticket the limit allows noted the solo ticket as first in line, and no fill ran again to clear the note, though that ticket won't start in this run, so every later recheck and take-back was refused a slot without a line, and a dashboard run stayed open waiting for them. Once the limit is reached the note holds none back; a solo ticket running still does, and so does one first in line while the run takes tickets. `test/schedule-solo-recheck-limit.test.ts` covers it.

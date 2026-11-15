@@ -181,18 +181,19 @@ describe("the box with no worker", () => {
     const box = idleBox(idleText(false, null, now), theme, spin, 40)
     expect(textOf(box)).toMatchInlineSnapshot(`
       "
-      ╭──────────────────────────────────────╮
-      │ ⣾ picking the next ticket…           │
-      │                                      │
-      │                                      │
-      ╰──────────────────────────────────────╯
+        ⣾ picking the next ticket…
+
+
+
+
       "
     `)
     expect(sectionLines({ _tag: "Idle" }, 0)).toBe(6)
     const frame = await renderFrame(<Root value={value(viewOf([]))} />, { width: 80, height: 30 })
+    // Its blank lines aren't drawn, as it has no frame: its text is under the label.
     const current = currentOf(frame)
-    expect(current).toHaveLength(6)
-    expect(current[2]).toContain("picking the next ticket…")
+    expect(current).toHaveLength(2)
+    expect(current[1]).toContain("picking the next ticket…")
   })
 
   test("says stopping… and the full check's step on its first line, as tall", () => {
@@ -200,14 +201,14 @@ describe("the box with no worker", () => {
     for (const text of [idleText(true, null, now), idleText(false, fullCheck, now)]) {
       const box = idleBox(text, theme, spin, 60)
       expect(box).toHaveLength(5)
-      expect(textOf(box.slice(1, 2))).toContain(text)
+      expect(textOf(box.slice(0, 1))).toContain(text)
     }
   })
 
   test("gives up its blank lines, not its text, in a room with fewer lines", () => {
     expect(
-      [5, 4, 3, 2].map((lines) => idleBox("stopping…", theme, spin, 40, lines).length),
-    ).toEqual([5, 4, 3, 3])
+      [5, 4, 3, 2, 1, 0].map((lines) => idleBox("stopping…", theme, spin, 40, lines).length),
+    ).toEqual([5, 4, 3, 2, 1, 1])
   })
 })
 

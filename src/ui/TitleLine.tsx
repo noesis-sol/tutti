@@ -75,9 +75,13 @@ const bannerText = (
 /** How many cells a window's gauge has. */
 const gaugeCells = 8
 
+/** How many of a gauge's `cells` `utilization` fills, to the nearest. */
+export const filledCells = (utilization: number, cells: number): number =>
+  Math.round(Math.min(1, Math.max(0, utilization)) * cells)
+
 /** `━───────` for 17%: a cell for each eighth, to the nearest. */
 export const gauge = (utilization: number): string => {
-  const filled = Math.round(Math.min(1, utilization) * gaugeCells)
+  const filled = filledCells(utilization, gaugeCells)
   return marks.gaugeFull.repeat(filled) + marks.gaugeEmpty.repeat(gaugeCells - filled)
 }
 

@@ -344,11 +344,10 @@ describe("the bar on the dashboard", () => {
       "⠋",
       60,
       undefined,
-      undefined,
       checkSegments(shownCheck({ progress: { done: 424, total: 848 } }), theme),
     ).map((line) => text(line).trimEnd())
-    expect(lines[1]).toContain("full check: scripts/check-full.sh · 1m12s")
-    expect(lines[2]).toContain("test ━━━━──── 424/848")
+    expect(lines[0]).toContain("full check: scripts/check-full.sh · 1m12s")
+    expect(lines[1]).toContain("test ━━━━──── 424/848")
   })
 
   test("a card draws it beside the action of the check running", () => {
@@ -419,7 +418,8 @@ describe("the bar on the dashboard", () => {
     }
     const frame = await renderFrame(<Root value={value} />, { width: 110, height: 30 })
     expect(frame.chars).toContain("full check: scripts/check-full.sh · 1m12s")
-    expect(frame.chars).toContain("test ━━━━──── 424/848")
+    // As long as the box has room for, up to longestBar.
+    expect(frame.chars).toContain(`test ${"━".repeat(24)}${"─".repeat(24)} 424/848`)
   })
 })
 
