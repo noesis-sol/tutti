@@ -41,7 +41,7 @@ import { type Appearance, makeTheme } from "../src/ui/theme.ts"
 import { external, type ShellValue, spinnerAt, spinnerFrames } from "../src/ui/useRunView.ts"
 import { windDownSegments } from "../src/ui/WindDown.tsx"
 import { type Frame, pressEscape, renderFrame, type Size, withRender } from "./render.ts"
-import { boxLine, cardOn, cardsIn, hintAt, hintLine, hintOf } from "./screen.ts"
+import { cardOn, cardsIn, hintAt, hintLine, hintOf } from "./screen.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })

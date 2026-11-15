@@ -243,7 +243,8 @@ const shortestBar = 4
  * count, up to longestBar, its filled cells in the text's colour and the rest faint.
  */
 export const boxCheckSegments = (shown: CheckShown, theme: Theme, room: number): Segments => {
-  const besides = widthOf(checkLine(shown, null, () => [seg(" ")]))
+  // The line's width with a bar of one cell.
+  const besides = widthOf(checkLine(shown, null, () => [seg(marks.gaugeFull)]))
   return checkLine(shown, null, (fill) => {
     const cells = Math.min(room - besides + 1, longestBar)
     if (cells < shortestBar) return []
