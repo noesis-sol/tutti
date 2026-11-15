@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.8.8] - 2026-11-15
+
 - While the end-of-run full check runs, the dashboard's Current section is titled `Completing the run` (`Starting the run` for a spec run's checks gate), and its box has no frame, so that it doesn't read as a ticket's card: its lines are in the text's own colour, as the load line's memory, and the check's bar takes the room its line has, up to 48 cells, shrinking in a narrow pane with the suite and the count whole, its filled part in the text's colour and the rest faint (§ 7.2; `idleBox`, `boxCheckSegments` and `currentTitle` in `src/ui/Card.tsx`; tutti-vxph). `picking the next ticket…` and `stopping…` are drawn in the same frameless box. A ticket's card and its merge check's 8-cell bar are unchanged. `test/full-check-box.test.tsx` covers it.
 
 ## [0.8.7] - 2026-11-15
