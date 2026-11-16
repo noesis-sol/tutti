@@ -146,7 +146,9 @@ describe("what tutti runs on a branch's behalf", () => {
         requires: [{ name: "given", check: 'test "$TUTTI_GIVEN" = given', install: "false" }],
       }),
     )
-    const tools = await inBranchEnv(makeRequiresTools(repo, repo, openFibers(), Duration.minutes(1)))
+    const tools = await inBranchEnv(
+      makeRequiresTools(repo, repo, openFibers(), Duration.minutes(1)),
+    )
     const check = tools.tools[0]
     if (check === undefined) throw new Error("no requires_check")
     const answer = await check.handler({}, {})

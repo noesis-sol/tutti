@@ -111,7 +111,9 @@ describe("requires_check on a branch's entries", () => {
     const other = process.platform === "darwin" ? "linux" : "darwin"
     const repo = checkout([])
     const worktree = checkout([{ ...tell("x"), platforms: [other] }])
-    expect(said(await run(checkIn(repo, worktree, {}, limit)))).toBe(`x: not checked: only on ${other}`)
+    expect(said(await run(checkIn(repo, worktree, {}, limit)))).toBe(
+      `x: not checked: only on ${other}`,
+    )
   })
 
   test("with the main checkout's settings unreadable, tutti runs nothing", async () => {
