@@ -473,7 +473,11 @@ export const needsLines = (
     if (question === null) {
       body.push(...title, about, [dim("reading its question…")])
     } else if (short) {
-      const keys = at.inside ? "Enter shows them" : at.focused ? "Enter goes in" : "click shows them"
+      const keys = at.inside
+        ? "Enter shows them"
+        : at.focused
+          ? "Enter goes in"
+          : "click shows them"
       body.push(...title, about, [
         dim(`${ellipsis} no room for its options${separator}${keys}`, panelTargets.read),
       ])
