@@ -47,7 +47,7 @@ first" names the six points and the fallback each has.
 | 3. A push moves the Linear issue, local winning | **Confirmed.** A push by ticket ID moved NOE-7 Todo → In Progress → Done as the ticket was claimed and closed, and overwrote the title, description and priority edited in Linear meanwhile. A plain `--push` overwrote them too, without `--prefer-local` |
 | 4. Acceptance criteria, design and notes in Linear | **They reach it**, as `## Acceptance Criteria`, `## Design` and `## Notes` sections of the description. But a pull of that issue back folds the sections into the ticket's description, so each later push adds another copy |
 | 5. Time of a pull and a one-ticket push | Pull of one issue by reference: 1.0 s (1.65 s cold). Push of one ticket: 1.6 to 2.5 s. Proposed limits: 60 s for a pull, 30 s for a push |
-| 6. The oldest bd with all of it | **bd 1.2.0** (2026-08-11), the first with `linear.outbound_state_map`, which a team with two states of one type (NOE) needs to push at all |
+| 6. The oldest bd with all of it | **bd 1.3.0** (2026-09-15), the first proper release with `linear.outbound_state_map`, which a team with two states of one type (NOE) needs to push at all. 1.2.1 had it but is retracted; 1.2.2 is 1.1.2's code and lacks it |
 
 ## 1. Backlog is held as deferred; Todo hands it over
 
@@ -241,7 +241,7 @@ third option). It is a bd defect, to report upstream: tutti-f4nw.
 
 ## 5. How long a pull and a one-ticket push take
 
-Five of each, the key already in the environment, from the scratch database (a handful of tickets):
+Five pulls and six pushes, the key already in the environment, from the scratch database (a handful of tickets):
 
 ```
 1.65 s  exit 0  bd linear pull NOE-8
@@ -254,6 +254,7 @@ Five of each, the key already in the environment, from the scratch database (a h
 1.94 s  exit 0  bd linear sync --push --prefer-local --issues spk-7bkaks
 2.11 s  exit 0  bd linear sync --push --prefer-local --issues spk-7bkaks
 1.72 s  exit 0  bd linear sync --push --prefer-local --issues spk-7bkaks
+1.57 s  exit 0  bd linear sync --push --prefer-local --issues spk-7bkaks
 ```
 
 The other pulls and pushes above, timed with `/usr/bin/time` through the key wrapper (about 1.1 s
@@ -276,13 +277,19 @@ and the first release with it:
 | `bd linear pull <refs>`, `bd linear push <ids>`, `--issues` (`cmd/bd/sync_push_pull.go`, `sync_flags.go`) | 1.0.1 |
 | Acceptance criteria, design and notes as description sections (`internal/linear/mapping.go`) | 1.0.1 or before |
 | `--relations`, idempotency markers on create | 1.0.4 |
-| `linear.outbound_state_map.<status>` (PR #4119, 2026-07-06) | **1.2.0** |
+| `linear.outbound_state_map.<status>` (PR #4119, 2026-07-06) | 1.2.1 (retracted), then **1.3.0** |
 
-**bd 1.2.0** (2026-08-11) is the oldest: before it, a push to a team with two states of one type
-(NOE's In Progress and In Review) fails (1.1.2: `linear.state_map type fallback is ambiguous for
-beads status …`) with no key to choose one. Only 1.3.4 was run; 1.2.0 is
-read from its source. tutti's startup check, when the linear block is there, can require bd ≥ 1.2.0
-(`bd version` prints `bd version 1.3.4 (Homebrew)`), and the contract test pins what was run.
+**bd 1.3.0** (2026-09-15) is the oldest to require. Before `linear.outbound_state_map`, a push
+to a team with two states of one type (NOE's In Progress and In Review) fails (1.1.2:
+`linear.state_map type fallback is ambiguous for beads status …`) with no key to choose one. The
+1.2 line doesn't give a usable floor: bd's changelog says v1.2.0 and v1.2.1 "were published by
+accident on 2026-08-11 without release testing (v1.2.0's tag burned pre-publish; only v1.2.1
+reached users)", that 1.2.2 "is the v1.1.2 code under a higher version number", and that
+"`go.mod` retracts v1.2.1, v1.2.0, and v1.1.1". `internal/linear/mapping.go` names
+`outbound_state_map` 8 times at v1.2.1 and v1.3.0, and none at v1.1.2 or v1.2.2, so a check of
+"≥ 1.2.0" would pass 1.2.2, whose pushes to NOE fail. Only 1.3.4 was run; 1.3.0 is read from its
+source. tutti's startup check, when the linear block is there, can require bd ≥ 1.3.0 (`bd version`
+prints `bd version 1.3.4 (Homebrew)`), and the contract test pins what was run.
 
 ## What the design takes from this
 
@@ -293,4 +300,4 @@ read from its source. tutti's startup check, when the linear block is there, can
 - **Setup** writes `linear.state_map.backlog deferred` and the other four types, and
   `linear.outbound_state_map.<status>` for open, in_progress, deferred and closed (point 1, 3).
 - **Limits:** 60 s a pull, 30 s a push (point 5).
-- **bd:** 1.2.0 or later when the linear block is there (point 6).
+- **bd:** 1.3.0 or later when the linear block is there (point 6).
