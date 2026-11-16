@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A run at `--limit` no longer ends with a ticket put back in the queue whose fiber ends during the look (§ 5; `nothingLeft` in `src/run/look.ts`; tutti-13gj): the look read the gate, and so --limit reached, before the scheduler's running tickets, so a ticket whose blockers merged after its worktree was cut, giving its start back to --limit as its fiber ended between the two reads, left the look reading the limit reached and nothing running, and the run ended with the ticket queued and the limit not reached. The look now reads the running tickets first, which a fiber leaves in the same update as it gives its start back. Found by the verify-scheduler model, whose case `finding-limit-gap` is gone; `test/run-end-limit-requeued.test.ts` covers it.
+
 ## [0.8.10] - 2026-11-16
 
 - The critic no longer reads a finding's evidence cut mid-location as a place it doesn't name (§ 6.2; `evidenceStart` and `findingsOf` in `src/organs/critic.ts`; tutti-bdxl): the evidence was cut at its 2000th character wherever that fell, so `src/a.ts:123` straddling it read as `src/a.ts:12`, and the finding was filed at that line instead of being dropped as naming no place. A cut that falls inside a run now drops the run, back to the space, colon, quote, bracket or comma before it. `test/critic-evidence-cut.test.ts` covers it.

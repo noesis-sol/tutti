@@ -99,13 +99,17 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         filledAt = yield* scheduler.ends
         yield* parts.fill(why)
       }
+      // The running tickets before the gate: a fiber frees its slot and gives a ticket put back in
+      // the queue its start back to --limit in one update, so a look that reads the slot free reads
+      // the limit as that left it, and one that reads the slot taken looks again at its freed wake.
+      const running = yield* scheduler.running
       const gate = yield* parts.gate
       const look: Look = {
         mergedBefore,
         tickets: (yield* parts.ledger.current).tickets,
         overLimit: (yield* holds.now).overLimit,
         asking: (yield* parts.attention.current).map((request) => request.ticket),
-        running: yield* scheduler.running,
+        running,
         canTake: takesNew(gate),
         resuming: yield* parts.resuming,
         answering: yield* parts.answering,

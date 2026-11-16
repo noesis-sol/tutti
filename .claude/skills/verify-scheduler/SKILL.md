@@ -17,7 +17,7 @@ them, in a small model of the code: `Scheduler.tla`, checked by TLC through `che
   fiber still holds its slot, and it is dispatched again only for each time it went back in the
   queue. Harm when it breaks: two workers in one worktree on one branch.
 
-Both hold for the code as it is, **given three assumptions**. Each assumption left out gives a
+Both hold for the code as it is, **given two assumptions**. Each assumption left out gives a
 counterexample: these are the open findings below, and the check expects them.
 
 ## Run it
@@ -51,7 +51,7 @@ inside one makes the check exit 2 and name it. The actions of `Scheduler.tla` th
 
 | Code | In the model |
 | --- | --- |
-| `src/run/look.ts` `nothingLeft`: `wakes.take`, `mergedBefore`, `filledAt` read before the fill, then the reads after it in order (gate, running, settled, `endedSinceFill` last) | `Wake`, `Begin`, `K1` to `K4` |
+| `src/run/look.ts` `nothingLeft`: `wakes.take`, `mergedBefore`, `filledAt` read before the fill, then the reads after it in order (running, gate, settled, `endedSinceFill` last) | `Wake`, `Begin`, `K1` to `K4` |
 | `src/run/runEnd.ts` `whatsLeft`, `decide` | `K4`'s `freed` and `done` |
 | `src/run/wakes.ts` `reads`: a look woken by an attention change alone does not fill | `Wake`'s `why`, `Begin` |
 | `src/run/schedule/fill.ts` `readQueue`, `queueCandidates`, `dropUnready` | `Read1`, `Read2` |
@@ -96,7 +96,7 @@ does in one `Ref` update, or lets something happen the code forbids: mend the mo
 
 ## Open findings
 
-Found on 2026-11-16 at commit 2f7a6ce5. None is fixed; the check expects each to fail still.
+Found on 2026-11-16 at commit 2f7a6ce5. Neither is fixed; the check expects each to fail still.
 
 1. **`finding-attention-look`: a look woken by an attention change alone can end the run just
    after a merge.** Ticket 1 blocks ticket 2 (a solo ticket or an overlap holds the same way).
@@ -115,12 +115,6 @@ Found on 2026-11-16 at commit 2f7a6ce5. None is fixed; the check expects each to
    ends the run with the ticket that fiber held back still waiting. It needs Effect to switch the
    fiber out between those two steps, which it does only after about 2000 steps in a row
    (`maxOpsBeforeYield`), or if showing the queue ever awaits. Assumption: `releaseCountsAtOnce`.
-3. **`finding-limit-gap`: with `--limit`, the look reads the gate before the scheduler.**
-   `nothingLeft` reads `canTake` first and `running` later. A ticket that goes back in the queue
-   (`mergedSinceCut`) gives its start back to `--limit` as its fiber ends; a look that read the
-   limit reached just before, and `running` just after, ends the run with that ticket queued and
-   the limit not reached. It needs a switch between two of the look's synchronous reads, as
-   finding 2 does. Assumption: `lookReadsAtOnce`.
 
 ### When a finding is mended
 

@@ -23,7 +23,7 @@ jar=${TLA2TOOLS:-$root/.cache/tla/tla2tools-$version.jar}
 
 # name | expected | N Concurrent Limit MaxRequeues AnyYield | Assume | Variant
 # expected: holds, or the invariant a finding or a deliberate break violates.
-all='"everyLookFills", "releaseCountsAtOnce", "lookReadsAtOnce"'
+all='"everyLookFills", "releaseCountsAtOnce"'
 cases="
 await|holds|2 2 3 1 FALSE|\"everyLookFills\"|asCode
 await-one-slot|holds|2 1 3 1 FALSE|\"everyLookFills\"|asCode
@@ -32,8 +32,7 @@ any-step|holds|2 2 3 1 TRUE|$all|asCode
 any-step-one-slot|holds|2 1 3 1 TRUE|$all|asCode
 any-step-limit|holds|2 2 1 1 TRUE|$all|asCode
 finding-attention-look|NoEndWhileReady|2 2 3 1 FALSE||asCode
-finding-release-gap|NoEndWhileReady|2 2 3 1 TRUE|\"everyLookFills\", \"lookReadsAtOnce\"|asCode
-finding-limit-gap|NoEndWhileReady|2 2 1 1 TRUE|\"everyLookFills\", \"releaseCountsAtOnce\"|asCode
+finding-release-gap|NoEndWhileReady|2 2 3 1 TRUE|\"everyLookFills\"|asCode
 break-no-ended-since-fill|NoEndWhileReady|2 2 3 1 FALSE|\"everyLookFills\"|noEndedSinceFill
 break-filled-at-after|NoEndWhileReady|2 2 3 1 FALSE|\"everyLookFills\"|filledAtAfter
 break-no-running-check|NeverStartedTwice|2 2 3 1 FALSE|\"everyLookFills\"|noRunningCheck

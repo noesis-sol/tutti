@@ -24,7 +24,6 @@ CONSTANTS
   Assume,       \* what is taken for granted, each name a finding when it is left out:
                 \*   "everyLookFills"       no look is woken by an attention change alone
                 \*   "releaseCountsAtOnce"  a fiber frees its slot and counts its end in one step
-                \*   "lookReadsAtOnce"      a look's reads after the fill are one step
   Variant       \* "asCode", or the name of a break put in on purpose (see the actions)
 
 Tickets == 1..N
@@ -160,8 +159,6 @@ Init ==
 
 \* `who` goes on: `sync` when no await can come before its next step.
 Go(who, sync) == hot' = IF AnyYield \/ ~sync THEN None ELSE who
-\* The look's reads after the fill stay together where "lookReadsAtOnce" is assumed.
-GoRead == hot' = IF AnyYield /\ "lookReadsAtOnce" \notin Assume THEN None ELSE Loop
 MayStep(who) == hot \in {None, who}
 
 -----------------------------------------------------------------------------
@@ -307,29 +304,30 @@ P3 ==
                  mergedBefore, found, queue, snapPhase, snapRunning, snapVer, lCanTake,
                  lRunning, lSettled>>
 
-\* nothingLeft's reads after the fill, in the code's order: the gate (canTake), the scheduler's
-\* running, the merge queue (settled), and, last, endedSinceFill.
+\* nothingLeft's reads after the fill, in the code's order: the scheduler's running, the gate
+\* (canTake), the merge queue (settled), and, last, endedSinceFill. Release2 frees a slot and gives
+\* its start back to --limit in one step, so a look that read the slot free reads the limit after.
 K1 ==
   /\ lpc = "k1"
-  /\ lCanTake' = (started < Limit)
+  /\ lRunning' = running
   /\ lpc' = "k2"
-  /\ GoRead
+  /\ Go(Loop, TRUE)
   /\ UNCHANGED <<shape, shared, fibers, first, why, mergedBefore, filledAt, found, queue,
-                 snapPhase, snapRunning, snapVer, lRunning, lSettled>>
+                 snapPhase, snapRunning, snapVer, lCanTake, lSettled>>
 
 K2 ==
   /\ lpc = "k2"
-  /\ lRunning' = running
+  /\ lCanTake' = (started < Limit)
   /\ lpc' = "k3"
-  /\ GoRead
+  /\ Go(Loop, TRUE)
   /\ UNCHANGED <<shape, shared, fibers, first, why, mergedBefore, filledAt, found, queue,
-                 snapPhase, snapRunning, snapVer, lCanTake, lSettled>>
+                 snapPhase, snapRunning, snapVer, lRunning, lSettled>>
 
 K3 ==
   /\ lpc = "k3"
   /\ lSettled' = (inQueue = {})
   /\ lpc' = "k4"
-  /\ GoRead
+  /\ Go(Loop, TRUE)
   /\ UNCHANGED <<shape, shared, fibers, first, why, mergedBefore, filledAt, found, queue,
                  snapPhase, snapRunning, snapVer, lCanTake, lRunning>>
 
