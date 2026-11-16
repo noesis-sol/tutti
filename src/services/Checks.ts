@@ -506,6 +506,11 @@ export interface RunOptions {
    * and bd run (setup.ts's setUpCheckout); a check in a worktree has them stopped.
    */
   readonly leaveStrays?: boolean
+  /**
+   * Variables laid over the environment the command runs in: the pre-flight's merge check on the
+   * base sets wholeCheckVariable, so that a check of a change checks the whole of the base.
+   */
+  readonly env?: Readonly<Record<string, string>>
 }
 
 /** A check's options with a command of their own. */
@@ -549,8 +554,8 @@ export const resultOf = (
 
 /**
  * Runs `command` with `sh -c` in `options.cwd` within `timeLimit`, in the environment of commands
- * run on a branch's behalf (BranchEnv), with `share`'s variables where given (checkShareEnv), the
- * whole output going to `options.outputFile` (or `options.outputFd`, when given).
+ * run on a branch's behalf (BranchEnv), with `share`'s variables where given (checkShareEnv) and
+ * `options.env`'s over them, the whole output going to `options.outputFile` (or `options.outputFd`, when given).
  */
 export const runCheck = Effect.fn("runCheck")(function* (
   check: CheckKind,
@@ -566,7 +571,10 @@ export const runCheck = Effect.fn("runCheck")(function* (
     args: ["-c", command],
     timeLimit,
     cwd: options.cwd,
-    baseEnv: share === undefined ? branch : checkShareEnv(branch, share),
+    baseEnv: {
+      ...(share === undefined ? branch : checkShareEnv(branch, share)),
+      ...options.env,
+    },
     outputFile: options.outputFile,
     ...(options.outputFd === undefined ? {} : { outputFd: options.outputFd }),
     ...(options.loaded === undefined ? {} : { loaded: options.loaded }),

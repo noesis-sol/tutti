@@ -7,8 +7,10 @@
 # files the change touches, picked by scripts/check-own.ts (those that changed, those that import a
 # changed module at any depth or name a changed file, and, for a change under src/, those that read
 # the whole of src/), saying how many; scripts/check.sh whole, every test, when the project's setup
-# changed or there is no main to start from. TUTTI_OWN_SAME_TREE=1 has it stand on no pass kept in
-# the worktree (the worker's own check's, of another tree) but one at the very tree it checks.
+# changed or there is no main to start from, or when tutti sets TUTTI_CHECK_WHOLE=1, as tutti
+# --overnight's pre-flight does to run it on main's head, where the change since main is empty.
+# TUTTI_OWN_SAME_TREE=1 has it stand on no pass kept in the worktree (the worker's own check's, of
+# another tree) but one at the very tree it checks.
 # The gate is weaker than the whole suite's between full checks: a break only a test the selection
 # leaves out would catch reaches main, and the full check, scripts/check-full.sh, which runs every
 # test once at the end of a run, and CI's and the release's runs of it, find it.
@@ -17,6 +19,12 @@
 # merges, and tutti warns of it. The last line is check-own.sh's verdict, or check.sh's.
 set -e
 cd "$(dirname "$0")/.."
+
+# the whole check, from scripts/check.sh, for a commit rather than a change
+if [ "${TUTTI_CHECK_WHOLE-}" = 1 ]; then
+  echo "check-fast: TUTTI_CHECK_WHOLE=1: running scripts/check.sh whole"
+  exec scripts/check.sh
+fi
 
 # the change's check, from scripts/check-own.sh
 printf '%s\n' 'SUITE: check'

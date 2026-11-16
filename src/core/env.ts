@@ -353,6 +353,14 @@ export const checkShareEnv = (
 })
 
 /**
+ * The variable tutti sets to 1 where it runs the merge check on a commit rather than on a change:
+ * the base's head, in --overnight's pre-flight (§ 5 item 2), where a branch's change since main is
+ * empty. A merge check that checks only a change (tutti's own, scripts/check-own.sh on the change
+ * since main) checks the whole project then, as its full check does without the slower suites.
+ */
+export const wholeCheckVariable = "TUTTI_CHECK_WHOLE"
+
+/**
  * `env`, a WorkerEnv, with a worker's share of the machine: Bash's timeouts for its merge check's
  * `checkTimeout`, and its checks' share (checkShareEnv).
  */

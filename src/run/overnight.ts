@@ -25,6 +25,7 @@ import {
   overnightDenyAfter,
   workerPromptFile,
 } from "../core/AppConfig.ts"
+import { wholeCheckVariable } from "../core/env.ts"
 import { duration, resetLabel } from "../core/localTime.ts"
 import { Log, line } from "../core/log.ts"
 import { O } from "../native/libc.ts"
@@ -710,7 +711,8 @@ const saidShort = (error: CheckError): string => {
 
 /**
  * The merge check failing on the base's head, where every merge would fail too: run once in a
- * worktree of its own on the head, the setup first, within the merge check's time limit, its whole
+ * worktree of its own on the head, the setup first, within the merge check's time limit, with
+ * wholeCheckVariable set so that a check of a change checks the whole of the head, its whole
  * output in the main checkout's .tutti/run/check-base.log. It fails where the check fails there.
  */
 export const baseCheck = (started: Started, say: Say) =>
@@ -763,7 +765,10 @@ export const baseCheck = (started: Started, say: Say) =>
           const set = yield* Effect.result(checks.setup({ ...to, before: "fast" }))
           if (Result.isFailure(set)) return { what: `the setup '${setup}'`, error: set.failure }
         }
-        const checked = yield* Effect.result(checks.fast(to))
+        // The base's head is no change since main: the merge check checks the whole of it.
+        const checked = yield* Effect.result(
+          checks.fast({ ...to, env: { [wholeCheckVariable]: "1" } }),
+        )
         return Result.isFailure(checked)
           ? { what: `the merge check '${command}'`, error: checked.failure }
           : null
