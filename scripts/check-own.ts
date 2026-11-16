@@ -11,7 +11,8 @@
 // side-effect import. A change to the test runner (scripts/test.ts) or its preload
 // (test/warm-up.ts) touches every test. A change to any file under src/ touches the test helpers
 // that read the whole of src/ rather than import it (srcReaders: test/importGraph.ts, which the
-// layering and cycle checks read), and so the tests that import them.
+// layering and cycle checks read), and so the tests that import them. A change to any file at all
+// touches the tests that read every tracked file (treeReaders: test/no-orchestra.test.ts).
 //
 // A pass stands for the next run in the same worktree (standOn): check-own.sh keeps, under the
 // worktree's own git dir, the tree its tests passed on (HEAD's with what isn't committed yet,
@@ -45,6 +46,13 @@ export const wholeSuite: ReadonlyArray<string> = ["scripts/test.ts", "test/warm-
  * src/ module and would otherwise run only in the merge check.
  */
 export const srcReaders: ReadonlyArray<string> = ["test/importGraph.ts"]
+
+/**
+ * The tests that read every file git tracks rather than import or name them:
+ * test/no-orchestra.test.ts fails a line naming orchestra in any file off its list. A change to any
+ * file, in src/ or not, touches them, as it may add such a line, and so the tests that import them.
+ */
+export const treeReaders: ReadonlyArray<string> = ["test/no-orchestra.test.ts"]
 
 /**
  * The project's setup, a change to which since main makes check-own.sh run scripts/check.sh whole
@@ -171,6 +179,9 @@ export const testsFor = (
   }
   if (changed.some((file) => file.startsWith("src/"))) {
     for (const reader of srcReaders) touch(reader)
+  }
+  if (changed.length > 0) {
+    for (const reader of treeReaders) touch(reader)
   }
   for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
     for (const importer of importers.get(file) ?? []) touch(importer)

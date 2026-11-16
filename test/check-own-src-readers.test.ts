@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { resolve } from "node:path"
 import fc from "fast-check"
-import { srcReaders, testsFor, wholeSuite } from "../scripts/check-own.ts"
+import { srcReaders, testsFor, treeReaders, wholeSuite } from "../scripts/check-own.ts"
 
 const sources = (files: Record<string, string>) => new Map(Object.entries(files))
 const existing = (files: Record<string, string>) => (file: string) => file in files
@@ -92,7 +92,12 @@ describe("the repository's readers of the whole of src/", () => {
       "test/importGraph.ts": read("test/importGraph.ts"),
       "test/layers.test.ts": read("test/layers.test.ts"),
     })
-    expect(testsFor(["src/core/log.ts"], repo, isFile)).toEqual(["test/layers.test.ts"])
-    expect(testsFor(["docs/setup.md"], repo, isFile)).toEqual([])
+    // The readers of every tracked file (treeReaders) exist here too, and any change takes them.
+    const picked = (changed: ReadonlyArray<string>) => {
+      const tests = testsFor(changed, repo, isFile)
+      return tests === "all" ? tests : tests.filter((test) => !treeReaders.includes(test))
+    }
+    expect(picked(["src/core/log.ts"])).toEqual(["test/layers.test.ts"])
+    expect(picked(["docs/setup.md"])).toEqual([])
   })
 })
