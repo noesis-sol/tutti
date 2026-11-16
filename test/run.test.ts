@@ -321,7 +321,7 @@ describe("the drain", () => {
     expect(ran.log.some((each) => each.includes("t-2 dispatching"))).toBe(false)
   })
 
-  test("the DRAIN line's words, as orchestra's", () => {
+  test("the DRAIN line's words", () => {
     expect(drainWords([])).toEqual(["stopping now, as nothing is running", "", ""])
     expect(String(drainLine(["b" as TicketId, "a" as TicketId], "from the dashboard"))).toBe(
       "DRAIN: stopping after the 2 running tickets finish (a, b): no new tickets will start, asked from the dashboard",
@@ -330,7 +330,7 @@ describe("the drain", () => {
 })
 
 describe("stops and exit codes", () => {
-  test("each stop reason's exit code is orchestra's, 8 for USAGE_LIMIT and no TERMINAL_FAILED", () => {
+  test("each stop reason's exit code, 8 for USAGE_LIMIT and no TERMINAL_FAILED", () => {
     expect(stopCodes).toEqual({
       REQUIREMENTS_MISSING: 2,
       SETUP_PROBLEM: 2,
@@ -403,7 +403,7 @@ describe("stops and exit codes", () => {
     })
     expectExitCode(ran, 3)
     expectPhases(ran, { "t-1": "Stopped" })
-    // With nothing else running, the stop holds nothing: no HOLD line, as orchestra's.
+    // With nothing else running, the stop holds nothing: no HOLD line.
     expectLog(ran, [/^PAUSED: t-1 still in_progress/])
     expect(ran.log.some((text) => text.startsWith("HOLD: "))).toBe(false)
     expect(recordsOf(ran, "stop")).toHaveLength(1)

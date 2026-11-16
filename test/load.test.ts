@@ -1,5 +1,5 @@
-// The machine's load (src/run/load.ts, orchestra 0.8.5): the process listing and each worker's
-// processes, the kernel's figures on macOS and Linux, and each signal's level from fake readings.
+// The machine's load (src/run/load.ts): the process listing and each worker's processes, the
+// kernel's figures on macOS and Linux, and each signal's level from fake readings.
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import {

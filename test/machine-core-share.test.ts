@@ -1,6 +1,6 @@
-// A worker's share of the cores counts the workers of the machine's other runs (tutti-kkb.37), as
-// orchestra 0.9.0's does: the run keeps how many they run as it reads their registrations
-// (OtherWorkers), and each session takes its share as it starts, up to --machine-workers.
+// A worker's share of the cores counts the workers of the machine's other runs (tutti-kkb.37): the
+// run keeps how many they run as it reads their registrations (OtherWorkers), and each session
+// takes its share as it starts, up to --machine-workers.
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"

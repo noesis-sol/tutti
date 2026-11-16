@@ -1,7 +1,7 @@
-// The project's requires list (§ 8.4's `requires`), as orchestra 0.9.1's: the entries the settings
-// take and refuse; the check of the list, installing what it can, and the lines that say how each
-// was found; the README's section on what to install, generated from the list; init's steps for
-// it; `tutti requires`; and the note on the list in a worker's standing rules.
+// The project's requires list (§ 8.4's `requires`): the entries the settings take and refuse; the
+// check of the list, installing what it can, and the lines that say how each was found; the
+// README's section on what to install, generated from the list; init's steps for it;
+// `tutti requires`; and the note on the list in a worker's standing rules.
 import { describe, expect, test } from "bun:test"
 import {
   existsSync,

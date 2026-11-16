@@ -1,5 +1,5 @@
-// The run's notifications (§ 7.9, notices.ts): what each record of the event stream notifies, in
-// orchestra's words, the layer that sends them, and a whole run's notices.
+// The run's notifications (§ 7.9, notices.ts): what each record of the event stream notifies and
+// in what words, the layer that sends them, and a whole run's notices.
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
@@ -43,7 +43,7 @@ const permission = (ticket: string, tool: string, summary: string): Event => ({
 })
 
 describe("notice", () => {
-  test("says each outcome as orchestra does", () => {
+  test("says each outcome, with its ticket and what it is about", () => {
     expect(
       notice({ kind: "closed", ticket: "t-12", title: "Add a --json flag to list", text: "" }),
     ).toBe("Closed t-12 · Add a --json flag to list")

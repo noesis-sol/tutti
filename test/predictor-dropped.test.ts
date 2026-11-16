@@ -1,9 +1,8 @@
 // The predictor is gone (tutti-wxvk): a run guesses no ticket's files, and writes no
 // `predicted_files`. Since tutti-k4if.1 a shared file holds no ticket back, so a guess of files
 // could only warn LIKELY_CONFLICT, which two running tickets changing one file get from their
-// worktrees anyway. The `predicted_files` a ticket already carries (orchestra's predictor writes
-// it, as did tutti's before) is still read as its footprint, marked (predicted), for a ticket
-// naming nothing else.
+// worktrees anyway. The `predicted_files` a ticket already carries (tutti's predictor wrote it
+// before) is still read as its footprint, marked (predicted), for a ticket naming nothing else.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"

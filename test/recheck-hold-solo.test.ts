@@ -1,6 +1,6 @@
-// A ticket set aside for a failed check is checked once more after the base moves on (recheck.ts),
-// as orchestra's recheckTickets has it: not while the run holds, nor while a solo ticket runs or is
-// next, and in a slot of its own, as a running ticket's, until its merge is over.
+// A ticket set aside for a failed check is checked once more after the base moves on (recheck.ts):
+// not while the run holds, nor while a solo ticket runs or is next, and in a slot of its own, as a
+// running ticket's, until its merge is over.
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"

@@ -1,7 +1,7 @@
 // A ticket frees its slot as it goes to the merge queue, but holds back what it did while it ran
-// until it merges (§ 5 item 5, orchestra 0.8.5's orchestra-z8lr): a ready ticket overlapping its
-// footprint waits for it, and a solo ticket for it to merge. Up to `concurrent` tickets merge, or
-// wait to merge, without a slot; beyond that, each takes one until a merge ends.
+// until it merges (§ 5 item 5): a ready ticket overlapping its footprint waits for it, and a solo
+// ticket for it to merge. Up to `concurrent` tickets merge, or wait to merge, without a slot;
+// beyond that, each takes one until a merge ends.
 
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"

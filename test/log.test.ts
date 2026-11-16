@@ -101,7 +101,7 @@ const hostile = fc.string({
 })
 
 describe("a line's format", () => {
-  test("the local time as orchestra dates it, then the text", () => {
+  test("the local time with its offset, then the text", () => {
     expect(stamp(at)).toMatch(/^2026-10-17 09:05:03 [+-]\d\d:\d\d$/)
     expect(stamp(new Date(2027, 0, 2, 23, 0, 59).getTime())).toMatch(
       /^2027-01-02 23:00:59 [+-]\d\d:\d\d$/,

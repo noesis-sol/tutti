@@ -1,6 +1,6 @@
-// The merge train (mergetrain.ts, orchestra 0.8.6 and 0.9.0's blame): while a ticket is checked in
-// its turn, the next in line is rebased onto its branch and checked beside it. Each scenario merges
-// two finished tickets, a then b, behind a base that moved on while they ran.
+// The merge train (mergetrain.ts): while a ticket is checked in its turn, the next in line is
+// rebased onto its branch and checked beside it. Each scenario merges two finished tickets, a then
+// b, behind a base that moved on while they ran.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"

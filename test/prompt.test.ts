@@ -77,7 +77,7 @@ describe("the built-in worker prompt", () => {
     expect(builtInWorkerPrompt).not.toContain("look idle")
   })
 
-  test("carries orchestra's rules with § 4.11's changes", () => {
+  test("carries the standing rules § 4.11 gives", () => {
     const rules = forTicket({ text: builtInWorkerPrompt, file: null }, "bd-7")
     expect(rules).toContain("on branch tutti/bd-7")
     expect(rules).toContain("tutti merges your branch")

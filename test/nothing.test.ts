@@ -34,8 +34,8 @@ import { boxPad } from "../src/ui/spacing.ts"
 import { makeTheme } from "../src/ui/theme.ts"
 import { type BoxShown, boxesIn, boxWith } from "./screen.ts"
 
-// The message a run with nothing to run shows, in a box on a terminal and as plain lines otherwise,
-// as orchestra's nothing_test.go has them; the check that finds it; and DEFERRED_FREE.
+// The message a run with nothing to run shows, in a box on a terminal and as plain lines otherwise;
+// the check that finds it; and DEFERRED_FREE.
 
 type Env = Beads | Backlog | Git | GitWriter | Repository | Worktrees | Log | EventStream | Captured
 
@@ -153,7 +153,7 @@ describe("the box and its lines", () => {
     })
   }
 
-  test("each reason has its line and its command, in orchestra's words", () => {
+  test("each reason has its line and its command", () => {
     const n = make({
       questions: 2,
       waiting: 3,
@@ -259,7 +259,7 @@ describe("DEFERRED_FREE", () => {
     blockers: ["k-2" as TicketId, "k-3" as TicketId],
   }
 
-  test("the START block's line, as orchestra words it", () => {
+  test("the START block's line", () => {
     expect(free.startLine(d, "main")).toBe(
       "DEFERRED_FREE: k-4: its blockers have merged (k-2, k-3); to run it: bd update k-4 --status open",
     )

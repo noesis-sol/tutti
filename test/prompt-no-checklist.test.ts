@@ -1,5 +1,5 @@
 // The worker prompt asks for no to-do checklist (§ 4.11): bd prime, which reaches workers through
-// the user's settings, forbids TodoWrite and TaskCreate, and orchestra's workers never kept one.
+// the user's settings, forbids TodoWrite and TaskCreate, and the run tracks the work in Beads.
 import { describe, expect, test } from "bun:test"
 import { builtInWorkerPrompt, forTicket } from "../src/project/prompt.ts"
 

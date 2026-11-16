@@ -1,6 +1,6 @@
-// The latest action of a ticket checked ahead of its turn to merge (orchestra 0.8.6's
-// mergeTrain.activity, merge_train_dashboard_test.go): its card says how its check ahead goes, from
-// its rebase onto the branch ahead to its turn.
+// The latest action of a ticket checked ahead of its turn to merge (runView.ts's
+// checkAheadText): its card says how its check ahead goes, from its rebase onto the branch ahead to
+// its turn.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -50,7 +50,7 @@ const passedAhead =
   "passed its check ahead of its turn, on top of tutti/a: merges with no further check if tutti/a merges as checked"
 
 describe("checkAheadText", () => {
-  test("says each step of the check ahead of its turn as orchestra's dashboard does", () => {
+  test("says each step of the check ahead of its turn on its card", () => {
     const text = (step: CheckAhead["step"]) => checkAheadText({ step, behind: "tutti/a" })
     expect(text("rebase")).toBe(
       "rebasing onto tutti/a, to be checked ahead of its turn on top of it as it is checked",

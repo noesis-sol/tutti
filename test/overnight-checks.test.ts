@@ -296,7 +296,7 @@ describe("the warnings", () => {
     )
   })
 
-  test("a virtual machine holding over 4 GB warns, named as orchestra names them", () => {
+  test("a virtual machine holding over 4 GB warns, named by its process and app", () => {
     expect(vmCheck(undefined).verdict).toBe("warned")
     expect(vmCheck([proc("node", 1, gb)])).toEqual({
       verdict: "passed",

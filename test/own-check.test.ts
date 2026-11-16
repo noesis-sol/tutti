@@ -1,8 +1,8 @@
-// A worker checks its own change (§ 4.11, orchestra 0.9.0): the worker prompt's check section has it
-// run the suites on what its change touches and leave the whole suite to the merge check, which
-// tutti runs on every ticket. tutti init lists each suite there with the scout's command for part of
-// the project (§ 6.3); checks.own (§ 8.4) names a worker's own check, which the check note gives in
-// place of the merge check, and which footprints leave out as the other checks.
+// A worker checks its own change (§ 4.11): the worker prompt's check section has it run the suites
+// on what its change touches and leave the whole suite to the merge check, which tutti runs on
+// every ticket. tutti init lists each suite there with the scout's command for part of the project
+// (§ 6.3); checks.own (§ 8.4) names a worker's own check, which the check note gives in place of
+// the merge check, and which footprints leave out as the other checks.
 
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"

@@ -1,8 +1,7 @@
 // A merge that changes the requires list in .tutti/settings.json on the base (src/run/requires.ts,
-// setup.ts's takeSettings), as orchestra 0.9.1's takeRequires and recheckRequires: the run takes the
-// new list and checks it again before the next ticket starts. What is still missing stops the run
-// REQUIREMENTS_MISSING, exit 2, the running tickets finishing first (a HOLD line); the workers
-// started from then on are told the list as it is now.
+// setup.ts's takeSettings): the run takes the new list and checks it again before the next ticket
+// starts. What is still missing stops the run REQUIREMENTS_MISSING, exit 2, the running tickets
+// finishing first (a HOLD line); the workers started from then on are told the list as it is now.
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"

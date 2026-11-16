@@ -1,5 +1,5 @@
-// The worker prompt's Removals rule (§ 4.11): orchestra's rule against removing a target built from
-// a variable or a glob stays, with tutti's reason, and with what the worker does instead.
+// The worker prompt's Removals rule (§ 4.11): it forbids removing a target built from a variable or
+// a glob, gives the reason, and says what the worker does instead.
 import { describe, expect, test } from "bun:test"
 import { builtInWorkerPrompt, forTicket } from "../src/project/prompt.ts"
 
@@ -7,7 +7,7 @@ import { builtInWorkerPrompt, forTicket } from "../src/project/prompt.ts"
 const rules = forTicket({ text: builtInWorkerPrompt, file: null }, "bd-7").replace(/\s+/g, " ")
 
 describe("the worker prompt's Removals rule", () => {
-  test("never removes a target built from a variable or a glob, with orchestra's examples", () => {
+  test("never removes a target built from a variable or a glob, with its examples", () => {
     expect(rules).toContain("Never `rm` a target built from a variable or a glob")
     expect(rules).toContain("(`rm -f $S/*`, `rm -f $f`, `rm -f *`)")
   })

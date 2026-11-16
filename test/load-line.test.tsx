@@ -1,4 +1,4 @@
-// The dashboard's load line and each worker's memory in Current (orchestra 0.8.5, src/ui/LoadLine.tsx):
+// The dashboard's load line and each worker's memory in Current (src/ui/LoadLine.tsx):
 // fake readings for each colour, on macOS and Linux, a narrow pane, RunView's projection of a
 // reading, and a whole run reading a fake machine while it shows the dashboard.
 

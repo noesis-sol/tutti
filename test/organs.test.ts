@@ -199,7 +199,7 @@ describe("Organs", () => {
     ])
   })
 
-  test("the time limits are orchestra's", () => {
+  test("the time limits are 3 to 5 minutes, by organ", () => {
     const minutes = Object.fromEntries(
       organNames.map((name) => [name, Duration.toMinutes(organDefaults[name].timeLimit)]),
     )

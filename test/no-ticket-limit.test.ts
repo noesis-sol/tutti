@@ -1,6 +1,6 @@
-// A run has no ticket limit unless --limit (or TUTTI_LIMIT) gives one (§ 8.2), as orchestra 0.8.5's:
-// with none it starts every ticket it can and ends READY_EMPTY or DRAINED, never LIMIT_REACHED; its
-// dispatch lines say `[n]` and its dispatch records leave `limit` out. A limit given still stops it.
+// A run has no ticket limit unless --limit (or TUTTI_LIMIT) gives one (§ 8.2): with none it starts
+// every ticket it can and ends READY_EMPTY or DRAINED, never LIMIT_REACHED; its dispatch lines say
+// `[n]` and its dispatch records leave `limit` out. A limit given still stops it.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"

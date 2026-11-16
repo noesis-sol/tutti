@@ -1,6 +1,6 @@
-// The machine's cap counts the run's slots (§ 8.2; run.ts's ownWorkers, schedule.ts's slots, as
-// orchestra 0.9.4): tickets waiting to merge or merging take no slot up to `concurrent` of them, so
-// they hold the run at no cap, keep the merge train checking ahead, and count in no registration.
+// The machine's cap counts the run's slots (§ 8.2; run.ts's ownWorkers, schedule.ts's slots):
+// tickets waiting to merge or merging take no slot up to `concurrent` of them, so they hold the run
+// at no cap, keep the merge train checking ahead, and count in no registration.
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readdirSync, readFileSync, realpathSync } from "node:fs"

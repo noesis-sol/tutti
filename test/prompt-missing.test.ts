@@ -1,6 +1,6 @@
 // A project tutti init set up whose worker prompt is gone (§ 5 item 1, § 9.1): .tutti/settings.json
-// is there and .tutti/worker-prompt.md isn't. As in orchestra, that is a setup problem naming the
-// file and `tutti init`, where tutti ran on the built-in template.
+// is there and .tutti/worker-prompt.md isn't. That is a setup problem naming the file and
+// `tutti init`, where tutti ran on the built-in template.
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

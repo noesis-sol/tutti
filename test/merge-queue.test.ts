@@ -336,7 +336,7 @@ const mergeOne = (
     ),
   )
 
-describe("each failure lands in its phase, with orchestra's log line", () => {
+describe("each failure lands in its phase, with its log line", () => {
   test("OFF_BRANCH: the worktree on a detached HEAD is set aside before anything is done", async () => {
     let worktree = ""
     const ran = await mergeOne((ticket) =>

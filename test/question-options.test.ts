@@ -1,5 +1,5 @@
-// A question's options and the recommended one, which the worker prompt asks for in its metadata
-// as orchestra's does, and whether only the maintainer can answer it (maintainer_only, tutti's own).
+// A question's options and the recommended one, which the worker prompt asks for in its metadata,
+// and whether only the maintainer can answer it (maintainer_only).
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import fc from "fast-check"

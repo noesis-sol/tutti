@@ -1,7 +1,6 @@
-// A run checks the project's requires list as it starts (src/run/requires.ts), as orchestra 0.9.1's:
-// before its first ticket and any worker it carries over. What is met is said on a REQUIRES line
-// under the START block; what is still missing stops the run with REQUIREMENTS_MISSING, exit 2,
-// nothing started.
+// A run checks the project's requires list as it starts (src/run/requires.ts): before its first
+// ticket and any worker it carries over. What is met is said on a REQUIRES line under the START
+// block; what is still missing stops the run with REQUIREMENTS_MISSING, exit 2, nothing started.
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
