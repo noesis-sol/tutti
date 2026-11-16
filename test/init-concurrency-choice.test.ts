@@ -1,7 +1,7 @@
-// init's question of tickets at the same time (§ 8.3), as orchestra's init asks it: options 1 to 4
-// and Custom…, which asks the number, starting on the current setting's option, or on Custom… with
-// the number filled in above 4. Here the choices themselves and the line form (TERM=dumb); the
-// renderer's are in ui-init-form.test.tsx.
+// init's question of tickets at the same time (§ 8.3): options 1 to 4 and Custom…, which asks the
+// number, starting on the current setting's option, or on Custom… with the number filled in above
+// 4. Here the choices themselves and the line form (TERM=dumb); the renderer's are in
+// ui-init-form.test.tsx.
 import { describe, expect, test } from "bun:test"
 import { PassThrough } from "node:stream"
 import { Effect, Exit } from "effect"
@@ -55,7 +55,7 @@ const asked = async (initial: number, input: string) => {
 }
 
 describe("the choice of tickets at the same time", () => {
-  test("offers orchestra's five options, Custom… up to the most", () => {
+  test("offers five options, Custom… up to the most", () => {
     expect(concurrencyOptions(16)).toEqual([
       "1  · one at a time (safest)",
       "2  · checks must cope with running side by side",

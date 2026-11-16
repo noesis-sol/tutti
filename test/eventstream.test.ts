@@ -776,7 +776,7 @@ const actedOn = (c: string): boolean => {
 }
 
 describe("the records", () => {
-  test("§ 10's kinds, orchestra's and tutti's, each have a schema", () => {
+  test("§ 10's kinds each have a schema", () => {
     expect([...kindNames].sort() as Array<string>).toEqual(
       [
         ...["start", "info", "dispatch", "queue", "closed", "deferred", "asked", "answered"],
@@ -831,15 +831,15 @@ describe("the records", () => {
     )
   })
 
-  test("orchestra's records, with v, decode", () => {
-    const orchestra = [
+  test("records of the first kinds' fields, with v, decode", () => {
+    const older = [
       `{"time":"2026-10-02T09:12:06.2+02:00","run":"${run}","kind":"dispatch","ticket":"kinieta-kco","title":"Open the property model","text":"[1/40] kinieta-kco dispatching: Open the property model","n":1,"limit":40,"queued":12,"unclosed":31}`,
       `{"time":"2026-10-02T09:31:40.07+02:00","run":"${run}","kind":"closed","ticket":"kinieta-kco","detail":"ffd6ce4 merged into batch/2026-10-02","text":"  kinieta-kco closed","title":"Open the property model"}`,
       `{"time":"2026-10-02T11:02:13.6+02:00","run":"${run}","kind":"done","text":"READY_EMPTY after 12 tickets"}`,
-      `{"time":"2026-10-02T11:14:40.3+02:00","run":"${run}","kind":"full_check","ticket":"kinieta-q1z","detail":"failed","text":"  FULL_CHECK_FAILED","suite":"e2e","output":"/Users/me/kinieta/.orchestra/run/check-full.log"}`,
+      `{"time":"2026-10-02T11:14:40.3+02:00","run":"${run}","kind":"full_check","ticket":"kinieta-q1z","detail":"failed","text":"  FULL_CHECK_FAILED","suite":"e2e","output":"/Users/me/kinieta/.tutti/run/check-full.log"}`,
       `{"time":"2026-10-02T11:03:55.1+02:00","run":"${run}","kind":"end","code":0}`,
     ]
-    for (const line of orchestra) {
+    for (const line of older) {
       const record = decoded(`{"v":1,${line.slice(1)}`)
       expect(record).toEqual({ v: 1, ...JSON.parse(line) })
     }
@@ -1007,7 +1007,7 @@ describe("EventStream", () => {
     expect(lines(repo).map(decoded)).toMatchObject([{ kind: "info", text: "after" }])
   })
 
-  test("the warning is orchestra's", () => {
+  test("the warning names the file and the error, and says the run goes on", () => {
     expect(notRecorded("EACCES")).toBe(
       "events not recorded in .tutti/run/events.jsonl: EACCES; the run goes on, and later failures aren't logged",
     )

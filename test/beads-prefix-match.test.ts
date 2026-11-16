@@ -1,6 +1,6 @@
 // bd answers an ID it has no issue for with an issue whose ID starts with it (a deleted ticket's
 // follow-up, say), and its writes act on that issue (bd 1.3.1). The live layer takes such an answer
-// for bd having no such issue, and writes nothing to bd for it, as orchestra 0.8.5 does.
+// for bd having no such issue, and writes nothing to bd for it.
 import { describe, expect, test } from "bun:test"
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

@@ -264,8 +264,7 @@ describe("a fix accepted", () => {
       `  '${check}' passes on tutti/a as its worker fixed it`,
       /^ {2}a closed \([0-9a-f]{7} .*\); merged into main, worktree and branch removed$/,
     ])
-    // The hand-back is orchestra's instructions, sent client_composed: what failed, what it said,
-    // and what landed.
+    // The hand-back is sent client_composed: what failed, what it said, and what landed.
     const sent = composed(ran)
     expect(sent).toHaveLength(1)
     expect(sent[0]).toContain(
@@ -543,7 +542,7 @@ describe("the prompt", () => {
     output: "/w/a/.tutti/run/check.log",
   }
 
-  test("names what failed, where its output is, what landed and what to run, as orchestra's does", () => {
+  test("names what failed, where its output is, what landed and what to run", () => {
     const prompt = fixPrompt(stop, "main", check, [
       { hash: "4444444444" as Sha, subject: "Land b", message: "Land b" },
     ])
@@ -577,7 +576,7 @@ describe("the prompt", () => {
     expect(fixPrompt(stop, "main", check, undefined)).toContain("(git could not list them)")
   })
 
-  test("says how many times, as orchestra does", () => {
+  test("says how many times", () => {
     expect([1, 2, 3].map(times)).toEqual(["once", "twice", "3 times"])
   })
 })

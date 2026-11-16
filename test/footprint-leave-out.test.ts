@@ -1,4 +1,4 @@
-// What footprints leave out since orchestra 0.9.0 (tutti-kkb.16): a ticket's notes, the files git
+// What footprints leave out (tutti-kkb.16): a ticket's notes, the files git
 // merges by union, a file two tickets share that neither is to change, a reopened or carried-over
 // ticket's text (its branch says where it works) but the functions it names that its branch's
 // files declare (tutti-v2ac), and nothing of a path's brackets or its +.

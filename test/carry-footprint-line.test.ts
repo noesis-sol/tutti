@@ -1,6 +1,5 @@
 // A carried ticket's footprint line: a resumed or carried-over worker given its issue has
-// `<id> footprint: …` logged as a dispatched ticket's is, as orchestra's startFootprint does for a
-// ticket it adopts or resumes.
+// `<id> footprint: …` logged as a dispatched ticket's is.
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"

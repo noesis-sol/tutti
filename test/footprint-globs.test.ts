@@ -1,5 +1,5 @@
-// A glob in the files metadata holds the files other tickets add where it matches, as orchestra
-// 0.8.0's does (tutti-kkb.40): one that matches files is kept anchored at each folder it matched in,
+// A glob in the files metadata holds the files other tickets add where it matches (tutti-kkb.40):
+// one that matches files is kept anchored at each folder it matched in,
 // one that matches none is kept as it is, from the repository's root, and a name with a [ is that
 // file or folder as well as the glob. The run's scheduler and tutti plan read them alike.
 import { describe, expect, test } from "bun:test"

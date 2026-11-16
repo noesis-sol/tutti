@@ -6,7 +6,7 @@ import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
 
 // A rebase moves only the branch it rebases, whatever the user's rebase.updateRefs says: a backup
-// branch, or orchestra's wt/<id>, pointing into the branch's commits stays where it was, as
+// branch, or another run's branch, pointing into the branch's commits stays where it was, as
 // putting the branch back resets only the branch. The in-memory layer has no config to follow.
 
 const layer = Git.layer().pipe(

@@ -257,7 +257,7 @@ describe("a resolution accepted", () => {
       "  a's worker finished the rebase; checking it with 'scripts/check-fast.sh'",
       /^ {2}a closed \([0-9a-f]{7} Do a \(a\)\); merged into main, worktree and branch removed$/,
     ])
-    // The hand-back is orchestra's instructions, sent client_composed.
+    // The hand-back is sent client_composed.
     const sent = composed(ran)
     expect(sent).toHaveLength(1)
     expect(sent[0]).toContain("rebasing tutti/a onto it stopped on conflicts in a.txt")
@@ -603,7 +603,7 @@ describe("a session tutti closed", () => {
 })
 
 describe("the prompt", () => {
-  test("names the files, the tests to run and the check left to tutti, as orchestra's does", () => {
+  test("names the files, the tests to run and the check left to tutti", () => {
     const stop: RebaseStop = {
       ticket: { id: "a" as TicketId, title: "A", branch: "tutti/a", worktree: "/w/a" },
       onto: "abc" as Sha,

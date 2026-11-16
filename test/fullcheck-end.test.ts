@@ -1,5 +1,5 @@
 // A failed full check's last 40 lines, in the log, the reviewer's evidence and the run report after
-// the reviewer's text, as orchestra's; and the FLAKY warnings of a full check that passed.
+// the reviewer's text; and the FLAKY warnings of a full check that passed.
 
 import { describe, expect, test } from "bun:test"
 import {

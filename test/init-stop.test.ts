@@ -1,4 +1,4 @@
-// A stop while tutti init takes its steps (orchestra-qa9p): the step runner checks for one after each
+// A stop while tutti init takes its steps: the step runner checks for one after each
 // step, writes the setup as one group, and init says `stopped` below what it did, exit 130. In a
 // temp repository with a scripted form, machine and Beads, a stop at each step in turn; then, on
 // real git, SIGINT to `tutti init` while a git it runs is held in the setup.

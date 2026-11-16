@@ -1,5 +1,5 @@
-// A feature run, from --feature or New feature (§ 4.10), as orchestra 0.8.1's: the START line's
-// scope is `feature <epic>`, with `feature: epic <epic>, talked through from: <request>` under it,
+// A feature run, from --feature or New feature (§ 4.10): the START line's scope is
+// `feature <epic>`, with `feature: epic <epic>, talked through from: <request>` under it,
 // and the run report's evidence calls the request the one the epic was talked through from.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"

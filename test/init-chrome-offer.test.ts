@@ -1,8 +1,8 @@
-// tutti init offers Claude in Chrome (§ 4.6) as orchestra's Discover does: once the user's
-// .claude.json records it set up, in claudeInChromeDefaultEnabled, cachedChromeExtensionInstalled
-// or hasCompletedClaudeInChromeOnboarding (read leniently), labelled as built into Claude Code;
-// chosen where it isn't set up, the question notes it and the summary cautions. Init runs in a
-// temp repository with a scripted form and machine, as test/init-skill-copy.test.ts has them.
+// tutti init offers Claude in Chrome (§ 4.6) once the user's .claude.json records it set up, in
+// claudeInChromeDefaultEnabled, cachedChromeExtensionInstalled or
+// hasCompletedClaudeInChromeOnboarding (read leniently), labelled as built into Claude Code; chosen
+// where it isn't set up, the question notes it and the summary cautions. Init runs in a temp
+// repository with a scripted form and machine, as test/init-skill-copy.test.ts has them.
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -108,7 +108,7 @@ describe("the MCP servers question's notes", () => {
     })
   })
 
-  test("labels a server with its note, as orchestra's form does", () => {
+  test("labels a server with its note", () => {
     const notes = { [chromeServer]: chromeBuiltIn }
     expect(serverLabel(chromeServer, notes)).toBe(
       "claude-in-chrome  · built into Claude Code, drives Chrome on this machine",

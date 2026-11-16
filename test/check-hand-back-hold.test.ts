@@ -1,6 +1,6 @@
-// No failed check is handed back to its worker while the run takes no more work (§ 4.7), as
-// orchestra's sayNoMore and whyNotFixCheck have it: a stop holds the run (PAUSED, BLOCKED,
-// TICKET_LIMIT, ENVIRONMENT, …), the usage limit holds it, or it winds down. The ticket is set
+// No failed check is handed back to its worker while the run takes no more work (§ 4.7): a stop
+// holds the run (PAUSED, BLOCKED, TICKET_LIMIT, ENVIRONMENT, …), the usage limit holds it, or it
+// winds down. The ticket is set
 // aside at once, its line saying `not handed back to its worker: the run holds (<stop>)`.
 
 import { describe, expect, test } from "bun:test"

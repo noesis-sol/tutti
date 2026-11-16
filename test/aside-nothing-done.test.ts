@@ -1,6 +1,6 @@
 // A ticket set aside as its worker settled with nothing done (no commits beyond the base, a clean
 // worktree) has its worktree and branch removed once triage has its evidence; one with commits or
-// changes keeps both, for review (aside.ts, as orchestra 0.8.1's dropNothingDone).
+// changes keeps both, for review (aside.ts).
 
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, realpathSync } from "node:fs"

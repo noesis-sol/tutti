@@ -1,5 +1,5 @@
 // tutti init run again files a test-work ticket whose earlier one is closed only where it wrote or
-// replaced a runner (§ 8.3, on purpose unlike orchestra): runners it left as they were are those
+// replaced a runner (§ 8.3): runners it left as they were are those
 // the closed ticket saw to. init runs in a temp repository with a scripted form, as
 // test/init-test-work-runners.test.ts does.
 import { describe, expect, test } from "bun:test"

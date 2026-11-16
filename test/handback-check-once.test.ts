@@ -1,5 +1,5 @@
-// A handed-back ticket is checked once, as orchestra 0.8.5 has it: when another ticket merges while
-// its worker fixes its failing check, what the worker left isn't checked where the branch was, then
+// A handed-back ticket is checked once: when another ticket merges while its worker fixes its
+// failing check, what the worker left isn't checked where the branch was, then
 // rebased and checked again; it is rebased onto the moved base first and checked there, its fix
 // carried to that check. Each scenario is a whole run under TestClock: a lands at once, b's check
 // fails after its rebase onto a and is handed back, and c merges while b's worker works on it.

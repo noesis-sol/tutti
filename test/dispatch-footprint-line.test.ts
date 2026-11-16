@@ -1,5 +1,5 @@
 // The dispatch's footprint line (§ 5 item 5): with the queue's footprint on, each ticket dispatched
-// has `<id> footprint: …` logged under its `dispatching` line, as orchestra's startFootprint does.
+// has `<id> footprint: …` logged under its `dispatching` line.
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"

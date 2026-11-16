@@ -1,6 +1,6 @@
-// A check hand-back whose worker finds nothing to fix and commits nothing (tutti-kkb.7), as
-// orchestra's checkRebased has it (orchestra-2jwy): the check runs a second time, and a pass merges
-// the ticket, while a second failure sets it aside with no further hand-back.
+// A check hand-back whose worker finds nothing to fix and commits nothing (tutti-kkb.7): the check
+// runs a second time, and a pass merges the ticket, while a second failure sets it aside with no
+// further hand-back.
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, type Scope } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"

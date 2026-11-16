@@ -578,7 +578,7 @@ describe("Beads", () => {
     expect(prefixProblem("Orc")).toContain("must start with a lowercase letter")
     expect(prefixProblem("orc_x")).toContain("lowercase letters, digits and hyphens")
     expect(prefixProblem("")).toBe("is empty")
-    expect(renamedId("orchestra-74b2.31", "orchestra", "orc")).toBe("orc-74b2.31")
+    expect(renamedId("chorus-74b2.31", "chorus", "orc")).toBe("orc-74b2.31")
   })
 })
 
@@ -661,7 +661,7 @@ describe("the login probe", () => {
 })
 
 describe("the runners' format", () => {
-  test("is orchestra's: SUITE: lines, subshells, the lock for a serial suite", () => {
+  test("has SUITE: lines, subshells, the lock for a serial suite", () => {
     const script = fastScript([
       { name: "unit tests", command: "bun test", foundIn: "package.json:7", serial: false },
       { name: "e2e", command: "npm run e2e", foundIn: "package.json:9", serial: true },
@@ -698,9 +698,9 @@ const shellcheck = (() => {
 })()
 
 describe("the runners init writes", () => {
-  // SC2251 is left out, as orchestra leaves it out: the `! kill -0` that ends the lock's `stale` is
-  // its status, which its callers test in an if; rewording it would make every runner with a lock
-  // that orchestra wrote differ from what init writes now.
+  // SC2251 is left out: the `! kill -0` that ends the lock's `stale` is its status, which its
+  // callers test in an if; rewording it would make every runner already written with a lock differ
+  // from what init writes now.
   test.skipIf(shellcheck === null)("pass the pinned shellcheck", () => {
     const suites = [
       { name: "unit tests", command: "bun test", foundIn: "package.json:7", serial: false },

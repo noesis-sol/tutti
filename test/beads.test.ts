@@ -164,7 +164,7 @@ describe("decoding bd --json", () => {
     expect(error.reason).toStartWith("an issue:")
   })
 
-  test("metadata in a string, and files in every form orchestra reads", () => {
+  test("metadata in a string, and files in every form they come in", () => {
     const issue = decoded(
       decodeIssue(
         "bd show",

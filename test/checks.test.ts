@@ -266,7 +266,7 @@ const said = (text: string) => {
 }
 
 describe("CheckOutput", () => {
-  test("picks the lines that say what failed as orchestra does", () => {
+  test("picks the lines that say what failed", () => {
     const lines = [
       "ok  	example.com/a	0.1s",
       "FAIL	example.com/b [build failed]",

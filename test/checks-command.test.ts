@@ -582,7 +582,7 @@ describe("a check-full.sh that runs nothing", () => {
     const project = newProject()
     await setUp(project)
     summaryOf((await runChecks(project, { flags: { checkFast: "make test" } })).exit)
-    // orchestra's check-full.sh, the project's choice.
+    // A check-full.sh that runs nothing, the project's choice.
     writeFileSync(join(project.repo, "scripts/check-full.sh"), "#!/bin/sh\nexit 0\n", {
       mode: 0o755,
     })

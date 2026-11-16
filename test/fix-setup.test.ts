@@ -33,8 +33,7 @@ import {
 } from "./harness.ts"
 
 // The setup (setup.ts) before the check on a worker's own commits: its fix of a failed check
-// (checkback.ts) or its resolution of a rebase (handback.ts), when they change a setup file, as
-// orchestra's checkRebased has it.
+// (checkback.ts) or its resolution of a rebase (handback.ts), when they change a setup file.
 
 const options = { repo: "/repo", base: "main" }
 

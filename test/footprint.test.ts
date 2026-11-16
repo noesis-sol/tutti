@@ -58,7 +58,7 @@ const footprintOf = (fields: Parameters<typeof ticket>[0], repo = here) =>
 const fp = (fields: Partial<Footprint>): Footprint => ({ ...emptyFootprint, ...fields })
 
 describe("a ticket's text", () => {
-  test("names files and functions, as orchestra's docs have it", () => {
+  test("names files and functions", () => {
     const named = footprintOf({
       title: "Hand a conflict back from Loop.merge",
       description:

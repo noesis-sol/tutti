@@ -20,7 +20,7 @@ import { live } from "../gates.ts"
 
 const testLimit = 120_000
 
-/** Whether this machine's Claude Code has Chrome set up, in any of the keys orchestra reads. */
+/** Whether this machine's Claude Code has Chrome set up, in any of the keys init reads. */
 const chromeSetUp = (() => {
   const dir = process.env.CLAUDE_CONFIG_DIR || process.env.HOME || homedir()
   try {

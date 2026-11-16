@@ -1,4 +1,4 @@
-// A hand-back's time limit on a loaded machine (handback.ts's clock), as orchestra 0.9.0 has it:
+// A hand-back's time limit on a loaded machine (handback.ts's clock):
 // the time the machine is loaded, its kernel's memory pressure or CPU pressing it
 // (load.ts's pressing), or the run holding at --machine-workers, is left out of resolve_timeout, up
 // to resolve_timeout again; the line ending a hand-back past it says how much more it was given.

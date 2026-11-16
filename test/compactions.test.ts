@@ -1,6 +1,6 @@
 // A worker's compactions (§ 4.2, "The callbacks also record compactions, for triage and the
-// reviewer"): each PreCompact hook callback is counted in its ticket's tally and logged as orchestra
-// logs it (`A's worker's context was compacted (auto)`), with an `info` record. Through the live
+// reviewer"): each PreCompact hook callback is counted in its ticket's tally and logged
+// (`A's worker's context was compacted (auto)`), with an `info` record. Through the live
 // host's callbacks, fired by the fake Claude Code (test/fixtures/fake-claude/claude.ts), and in a
 // whole run, where the reviewer is told how often the worker was compacted.
 

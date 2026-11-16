@@ -429,7 +429,7 @@ describe("precedence", () => {
     })
   })
 
-  test("orchestra's unprefixed variables are not read", () => {
+  test("only TUTTI_ variables are read, not unprefixed ones nor orchestra's", () => {
     const env = {
       LIMIT: "3",
       NOTIFY: "0",

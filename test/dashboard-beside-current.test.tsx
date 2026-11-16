@@ -1,10 +1,10 @@
 // The tickets table beside Current, the compact Current list's columns and the square for a ticket
-// to merge (§ 5.1 "How the phases are shown", § 7.2, § 7.11; orchestra-60xg, orchestra-lx4d.4,
-// orchestra-1dvh, orchestra-7dpo): beside Current the table leaves out every ticket Current shows,
-// whatever its phase, so that a ticket is shown once a frame, and its row comes in by attention
-// as it leaves Current; the end-of-run box in Current's place leaves every row in. The compact list
-// lines up its numbers, IDs, statuses and times as columns, so that the titles start at one column.
-// A ticket to merge is `◼`, and `◷` stays for one waiting on another.
+// to merge (§ 5.1 "How the phases are shown", § 7.2, § 7.11): beside Current the table leaves out
+// every ticket Current shows, whatever its phase, so that a ticket is shown once a frame, and its
+// row comes in by attention as it leaves Current; the end-of-run box in Current's place leaves
+// every row in. The compact list lines up its numbers, IDs, statuses and times as columns, so that
+// the titles start at one column. A ticket to merge is `◼`, and `◷` stays for one waiting on
+// another.
 
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Result, type Scope } from "effect"

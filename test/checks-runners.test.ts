@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import { CheckOutput } from "../src/services/Checks.ts"
 
-// tutti-kkb.21, as orchestra-nr1v.5: a hand-back quoted only bun's "error: expect(received).toBe(expected)"
-// of a failed check, as the lines that say what failed were picked by go test's words alone, and its
-// worker had to search check.log for the test. The lines in which other test runners name a failed
+// tutti-kkb.21: a hand-back quoted only bun's "error: expect(received).toBe(expected)" of a failed
+// check, as the lines that say what failed were picked by go test's words alone, and its worker had
+// to search check.log for the test. The lines in which other test runners name a failed
 // test, or count the failures, are among those quoted, in the order printed.
 
 const said = (text: string) => {
