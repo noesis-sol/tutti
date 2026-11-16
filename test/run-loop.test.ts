@@ -54,6 +54,8 @@ interface World {
   limit: StopReason | null
   /** What each probe gives, in turn; Ends once they run out. */
   probes: Array<Probed>
+  /** What each fill does to the world, in turn; nothing once they run out. */
+  fills: Array<(w: World) => void>
   /** What each endAfter gives, in turn; true once they run out. */
   endAfters: Array<boolean>
   endAsked: boolean
@@ -72,6 +74,7 @@ const world = (over: Partial<World> = {}): World => ({
   woken: [],
   limit: null,
   probes: [],
+  fills: [],
   endAfters: [],
   endAsked: false,
   acted: 0,
@@ -88,7 +91,11 @@ const runLoop = (w: World, steps: ReadonlyArray<(w: World) => void> = []) => {
   const left = [...steps]
   const holdsNow = () => ({ ...noHolds, stops: w.stops })
   const parts: LoopParts = {
-    fill: () => Effect.sync(() => calls.push("fill")),
+    fill: () =>
+      Effect.sync(() => {
+        calls.push("fill")
+        w.fills.shift()?.(w)
+      }),
     wakes: {
       take: Effect.sync(() => w.woken.shift() ?? new Set()),
       next: () =>
@@ -222,10 +229,90 @@ describe("the run's loop", () => {
     ])
   })
 
-  test("a look woken only by an attention change skips the fill", async () => {
+  test("a look woken only by an attention change skips the fill while tickets run", async () => {
+    const t1 = "t-1" as TicketId
+    const calls = await runLoop(world({ tickets: [entry(t1, working)], running: [t1] }), [
+      (w) => {
+        w.woken = [new Set(["attention"])]
+      },
+      (w) => {
+        w.tickets = [entry(t1, merged)]
+        w.running = []
+      },
+    ])
+    expect(calls).toEqual([
+      "fill",
+      "usage look not alone",
+      "box none",
+      "wait",
+      "usage look not alone",
+      "box none",
+      "wait",
+      "fill",
+      "usage look alone",
+      "box none",
+      "probe nothing",
+      "end after 0",
+    ])
+  })
+
+  test("an attention change alone with nothing else left looks again, filling, not ending", async () => {
     const calls = await runLoop(world({ woken: [new Set(["attention"])] }))
-    expect(calls).not.toContain("fill")
-    expect(calls.at(-1)).toBe("end after 0")
+    expect(calls).toEqual([
+      "usage look alone",
+      "fill",
+      "usage look alone",
+      "box none",
+      "probe nothing",
+      "end after 0",
+    ])
+  })
+
+  test("a ticket held for a merge that ended before an attention-only look starts", async () => {
+    // t-2 waits on t-1, merging: the fill holds it back. The merge ends, and the next wake is an
+    // attention change alone, the merge's wake not recorded yet.
+    const t1 = "t-1" as TicketId
+    const t2 = "t-2" as TicketId
+    const held = entry(t2, TicketPhase.HeldBack({ why: "merge" }))
+    const calls = await runLoop(
+      world({
+        tickets: [entry(t1, TicketPhase.ToMerge({ place: 0 })), held],
+        merges: { ...emptyQueue, merging: t1 },
+      }),
+      [
+        (w) => {
+          w.tickets = [entry(t1, merged), held]
+          w.merges = emptyQueue
+          w.woken = [new Set(["attention"])]
+          w.fills = [
+            (now) => {
+              now.tickets = [entry(t1, merged), entry(t2, working)]
+              now.running = [t2]
+            },
+          ]
+        },
+        (w) => {
+          w.tickets = [entry(t1, merged), entry(t2, merged)]
+          w.running = []
+        },
+      ],
+    )
+    expect(calls).toEqual([
+      "fill",
+      "usage look not alone",
+      "box none",
+      "wait",
+      "usage look alone",
+      "fill",
+      "usage look not alone",
+      "box none",
+      "wait",
+      "fill",
+      "usage look alone",
+      "box none",
+      "probe nothing",
+      "end after 0",
+    ])
   })
 
   test("with a worker waiting on you, a dashboard shows the box and waits for its q", async () => {

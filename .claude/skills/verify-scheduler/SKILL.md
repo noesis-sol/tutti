@@ -17,15 +17,15 @@ them, in a small model of the code: `Scheduler.tla`, checked by TLC through `che
   fiber still holds its slot, and it is dispatched again only for each time it went back in the
   queue. Harm when it breaks: two workers in one worktree on one branch.
 
-Both hold for the code as it is, **given two assumptions**. Each assumption left out gives a
-counterexample: these are the open findings below, and the check expects them.
+Both hold for the code as it is, **given one assumption**. Left out, it gives a
+counterexample: this is the open finding below, and the check expects it.
 
 ## Run it
 
 ```bash
 .claude/skills/verify-scheduler/check.sh            # every case, then the covered code; about 75 s
 .claude/skills/verify-scheduler/check.sh await      # one case
-.claude/skills/verify-scheduler/check.sh --trace finding-attention-look   # a counterexample's steps
+.claude/skills/verify-scheduler/check.sh --trace finding-release-gap      # a counterexample's steps
 ```
 
 It needs `java` (11 or later) and, the first time, the network: TLC 1.7.4 is fetched into
@@ -51,7 +51,7 @@ inside one makes the check exit 2 and name it. The actions of `Scheduler.tla` th
 
 | Code | In the model |
 | --- | --- |
-| `src/run/look.ts` `nothingLeft`: `wakes.take`, `mergedBefore`, `filledAt` read before the fill, then the reads after it in order (running, gate, settled, `endedSinceFill` last) | `Wake`, `Begin`, `K1` to `K4` |
+| `src/run/look.ts` `nothingLeft`: `wakes.take`, `mergedBefore`, `filledAt` read before the fill, then the reads after it in order (running, gate, settled, `endedSinceFill` last); `untilDone`'s `refill`: a look that didn't fill, with nothing left, looks again, filling | `Wake`, `Begin`, `K1` to `K4`, `K4`'s `refill` |
 | `src/run/runEnd.ts` `whatsLeft`, `decide` | `K4`'s `freed` and `done` |
 | `src/run/wakes.ts` `reads`: a look woken by an attention change alone does not fill | `Wake`'s `why`, `Begin` |
 | `src/run/schedule/fill.ts` `readQueue`, `queueCandidates`, `dropUnready` | `Read1`, `Read2` |
@@ -96,19 +96,9 @@ does in one `Ref` update, or lets something happen the code forbids: mend the mo
 
 ## Open findings
 
-Found on 2026-11-16 at commit 2f7a6ce5. Neither is fixed; the check expects each to fail still.
+Found on 2026-11-16 at commit 2f7a6ce5. It is not fixed; the check expects it to fail still.
 
-1. **`finding-attention-look`: a look woken by an attention change alone can end the run just
-   after a merge.** Ticket 1 blocks ticket 2 (a solo ticket or an overlap holds the same way).
-   Ticket 1 is in the merge queue; a look fills, and `lineUp` reads it not merged, so ticket 2 is
-   placed `HeldBack`. The merge ends: the ledger says Merged, the queue settles. Before
-   `watchers.ts` has recorded the `merge` wake, an attention change wakes the loop
-   (`blockedWatch.ts`, on any request opened or answered). `reads(why)` is false, so the look
-   does not fill; `mergedBefore` is true, nothing runs, the queue is settled and no fiber ended
-   since the last fill: `decide` gives `Done`, with ticket 2 held and ready. It needs no fiber
-   switched out between synchronous steps, only the attention wake landing between the queue's
-   settling and its watcher's wake. Assumption that hides it: `everyLookFills`.
-2. **`finding-release-gap`: a fiber frees its slot and counts its end in two steps.** In
+1. **`finding-release-gap`: a fiber frees its slot and counts its end in two steps.** In
    `slots.ts` `occupy`'s `release`, `showQueue` runs between the `Ref.update` that takes the
    ticket out of `running` and the one that counts `ends`. A look that reads `running` after the
    first and `ends` before the second sees nothing running and no fiber ended since the fill, and
@@ -130,13 +120,17 @@ without its assumption: in `check.sh`'s `cases`, take the assumption out of the 
 - `filledAtAfter`: `filledAt` read after the fill, not before it.
 - `noRunningCheck`: `lineUp` without `!was.running.has(issue.id)`, so a ticket back in the queue
   is dispatched while its last fiber holds its slot.
+- `noRefill`: a look an attention change alone woke, which doesn't fill, ends the run, before
+  tutti-matr. Ticket 1 blocks ticket 2 and merges; a fill holds ticket 2 back; the merge ends
+  and, before its wake is recorded, an attention change wakes a look that reads it all settled.
 
 ## What a pass covers, and what it does not
 
 - **Bounds.** Two tickets, in every shape of solo labels, overlap and blocker between them; one
   or two slots; `--limit` 1 or none; a ticket goes back in the queue from Working at most once.
   `check.sh deep-three-tickets` is the `await` case with three tickets and none going back in
-  the queue: 89 million states, about 5 minutes, run only when named. It held on 2026-11-16.
+  the queue: 89 million states, about 5 minutes, run only when named. It held on 2026-11-16,
+  with every look filling, before tutti-matr let a look be woken by an attention change alone.
 - **Fibers.** `await*` cases switch a fiber out only where the code may await bd, git, a worker
   or a file; `any-step*` cases between any two steps.
 - **Not in the model:** carried and resumed workers (`carry`), rechecks (`recheckSlot`), tickets

@@ -23,20 +23,20 @@ jar=${TLA2TOOLS:-$root/.cache/tla/tla2tools-$version.jar}
 
 # name | expected | N Concurrent Limit MaxRequeues AnyYield | Assume | Variant
 # expected: holds, or the invariant a finding or a deliberate break violates.
-all='"everyLookFills", "releaseCountsAtOnce"'
+all='"releaseCountsAtOnce"'
 cases="
-await|holds|2 2 3 1 FALSE|\"everyLookFills\"|asCode
-await-one-slot|holds|2 1 3 1 FALSE|\"everyLookFills\"|asCode
-await-limit|holds|2 2 1 1 FALSE|\"everyLookFills\"|asCode
+await|holds|2 2 3 1 FALSE||asCode
+await-one-slot|holds|2 1 3 1 FALSE||asCode
+await-limit|holds|2 2 1 1 FALSE||asCode
 any-step|holds|2 2 3 1 TRUE|$all|asCode
 any-step-one-slot|holds|2 1 3 1 TRUE|$all|asCode
 any-step-limit|holds|2 2 1 1 TRUE|$all|asCode
-finding-attention-look|NoEndWhileReady|2 2 3 1 FALSE||asCode
-finding-release-gap|NoEndWhileReady|2 2 3 1 TRUE|\"everyLookFills\"|asCode
-break-no-ended-since-fill|NoEndWhileReady|2 2 3 1 FALSE|\"everyLookFills\"|noEndedSinceFill
-break-filled-at-after|NoEndWhileReady|2 2 3 1 FALSE|\"everyLookFills\"|filledAtAfter
-break-no-running-check|NeverStartedTwice|2 2 3 1 FALSE|\"everyLookFills\"|noRunningCheck
-deep-three-tickets|holds|3 2 3 0 FALSE|\"everyLookFills\"|asCode
+finding-release-gap|NoEndWhileReady|2 2 3 1 TRUE||asCode
+break-no-ended-since-fill|NoEndWhileReady|2 2 3 1 FALSE||noEndedSinceFill
+break-filled-at-after|NoEndWhileReady|2 2 3 1 FALSE||filledAtAfter
+break-no-running-check|NeverStartedTwice|2 2 3 1 FALSE||noRunningCheck
+break-no-refill|NoEndWhileReady|2 2 3 1 FALSE||noRefill
+deep-three-tickets|holds|3 2 3 0 FALSE||asCode
 "
 
 # The covered code as it is now: a line for each entry of `covered.list`, with the hash of the

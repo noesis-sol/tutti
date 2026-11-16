@@ -22,7 +22,6 @@ CONSTANTS
   MaxRequeues,  \* how often one ticket may go back in the queue from Working
   AnyYield,     \* whether a fiber may be switched out between any two steps
   Assume,       \* what is taken for granted, each name a finding when it is left out:
-                \*   "everyLookFills"       no look is woken by an attention change alone
                 \*   "releaseCountsAtOnce"  a fiber frees its slot and counts its end in one step
   Variant       \* "asCode", or the name of a break put in on purpose (see the actions)
 
@@ -168,7 +167,7 @@ MayStep(who) == hot \in {None, who}
 
 Wake ==
   /\ lpc = "wait"
-  /\ why' \in (IF first \/ "everyLookFills" \in Assume THEN {"read"} ELSE {"read", "attn"})
+  /\ why' \in (IF first THEN {"read"} ELSE {"read", "attn"})
   /\ first' = FALSE
   /\ lpc' = "begin"
   /\ Go(Loop, TRUE)
@@ -332,15 +331,20 @@ K3 ==
                  snapPhase, snapRunning, snapVer, lCanTake, lRunning>>
 
 \* endedSinceFill, then runEnd.ts whatsLeft and decide: Done ends the run, anything else waits
-\* for the next wake. Variant "noEndedSinceFill" leaves `freed` out of `done`.
+\* for the next wake. A look that didn't fill, done, looks again, filling (untilDone's refill):
+\* the next look takes its reasons and reads mergedBefore with no await between, as Wake and
+\* Begin do. Variant "noEndedSinceFill" leaves `freed` out of `done`; "noRefill" ends the run on
+\* a look that didn't fill, the run's end before tutti-matr.
 K4 ==
   /\ lpc = "k4"
   /\ LET endedSinceFill == ends # filledAt
          freed == Variant # "noEndedSinceFill" /\ endedSinceFill /\ lCanTake
          done == ~freed /\ lRunning = {} /\ mergedBefore /\ lSettled
-     IN lpc' = IF done THEN "ended" ELSE "wait"
+         refill == done /\ why = "attn" /\ Variant # "noRefill"
+     IN /\ lpc' = IF refill THEN "begin" ELSE IF done THEN "ended" ELSE "wait"
+        /\ why' = IF refill THEN "read" ELSE why
   /\ Go(Loop, FALSE)
-  /\ UNCHANGED <<shape, shared, fibers, first, why, mergedBefore, filledAt, found, queue,
+  /\ UNCHANGED <<shape, shared, fibers, first, mergedBefore, filledAt, found, queue,
                  snapPhase, snapRunning, snapVer, lCanTake, lRunning, lSettled>>
 
 LoopStep ==

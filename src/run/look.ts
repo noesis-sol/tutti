@@ -1,8 +1,9 @@
 // The run's loop (§ 5, run.ts): it looks at the run at each wake until nothing is left, then ends
 // it. A look does its effects (the fill, which reads bd and git, unless only an attention change
 // woke it, wakes.ts) and reads what they left into a Snapshot, which decide (runEnd.ts) turns into
-// what the run does: look again, wait on you or for the usage limit's reset, or end. Nothing left,
-// a hold for the environment probes the machine (environment.ts), and the run goes on or ends.
+// what the run does: look again, wait on you or for the usage limit's reset, or end. A look that
+// didn't fill ends nothing: with nothing else left, the run looks again, filling. Nothing left, a
+// hold for the environment probes the machine (environment.ts), and the run goes on or ends.
 //
 // Its parts are the run's, each narrowed to what the loop reads and does, so that the loop runs on
 // stubs as well as on the run's own.
@@ -17,7 +18,7 @@ import type { HoldsGate } from "./holdsGate.ts"
 import type { Ledger } from "./ledger.ts"
 import { isSettled, type MergeQueue } from "./mergequeue.ts"
 import type { RunPlaybook } from "./playbookRun.ts"
-import { decide, End, endOfRunBox, type Look, limitedOnly } from "./runEnd.ts"
+import { decide, End, endOfRunBox, type Look, limitedOnly, whatsLeft } from "./runEnd.ts"
 import type { Scheduler } from "./schedule.ts"
 import type { ScreenCommands } from "./screenCommands.ts"
 import type { Triage } from "./triage.ts"
@@ -83,55 +84,60 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
     let filledAt = 0
     // Fills the free slots, after the look's other effects, then reads what they left for the end's
     // decision (runEnd.ts). A look woken only for what bd and git can't have changed, an attention
-    // change, skips to the reading (wakes.ts).
-    const nothingLeft = Effect.gen(function* () {
-      // The reasons first, with their wake (wakes.ts): a merge over before them is seen settled
-      // here. A merge that ends during this look frees what it held back after the look has read
-      // it: the run is done only when nothing was merging as the look began, and its wake, pending
-      // still, has it look again.
-      // So with a ticket's fiber that ends during the fill or after it: the fill may have held a
-      // ticket back for it (a solo ticket, a source or a subticket not merged, an overlap), and the
-      // run is done only when none ended since the last fill began; its freed wake has it look again.
-      const why = yield* wakes.take
-      const mergedBefore = isSettled(yield* queue.state)
-      yield* Effect.logDebug(`look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`)
-      if (reads(why)) {
-        filledAt = yield* scheduler.ends
-        yield* parts.fill(why)
-      }
-      // The running tickets before the gate: a fiber frees its slot and gives a ticket put back in
-      // the queue its start back to --limit in one update, so a look that reads the slot free reads
-      // the limit as that left it, and one that reads the slot taken looks again at its freed wake.
-      const running = yield* scheduler.running
-      const gate = yield* parts.gate
-      const look: Look = {
-        mergedBefore,
-        tickets: (yield* parts.ledger.current).tickets,
-        overLimit: (yield* holds.now).overLimit,
-        asking: (yield* parts.attention.current).map((request) => request.ticket),
-        running,
-        canTake: takesNew(gate),
-        resuming: yield* parts.resuming,
-        answering: yield* parts.answering,
-        filing: parts.filing === undefined ? false : yield* parts.filing,
-        unread: parts.unread === undefined ? false : yield* parts.unread,
-        diskHeld: parts.diskHeld === undefined ? false : yield* parts.diskHeld,
-        settled: isSettled(yield* queue.state),
-        triagePending: yield* parts.triage.pending,
-        reviewsPending: parts.critic === undefined ? 0 : yield* parts.critic.pending,
-        auditsPending: parts.auditor === undefined ? 0 : yield* parts.auditor.pending,
-        reflectionsPending: parts.playbook === undefined ? 0 : yield* parts.playbook.pending,
-        dashboard: parts.dashboard,
-        overnight: parts.overnight === true,
-        setAside:
-          parts.setAside === undefined || !takesBack(gate) || (yield* queue.state).stop !== null
-            ? []
-            : yield* parts.setAside,
-        // Read last: a fiber that ends after it was still running as the look read the scheduler.
-        endedSinceFill: (yield* scheduler.ends) !== filledAt,
-      }
-      return look
-    })
+    // change, skips to the reading (wakes.ts), unless `refill`. Gives the Look, and whether it filled.
+    const nothingLeft = (refill: boolean) =>
+      Effect.gen(function* () {
+        // The reasons first, with their wake (wakes.ts): a merge over before them is seen settled
+        // here. A merge that ends during this look frees what it held back after the look has read
+        // it: the run is done only when nothing was merging as the look began, and its wake, pending
+        // still, has it look again.
+        // So with a ticket's fiber that ends during the fill or after it: the fill may have held a
+        // ticket back for it (a solo ticket, a source or a subticket not merged, an overlap), and the
+        // run is done only when none ended since the last fill began; its freed wake has it look again.
+        const why = yield* wakes.take
+        const mergedBefore = isSettled(yield* queue.state)
+        yield* Effect.logDebug(
+          `look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`,
+        )
+        const filled = refill || reads(why)
+        if (filled) {
+          filledAt = yield* scheduler.ends
+          yield* parts.fill(why)
+        }
+        // The running tickets before the gate: a fiber frees its slot and gives a ticket put back
+        // in the queue its start back to --limit in one update, so a look that reads the slot free
+        // reads the limit as that left it, and one that reads the slot taken looks again at its
+        // freed wake.
+        const running = yield* scheduler.running
+        const gate = yield* parts.gate
+        const look: Look = {
+          mergedBefore,
+          tickets: (yield* parts.ledger.current).tickets,
+          overLimit: (yield* holds.now).overLimit,
+          asking: (yield* parts.attention.current).map((request) => request.ticket),
+          running,
+          canTake: takesNew(gate),
+          resuming: yield* parts.resuming,
+          answering: yield* parts.answering,
+          filing: parts.filing === undefined ? false : yield* parts.filing,
+          unread: parts.unread === undefined ? false : yield* parts.unread,
+          diskHeld: parts.diskHeld === undefined ? false : yield* parts.diskHeld,
+          settled: isSettled(yield* queue.state),
+          triagePending: yield* parts.triage.pending,
+          reviewsPending: parts.critic === undefined ? 0 : yield* parts.critic.pending,
+          auditsPending: parts.auditor === undefined ? 0 : yield* parts.auditor.pending,
+          reflectionsPending: parts.playbook === undefined ? 0 : yield* parts.playbook.pending,
+          dashboard: parts.dashboard,
+          overnight: parts.overnight === true,
+          setAside:
+            parts.setAside === undefined || !takesBack(gate) || (yield* queue.state).stop !== null
+              ? []
+              : yield* parts.setAside,
+          // Read last: a fiber that ends after it was still running as the look read the scheduler.
+          endedSinceFill: (yield* scheduler.ends) !== filledAt,
+        }
+        return { look, filled }
+      })
     // Whether nothing runs but workers waiting for the usage limit (runEnd.ts's limitedOnly).
     const alone = Effect.gen(function* () {
       return limitedOnly({
@@ -150,9 +156,11 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
     // usage limit ends it, whether the box's `q` did, and the count of the screen's commands acted
     // on before its last look.
     const untilDone = Effect.gen(function* () {
+      let refill = false
       for (;;) {
         const seen = yield* commands.acted
-        const look = yield* nothingLeft
+        const { look, filled } = yield* nothingLeft(refill)
+        refill = false
         const limit = yield* usage.look(yield* alone)
         if (limit !== null) {
           yield* scheduler.interrupt
@@ -160,6 +168,15 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
           yield* queue.hold
           yield* holds.stopped(limit)
           return { limited: true, asked: false, seen }
+        }
+        // A look that didn't fill decides on the last fill's reading: a merge over or a fiber ended
+        // since may have freed a ticket it held back, whose wake isn't recorded yet. With nothing
+        // else left, the run looks again, filling, rather than end on it; with a worker waiting
+        // on you, it waits for a wake as ever, the attention change costing no read of bd.
+        const left = whatsLeft(look)
+        if (!filled && left.done && left.waiting.length === 0) {
+          refill = true
+          continue
         }
         const { stop, usageHeld } = yield* parts.gate
         yield* parts.showEndOfRun(endOfRunBox(look))
