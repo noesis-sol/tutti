@@ -131,6 +131,11 @@ const allowed: ReadonlyArray<{ readonly files: ReadonlyArray<string>; readonly r
     reason: "the notices of what tutti takes from orchestra, and the changelog's past entries",
     files: ["THIRD_PARTY_NOTICES.md", "CHANGELOG.md"],
   },
+  {
+    reason:
+      "the own check's list of the tests that read every tracked file, this one, and its test",
+    files: ["scripts/check-own.ts", "test/check-own-tree-readers.test.ts"],
+  },
   { reason: "this test, which names what it looks for", files: ["test/no-orchestra.test.ts"] },
 ]
 

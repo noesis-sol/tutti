@@ -87,8 +87,8 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   (`scripts/check-own.ts`; an `import type` or `export type … from` doesn't count, as Bun erases it
   and tsc checks the types), and, when any file under src/ changed, those that read the whole of
   src/ through `test/importGraph.ts` (`srcReaders`: the layering test, `test/layers.test.ts`), and,
-  on any change, those that read every tracked file (`treeReaders`: `test/no-orchestra.test.ts`); a
-  change to the project's setup runs `scripts/check.sh` whole.
+  on any change, those that read every tracked file (`treeReaders`); a change to the project's
+  setup runs `scripts/check.sh` whole.
   `TUTTI_SLOW=1` adds the slow tests, and does all the plain one does: when you want the slow
   suites, run `TUTTI_SLOW=1 scripts/check-own.sh` alone, not after the plain one.
 - A pass of `scripts/check-own.sh` stands for the next run in the same worktree: it keeps, under the
