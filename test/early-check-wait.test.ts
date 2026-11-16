@@ -103,20 +103,20 @@ const recordsOf = (records: ReadonlyArray<EventRecord>, id: string) =>
 
 describe("how long an early check may run before its turn gives it up", () => {
   test("twice the longest of the last passes, no longer than the check's time limit", () => {
-    expect(waitBound([], 600)).toEqual({ seconds: 600, why: "the check's time limit (10m)" })
-    expect(waitBound([60], 600)).toEqual({
-      seconds: 120,
-      why: "twice the longest of the last pass (1m)",
+    expect(waitBound([], 1200)).toEqual({ seconds: 1200, why: "the check's time limit (20m)" })
+    expect(waitBound([200], 1200)).toEqual({
+      seconds: 400,
+      why: "twice the longest of the last pass (3m20s)",
     })
-    expect(waitBound([10, 100, 60], 600)).toEqual({
-      seconds: 200,
-      why: "twice the longest of the last 3 passes (1m40s)",
+    expect(waitBound([10, 250, 60], 1200)).toEqual({
+      seconds: 500,
+      why: "twice the longest of the last 3 passes (4m10s)",
     })
-    expect(waitBound([10, 300, 60], 600)).toEqual({
-      seconds: 600,
-      why: "the check's time limit (10m)",
+    expect(waitBound([10, 700, 60], 1200)).toEqual({
+      seconds: 1200,
+      why: "the check's time limit (20m)",
     })
-    expect(waitBound([400], 600)).toEqual({ seconds: 600, why: "the check's time limit (10m)" })
+    expect(waitBound([800], 1200)).toEqual({ seconds: 1200, why: "the check's time limit (20m)" })
   })
 })
 
@@ -127,10 +127,10 @@ describe("at its ticket's turn, an early check still running", () => {
         ...noTrain,
         checks: {
           fast: [
-            // t-2's early check, which takes a minute: the last pass.
-            Effect.as(Effect.sleep("1 minute"), passed("fast")),
-            // t-1's, which takes one and a half.
-            Effect.as(Effect.sleep("90 seconds"), passed("fast")),
+            // t-2's early check, which takes three minutes: the last pass.
+            Effect.as(Effect.sleep("3 minutes"), passed("fast")),
+            // t-1's, which takes four and a half.
+            Effect.as(Effect.sleep("270 seconds"), passed("fast")),
             passed("fast"),
           ],
         },
@@ -142,7 +142,7 @@ describe("at its ticket's turn, an early check still running", () => {
         yield* early.called(t2)
         yield* until(t2, "started")
         yield* settle
-        yield* advance("1 minute")
+        yield* advance("3 minutes")
         yield* until(t2, "passed")
         const ticket = yield* working(t1)
         yield* early.called(t1)
@@ -151,7 +151,7 @@ describe("at its ticket's turn, an early check still running", () => {
         yield* Effect.orDie((yield* Beads).close(t1, "done"))
         yield* queue.offer(ticket)
         yield* settle
-        yield* advance("89 seconds")
+        yield* advance("269 seconds")
         yield* settle
         const before = recordsOf(yield* (yield* Captured).records, t1).map((each) => each.detail)
         yield* advance("1 second")
@@ -163,9 +163,9 @@ describe("at its ticket's turn, an early check still running", () => {
     const records = recordsOf(ran.events, t1)
     expect(records.map((each) => each.detail)).toEqual(["started", "passed", "hit"])
     const hit = records.find((each) => each.detail === "hit")
-    expect(hit?.waited).toBeGreaterThanOrEqual(89)
+    expect(hit?.waited).toBeGreaterThanOrEqual(269)
     expect(ran.log).toContainEqual(
-      "  EARLY_CHECK: t-1: still running after 0s: its turn waits up to 2m more for it, until it has run twice the longest of the last pass (1m)",
+      "  EARLY_CHECK: t-1: still running after 0s: its turn waits up to 6m more for it, until it has run twice the longest of the last pass (3m)",
     )
     expect(ran.checkRuns.filter((each) => each.check === "fast")).toHaveLength(2)
     const done = ran.events.find(
@@ -181,8 +181,8 @@ describe("at its ticket's turn, an early check still running", () => {
         ...noTrain,
         checks: {
           fast: [
-            // t-2's early check, which takes a minute: the last pass.
-            Effect.as(Effect.sleep("1 minute"), passed("fast")),
+            // t-2's early check, which takes three minutes: the last pass.
+            Effect.as(Effect.sleep("3 minutes"), passed("fast")),
             endless(started),
             passed("fast"),
           ],
@@ -195,7 +195,7 @@ describe("at its ticket's turn, an early check still running", () => {
         yield* early.called(t2)
         yield* until(t2, "started")
         yield* settle
-        yield* advance("1 minute")
+        yield* advance("3 minutes")
         yield* until(t2, "passed")
         const ticket = yield* working(t1)
         yield* early.called(t1)
@@ -203,7 +203,7 @@ describe("at its ticket's turn, an early check still running", () => {
         yield* Effect.orDie((yield* Beads).close(t1, "done"))
         yield* queue.offer(ticket)
         yield* settle
-        yield* advance("119 seconds")
+        yield* advance("359 seconds")
         yield* settle
         const before = recordsOf(yield* (yield* Captured).records, t1).map((each) => each.detail)
         yield* advance("2 seconds")
@@ -215,10 +215,10 @@ describe("at its ticket's turn, an early check still running", () => {
     const records = recordsOf(ran.events, t1)
     expect(records.map((each) => each.detail)).toEqual(["started", "cancelled", "miss"])
     expect(records.find((each) => each.detail === "miss")?.why).toMatch(
-      /^it still ran after 2m\d*s?, twice the longest of the last pass \(1m\)$/,
+      /^it still ran after 6m\d*s?, twice the longest of the last pass \(3m\)$/,
     )
     expect(ran.log).toContainEqual(
-      "  EARLY_CHECK: t-1: still running after 0s: its turn waits up to 2m more for it, until it has run twice the longest of the last pass (1m)",
+      "  EARLY_CHECK: t-1: still running after 0s: its turn waits up to 6m more for it, until it has run twice the longest of the last pass (3m)",
     )
     expect(ran.checkRuns.filter((each) => each.check === "fast")).toHaveLength(3)
     const done = ran.events.find(

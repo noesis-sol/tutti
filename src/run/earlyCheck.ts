@@ -7,9 +7,12 @@
 // setup first, and keeps a pass by the rebased tree and the base's commit. At the ticket's turn, a
 // rebase that gives the same tree on the same base merges with no second check (merge.ts's Check
 // step), waiting for the early check if it still runs, a line saying what it waits for, until the
-// check has run twice the longest of the last early checks that passed, or its own time limit
-// where that is sooner, or before any passed (waitBound): one still running then is stuck, or far
-// slower than a fresh check, so it is cancelled, a miss, and the merge runs its own. Cancelling one
+// check has run twice the longest of the last early checks that passed, five minutes at least, or
+// its own time limit where that is sooner, or before any passed (waitBound): one still running then
+// is stuck, or far slower than a fresh check, so it is cancelled, a miss, and the merge runs its
+// own. The floor holds as a check's length follows its change: passes of documents-only tickets
+// take seconds, and twice them gave up the next ticket's healthy check of minutes (tutti-hcbk).
+// Cancelling one
 // sooner, at an estimate of a fresh check's time, lost about 2,000 s in ten days (tutti-kazz):
 // check times fall in two groups, so the estimate fell short of the check running, and the fresh
 // check cost the estimate again after the early check had done most of its work. The base moved on
@@ -96,6 +99,13 @@ export const recentOf = 5
 /** How many times the longest of the recent passes an early check may run before its turn gives it up. */
 export const beyondLongest = 2
 
+/**
+ * How long, in seconds, an early check may run before its turn gives it up however quick the recent
+ * passes were (waitBound), its time limit allowing: a check's length follows its change, so passes
+ * of a few seconds that selected no test say nothing of a check that runs the tests.
+ */
+export const waitFloor = 300
+
 /** The phases a ticket keeps its early check in: Working, and on its way through the merge queue. */
 const keptIn: ReadonlySet<string> = new Set(["Working", "ToMerge", "Merging"])
 
@@ -112,24 +122,33 @@ const took = (seconds: number): string =>
 /** How long an early check may have run at its ticket's turn before the turn gives it up. */
 export interface WaitBound {
   readonly seconds: number
-  /** The bound in words, for the lines: `twice the longest of the last 3 passes (4m20s)`. */
+  /**
+   * The bound in words, for the lines: `twice the longest of the last 3 passes (4m20s)`, `the floor
+   * of 5m under twice the longest of the last 2 passes (4s)`.
+   */
   readonly why: string
 }
 
 /**
  * How long, in seconds, an early check may have run at its ticket's turn before the turn gives it
  * up: beyondLongest times the longest of `times`, the last early checks that passed, in seconds,
- * but no longer than `timeLimit`, the check's own time limit in seconds, which alone bounds it
- * before any passed. One still running then is stuck, or far slower than a fresh check would be.
+ * waitFloor at least, but no longer than `timeLimit`, the check's own time limit in seconds, which
+ * alone bounds it before any passed. One still running then is stuck, or far slower than a fresh
+ * check would be.
  */
 export const waitBound = (times: ReadonlyArray<number>, timeLimit: number): WaitBound => {
   const longest = times.length === 0 ? undefined : Math.max(...times)
   const beyond = longest === undefined ? undefined : longest * beyondLongest
-  if (longest === undefined || beyond === undefined || beyond >= timeLimit) {
-    return { seconds: timeLimit, why: `the check's time limit (${took(timeLimit)})` }
+  const limit: WaitBound = {
+    seconds: timeLimit,
+    why: `the check's time limit (${took(timeLimit)})`,
   }
+  if (longest === undefined || beyond === undefined || beyond >= timeLimit) return limit
   const of = times.length === 1 ? "the last pass" : `the last ${times.length} passes`
-  return { seconds: beyond, why: `twice the longest of ${of} (${took(longest)})` }
+  const twice = `twice the longest of ${of} (${took(longest)})`
+  if (beyond >= waitFloor) return { seconds: beyond, why: twice }
+  if (waitFloor >= timeLimit) return limit
+  return { seconds: waitFloor, why: `the floor of ${took(waitFloor)} under ${twice}` }
 }
 
 /** How an early check ended. */
