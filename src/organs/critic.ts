@@ -124,6 +124,21 @@ export const evidenceCharacters = 2_000
 // to choose between in it, so the scan is linear in the evidence, however long the run.
 const located = /(?<![^\s:`'"()[\]<>,])([^\s:`'"()[\]<>,]+):(\d+)(?:[-–]\d+)?/g
 
+// What ends a run of `located`'s.
+const delimiter = /[\s:`'"()[\]<>,]/
+
+/**
+ * The first `evidenceCharacters` of `evidence`, less the run the cut ends inside, if any: cut
+ * there, `src/a.ts:123` would read as `src/a.ts:12`, a place the evidence doesn't name.
+ */
+export const evidenceStart = (evidence: string): string => {
+  const cut = evidence.slice(0, evidenceCharacters)
+  if (evidence.length === cut.length || delimiter.test(evidence[cut.length] ?? "")) return cut
+  let end = cut.length
+  while (end > 0 && !delimiter.test(cut[end - 1] ?? "")) end--
+  return cut.slice(0, end)
+}
+
 /**
  * The first path and line `evidence` names, as `src/a.ts:12`: a path with a dot or slash in it,
  * relative and inside the repository, so the `//localhost:3000` of a URL or an absolute path before
@@ -184,7 +199,7 @@ export const findingsOf = (answer: CriticAnswer): Read => {
   const sorted = [...answer.findings].sort((a, b) => rank(a.severity) - rank(b.severity))
   for (const each of sorted) {
     if (kept.length >= findingsRead) break
-    const where = locationOf(sanitizeLine(each.evidence.slice(0, evidenceCharacters)))
+    const where = locationOf(sanitizeLine(evidenceStart(each.evidence)))
     const title = titleOf(each.title)
     if (title === "") continue
     if (where === undefined) {
