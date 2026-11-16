@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Effect } from "effect"
+import { Duration, Effect } from "effect"
 import fc from "fast-check"
 import type { Requirement } from "../src/project/settings.ts"
 import { checkIn, makeRequiresTools, yoursToRun } from "../src/run/requiresTools.ts"
@@ -15,6 +15,9 @@ import { openFibers } from "./fibers.ts"
 
 const run = <A, E>(effect: Effect.Effect<A, E, BunServices.BunServices>) =>
   Effect.runPromise(effect.pipe(Effect.provide(BunServices.layer)))
+
+/** Each install's time limit, as the host gives it. */
+const limit = Duration.minutes(1)
 
 /** A checkout at a temp folder with `requires` in its settings (`settings` as written, if given). */
 const checkout = (requires: ReadonlyArray<Requirement>, settings?: string) => {
@@ -41,7 +44,7 @@ describe("requires_check on a branch's entries", () => {
   test("an entry the branch adds isn't run: its commands are given back for Bash", async () => {
     const repo = checkout([])
     const worktree = checkout([tell("x")])
-    expect(said(await run(checkIn(repo, worktree, { names: ["x"] })))).toBe(
+    expect(said(await run(checkIn(repo, worktree, { names: ["x"] }, limit)))).toBe(
       "x: new on your branch, so tutti doesn't run it: run its check with Bash, 'touch x-checked; false'; where it fails, its install, 'touch x-installed', then the check again\n" +
         handBack,
     )
@@ -54,7 +57,7 @@ describe("requires_check on a branch's entries", () => {
   test("an entry the branch changes isn't run either", async () => {
     const repo = checkout([tell("x")])
     const worktree = checkout([tell("x", "touch x-other")])
-    expect(said(await run(checkIn(repo, worktree, {})))).toBe(
+    expect(said(await run(checkIn(repo, worktree, {}, limit)))).toBe(
       "x: changed on your branch, so tutti doesn't run it: run its check with Bash, 'touch x-checked; false'; where it fails, its install, 'touch x-other', then the check again\n" +
         handBack,
     )
@@ -68,7 +71,7 @@ describe("requires_check on a branch's entries", () => {
     const made: Requirement = { name: "made", check: "test -f made", install: "touch made" }
     const repo = checkout([made])
     const worktree = checkout([made, tell("x")])
-    expect(said(await run(checkIn(repo, worktree, {})))).toBe(
+    expect(said(await run(checkIn(repo, worktree, {}, limit)))).toBe(
       "made: installed with 'touch made'\n" +
         "x: new on your branch, so tutti doesn't run it: run its check with Bash, 'touch x-checked; false'; where it fails, its install, 'touch x-installed', then the check again\n" +
         handBack,
@@ -84,7 +87,7 @@ describe("requires_check on a branch's entries", () => {
     const worktree = checkout([entry])
     writeFileSync(join(repo, "check.sh"), "exit 0\n")
     writeFileSync(join(worktree, "check.sh"), "touch ran-the-branch; exit 0\n")
-    expect(said(await run(checkIn(repo, worktree, {})))).toBe("tool: met")
+    expect(said(await run(checkIn(repo, worktree, {}, limit)))).toBe("tool: met")
     expect(existsSync(join(repo, "ran-the-branch"))).toBe(false)
     expect(existsSync(join(worktree, "ran-the-branch"))).toBe(false)
   })
@@ -93,12 +96,12 @@ describe("requires_check on a branch's entries", () => {
     const repo = checkout([])
     const manual: Requirement = { name: "m", check: "false", manual: "turn on Screen Recording" }
     const worktree = checkout([tell("x"), manual])
-    expect(said(await run(checkIn(repo, worktree, { no_install: true })))).toBe(
+    expect(said(await run(checkIn(repo, worktree, { no_install: true }, limit)))).toBe(
       "x: new on your branch, so tutti doesn't run it: run its check with Bash, 'touch x-checked; false'\n" +
         "m: new on your branch, so tutti doesn't run it: run its check with Bash, 'false'\n" +
         handBack,
     )
-    expect(said(await run(checkIn(repo, worktree, { names: ["m"] })))).toBe(
+    expect(said(await run(checkIn(repo, worktree, { names: ["m"] }, limit)))).toBe(
       "m: new on your branch, so tutti doesn't run it: run its check with Bash, 'false'; where it fails, ask the maintainer for its manual step: turn on Screen Recording\n" +
         handBack,
     )
@@ -108,20 +111,20 @@ describe("requires_check on a branch's entries", () => {
     const other = process.platform === "darwin" ? "linux" : "darwin"
     const repo = checkout([])
     const worktree = checkout([{ ...tell("x"), platforms: [other] }])
-    expect(said(await run(checkIn(repo, worktree, {})))).toBe(`x: not checked: only on ${other}`)
+    expect(said(await run(checkIn(repo, worktree, {}, limit)))).toBe(`x: not checked: only on ${other}`)
   })
 
   test("with the main checkout's settings unreadable, tutti runs nothing", async () => {
     const repo = checkout([], "{ not json")
     const worktree = checkout([tell("x")])
-    expect(said(await run(checkIn(repo, worktree, {})))).toContain("x: new on your branch")
+    expect(said(await run(checkIn(repo, worktree, {}, limit)))).toContain("x: new on your branch")
     expect(existsSync(join(worktree, "x-checked"))).toBe(false)
   })
 
   test("the worker's server answers so too", async () => {
     const repo = checkout([])
     const worktree = checkout([tell("x")])
-    const tools = await run(makeRequiresTools(repo, worktree, openFibers()))
+    const tools = await run(makeRequiresTools(repo, worktree, openFibers(), limit))
     const check = tools.tools[0]
     if (check === undefined) throw new Error("no requires_check")
     expect(said(await check.handler({}, {}))).toContain("x: new on your branch")

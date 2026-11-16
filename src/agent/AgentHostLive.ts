@@ -182,12 +182,14 @@ export interface LiveOptions {
   readonly servers: ChosenServers
   /**
    * tutti's own in-process MCP server for a worker in the worktree given, with its requires tools
-   * (requiresServerFor, § 4.11), each session's its own, its calls fibers of the session's, beside
-   * `servers`; none when left out.
+   * (requiresServerFor, § 4.11), each session's its own, its calls fibers of the session's, its
+   * installs within the run's merge-check limit as the session starts, beside `servers`; none when
+   * left out.
    */
   readonly ownServer?: (
     worktree: string,
     fibers: SessionFibers,
+    installLimit: Duration.Duration,
   ) => Effect.Effect<McpSdkServerConfigWithInstance>
   /**
    * What the account probe found: how workers are billed, which the sessions' checks hold them to.
@@ -686,7 +688,7 @@ export const layer = (
                     : withOwn(
                         given,
                         requiresServerName,
-                        yield* options.ownServer(session.cwd, fibers),
+                        yield* options.ownServer(session.cwd, fibers, checks.fast.timeout),
                       )
                 return {
                   servers,

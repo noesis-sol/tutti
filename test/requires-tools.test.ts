@@ -16,7 +16,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Options, query } from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
-import { Effect, Layer } from "effect"
+import { Duration, Effect, Layer } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
@@ -54,6 +54,9 @@ const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-requires-too
 const run = <A, E>(effect: Effect.Effect<A, E, BunServices.BunServices>) =>
   Effect.runPromise(effect.pipe(Effect.provide(BunServices.layer)))
 
+/** Each install's time limit, as the host gives it. */
+const limit = Duration.minutes(1)
+
 /** A worktree at a temp folder with `requires` in its settings, and `readme` as its README.md. */
 const worktree = (requires: ReadonlyArray<Requirement>, readme?: string) => {
   const dir = folder()
@@ -79,7 +82,7 @@ const said = (answer: { content: ReadonlyArray<unknown>; isError?: boolean | und
 describe("requires_check", () => {
   test("installs what is missing in the worktree, each entry's state a line", async () => {
     const dir = worktree([{ name: "met", check: "true", install: "false" }, marker("made")])
-    const answer = said(await run(checkIn(dir, dir, {})))
+    const answer = said(await run(checkIn(dir, dir, {}, limit)))
     expect(answer).toEqual({ text: "met: met\nmade: installed with 'touch made'", error: false })
     expect(existsSync(join(dir, "made"))).toBe(true)
     expect(existsSync(join(dir, ".tutti", "run", "requires-made.log"))).toBe(true)
@@ -87,7 +90,7 @@ describe("requires_check", () => {
 
   test("checks only the entries named, and only checks with no_install", async () => {
     const dir = worktree([marker("one"), marker("two")])
-    const answer = said(await run(checkIn(dir, dir, { names: ["two"], no_install: true })))
+    const answer = said(await run(checkIn(dir, dir, { names: ["two"], no_install: true }, limit)))
     expect(answer.text).toBe(
       "two: missing: 'test -f two' fails; install it with 'touch two'\n" +
         "Still missing: two. Fix its entry in .tutti/settings.json and call requires_check again, or ask the maintainer for a manual step.",
@@ -99,16 +102,16 @@ describe("requires_check", () => {
 
   test("a name not in the list is refused, nothing checked", async () => {
     const dir = worktree([marker("one")])
-    expect(said(await run(checkIn(dir, dir, { names: ["one", "jq"] })))).toEqual({
+    expect(said(await run(checkIn(dir, dir, { names: ["one", "jq"] }, limit)))).toEqual({
       text: "Not in the requires list in .tutti/settings.json: jq; it has one. Add an entry for it there first.",
       error: true,
     })
     expect(existsSync(join(dir, "one"))).toBe(false)
     const empty = worktree([])
-    expect(said(await run(checkIn(empty, empty, { names: ["jq"] }))).text).toContain(
+    expect(said(await run(checkIn(empty, empty, { names: ["jq"] }, limit))).text).toContain(
       "it has no entries",
     )
-    expect(said(await run(checkIn(empty, empty, {})))).toEqual({
+    expect(said(await run(checkIn(empty, empty, {}, limit)))).toEqual({
       text: "No requirements: .tutti/settings.json has no 'requires' list.",
       error: false,
     })
@@ -116,7 +119,7 @@ describe("requires_check", () => {
 
   test("a list the settings refuse is refused, saying why", async () => {
     const dir = worktree([{ name: "a", check: "x" } as Requirement])
-    expect(said(await run(checkIn(dir, dir, {})))).toEqual({
+    expect(said(await run(checkIn(dir, dir, {}, limit)))).toEqual({
       text: ".tutti/settings.json: requires[0]: needs an install (a command that meets it) or manual (what a person must do)",
       error: true,
     })
@@ -147,7 +150,7 @@ describe("requires_readme", () => {
 describe("the worker's server", () => {
   test("is tutti's in-process server, its tools called through it", async () => {
     const dir = worktree([marker("made")], "# P\n")
-    const tools = await run(makeRequiresTools(dir, dir, openFibers()))
+    const tools = await run(makeRequiresTools(dir, dir, openFibers(), limit))
     expect(tools.server.type).toBe("sdk")
     expect(tools.server.name).toBe(requiresServerName)
     expect(tools.tools.map((t) => t.name)).toEqual(["requires_check", "requires_readme"])
@@ -159,7 +162,7 @@ describe("the worker's server", () => {
 
   test("a call aborted stops its install", async () => {
     const dir = worktree([{ name: "slow", check: "test -f done", install: "sleep 30; touch done" }])
-    const tools = await run(makeRequiresTools(dir, dir, openFibers()))
+    const tools = await run(makeRequiresTools(dir, dir, openFibers(), limit))
     const abort = new AbortController()
     const call = tools.tools[0]?.handler({}, { signal: abort.signal })
     setTimeout(() => abort.abort(), 200)
@@ -172,8 +175,8 @@ describe("the worker's server", () => {
   test("main's maker gives each session a server of its own", async () => {
     const dir = worktree([])
     const make = await run(requiresServerFor(dir))
-    const first = await Effect.runPromise(make(dir, openFibers()))
-    const second = await Effect.runPromise(make(dir, openFibers()))
+    const first = await Effect.runPromise(make(dir, openFibers(), limit))
+    const second = await Effect.runPromise(make(dir, openFibers(), limit))
     expect(first.name).toBe(requiresServerName)
     expect(first.instance).not.toBe(second.instance)
   })
@@ -287,8 +290,16 @@ describe("the live AgentHost with ownServer", () => {
   /** A start with `ownServer` given, its query() recording the options it was called with. */
   const started = async (probe: boolean) => {
     const dir = folder()
-    const config = TestAppConfig.appConfig({ claude: null, settings: defaultSettings }, dir)
-    const calls: Array<{ readonly worktree: string }> = []
+    // The run's merge-check limit, as a --check-timeout leaves it in the settings it resolved.
+    const settings = {
+      ...defaultSettings,
+      checks: {
+        ...defaultSettings.checks,
+        fast: { ...defaultSettings.checks.fast, timeout: Duration.minutes(45) },
+      },
+    }
+    const config = TestAppConfig.appConfig({ claude: null, settings }, dir)
+    const calls: Array<{ readonly worktree: string; readonly installMs: number }> = []
     let options: Options | undefined
     const recording: typeof query = (params) => {
       options = params.options
@@ -297,9 +308,9 @@ describe("the live AgentHost with ownServer", () => {
     const host = liveLayer({
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: { servers: [], note: noServersNote },
-      ownServer: (worktree) =>
+      ownServer: (worktree, _fibers, installLimit) =>
         Effect.sync(() => {
-          calls.push({ worktree })
+          calls.push({ worktree, installMs: Duration.toMillis(installLimit) })
           return { type: "sdk", name: requiresServerName, instance: {} } as never
         }),
       account: { billing: { _tag: "Subscription", keyUnused: false } },
@@ -339,9 +350,9 @@ describe("the live AgentHost with ownServer", () => {
     return { dir, calls, options }
   }
 
-  test("gives a worker tutti's server, made for its worktree", async () => {
+  test("gives a worker tutti's server, made for its worktree and the run's check limit", async () => {
     const { dir, calls, options } = await started(false)
-    expect(calls).toEqual([{ worktree: dir }])
+    expect(calls).toEqual([{ worktree: dir, installMs: Duration.toMillis(Duration.minutes(45)) }])
     expect(Object.keys(options?.mcpServers ?? {})).toEqual([requiresServerName])
     expect(appended(options ?? {})).toContain("requires_check")
   })

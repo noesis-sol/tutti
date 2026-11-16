@@ -3,7 +3,10 @@
 //
 // - requires_check checks the list in the worker's worktree, as `tutti requires` does: each entry's
 //   check, and for one that fails, its install, then the check again (checkRequires), each entry's
-//   state a line of its answer. Only some entries are checked when named; no_install only checks;
+//   state a line of its answer. Only some entries are checked when named; no_install only checks.
+//   An install's time limit is the run's merge check's as the session starts, which the host gives
+//   (a --check-timeout or TUTTI_CHECK_TIMEOUT staying), as it gives Bash's timeouts, not the
+//   worktree's checks.fast.timeout;
 // - requires_readme writes README.md's section on what to install from the worktree's list
 //   (writeReadmeRequires), as `tutti requires --readme` does, for the worker to commit with it.
 //
@@ -25,7 +28,7 @@ import {
   type SdkMcpToolDefinition,
   tool,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Effect, type FileSystem } from "effect"
+import { type Duration, Effect, type FileSystem } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { z } from "zod"
 import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "../agent/callbacks.ts"
@@ -100,9 +103,10 @@ export const yoursToRun = (
 }
 
 /**
- * requires_check for the worker in `worktree`, the main checkout at `repo`, for `args`: each entry's
- * state a line, then what is missing; an entry the main checkout's list lacks, or has otherwise, is
- * given back to run with Bash (see the module's comment).
+ * requires_check for the worker in `worktree`, the main checkout at `repo`, for `args`, each install
+ * within `installLimit`, the run's merge-check limit: each entry's state a line, then what is
+ * missing; an entry the main checkout's list lacks, or has otherwise, is given back to run with Bash
+ * (see the module's comment).
  */
 export const checkIn = (
   repo: string,
@@ -111,6 +115,7 @@ export const checkIn = (
     readonly names?: ReadonlyArray<string> | undefined
     readonly no_install?: boolean | undefined
   },
+  installLimit: Duration.Duration,
 ) =>
   Effect.gen(function* () {
     const settings = yield* settingsIn(worktree)
@@ -135,7 +140,7 @@ export const checkIn = (
     const noInstall = args.no_install === true
     const report = yield* checkRequires(due.filter(isBase), {
       repo,
-      installLimit: settings.success.checks.fast.timeout,
+      installLimit,
       noInstall,
     })
     const found = new Map<Requirement, RequireResult>(report.map((res) => [res.requirement, res]))
@@ -183,13 +188,14 @@ export const readmeIn = (worktree: string) =>
 
 /**
  * The requires tools of the worker in `worktree`, the main checkout at `repo`, and the server over
- * them. Their handlers run in the session's `fibers` (toolHandler), with the services they were made
- * with.
+ * them, requires_check's installs within `installLimit`. Their handlers run in the session's
+ * `fibers` (toolHandler), with the services they were made with.
  */
 export const makeRequiresTools = (
   repo: string,
   worktree: string,
   fibers: SessionFibers,
+  installLimit: Duration.Duration,
 ): Effect.Effect<RequiresTools, never, RequiresToolsServices> =>
   Effect.gen(function* () {
     const run = yield* toolHandler<RequiresToolsServices>(fibers)
@@ -198,7 +204,7 @@ export const makeRequiresTools = (
       "requires_check",
       `Checks the project's requires list ("requires" in ${settingsFile}) in your worktree, as a run's start does: each entry's check, and for one that fails, its install, then the check again. Answers with each entry's state: met, installed, or missing and what to do. An entry your branch adds or changes it doesn't run: it gives you its commands, to run with Bash. Use it to install what the list says, never by hand outside the list.`,
       checkShape,
-      (args, extra) => run(checkIn(repo, worktree, args), extra),
+      (args, extra) => run(checkIn(repo, worktree, args, installLimit), extra),
     )
 
     const readme = tool(
@@ -223,14 +229,18 @@ export const makeRequiresTools = (
 /**
  * The maker of a worker's server for the live AgentHost's ownServer, the main checkout at `repo`:
  * for each worktree, its requires tools' server, run in the session's fibers with the services this
- * was given.
+ * was given, its installs within the limit the host gives, the run's merge check's.
  */
 export const requiresServerFor = (repo: string) =>
   Effect.map(
     Effect.context<RequiresToolsServices>(),
     (context) =>
-      (worktree: string, fibers: SessionFibers): Effect.Effect<McpSdkServerConfigWithInstance> =>
-        makeRequiresTools(repo, worktree, fibers).pipe(
+      (
+        worktree: string,
+        fibers: SessionFibers,
+        installLimit: Duration.Duration,
+      ): Effect.Effect<McpSdkServerConfigWithInstance> =>
+        makeRequiresTools(repo, worktree, fibers, installLimit).pipe(
           Effect.map((tools) => tools.server),
           Effect.provideContext(context),
         ),
