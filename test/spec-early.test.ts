@@ -1,8 +1,8 @@
-// A spec run starts on its environment ticket while the breakdown files the rest (§ 4.14,
-// orchestra-qd9e.1): once file_root has filed the root epic and that ticket, specRun hands the run
-// Early, the breakdown going on in the run's scope, its banner saying what it has filed; the run
-// doesn't end while it files, and its end, or its failure, comes as `rest`. Without an environment
-// ticket the run waits for the breakdown's end, as before.
+// A spec run starts on its environment ticket while the breakdown files the rest (§ 4.14): once
+// file_root has filed the root epic and that ticket, specRun hands the run Early, the breakdown
+// going on in the run's scope, its banner saying what it has filed; the run doesn't end while it
+// files, and its end, or its failure, comes as `rest`. Without an environment ticket the run waits
+// for the breakdown's end, as before.
 import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, SubscriptionRef } from "effect"
 import type { ToolAnswer } from "../src/agent/callbacks.ts"

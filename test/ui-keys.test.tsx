@@ -438,7 +438,7 @@ describe("the stop question", () => {
     })
   })
 
-  test("says which tickets it waits for, as orchestra's", () => {
+  test("says which tickets it waits for", () => {
     expect(stopWords(false, ["k-1"]).about).toBe(
       "Stopping after k-1 finishes: no new tickets will start. It merges as usual, then the run ends.",
     )

@@ -205,7 +205,7 @@ describe("the scout's options", () => {
     expect(await hook(pre("Read", { file_path: "src/a.ts" }), "t", { signal })).toEqual({})
   })
 
-  test("its prompt is orchestra's, with the evidence rule for the files it reads", () => {
+  test("its prompt is prompts/scout.md, with the evidence rule for the files it reads", () => {
     expect(organ.system).toContain("Never list scripts/check-fast.sh or scripts/check-full.sh")
     expect(organ.system).toContain("When scripts/check.sh exists, it comes first")
     expect(organ.system).not.toContain("{{")
@@ -334,7 +334,7 @@ const failure = (exit: import("effect").Exit.Exit<Scouting, OrganError>): OrganE
 }
 
 describe("the scout's answer", () => {
-  test("a canned answer decodes into orchestra's schema, tidied", async () => {
+  test("a canned answer decodes into the scout's schema, tidied", async () => {
     const { exit, calls, root } = await runScout({ scout: canned })
     if (exit._tag === "Failure") throw new Error(String(exit.cause))
     expect(exit.value).toEqual({

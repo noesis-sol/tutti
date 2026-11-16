@@ -1,6 +1,6 @@
-// The title line says `· shared with N runs` while other tutti or orchestra runs share the machine
-// (orchestra 0.8.5): the run keeps the count its last look at the folder of runs found
-// (Status.shared, run.ts's lookAround), and the title line shows it beside its states.
+// The title line says `· shared with N runs` while other tutti or orchestra runs share the machine:
+// the run keeps the count its last look at the folder of runs found (Status.shared, run.ts's
+// lookAround), and the title line shows it beside its states.
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync, unlinkSync, writeFileSync } from "node:fs"
@@ -60,7 +60,7 @@ describe("the title line", () => {
     expect(text(solo, 56).trimEnd()).toBe(" Tutti  0.1.0  · solo s running  · shared with 1 run")
   })
 
-  test("draws the count in notice, as orchestra draws it in its deferred style", () => {
+  test("draws the count in the deferred style", () => {
     const shared = titleSegments({ ...title, shared: 1 }, [], 0, theme, 120).find((segment) =>
       segment.text.includes("shared with"),
     )

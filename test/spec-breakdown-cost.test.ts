@@ -1,7 +1,6 @@
 // What a spec's breakdown spent (§ 4.14, § 10): its session's cost, turns, time and ID logged as
-// it ends, `SPEC: breakdown $1.2500 in 30 turns, 14m2s, session <id>` as orchestra logs it, or
-// that its session gave no result; its turns recorded as the workers' are, so the run's end record
-// counts them.
+// it ends, `SPEC: breakdown $1.2500 in 30 turns, 14m2s, session <id>`, or that its session gave
+// no result; its turns recorded as the workers' are, so the run's end record counts them.
 import { describe, expect, test } from "bun:test"
 import type { ToolAnswer } from "../src/agent/callbacks.ts"
 import { breakdownWorker } from "../src/run/breakdown.ts"

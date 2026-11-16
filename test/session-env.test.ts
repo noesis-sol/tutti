@@ -1,4 +1,4 @@
-// A tutti started from a Claude Code session (the run skill, an orchestra worker trying tutti,
+// A tutti started from a Claude Code session (the run skill, a worker trying tutti,
 // `!tutti`) has that session's variables in its environment: the sessions tutti starts don't get
 // them, so none runs as the parent's attended child or takes its messaging socket (tutti-y2i). The
 // user's own configuration stays. scripts/test.ts drops the same names for the suites.

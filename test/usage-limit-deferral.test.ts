@@ -1,7 +1,7 @@
-// A ticket deferred as its worker stops at the usage limit (§ 4.12), as orchestra 0.8.1 has it: the
-// worker's rules tell it to commit and stop at the limit without deferring its ticket, and one that
-// defers it all the same has the ticket put back in progress, waiting in the hold, and carries it on
-// after the reset rather than its ticket being set aside.
+// A ticket deferred as its worker stops at the usage limit (§ 4.12): the worker's rules tell it to
+// commit and stop at the limit without deferring its ticket, and one that defers it all the same
+// has the ticket put back in progress, waiting in the hold, and carries it on after the reset
+// rather than its ticket being set aside.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"

@@ -307,7 +307,7 @@ describe("the worker view's wrapped items", () => {
         "Carry on with the ticket, and when the checks pass, have the verifier look at the change.\nThen close it.",
       ),
       call("b", "Bash", {
-        command: "scripts/check-own.sh > .orchestra/run/worker-check.log 2>&1; echo exit",
+        command: "scripts/check-own.sh > .tutti/run/worker-check-own.log 2>&1; echo exit",
       }),
       answered("b", "exit 0"),
     ]
@@ -319,7 +319,7 @@ describe("the worker view's wrapped items", () => {
         "    change.",
         "    Then close it.",
         "  Bash  scripts/check-own.sh >",
-        "        .orchestra/run/worker-check.log 2>&1;",
+        "        .tutti/run/worker-check-own.log 2>&1;",
         `${"        echo exit".padEnd(45)}  ✓`,
       ])
       for (const line of linesOf(frame)) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(48)
@@ -346,7 +346,7 @@ describe("the worker view's wrapped items", () => {
 const wrappingCalls = (count: number): ReadonlyArray<SDKMessage> =>
   Array.from({ length: count }, (_, i) => [
     call(`b${i + 1}`, "Bash", {
-      command: `item ${i + 1} && scripts/check-own.sh > .orchestra/run/worker-check.log 2>&1`,
+      command: `item ${i + 1} && scripts/check-own.sh > .tutti/run/worker-check-own.log 2>&1`,
     }),
     i % 3 === 0 ? prompt(`Message ${i + 1}: carry on with the ticket and close it.`) : null,
     answered(`b${i + 1}`, "exit 0"),

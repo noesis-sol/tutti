@@ -51,8 +51,8 @@ const model = "claude-opus-5-5"
 const title = "Question tickets give their options and the recommended one in metadata"
 
 const description =
-  "Question tickets carry their options and the recommended one in their metadata, as " +
-  "orchestra's have since 0.9.x, so tutti can read which option a worker recommends. Today " +
+  "Question tickets carry their options and the recommended one in their metadata, under " +
+  "keys of their own, as JSON, so tutti can read which option a worker recommends. Today " +
   "tutti's worker prompt asks for the context, the options and your recommendation in the " +
   "description only, as free text. In this project's 18 question tickets it is written several " +
   "ways or not at all, and no code can read it. The fix asks for metadata with the options and " +

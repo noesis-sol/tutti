@@ -1,7 +1,7 @@
-// Merge and hold scenarios (§ 14 M5): each of orchestra v0.7.7's, and the usage-limit fixtures, as
-// a whole run under TestClock. Each asserts the run's log lines, its event records, the phases its
-// tickets went through and ended in (with no PHASE_BUG), that it left no fiber or process behind
-// it, and its exit code.
+// Merge and hold scenarios (§ 14 M5), and the usage-limit fixtures, each as a whole run under
+// TestClock. Each asserts the run's log lines, its event records, the phases its tickets went
+// through and ended in (with no PHASE_BUG), that it left no fiber or process behind it, and its
+// exit code.
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"

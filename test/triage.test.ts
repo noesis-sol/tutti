@@ -102,7 +102,7 @@ const verdict = (fields: Partial<typeof triage.answer.Type> = {}) => ({
 })
 
 describe("the triage organ", () => {
-  test("runs at low effort within 3 minutes, its prompt orchestra's with the evidence rule", () => {
+  test("runs at low effort within 3 minutes, its prompt ending with the evidence rule", () => {
     expect(triage.name).toBe("triage")
     expect(triage.effort).toBe("low")
     expect(Duration.toMinutes(triage.timeLimit)).toBe(3)

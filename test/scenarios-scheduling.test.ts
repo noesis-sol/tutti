@@ -1,8 +1,8 @@
-// Scheduling scenarios (§ 14 M2): each of orchestra v0.7.7's running and workers guides, as a whole
-// run under TestClock. Each asserts the run's log lines, its event records, the phases its tickets
-// went through and ended in (with no PHASE_BUG), that it left no fiber or process behind it, and
-// its exit code. Nothing to run ends before the run's loop, as main checks it: those scenarios
-// assert what main does there: its done line, its records, what it prints and its exit code.
+// Scheduling scenarios (§ 14 M2), each as a whole run under TestClock. Each asserts the run's log
+// lines, its event records, the phases its tickets went through and ended in (with no PHASE_BUG),
+// that it left no fiber or process behind it, and its exit code. Nothing to run ends before the
+// run's loop, as main checks it: those scenarios assert what main does there: its done line, its
+// records, what it prints and its exit code.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -838,8 +838,8 @@ describe("waits for merge", () => {
   }, 30_000)
 
   test("under --limit, its place goes to the next ready ticket until it starts again", async () => {
-    // As orchestra's: b doesn't count toward --limit while it waits, so c starts in its place. a
-    // closes without a commit and is left for review, so b never starts again.
+    // b doesn't count toward --limit while it waits, so c starts in its place. a closes without a
+    // commit and is left for review, so b never starts again.
     const ran = await runs({
       backlog: backlog()
         .ticket("a", { priority: 0 })

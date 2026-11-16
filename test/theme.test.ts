@@ -31,7 +31,7 @@ import {
 } from "../src/ui/theme.ts"
 
 /** § 7.11's three tables: each role's light and dark colour in the tutti scheme. */
-const orchestraTable: Record<Role, readonly [string, string]> = {
+const tuttiTable: Record<Role, readonly [string, string]> = {
   live: ["#0E7490", "#22D3EE"],
   done: ["#15803D", "#4ADE80"],
   notice: ["#A16207", "#FACC15"],
@@ -88,9 +88,9 @@ const colourOf = (text: string): Colour => Result.getOrThrow(parseColour(text))
 
 describe("the tutti scheme", () => {
   test("holds § 7.11's colours exactly, light and dark", () => {
-    expect(Object.keys(orchestraTable).sort()).toEqual([...roles].sort())
+    expect(Object.keys(tuttiTable).sort()).toEqual([...roles].sort())
     for (const role of roles) {
-      const [light, dark] = orchestraTable[role]
+      const [light, dark] = tuttiTable[role]
       expect({ role, ...tuttiScheme.colours[role] }).toEqual({
         role,
         light: colourOf(light),
@@ -507,7 +507,7 @@ describe("styles", () => {
         expect({ name, attributes: style.attributes }).toEqual({ name, attributes })
         expect({ name, fg: style.fg?.toInts() }).toEqual({
           name,
-          fg: role === null ? undefined : ints(orchestraTable[role][at]),
+          fg: role === null ? undefined : ints(tuttiTable[role][at]),
         })
       }
     }

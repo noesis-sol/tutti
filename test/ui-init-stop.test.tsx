@@ -1,6 +1,6 @@
-// Ctrl+C in tutti init's renderer once init takes its steps (orchestra-qa9p): a key in the
-// renderer's raw mode, not SIGINT, which stops init after the step under way, the spinner saying
-// it is stopping; before init takes its steps, Ctrl+C between questions cancels init (tutti-298).
+// Ctrl+C in tutti init's renderer once init takes its steps: a key in the renderer's raw mode, not
+// SIGINT, which stops init after the step under way, the spinner saying it is stopping; before init
+// takes its steps, Ctrl+C between questions cancels init (tutti-298).
 import { describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing"
 import { Deferred, Effect, Exit, Fiber, Scope } from "effect"

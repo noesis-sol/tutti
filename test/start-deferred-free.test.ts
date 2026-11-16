@@ -1,6 +1,6 @@
 // The run's START block lists each deferred ticket in its scope whose blockers have all merged, a
-// DEFERRED_FREE line with the command that reopens it (§ 5 item 4), as orchestra's does: after the
-// tickets left unmerged and the workers carried over, before the first dispatch.
+// DEFERRED_FREE line with the command that reopens it (§ 5 item 4): after the tickets left unmerged
+// and the workers carried over, before the first dispatch.
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"

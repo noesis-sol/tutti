@@ -48,7 +48,7 @@ import { boxLine, cardHead, cardLine } from "./screen.ts"
 import { noSpecAsk } from "./specAsk.ts"
 
 /** § 7.11's tables: each role's colour in the `tutti` scheme, light and dark. */
-const orchestraColours: { readonly [R in Role]: readonly [light: string, dark: string] } = {
+const tuttiColours: { readonly [R in Role]: readonly [light: string, dark: string] } = {
   live: ["#0E7490", "#22D3EE"],
   done: ["#15803D", "#4ADE80"],
   notice: ["#A16207", "#FACC15"],
@@ -409,8 +409,8 @@ const recordOf = (colour: RGBA): string => {
 const expected = (look: Look, appearance: Appearance) => {
   const variant = appearance === "light" ? 0 : 1
   return {
-    fg: look.fg === "text" ? "default" : recorded(orchestraColours[look.fg][variant]),
-    bg: look.bg === null ? "none" : recorded(orchestraColours[look.bg][variant]),
+    fg: look.fg === "text" ? "default" : recorded(tuttiColours[look.fg][variant]),
+    bg: look.bg === null ? "none" : recorded(tuttiColours[look.bg][variant]),
     bold: look.bold,
     faint: look.faint,
   }
@@ -1012,7 +1012,7 @@ const scenes: ReadonlyArray<Scene> = [
 describe("each state's cells carry § 7.11's role", () => {
   test("the tutti scheme's colours are § 7.11's", () => {
     for (const role of roles) {
-      const [light, dark] = orchestraColours[role]
+      const [light, dark] = tuttiColours[role]
       for (const [appearance, colour] of [
         ["light", light],
         ["dark", dark],
@@ -1154,11 +1154,11 @@ describe("NO_COLOR", () => {
             // A focused button, drawn on formAccent, is bold and reversed without it (§ 7.11).
             const focus =
               before !== undefined &&
-              recordOf(before.bg) === recorded(orchestraColours.formAccent[variantOf(appearance)])
+              recordOf(before.bg) === recorded(tuttiColours.formAccent[variantOf(appearance)])
             // The quiet colour is faint without it (§ 7.11): the label of a panel without the focus.
             const quiet =
               before !== undefined &&
-              recordOf(before.fg) === recorded(orchestraColours.quiet[variantOf(appearance)])
+              recordOf(before.fg) === recorded(tuttiColours.quiet[variantOf(appearance)])
             const same =
               cell.attributes ===
               (focus
@@ -1168,8 +1168,8 @@ describe("NO_COLOR", () => {
                   : before?.attributes)
             // Selected text is the one exception: tutti's selection colours (§ 7.11).
             const selected =
-              fg === recorded(orchestraColours.selectionText[1]) &&
-              bg === recorded(orchestraColours.selection[1])
+              fg === recorded(tuttiColours.selectionText[1]) &&
+              bg === recorded(tuttiColours.selection[1])
             const plain =
               (fg === "default" || cell.char === " ") && (bg === "default" || bg === "none")
             return (plain || selected) && same
@@ -1926,8 +1926,8 @@ test(
   "NO_COLOR draws selected text in tutti's selection colours",
   async () => {
     const frame = await draw(sceneOf("selected text"), themeIn(tuttiScheme, true), "dark")
-    const [, text] = orchestraColours.selectionText
-    const [, background] = orchestraColours.selection
+    const [, text] = tuttiColours.selectionText
+    const [, background] = tuttiColours.selection
     for (const cell of find(frame, { text: "Title of tut-1" })) {
       expect([recordOf(cell.fg), recordOf(cell.bg)]).toEqual([recorded(text), recorded(background)])
     }

@@ -1,6 +1,6 @@
-// The shape of an epic's open tickets (src/run/shape.ts), as orchestra v0.9.5's: its longest chain
-// of blocks links, its hubs, how many tickets its links let run at a time, and the warning of a
-// narrow tree a spec's breakdown gives.
+// The shape of an epic's open tickets (src/run/shape.ts): its longest chain of blocks links, its
+// hubs, how many tickets its links let run at a time, and the warning of a narrow tree a spec's
+// breakdown gives.
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { Link } from "../src/run/shape.ts"

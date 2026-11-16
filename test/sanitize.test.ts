@@ -64,9 +64,8 @@ const anything = fc.oneof(
 // Escape-free text to put around and inside an escape sequence.
 const plain = fc.string({ unit: fc.oneof(char(0x20, 0x7e), char(0x4e00, 0x9fff)) })
 
-// Carried over from orchestra v0.7.7's control_sequences_test.go: text a prompt-injected worker
-// could put in a title, a clipboard write (OSC 52), a cleared screen (CSI 2J) and a window title
-// (OSC 0), with other control characters.
+// Text a prompt-injected worker could put in a title, a clipboard write (OSC 52), a cleared screen
+// (CSI 2J) and a window title (OSC 0), with other control characters.
 const attacks: Record<string, string> = {
   "OSC 52": "Fix \x1b]52;c;cm0gLXJmIH4K\x07it",
   "CSI 2J": "Fix \x1b[2J\x1b[Hit\b\x00",
@@ -81,7 +80,8 @@ describe("sanitize", () => {
     })
   }
 
-  // orchestra's TestPrintableKeepsLayout, with a lone surrogate for its byte that isn't UTF-8.
+  // Layout survives: newlines and tabs stay, a carriage return becomes a newline, and a lone
+  // surrogate, text that isn't UTF-8, goes.
   test.each([
     ["a\nb\tc", "a\nb\tc"],
     ["a\r\nb\rc", "a\nb\nc"],

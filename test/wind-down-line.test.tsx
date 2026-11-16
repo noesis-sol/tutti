@@ -1,4 +1,4 @@
-// The wind-down line's fallbacks (§ 7.2, orchestra's windDownLine): with nothing left running it
+// The wind-down line's fallbacks (§ 7.2, Dashboard.tsx's windDownLine): with nothing left running it
 // says `nothing running, ending now`, and a narrow pane drops `, no new tickets`, then the count,
 // then the words, keeping the squares, so the line is never cut mid-word.
 

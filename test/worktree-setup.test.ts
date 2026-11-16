@@ -1,11 +1,11 @@
-// The setup in each new worktree before its worker starts (§ 5 item 6, setup.ts's setUpWorktree), as
-// orchestra 0.8.2 to 0.9.0 has it: workers start with their dependencies installed and are told so;
-// a setup that fails starts no worker (SETUP_FAILED), its ticket back in the queue, Waiting{setup},
-// until a ticket merges or a probe passes; setups failing in a row hold the run for the
-// environment; the run's end names the tickets still waiting on one (SETUP_WAITS, held_by.setup,
-// SCOPE_OPEN's `its setup failed`); a mark left by a setup cut short has it run again; a merge
-// that changes the setup settings has the run use them; and a conflict handed back after a rebase
-// that brings in a setup file tells its worker to run the setup.
+// The setup in each new worktree before its worker starts (§ 5 item 6, setup.ts's setUpWorktree):
+// workers start with their dependencies installed and are told so; a setup that fails starts no
+// worker (SETUP_FAILED), its ticket back in the queue, Waiting{setup}, until a ticket merges or a
+// probe passes; setups failing in a row hold the run for the environment; the run's end names the
+// tickets still waiting on one (SETUP_WAITS, held_by.setup, SCOPE_OPEN's `its setup failed`); a
+// mark left by a setup cut short has it run again; a merge that changes the setup settings has the
+// run use them; and a conflict handed back after a rebase that brings in a setup file tells its
+// worker to run the setup.
 
 import { describe, expect, test } from "bun:test"
 import {
@@ -321,7 +321,7 @@ describe("the setup before a worker", () => {
     expect(ran.log.some((text) => text.includes("before its worker starts"))).toBe(false)
   })
 
-  test("a worktree whose last setup didn't finish is set up again (orchestra-pwnf)", async () => {
+  test("a worktree whose last setup didn't finish is set up again", async () => {
     let marked: boolean | undefined
     const ran = await runs({
       tickets: ["a"],

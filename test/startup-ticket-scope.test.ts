@@ -1,6 +1,5 @@
 // The startup checks of a run scoped to one ticket (--ticket), and of a --feature run whose limit
-// would start none of its plan: setup problems, listed with the others, as orchestra's scopeProblem
-// and checkFlagCombos make them.
+// would start none of its plan: setup problems, listed with the others (startup.ts's scopeProblem).
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
