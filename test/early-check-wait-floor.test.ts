@@ -4,7 +4,7 @@
 // checked from nothing in the slot. The turn waits for an early check five minutes at least, the
 // check's own time limit allowing.
 import { describe, expect, test } from "bun:test"
-import { Deferred, Effect, Exit, type Scope } from "effect"
+import { Deferred, type Duration, Effect, Exit, type Scope } from "effect"
 import { make as makeEarly, waitBound, waitFloor } from "../src/run/earlyCheck.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
@@ -106,8 +106,8 @@ const recordsOf = (records: ReadonlyArray<EventRecord>, id: string) =>
 const quickThenSlow = (
   check: Effect.Effect<CheckResult>,
   started: Deferred.Deferred<void>,
-  before: string,
-  after: string,
+  before: Duration.Input,
+  after: Duration.Input,
 ) =>
   run(
     {
