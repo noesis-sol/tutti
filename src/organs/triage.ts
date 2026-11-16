@@ -221,11 +221,15 @@ export const itemLines = (item: Item): ReadonlyArray<string> => {
 }
 
 /**
- * The characters an item takes in transcriptText, its lines and their line breaks: what triage
- * asks Transcripts' tail to count it as, so a tool result of a large image counts as its line.
+ * The characters an item takes in transcriptText, its lines and their line breaks, at most
+ * `tailCharacters`: what triage asks Transcripts' tail to count it as, so a tool result of a large
+ * image counts as its line, and an item of more text than that is kept, its end shown.
  */
 export const itemWeight = (item: Item): number =>
-  itemLines(item).reduce((sum, each) => sum + Array.from(each).length + 1, 0)
+  Math.min(
+    tailCharacters,
+    itemLines(item).reduce((sum, each) => sum + Array.from(each).length + 1, 0),
+  )
 
 /**
  * The end of a transcript as triage reads it: the lines of its last `tailItems` items, cut to

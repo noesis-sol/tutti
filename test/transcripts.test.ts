@@ -306,6 +306,40 @@ describe("Transcripts in files", () => {
     expect(seqs(raw)).toEqual([39, 40])
   })
 
+  test("an item of more text than triage reads is kept for it, its end shown", async () => {
+    const repo = tempRepo()
+    // One message answering twelve parallel calls, each with a long error: over 8,000 characters.
+    const failures = sdk({
+      type: "user",
+      message: {
+        role: "user",
+        content: range(1, 12).map((i) => ({
+          type: "tool_result",
+          tool_use_id: `call-${i}`,
+          content: `${i} ${"e".repeat(1000)}`,
+          is_error: true,
+        })),
+      },
+      parent_tool_use_id: null,
+      session_id: first,
+    })
+    const { value } = await inRepo(
+      repo,
+      Effect.gen(function* () {
+        yield* recordAll([...range(1, 5).map((i) => text(`step ${i}`)), failures])
+        return yield* (yield* Transcripts).tail(worker, {
+          items: tailItems,
+          characters: tailCharacters,
+          weigh: itemWeight,
+        })
+      }),
+    )
+    expect(seqs(value)).toEqual([6])
+    const shown = transcriptText(value).split("\n")
+    expect(shown.length).toBeGreaterThan(0)
+    expect(shown.at(-1)).toStartWith("tool error: 12 eee")
+  })
+
   test("a link in the transcripts' path is refused, warned about once, and nothing goes through it", async () => {
     const repo = tempRepo()
     const outside = tempRepo()
