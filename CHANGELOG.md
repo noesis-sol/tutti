@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.8.10] - 2026-11-16
+
 - The critic no longer reads a finding's evidence cut mid-location as a place it doesn't name (§ 6.2; `evidenceStart` and `findingsOf` in `src/organs/critic.ts`; tutti-bdxl): the evidence was cut at its 2000th character wherever that fell, so `src/a.ts:123` straddling it read as `src/a.ts:12`, and the finding was filed at that line instead of being dropped as naming no place. A cut that falls inside a run now drops the run, back to the space, colon, quote, bracket or comma before it. `test/critic-evidence-cut.test.ts` covers it.
 - A worker's `requires_check` runs an install within the run's merge-check time limit, a `--check-timeout` or `TUTTI_CHECK_TIMEOUT` included, as Bash's timeouts are, not the worktree's `checks.fast.timeout` (§ 4.11; `checkIn` and `requiresServerFor` in `src/run/requiresTools.ts`, `ownServer` in `src/agent/AgentHostLive.ts`; tutti-yz0g).
 - A worker's own check and the merge check run `test/no-orchestra.test.ts` on any change (`scripts/check-own.ts`'s `treeReaders`; tutti-wo4i): the test reads every tracked file, but check-own picked it only when it changed itself, so the merge check let a new mention of orchestra in another file reach main, and the full check at a run's end found it. Now a change to any file touches the tests that read every tracked file, as a change under `src/` touches those that read the whole of `src/`. `test/check-own-tree-readers.test.ts` covers it.
