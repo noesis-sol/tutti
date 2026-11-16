@@ -73,10 +73,24 @@ const Effort = choiceOrNull(efforts)
 const Text = Schema.NonEmptyString
 const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
+/** What a blank command is told: a requirement's check, or a check's. */
+const needsCheck = "needs a check: a command that exits 0 when it is met"
+
+/**
+ * A check's command: text with more than spaces in it, as `sh -c " "` runs nothing and exits 0,
+ * passing every check.
+ */
+const Command = Schema.String.check(
+  Schema.makeFilter((command: string) => /\S/u.test(command) || `${needsCheck}, or null for none`, {
+    description: "a command, not blank",
+    toJsonSchema: () => ({ pattern: "\\S" }),
+  }),
+)
+
 /** A check's command, none by default, and how long it may run before it is stopped. */
 const Check = (timeout: string) =>
   Schema.Struct({
-    command: Schema.NullOr(Text).pipe(withDefault(null)),
+    command: Schema.NullOr(Command).pipe(withDefault(null)),
     timeout: PositiveDuration.pipe(withDefault(timeout)),
   })
 
@@ -127,7 +141,7 @@ const requirementProblem = (r: {
     return `needs a name of letters, digits and . _ + -, such as "jq" (got ${JSON.stringify(r.name)})`
   }
   if (r.check.trim() === "") {
-    return `needs a check: a command that exits 0 when it is met, such as "command -v ${r.name}"`
+    return `${needsCheck}, such as "command -v ${r.name}"`
   }
   if (install.trim() === "" && manual.trim() === "") {
     return "needs an install (a command that meets it) or manual (what a person must do)"
@@ -235,11 +249,11 @@ export const Settings = Schema.Struct({
      * check to run once, in place of the merge check, which tutti runs itself. tutti never runs it.
      */
     own: Schema.Struct({
-      command: Schema.NullOr(Text).pipe(withDefault(null)),
+      command: Schema.NullOr(Command).pipe(withDefault(null)),
     }).pipe(withDefault({})),
     /** Installs the dependencies in a worktree whose rebase changed one of `files` (globs). */
     setup: Schema.Struct({
-      command: Schema.NullOr(Text).pipe(withDefault(null)),
+      command: Schema.NullOr(Command).pipe(withDefault(null)),
       files: Schema.Array(Text).pipe(withDefault(defaultSetupFiles)),
     }).pipe(withDefault({})),
   }).pipe(withDefault({})),
