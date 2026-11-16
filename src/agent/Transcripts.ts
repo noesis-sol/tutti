@@ -395,12 +395,17 @@ export class Transcripts extends Context.Service<
      */
     page(worker: string, before?: number): Effect.Effect<ReadonlyArray<Item>>
     /**
-     * The worker's last items, at most `items` of them and at most `characters` characters of
-     * transcript lines in all, oldest first, read from the file: for triage (§ 6.2).
+     * The worker's last items, at most `items` of them and at most `characters` characters in all,
+     * oldest first, read from the file: for triage (§ 6.2). An item counts as `weigh` says, what
+     * its reader keeps of it, or else as its transcript line's length.
      */
     tail(
       worker: string,
-      limits: { readonly items: number; readonly characters: number },
+      limits: {
+        readonly items: number
+        readonly characters: number
+        readonly weigh?: (item: Item) => number
+      },
     ): Effect.Effect<ReadonlyArray<Item>>
     /**
      * Lets go of the worker's memory and open files, once its views have closed if any is open; a
@@ -576,11 +581,15 @@ export const makeTranscripts = (given: Storage): Effect.Effect<Transcripts["Serv
       ),
       tail: Effect.fn("Transcripts.tail")((id, limits) =>
         Effect.sync(() => {
-          const found = readBack(storage, id, undefined, limits.items)
-          let total = found.reduce((sum, { length }) => sum + length, 0)
+          const { weigh } = limits
+          const found = readBack(storage, id, undefined, limits.items).map(({ item, length }) => ({
+            item,
+            weight: weigh === undefined ? length : weigh(item),
+          }))
+          let total = found.reduce((sum, { weight }) => sum + weight, 0)
           let first = 0
           while (first < found.length && total > limits.characters) {
-            total -= found[first]?.length ?? 0
+            total -= found[first]?.weight ?? 0
             first += 1
           }
           return found.slice(first).map(({ item }) => item)

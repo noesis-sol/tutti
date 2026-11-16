@@ -248,13 +248,21 @@ describe("the worker's transcript as triage reads it", () => {
 
   test("whatever a worker wrote, each item's lines are single lines within their limits", () => {
     const text = fc.string({ unit: "grapheme", maxLength: 2000 })
+    const image = fc.record({
+      type: fc.constant("image"),
+      source: fc.oneof(fc.record({ type: text, media_type: text, data: text }), fc.anything()),
+    })
     const block = fc.oneof(
       fc.record({ type: fc.constant("text"), text }),
       fc.record({ type: fc.constant("tool_use"), id: text, name: text, input: fc.jsonValue() }),
+      image,
       fc.record({
         type: fc.constant("tool_result"),
         tool_use_id: text,
-        content: fc.oneof(text, fc.array(fc.record({ type: fc.constant("text"), text }))),
+        content: fc.oneof(
+          text,
+          fc.array(fc.oneof(fc.record({ type: fc.constant("text"), text }), image)),
+        ),
         is_error: fc.boolean(),
       }),
       fc.anything(),
@@ -537,6 +545,53 @@ describe("triage in the background", () => {
     ])
     const rows = ran.exit._tag === "Success" ? [...ran.exit.value] : []
     expect(rows.at(-1)?.get(id)).toBe("environment · high · The classifier refused every command.")
+  })
+
+  test("a tool result of a 600 KB image leaves the transcript's other items in the evidence, and says what it was", async () => {
+    const calls: Array<OrganCallRecord> = []
+    const screenshot = user([
+      {
+        type: "tool_result",
+        tool_use_id: "shot",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "A".repeat(800 * 1024) },
+          },
+        ],
+      },
+    ])
+    const ran = await scenario(
+      { backlog: backlog().ticket(id, { title: "Build for iOS" }).seeds, git: { dir: "/repo" } },
+      Effect.gen(function* () {
+        const transcripts = yield* Transcripts
+        const messages = [
+          ...Array.from({ length: 37 }, (_, i) =>
+            assistant([{ type: "text", text: `step ${i + 1}` }]),
+          ),
+          screenshot,
+          assistant([{ type: "text", text: "I can't go on; deferring." }]),
+          { type: "result", subtype: "success", is_error: false, result: "Deferred" },
+        ]
+        yield* Effect.forEach(
+          messages,
+          (m) => transcripts.record(id, { session: "s-1", message: m as SDKMessage }),
+          { discard: true },
+        )
+        const triaging = yield* makeTriage({ base: "main", hold: recordingHold([]) })
+        yield* triaging.deferred({ ...deferral, worktree: "/repo" })
+        yield* flush
+      }).pipe(Effect.provide(organsLayer({ triage: verdict() }, calls))),
+    )
+    expect(ran.exit._tag).toBe("Success")
+    expect(calls[0]?.input ?? "").toContain(
+      [
+        ...Array.from({ length: 37 }, (_, i) => `assistant: step ${i + 1}`),
+        "tool result: (image/png image, 600 KB)",
+        "assistant: I can't go on; deferring.",
+        "turn ended: success",
+      ].join("\n"),
+    )
   })
 
   test("a triage that fails is TRIAGE_FAILED, and tells the hold nothing", async () => {

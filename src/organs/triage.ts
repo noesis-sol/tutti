@@ -81,14 +81,40 @@ const toolInput = (tool: string, input: unknown): string => {
   return oneLine(json ?? "", textCharacters)
 }
 
-/** A tool result's text: its content as a string, or its text blocks joined. */
+/** `512 bytes`, `600 KB`, `2.4 MB`. */
+const sizeText = (bytes: number): string =>
+  bytes < 1024
+    ? `${bytes} bytes`
+    : bytes < 1024 * 1024
+      ? `${Math.round(bytes / 1024)} KB`
+      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+
+/**
+ * What an image block was, in place of its data: `(image/png image, 600 KB)`, the size its base64
+ * data decodes to; undefined for a block that isn't an image.
+ */
+const imageText = (b: Fields): string | undefined => {
+  if (b.type !== "image") return undefined
+  const source = asRecord(b.source)
+  const media = oneLine(asString(source?.media_type) ?? "", textCharacters)
+  const data = asString(source?.data)
+  const padding = data?.endsWith("==") ? 2 : data?.endsWith("=") ? 1 : 0
+  const size =
+    data === undefined ? "" : `, ${sizeText(Math.floor((data.length * 3) / 4) - padding)}`
+  return `(${media === "" ? "image" : `${media} image`}${size})`
+}
+
+/** A tool result's text: its content as a string, or its text blocks joined, an image said as one. */
 const resultText = (content: unknown): string => {
   if (typeof content === "string") return content
   if (!Array.isArray(content)) return ""
   return content
     .flatMap((block) => {
       const b = asRecord(block)
-      return b?.type === "text" ? [asString(b.text) ?? ""] : []
+      if (b === undefined) return []
+      if (b.type === "text") return [asString(b.text) ?? ""]
+      const image = imageText(b)
+      return image === undefined ? [] : [image]
     })
     .join("\n")
 }
@@ -118,7 +144,9 @@ const contentLines = (role: string, content: unknown): ReadonlyArray<string> => 
         ? [`tool error: ${oneLine(resultText(b.content), errorCharacters)}`]
         : [`tool result: ${oneLine(resultText(b.content), resultCharacters)}`]
     }
-    return [] // thinking, images and the like
+    const image = imageText(b)
+    if (image !== undefined) return [`${role}: ${image}`]
+    return [] // thinking and the like
   })
 }
 
@@ -191,6 +219,13 @@ export const itemLines = (item: Item): ReadonlyArray<string> => {
   const sub = m.parent_tool_use_id !== null && m.parent_tool_use_id !== undefined
   return sub ? lines.map((each) => `subagent ${each}`) : lines
 }
+
+/**
+ * The characters an item takes in transcriptText, its lines and their line breaks: what triage
+ * asks Transcripts' tail to count it as, so a tool result of a large image counts as its line.
+ */
+export const itemWeight = (item: Item): number =>
+  itemLines(item).reduce((sum, each) => sum + Array.from(each).length + 1, 0)
 
 /**
  * The end of a transcript as triage reads it: the lines of its last `tailItems` items, cut to

@@ -41,9 +41,11 @@ import { ticketText } from "../organs/ticketText.ts"
 import {
   compactionsText,
   type Evidence,
+  itemWeight,
   judge,
   note,
   rowText,
+  tailCharacters,
   tailItems,
   transcriptText,
   type Verdict,
@@ -86,9 +88,6 @@ export const off: Triage = {
   verdicts: Stream.succeed(new Map()),
   interrupt: Effect.void,
 }
-
-/** How many characters of transcript lines are read back for the tail: its last items count. */
-const tailRead = 512 * 1024
 
 /** `  triage <id>: environment (high confidence) - <summary>`. */
 export const verdictLine = (id: TicketId, v: Verdict): Line =>
@@ -217,7 +216,11 @@ export const make = (options: {
           Effect.map(ticketText),
           Effect.catch((error) => Effect.succeed(`${id}\n(bd show failed: ${beadsWhy(error)})`)),
         )
-        const tail = yield* transcripts.tail(id, { items: tailItems, characters: tailRead })
+        const tail = yield* transcripts.tail(id, {
+          items: tailItems,
+          characters: tailCharacters,
+          weigh: itemWeight,
+        })
         return {
           ticket: id,
           how: d.how,

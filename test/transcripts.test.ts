@@ -30,6 +30,7 @@ import {
   toolCall,
   type Update,
 } from "../src/agent/Transcripts.ts"
+import { itemWeight, tailCharacters, tailItems, transcriptText } from "../src/organs/triage.ts"
 import { Files, layer as memoryLayer } from "../src/testing/Transcripts.ts"
 
 const worker = "tut-zq4"
@@ -252,6 +253,57 @@ describe("Transcripts in files", () => {
       }),
     )
     expect(value.map(seqs)).toEqual([range(16, 20), range(18, 20), range(19, 20), []])
+  })
+
+  test("a tool result of a large image counts for triage as its line, and keeps the items before it", async () => {
+    const repo = tempRepo()
+    // 800 KB of base64: a 600 KB screenshot the worker read.
+    const screenshot = sdk({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "shot",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: "image/png", data: "A".repeat(800 * 1024) },
+              },
+            ],
+          },
+        ],
+      },
+      parent_tool_use_id: null,
+      session_id: first,
+    })
+    const { value } = await inRepo(
+      repo,
+      Effect.gen(function* () {
+        yield* recordAll([
+          ...range(1, 37).map((i) => text(`step ${i}`)),
+          screenshot,
+          text("I can't go on; deferring."),
+          result(),
+        ])
+        const t = yield* Transcripts
+        return yield* Effect.all([
+          t.tail(worker, { items: tailItems, characters: tailCharacters, weigh: itemWeight }),
+          t.tail(worker, { items: tailItems, characters: 512 * 1024 }),
+        ])
+      }),
+    )
+    const [weighed, raw] = value
+    expect(seqs(weighed)).toEqual(range(1, 40))
+    expect(transcriptText(weighed).split("\n")).toEqual([
+      ...range(1, 37).map((i) => `assistant: step ${i}`),
+      "tool result: (image/png image, 600 KB)",
+      "assistant: I can't go on; deferring.",
+      "turn ended: success",
+    ])
+    // Read for its raw lines, the budget still bounds them: the image's line is over it.
+    expect(seqs(raw)).toEqual([39, 40])
   })
 
   test("a link in the transcripts' path is refused, warned about once, and nothing goes through it", async () => {
