@@ -775,7 +775,7 @@ export const settingsAt = (
  * (the base read when not given): a setup set during the run counts
  * from then on, as the environment ticket a spec's breakdown files first sets it for the tickets
  * after it. checks.fast and checks.full too, each where the merge changed its command or time
- * limit (Checks' take), so that the merge checks and the full check after it run them; and these
+ * limit (Checks' take), a time limit a flag gave staying (AppConfig's checkTimeoutsFrom), so that the merge checks and the full check after it run them; and these
  * with checks.own to the workers started or resumed from then on (AgentHost's takeChecks). Its
  * requires list too, which the run checks before the next ticket starts (requires.ts),
  * and names to the workers started or resumed from then on (AgentHost's takeRequires). One git
@@ -788,7 +788,7 @@ export const takeSettings = (
   setUps: SetUps,
   before: Sha,
   merged?: Sha,
-): Effect.Effect<void, never, AgentHost | Checks | Git | Log | EventStream> =>
+): Effect.Effect<void, never, AppConfig | AgentHost | Checks | Git | Log | EventStream> =>
   Effect.gen(function* () {
     const git = yield* Git
     const logs = yield* Log
@@ -810,21 +810,42 @@ export const takeSettings = (
     }
     const taken = read.success
     // The merge check and the full check the commit changed, each as it has them, the others as the
-    // run has them, so that a time limit a flag gave stays; both where the settings before it can't
-    // be read.
+    // run has them; both where the settings before it can't be read. A time limit a flag gave stays,
+    // whatever the commit has.
     const checks = yield* Checks
     const had = yield* checks.now
+    const { checkTimeoutsFrom, settings } = yield* AppConfig
     const earlier = yield* settingsAt(repo, before)
     const runs: { fast: RunChecks["fast"]; full: RunChecks["full"] } = { ...had }
     for (const check of ["fast", "full"] as const) {
-      const entry = taken.checks[check]
+      const flag = checkTimeoutsFrom[check]
+      const kept = settings.checks[check].timeout
+      /** The check as the run takes it: with the flag's time limit where a flag gave one. */
+      const asRun = (entry: RunChecks["fast"]) =>
+        flag === null ? entry : { command: entry.command, timeout: kept }
+      const given = taken.checks[check]
+      const entry = asRun(given)
       const old = Result.isSuccess(earlier) ? earlier.success.checks[check] : undefined
-      if ((old !== undefined && sameCheck(old, entry)) || sameCheck(had[check], entry)) continue
+      if (
+        flag !== null &&
+        !Duration.equals(given.timeout, kept) &&
+        (old === undefined || !Duration.equals(old.timeout, given.timeout))
+      ) {
+        yield* logs.write(
+          ticketLine(
+            Tag.setup,
+          )`${id}'s merge changed ${settingsFile} on ${base}: checks.${check}'s time limit ${formatDuration(given.timeout)} is not taken, as ${flag} gave ${formatDuration(kept)}`,
+        )
+      }
+      if ((old !== undefined && sameCheck(asRun(old), entry)) || sameCheck(had[check], entry)) {
+        continue
+      }
       runs[check] = entry
+      const limit = `${formatDuration(entry.timeout)}${flag === null ? "" : ` (${flag})`}`
       yield* logs.write(
         ticketLine(
           Tag.setup,
-        )`${id}'s merge changed ${settingsFile} on ${base}: checks.${check} is ${setupSaid(entry.command)}, time limit ${formatDuration(entry.timeout)}, from now on`,
+        )`${id}'s merge changed ${settingsFile} on ${base}: checks.${check} is ${setupSaid(entry.command)}, time limit ${limit}, from now on`,
       )
     }
     if (runs.fast !== had.fast || runs.full !== had.full) yield* checks.take(runs)

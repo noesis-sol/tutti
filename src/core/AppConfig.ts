@@ -57,6 +57,13 @@ export interface AppConfigValue {
    * project's; `colourScheme` is the one in use.
    */
   readonly settings: Settings
+  /**
+   * What gave the merge check's and the full check's time limits in `settings`, where a flag or
+   * its variable did: `--check-timeout` or `TUTTI_CHECK_TIMEOUT`, `--check-full-timeout` or
+   * `TUTTI_CHECK_FULL_TIMEOUT`; null where the project's settings did. A merge that changes the
+   * check in .tutti/settings.json leaves a flag's (src/run/setup.ts's takeSettings).
+   */
+  readonly checkTimeoutsFrom: { readonly fast: string | null; readonly full: string | null }
   /** Run the current tickets without asking (--tickets). */
   readonly tickets: boolean
   /** The ticket the run is scoped to (--ticket), or null for the whole backlog. */

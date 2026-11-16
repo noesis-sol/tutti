@@ -134,6 +134,14 @@ export const resolveAll = (
   /** Whether the flag itself was given on the command line. */
   const flagGiven = (key: RunFlagName | RetiredFlagName) => Option.isSome(flags[key])
 
+  /** What gave the flag's value: `--` and its name, its variable, or null for neither. */
+  const givenBy = (key: RunFlagName) =>
+    Option.isNone(read.get(key) ?? Option.none())
+      ? null
+      : flagGiven(key)
+        ? `--${runFlags[key].name}`
+        : runFlags[key].variable
+
   const ticket = pick("ticket", null)
   const feature = pick("feature", null)
   const overnight = pick("overnight", false)
@@ -326,6 +334,7 @@ export const resolveAll = (
         effort: pick("specEffort", settings.spec.effort),
       },
     },
+    checkTimeoutsFrom: { fast: givenBy("checkTimeout"), full: givenBy("checkFullTimeout") },
     tickets,
     ticket,
     feature,
