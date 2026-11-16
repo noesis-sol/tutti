@@ -7,7 +7,7 @@
 // The report is a model's words, so it is untrusted text (§ 7.10): it is sanitised before it is
 // read, and each piece of text is sanitised again as it is drawn, since a character reference such
 // as `&#x1b;` becomes a control character only once it is decoded.
-import type { Effect } from "effect"
+import { Effect } from "effect"
 import { lexer, type Token, type Tokens } from "marked"
 import type { Role } from "../project/scheme.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
@@ -178,7 +178,10 @@ const painter = (theme: Theme) => {
           (line) => `  ${paint(line, { ...a, colour: "code" })}`,
         )
       case "hr":
-        return [paint("─".repeat(Math.min(width, ruleWidth)), { ...plain, faint: true })]
+        // A quote or list nested deeper than the width leaves it below one: the rule is a dash.
+        return [
+          paint("─".repeat(Math.max(Math.min(width, ruleWidth), 1)), { ...plain, faint: true }),
+        ]
       case "table":
         return table(token as Tokens.Table, a)
       case "html":
@@ -326,4 +329,5 @@ export const printReport = (
   markdown: string,
   theme: Theme,
   width: number,
-): Effect.Effect<void> => printer.print(`\n${renderMarkdown(markdown, theme, width)}`)
+): Effect.Effect<void> =>
+  Effect.suspend(() => printer.print(`\n${renderMarkdown(markdown, theme, width)}`))

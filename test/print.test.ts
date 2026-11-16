@@ -442,10 +442,30 @@ describe("untrusted text", () => {
     ),
   })
 
+  // Quotes and list items around the text, up to more levels than the width has columns.
+  const nesting = fc.array(fc.constantFrom("quote", "list"), { maxLength: 70 })
+  const nest = (md: string, levels: ReadonlyArray<"quote" | "list">) => {
+    let lines = md.split("\n")
+    for (const level of levels)
+      lines =
+        level === "quote"
+          ? lines.map((line) => `> ${line}`)
+          : ["- item", "", ...lines.map((line) => `  ${line}`)]
+    return lines.join("\n")
+  }
+
   test("the rendered report holds no control sequence but tutti's styles", () => {
     fc.assert(
-      fc.property(hostile, fc.integer({ min: 1, max: 120 }), (md, width) => {
-        expect(unsafe(renderMarkdown(md, theme, width))).toBe(false)
+      fc.property(hostile, nesting, fc.integer({ min: 1, max: 120 }), (md, levels, width) => {
+        expect(unsafe(renderMarkdown(nest(md, levels), theme, width))).toBe(false)
+      }),
+    )
+  })
+
+  test("a rule nested deeper than the width is drawn", () => {
+    fc.assert(
+      fc.property(nesting, fc.integer({ min: 1, max: 120 }), (levels, width) => {
+        expect(strip(renderMarkdown(nest("---", levels), theme, width))).toContain("─")
       }),
     )
   })

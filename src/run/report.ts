@@ -739,7 +739,6 @@ export const runReport = (
       ...(run.after === undefined ? {} : { after: run.after }),
       cost: yield* (yield* OrganCost).total,
     })
-    yield* printReport(out.printer, report, out.theme, out.width)
     const name = join(reportsDir, reportName(run.started))
     // Through the symlink guard (§ 9.1): a link at .tutti, .tutti/reports or the report's name,
     // which a merged ticket can leave there, is refused rather than written through.
@@ -749,11 +748,13 @@ export const runReport = (
         writeFileUnder(config.repo, name, report),
       ),
     )
-    if (saved._tag === "Failure") {
-      const why = notSavedWhy(saved.cause)
-      yield* logs.write(reportNotSaved(why))
-      return yield* unlogged(out.printer.warn(`Report not saved: ${why}`))
-    }
-    yield* logs.write(reportWritten(name))
-    yield* unlogged(out.printer.say(`Report saved to ${name}`))
+    // Saved before it is printed, so a report its printing fails on is still kept.
+    const why = saved._tag === "Failure" ? notSavedWhy(saved.cause) : null
+    yield* logs.write(why === null ? reportWritten(name) : reportNotSaved(why))
+    yield* printReport(out.printer, report, out.theme, out.width)
+    yield* unlogged(
+      why === null
+        ? out.printer.say(`Report saved to ${name}`)
+        : out.printer.warn(`Report not saved: ${why}`),
+    )
   })
