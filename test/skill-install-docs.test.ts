@@ -1,5 +1,5 @@
 // The README and docs/running.md point to the tutti skill, skills/tutti/SKILL.md, and say where to
-// install it, the folders the skill's own header names (Appendix A Other). test/user-docs.test.ts
+// install it, the folders the skill's own header names. test/user-docs.test.ts
 // checks that their links lead somewhere.
 import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"

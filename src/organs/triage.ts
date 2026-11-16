@@ -1,4 +1,4 @@
-// Triage (§ 5 item 13, § 6.2, Appendix A): the organ that says, for each ticket set aside, where
+// Triage (§ 5 item 13, § 6.2): the organ that says, for each ticket set aside, where
 // the cause lies: the environment, the instructions or the problem itself. Its prompt
 // (prompts/triage.md) and answer schema are written for tutti's workers, which are sessions with no
 // terminal. Its evidence is tutti's own record of the worker:
