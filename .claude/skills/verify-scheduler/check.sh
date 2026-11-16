@@ -23,7 +23,7 @@ jar=${TLA2TOOLS:-$root/.cache/tla/tla2tools-$version.jar}
 
 # name | expected | N Concurrent Limit MaxRequeues AnyYield | Assume | Variant
 # expected: holds, or the invariant a finding or a deliberate break violates.
-all='"releaseCountsAtOnce"'
+all=''
 cases="
 await|holds|2 2 3 1 FALSE||asCode
 await-one-slot|holds|2 1 3 1 FALSE||asCode
@@ -31,7 +31,6 @@ await-limit|holds|2 2 1 1 FALSE||asCode
 any-step|holds|2 2 3 1 TRUE|$all|asCode
 any-step-one-slot|holds|2 1 3 1 TRUE|$all|asCode
 any-step-limit|holds|2 2 1 1 TRUE|$all|asCode
-finding-release-gap|NoEndWhileReady|2 2 3 1 TRUE||asCode
 break-no-ended-since-fill|NoEndWhileReady|2 2 3 1 FALSE||noEndedSinceFill
 break-filled-at-after|NoEndWhileReady|2 2 3 1 FALSE||filledAtAfter
 break-no-running-check|NeverStartedTwice|2 2 3 1 FALSE||noRunningCheck

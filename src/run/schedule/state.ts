@@ -36,14 +36,15 @@ export interface Scheduling {
   readonly warn: Sayer["warn"]
   /** The tickets' fibers: a ticket holds its slot for as long as its fiber is in the set. */
   readonly tickets: FiberSet.FiberSet<void, never>
-  /** The slots: the tickets running, those started, and the issues and solo ticket held. */
+  /**
+   * The slots: the tickets running, those started, the fibers ended, and the issues and solo
+   * ticket held.
+   */
   readonly slots: Ref.Ref<Slots>
   /** What the scheduler keeps between fills, each change one step. */
   readonly memo: Ref.Ref<Memo>
   /** Offered as a ticket's fiber ends and frees its slot, so that the slot is filled at once. */
   readonly freed: Queue.Queue<void>
-  /** How many tickets' fibers have ended, each counted once its slot is freed. */
-  readonly ends: Ref.Ref<number>
   /** One fill, carry or recheck at a time. */
   readonly oneFill: Semaphore.Semaphore
   /** Whether the run may take work: the options' gate, or the ledger's wind-down and the limit. */
@@ -72,12 +73,12 @@ export const scheduling = (
     const slots = yield* Ref.make<Slots>({
       running: new Set(),
       started: 0,
+      ends: 0,
       issues: new Map(),
       solo: null,
     })
     // A ticket's fiber that ends wakes the poll, so its slot is filled at once.
     const freed = yield* Queue.sliding<void>(1)
-    const ends = yield* Ref.make(0)
     const oneFill = yield* Semaphore.make(1)
     const gate =
       options.gate ??
@@ -101,7 +102,6 @@ export const scheduling = (
       slots,
       memo,
       freed,
-      ends,
       oneFill,
       gate,
       beforeStart: options.beforeStart ?? Effect.void,

@@ -342,7 +342,7 @@ export interface Scheduler {
   /** Waits until a ticket's fiber has ended and freed its slot. */
   readonly freed: Effect.Effect<void>
   /**
-   * How many tickets' fibers have ended so far, each counted once its slot is freed: a look reads
+   * How many tickets' fibers have ended so far, each counted as its slot is freed: a look reads
    * whether one ended since its fill began (look.ts).
    */
   readonly ends: Effect.Effect<number>
@@ -407,7 +407,7 @@ export const make = (
         ),
       betweenReads: betweenReads(sched),
       freed: Queue.take(sched.freed),
-      ends: Ref.get(sched.ends),
+      ends: Effect.map(Ref.get(sched.slots), (s) => s.ends),
       carry: (ticket, start, issue) => carry(sched, ticket, start, issue),
       recheckSlot: (ticket, work) => recheckSlot(sched, ticket, work),
       started: Effect.map(Ref.get(sched.slots), (s) => s.started),

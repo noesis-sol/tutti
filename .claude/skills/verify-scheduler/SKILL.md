@@ -17,15 +17,15 @@ them, in a small model of the code: `Scheduler.tla`, checked by TLC through `che
   fiber still holds its slot, and it is dispatched again only for each time it went back in the
   queue. Harm when it breaks: two workers in one worktree on one branch.
 
-Both hold for the code as it is, **given one assumption**. Left out, it gives a
-counterexample: this is the open finding below, and the check expects it.
+Both hold for the code as it is, with no assumption: the findings the model first gave are
+mended, and the check expects none.
 
 ## Run it
 
 ```bash
 .claude/skills/verify-scheduler/check.sh            # every case, then the covered code; about 75 s
 .claude/skills/verify-scheduler/check.sh await      # one case
-.claude/skills/verify-scheduler/check.sh --trace finding-release-gap      # a counterexample's steps
+.claude/skills/verify-scheduler/check.sh --trace break-no-refill          # a counterexample's steps
 ```
 
 It needs `java` (11 or later) and, the first time, the network: TLC 1.7.4 is fetched into
@@ -58,7 +58,7 @@ inside one makes the check exit 2 and name it. The actions of `Scheduler.tla` th
 | `fill.ts` `lineUp`, `holdsOf`, `choose`, `pick` | `Line1`, `Line2`, and `InLine`, `NotHeld`, `Skipped`, `Free`, `Start`, `HeldSet` |
 | `fill.ts` `startOrPlace`, `src/run/schedule/dispatch.ts` `mayStart`, `dispatch`, `src/run/schedule/place.ts` `placeWaiting` | `P1`, `P2`, `Place`, `Check`, `P3` |
 | `src/run/schedule/slots.ts` `waiting`, `mergingIn`, `taken`, `slotFree`, `prune`, `candidate` | `Waiting`, `Past`, `Taken`, `SlotFree`, `Kept` |
-| `slots.ts` `occupy`'s `release`, `requeued` | `Release1`, `Release2`, `CountEnd` |
+| `slots.ts` `occupy`'s `release` (its end counted in the update that frees its slot), `requeued` | `Release1`, `Release2` |
 | `src/run/holds.ts` `mergeHold`, `notMerged`, `takesNew` | `MergeHeld`, `started < Limit` |
 | `src/run/work.ts` `mergedSinceCut` | `RequeueBd`, `Requeue` |
 | `src/run/mergequeue.ts` `offer` (ledger, then the line), `merged` (the ledger says Merged first), `isSettled` | `Offer1`, `Offer2`, `Merge1`, `Merge2`, `inQueue = {}` |
@@ -81,7 +81,7 @@ A change that only renames, moves or comments needs steps 1 and 4.
 ## Reading a failure
 
 `check.sh --trace <case>` prints the counterexample, a step a line: which fiber stepped
-(`LoopStep`, `FiberStep`, `Merge1`, `Merge2`, `CountEnd`) and the variables it changed. Tickets
+(`LoopStep`, `FiberStep`, `Merge1`, `Merge2`) and the variables it changed. Tickets
 are `1` and `2`; the first line gives the backlog's shape (`solo`, `overlap`, `blocks`). `lpc` is
 where the loop is, `fpc` where each ticket's fiber is; the action of that name in
 `Scheduler.tla` carries the code it stands for.
@@ -96,15 +96,8 @@ does in one `Ref` update, or lets something happen the code forbids: mend the mo
 
 ## Open findings
 
-Found on 2026-11-16 at commit 2f7a6ce5. It is not fixed; the check expects it to fail still.
-
-1. **`finding-release-gap`: a fiber frees its slot and counts its end in two steps.** In
-   `slots.ts` `occupy`'s `release`, `showQueue` runs between the `Ref.update` that takes the
-   ticket out of `running` and the one that counts `ends`. A look that reads `running` after the
-   first and `ends` before the second sees nothing running and no fiber ended since the fill, and
-   ends the run with the ticket that fiber held back still waiting. It needs Effect to switch the
-   fiber out between those two steps, which it does only after about 2000 steps in a row
-   (`maxOpsBeforeYield`), or if showing the queue ever awaits. Assumption: `releaseCountsAtOnce`.
+None open. Those found on 2026-11-16 at commit 2f7a6ce5 are mended: `finding-attention-look`
+(tutti-matr), `finding-limit-gap` (tutti-13gj) and `finding-release-gap` (tutti-4kjm).
 
 ### When a finding is mended
 

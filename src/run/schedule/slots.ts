@@ -64,6 +64,11 @@ export interface Slots {
   readonly running: ReadonlySet<TicketId>
   readonly started: number
   /**
+   * How many tickets' fibers have ended, each counted in the update that frees its slot: no read
+   * sees a ticket out of `running` and its end not counted yet.
+   */
+  readonly ends: number
+  /**
    * The running tickets dispatched, or carried with their issue, and those past their work until
    * they merge: their footprints and labels.
    */
@@ -166,19 +171,20 @@ export const occupy = (
       const state = yield* sched.ledger.current
       const again = counted && requeued(state, ticket)
       yield* forget(sched, "skipSaid", ticket)
+      // Its end counted as its slot is freed, in one update: a fill that began before the count
+      // saw the slot taken, or reads the end counted after it.
       yield* Ref.update(sched.slots, (s) =>
         prune(
           {
             ...s,
             running: new Set([...s.running].filter((id) => id !== ticket)),
             started: again ? s.started - 1 : s.started,
+            ends: s.ends + 1,
           },
           state,
         ),
       )
       yield* showQueue(sched)
-      // Counted once its slot is free, so that a fill that began before the count saw the slot taken.
-      yield* Ref.update(sched.ends, (n) => n + 1)
       yield* Queue.offer(sched.freed, undefined)
     })
     yield* FiberSet.run(sched.tickets, Effect.ensuring(work, release))

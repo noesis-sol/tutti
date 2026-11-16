@@ -21,8 +21,7 @@ CONSTANTS
   Limit,        \* --limit: the most tickets the run starts
   MaxRequeues,  \* how often one ticket may go back in the queue from Working
   AnyYield,     \* whether a fiber may be switched out between any two steps
-  Assume,       \* what is taken for granted, each name a finding when it is left out:
-                \*   "releaseCountsAtOnce"  a fiber frees its slot and counts its end in one step
+  Assume,       \* what is taken for granted, each name a finding when it is left out: none now
   Variant       \* "asCode", or the name of a break put in on purpose (see the actions)
 
 Tickets == 1..N
@@ -40,8 +39,7 @@ VARIABLES
   running,      \* Slots.running: the tickets whose fibers hold a slot
   slotsVer,     \* counts the changes of Slots.running, for fill.ts's `running !== s.running`
   started,      \* Slots.started: what --limit counts
-  ends,         \* Scheduling.ends: the fibers ended, each counted once its slot is freed
-  uncounted,    \* fibers whose slot is freed and whose end is not counted yet
+  ends,         \* Slots.ends: the fibers ended, each counted in the update that frees its slot
   inQueue,      \* the merge queue's waiting and merging tickets
   \* A ticket's fiber.
   fpc,          \* where it is
@@ -67,7 +65,7 @@ VARIABLES
   hot
 
 shape == <<solo, overlap, blocks>>
-shared == <<bd, phase, running, slotsVer, started, ends, uncounted, inQueue>>
+shared == <<bd, phase, running, slotsVer, started, ends, inQueue>>
 fibers == <<fpc, relAgain, requeues, dispatches, twice>>
 looks == <<lpc, first, why, mergedBefore, filledAt, found, queue, snapPhase, snapRunning,
            snapVer, lCanTake, lRunning, lSettled>>
@@ -134,7 +132,6 @@ Init ==
   /\ slotsVer = 0
   /\ started = 0
   /\ ends = 0
-  /\ uncounted = 0
   /\ inQueue = {}
   /\ fpc = [t \in Tickets |-> "idle"]
   /\ relAgain = [t \in Tickets |-> FALSE]
@@ -210,7 +207,7 @@ Read2 ==
             ELSE phase[t]]
   /\ lpc' = "line1"
   /\ Go(Loop, FALSE)
-  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, uncounted, inQueue, fibers, first,
+  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, inQueue, fibers, first,
                  why, mergedBefore, filledAt, found, snapPhase, snapRunning, snapVer, lCanTake,
                  lRunning, lSettled>>
 
@@ -267,7 +264,7 @@ Place ==
          ELSE phase[t]]
   /\ lpc' = "check"
   /\ Go(Loop, FALSE)
-  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, uncounted, inQueue, fibers, first,
+  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, inQueue, fibers, first,
                  why, mergedBefore, filledAt, found, queue, snapPhase, snapRunning, snapVer,
                  lCanTake, lRunning, lSettled>>
 
@@ -299,7 +296,7 @@ P3 ==
        ELSE /\ FillOver
             /\ UNCHANGED <<phase, started, running, slotsVer, dispatches, twice, fpc>>
   /\ Go(Loop, FALSE)
-  /\ UNCHANGED <<shape, bd, ends, uncounted, inQueue, relAgain, requeues, first, why,
+  /\ UNCHANGED <<shape, bd, ends, inQueue, relAgain, requeues, first, why,
                  mergedBefore, found, queue, snapPhase, snapRunning, snapVer, lCanTake,
                  lRunning, lSettled>>
 
@@ -366,7 +363,7 @@ Claim(t) ==
   /\ fpc[t] = "work" /\ bd[t] = "open"
   /\ bd' = [bd EXCEPT ![t] = "claimed"]
   /\ FiberMove(t, "work")
-  /\ UNCHANGED <<shape, phase, running, slotsVer, started, ends, uncounted, inQueue, relAgain,
+  /\ UNCHANGED <<shape, phase, running, slotsVer, started, ends, inQueue, relAgain,
                  requeues, dispatches, twice, looks>>
 
 \* Its worker closes it in bd, which is when bd ready lists what it blocked.
@@ -374,7 +371,7 @@ Close(t) ==
   /\ fpc[t] = "work"
   /\ bd' = [bd EXCEPT ![t] = "closed"]
   /\ FiberMove(t, "closed")
-  /\ UNCHANGED <<shape, phase, running, slotsVer, started, ends, uncounted, inQueue, relAgain,
+  /\ UNCHANGED <<shape, phase, running, slotsVer, started, ends, inQueue, relAgain,
                  requeues, dispatches, twice, looks>>
 
 \* mergequeue.ts offer: the ledger first (ToMerge), then the queue's line.
@@ -382,14 +379,14 @@ Offer1(t) ==
   /\ fpc[t] = "closed"
   /\ phase' = [phase EXCEPT ![t] = "ToMerge"]
   /\ FiberMove(t, "offered")
-  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, uncounted, inQueue, relAgain,
+  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, inQueue, relAgain,
                  requeues, dispatches, twice, looks>>
 
 Offer2(t) ==
   /\ fpc[t] = "offered"
   /\ inQueue' = inQueue \cup {t}
   /\ FiberMove(t, "release")
-  /\ UNCHANGED <<shape, bd, phase, running, slotsVer, started, ends, uncounted, relAgain,
+  /\ UNCHANGED <<shape, bd, phase, running, slotsVer, started, ends, relAgain,
                  requeues, dispatches, twice, looks>>
 
 \* Set aside: deferred in bd, then Deferred in the ledger.
@@ -397,14 +394,14 @@ AsideBd(t) ==
   /\ fpc[t] = "work"
   /\ bd' = [bd EXCEPT ![t] = "deferred"]
   /\ FiberMove(t, "aside")
-  /\ UNCHANGED <<shape, phase, running, slotsVer, started, ends, uncounted, inQueue, relAgain,
+  /\ UNCHANGED <<shape, phase, running, slotsVer, started, ends, inQueue, relAgain,
                  requeues, dispatches, twice, looks>>
 
 Aside(t) ==
   /\ fpc[t] = "aside"
   /\ phase' = [phase EXCEPT ![t] = "Deferred"]
   /\ FiberMove(t, "release")
-  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, uncounted, inQueue, relAgain,
+  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, inQueue, relAgain,
                  requeues, dispatches, twice, looks>>
 
 \* work.ts mergedSinceCut: open in bd again, then Queued in the ledger (MergedSinceCut).
@@ -412,7 +409,7 @@ RequeueBd(t) ==
   /\ fpc[t] = "work" /\ requeues[t] < MaxRequeues
   /\ bd' = [bd EXCEPT ![t] = "open"]
   /\ FiberMove(t, "requeue")
-  /\ UNCHANGED <<shape, phase, running, slotsVer, started, ends, uncounted, inQueue, relAgain,
+  /\ UNCHANGED <<shape, phase, running, slotsVer, started, ends, inQueue, relAgain,
                  requeues, dispatches, twice, looks>>
 
 Requeue(t) ==
@@ -420,7 +417,7 @@ Requeue(t) ==
   /\ phase' = [phase EXCEPT ![t] = "Queued"]
   /\ requeues' = [requeues EXCEPT ![t] = @ + 1]
   /\ FiberMove(t, "release")
-  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, uncounted, inQueue, relAgain,
+  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, inQueue, relAgain,
                  dispatches, twice, looks>>
 
 \* slots.ts occupy's release: it reads the ledger (requeued), ...
@@ -431,25 +428,16 @@ Release1(t) ==
   /\ Go(t, TRUE)
   /\ UNCHANGED <<shape, shared, requeues, dispatches, twice, looks>>
 
-\* ... frees its slot, giving its start back to --limit, shows the queue, and only then counts
-\* its end. With no await between, the count is in this step; with any step a switch, and "releaseCountsAtOnce" not assumed, it is CountEnd's.
+\* ... and frees its slot, giving its start back to --limit and counting its end, in one Ref
+\* update; it shows the queue after.
 Release2(t) ==
   /\ fpc[t] = "release2"
   /\ running' = running \ {t}
   /\ slotsVer' = slotsVer + 1
   /\ started' = IF relAgain[t] THEN started - 1 ELSE started
-  /\ IF AnyYield /\ "releaseCountsAtOnce" \notin Assume
-       THEN uncounted' = uncounted + 1 /\ ends' = ends
-       ELSE uncounted' = uncounted /\ ends' = ends + 1
+  /\ ends' = ends + 1
   /\ FiberMove(t, "idle")
   /\ UNCHANGED <<shape, bd, phase, inQueue, relAgain, requeues, dispatches, twice, looks>>
-
-CountEnd ==
-  /\ hot = None
-  /\ uncounted > 0
-  /\ uncounted' = uncounted - 1
-  /\ ends' = ends + 1
-  /\ UNCHANGED <<shape, bd, phase, running, slotsVer, started, inQueue, fibers, looks, hot>>
 
 FiberStep(t) ==
   /\ MayStep(t)
@@ -463,21 +451,20 @@ Merge1(t) ==
   /\ hot = None
   /\ t \in inQueue /\ phase[t] = "ToMerge"
   /\ phase' = [phase EXCEPT ![t] = "Merged"]
-  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, uncounted, inQueue, fibers, looks,
+  /\ UNCHANGED <<shape, bd, running, slotsVer, started, ends, inQueue, fibers, looks,
                  hot>>
 
 Merge2(t) ==
   /\ hot = None
   /\ t \in inQueue /\ phase[t] = "Merged"
   /\ inQueue' = inQueue \ {t}
-  /\ UNCHANGED <<shape, bd, phase, running, slotsVer, started, ends, uncounted, fibers, looks,
+  /\ UNCHANGED <<shape, bd, phase, running, slotsVer, started, ends, fibers, looks,
                  hot>>
 
 -----------------------------------------------------------------------------
 Next ==
   \/ LoopStep
   \/ \E t \in Tickets : FiberStep(t) \/ Merge1(t) \/ Merge2(t)
-  \/ CountEnd
 
 Spec == Init /\ [][Next]_vars
 
