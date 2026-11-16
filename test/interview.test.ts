@@ -335,7 +335,6 @@ describe("the feature mode's instructions", () => {
     expect(featurePrompt).not.toContain("metadata `spec`")
     expect(featurePrompt).not.toContain("the spec's sections")
     expect(featurePrompt).not.toContain("file_feature")
-    expect(featurePrompt).not.toContain("orchestra runs")
   })
 })
 

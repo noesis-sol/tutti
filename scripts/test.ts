@@ -56,11 +56,11 @@
 //
 // The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or
-// bd and passes, or skips, only where they are installed (orchestra-nqbn, orchestra-163s); and none
-// of the variables of the terminal, the Claude Code session or the tools the tests run under, which
-// reached the live tests' sessions (tutti-y0e); and notifications off (TUTTI_NOTIFY=0), so that no
-// tutti a test runs shows a desktop notification on the machine (tutti-twdw). Tests read it through
-// test/env.ts, which Biome's rules hold them to (biome.json, test/lint/).
+// bd and passes, or skips, only where they are installed; and none of the variables of the
+// terminal, the Claude Code session or the tools the tests run under, which reached the live tests'
+// sessions (tutti-y0e); and notifications off (TUTTI_NOTIFY=0), so that no tutti a test runs
+// shows a desktop notification on the machine (tutti-twdw). Tests read it through test/env.ts,
+// which Biome's rules hold them to (biome.json, test/lint/).
 //
 // It runs nothing on a node_modules behind bun.lock, saying which packages differ (check-deps.ts):
 // the suites would run on the packages of before a bump, and fail on bugs it fixed (tutti-a8q2).
@@ -564,8 +564,8 @@ export const coreThreadVariables = (
  *
  * Half, not all, without a share: a merge check runs with none, beside the workers' own checks, and
  * with every core taken by the suites the machine is overloaded and timing-sensitive tests fail
- * (2026-10-22: three FLAKY in one full check at all ten); orchestra's default cap on workers across
- * the machine is half the cores for the same reason.
+ * (2026-10-22: three FLAKY in one full check at all ten); the default cap on workers across the
+ * machine (--machine-workers) is half the cores for the same reason.
  */
 export const testWorkers = (
   env: Readonly<Record<string, string | undefined>>,

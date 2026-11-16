@@ -68,11 +68,9 @@ const problems = async (config: AppConfigValue): Promise<ReadonlyArray<string>> 
 }
 
 describe("the built-in worker prompt", () => {
-  test("has no tmux-era or orchestra wording", () => {
+  test("has no tmux-era wording", () => {
     expect(builtInWorkerPrompt).not.toMatch(/\btabs?\b/i)
-    expect(builtInWorkerPrompt).not.toContain(".orchestra")
     expect(builtInWorkerPrompt).not.toContain("wt/")
-    expect(builtInWorkerPrompt).not.toMatch(/orchestra/i)
     expect(builtInWorkerPrompt).not.toMatch(/tmux|herdr|cmux|pane|paste/i)
     expect(builtInWorkerPrompt).not.toContain("look idle")
   })

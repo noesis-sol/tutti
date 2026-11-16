@@ -451,7 +451,7 @@ export const gitOps = {
     ],
   },
   // --no-update-refs: with the user's rebase.updateRefs set, git would move every other branch
-  // that points into the rebased range (a backup, orchestra's wt/<id>) along with this one, and
+  // that points into the rebased range (a backup, another tool's branch) along with this one, and
   // putting the branch back resets only this one. `replaying` is interactive, for its editor to
   // rewrite the todo (rebaseMergesScript): the todo's commands spelt out and none of the user's
   // checks on it, its commits squashed by none of their autosquash, one made empty dropped. With

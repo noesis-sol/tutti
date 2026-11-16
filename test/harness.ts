@@ -1,10 +1,10 @@
-// Whole-run scenarios (§ 13), as orchestra's newTimedHarness: every test layer, under TestClock.
-// `scenario` builds the environment from `Setup`, runs the scenario's Effect in a scope of its own
-// (the run's scope), closes it, and reads back what the run left: the log lines, the event records,
-// what the workers were sent, the checks run, the backlog. Leaks fail the scenario, as goleak does
-// in orchestra: once the run's scope has closed, every FiberSet the run registered must be empty
-// and every process group exec started must be gone. A leak is cleaned up (its fibers interrupted,
-// its process groups killed) before the scenario fails, so it can't hold up the tests after it.
+// Whole-run scenarios (§ 13): every test layer, under TestClock. `scenario` builds the environment
+// from `Setup`, runs the scenario's Effect in a scope of its own (the run's scope), closes it, and
+// reads back what the run left: the log lines, the event records, what the workers were sent, the
+// checks run, the backlog. Leaks fail the scenario: once the run's scope has closed, every FiberSet
+// the run registered must be empty and every process group exec started must be gone. A leak is
+// cleaned up (its fibers interrupted, its process groups killed) before the scenario fails, so it
+// can't hold up the tests after it.
 //
 // Spinners and animations take their clock from Effect's Clock, which TestClock provides: a
 // scenario's frames move only as `advance` moves the clock.
