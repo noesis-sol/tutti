@@ -12,6 +12,7 @@ import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
+import { settle } from "../src/ui/attentionKeys.ts"
 import { readingText } from "../src/ui/QuestionsBox.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
 import { type Appearance, makeTheme } from "../src/ui/theme.ts"
@@ -75,6 +76,7 @@ test("past newsKept answers, the box still puts the questions it read", async ()
   const commands = Effect.runSync(makeCommands)
   const count = newsKept + 2
   const questions = Array.from({ length: count }, (_, i) => question(i + 1))
+  let time = began + 60_000
   await withRender(
     <Root
       value={{
@@ -83,7 +85,7 @@ test("past newsKept answers, the box still puts the questions it read", async ()
         commands,
         appearance: external<Appearance>("dark"),
         themeOf,
-        now: () => began + 60_000,
+        now: () => time,
         questions: news,
       }}
     />,
@@ -99,6 +101,8 @@ test("past newsKept answers, the box still puts the questions it read", async ()
       // Each answer recorded as the run would, the oldest news dropped past newsKept.
       for (let n = 1; n <= newsKept; n++) {
         await until(rendered, has(`Open question ${n} of ${count} · q-${n}`))
+        // The box takes an answer at a question it went on to once it has shown it a moment.
+        time += settle
         await rendered.input((setup) => setup.mockInput.pressEnter())
         const answer = taken(commands).find((command) => command._tag === "AnswerQuestion")
         if (answer?._tag !== "AnswerQuestion") throw new Error(`no answer to q-${n}`)
