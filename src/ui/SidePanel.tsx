@@ -358,6 +358,20 @@ export const blockedCut = (need: Blocked, width: number, lines: number): boolean
   return said > Math.max(lines - 3, 1) - 2 - height(need.title, 2)
 }
 
+type Asked = Extract<Need, { _tag: "Question" }>
+
+/**
+ * Whether a panel `width` wide and `lines` tall can't show every option of `need`'s question, with
+ * its title, who waits on it, Other and the foot: its digits then answer nothing, and its Enter opens
+ * the questions box at it, where they all are, rather than answer with an option you can't see.
+ */
+export const questionCut = (need: Asked, width: number, lines: number): boolean => {
+  if (need.question === null) return false
+  const title = wrap([seg(need.question.title, null)], frameInner(width), { limit: 2 }).length
+  const options = need.question.options?.length ?? 0
+  return title + 1 + options + 1 + 1 > Math.max(lines - 3, 1)
+}
+
 /**
  * What the panel, or its box in a pane with no panel, says of a selected row with no need (§ 7.2), a
  * paragraph each: its state, its title, triage's verdict, and what comes of it or what to do. A
@@ -447,10 +461,22 @@ export const needsLines = (
   const body: Array<Segments> = []
   if (need?._tag === "Question") {
     const question = need.question
-    const title = wrapped([seg(question?.title ?? need.title, styles.key, panelTargets.read)], 2)
+    // Too short for its options: none of them, the title kept to what leaves room for the foot,
+    // which says Enter, or a click on it, shows them in the questions box.
+    const short = questionCut(need, width, lines)
+    const titleLimit = short ? Math.min(Math.max(room - 2, 1), 2) : 2
+    const title = wrapped(
+      [seg(question?.title ?? need.title, styles.key, panelTargets.read)],
+      titleLimit,
+    )
     const about = [dim(`${need.id}${separator}${need.label} waits on it`)]
     if (question === null) {
       body.push(...title, about, [dim("reading its question…")])
+    } else if (short) {
+      const keys = at.inside ? "Enter shows them" : at.focused ? "Enter goes in" : "click shows them"
+      body.push(...title, about, [
+        dim(`${ellipsis} no room for its options${separator}${keys}`, panelTargets.read),
+      ])
     } else {
       const options = question.options ?? []
       const choice = (i: number, text: Segments, target: number): Segments => {

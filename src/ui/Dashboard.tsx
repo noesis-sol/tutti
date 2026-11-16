@@ -127,6 +127,7 @@ import {
   type PanelAt,
   panelTargets,
   panelWidth,
+  questionCut,
   selectedTicket,
   tableWidth,
   upNextLines,
@@ -944,10 +945,14 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
   // for the row before can't act on one the selection has just moved to.
   const needSettled = (ticket: string) =>
     drawnSince.current.ticket === ticket && Date.now() - drawnSince.current.at >= settle
+  // Whether the panel shows every option of the question it shows: a digit or Enter answers only
+  // with one you can see.
+  const optionsShown = (need: Need | undefined) =>
+    need?._tag === "Question" && !questionCut(need, laid.panel, laid.table)
   // Answers the panel's question with its option `n`, from 0: it leaves the panel, its row let go.
   const answerWith = (n: number) => {
     const { need } = shownNow()
-    if (need?._tag !== "Question" || need.question === null) return
+    if (need?._tag !== "Question" || need.question === null || !optionsShown(need)) return
     if (!needSettled(need.ticket)) return
     const option = need.question.options?.[n]
     if (option === undefined) return
@@ -1055,7 +1060,8 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
       return
     }
     if (need.question === null) return
-    if (choiceNow() < (need.question.options?.length ?? 0)) answerWith(choiceNow())
+    if (!optionsShown(need)) readQuestion()
+    else if (choiceNow() < (need.question.options?.length ?? 0)) answerWith(choiceNow())
     else readQuestion()
   }
   const panelMove = (by: 1 | -1) => {
@@ -1153,7 +1159,7 @@ export const Dashboard = ({ memory }: { readonly memory?: { current: DashboardMe
           answers: (n: number) =>
             panelShown() &&
             (focusNow().panel !== "current" || n > digitsOf(inCard())) &&
-            shownNow().need?._tag === "Question",
+            optionsShown(shownNow().need),
           conflict: () => panelShown() && isConflict(shownNow().need),
         },
       },
