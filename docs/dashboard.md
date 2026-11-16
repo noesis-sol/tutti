@@ -290,8 +290,7 @@ or the last line the worker wrote).
 
 - **The order is stable.** A worker keeps its place for its whole session; a new one takes the
   first place free. Cards show no number: a click, or `Enter` inside Current, opens one, and the
-  highlight stays on its ticket as other cards come and go. orchestra's `1`–`9` are left out on
-  purpose.
+  highlight stays on its ticket as other cards come and go.
 - **The mark** is a spinner while the worker works, `◼` while its ticket waits to merge, `◆` while it
   merges, and `•` once the worker's turn has ended: motion means a worker at work.
 - **The status** is the worker's (`working`, `editing`, `reading`, `testing`, `subagent`,
@@ -634,7 +633,7 @@ ssh.
 ## Notifications
 
 A notification tells you each outcome that matters, in a few words, titled with the repository's
-folder name (`jswallet`), as orchestra's do:
+folder name (`jswallet`):
 
 | When | It says |
 |---|---|

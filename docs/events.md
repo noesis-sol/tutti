@@ -37,9 +37,7 @@ published JSON Schema, [`schema/events.json`](../schema/events.json), describes 
 
 ## The kinds
 
-The kinds orchestra's stream has keep their names and meanings, so its scripts carry over with
-`.orchestra` replaced by `.tutti`. Many records carry `text`, the line the log has for them, without
-the time.
+Many records carry `text`, the line the log has for them, without the time.
 
 **The run:**
 
@@ -130,7 +128,7 @@ while it is next.
 ## What runs spend
 
 tutti hosts Claude Code through the Agent SDK, whose result messages say what each turn cost and
-used, so the stream has what orchestra's has of a ticket's time and tokens, and its cost besides.
+used, so the stream has a ticket's time, tokens and cost.
 
 - **Each turn's share.** A result's `total_cost_usd` and `modelUsage` are the session's running
   totals: within one session's process each result carries the turns before it too, and a resumed
@@ -142,14 +140,13 @@ used, so the stream has what orchestra's has of a ticket's time and tokens, and 
   ticket's transcript (`.tutti/run/workers/<id>/messages.jsonl`), so its first turn here counts only
   its own share too. `num_turns`, `duration_ms` and
   `duration_api_ms` are the turn's own.
-- **Tokens**, as orchestra's: by model, `input` neither written to the prompt cache nor read from
-  it, `cache_write` written to it, `cache_read` read from it, and `output`, thinking included; each
-  given, 0 included.
+- **Tokens**, by model: `input` neither written to the prompt cache nor read from it, `cache_write`
+  written to it, `cache_read` read from it, and `output`, thinking included; each given, 0 included.
 - **What a ticket spent.** The records that end a ticket's part in the run, `closed`, `deferred`, a
   `warn` with `aside: true` and `ticket_end`, give what it spent from when the run first took it up:
-  - `phases`, as orchestra's: seconds, to a tenth, in each phase it entered: `working` (Working),
-    `waiting` (ToMerge), `merging` (Merging), `resolving` and `fixing`; a ticket that comes back
-    adds to the same phases, and the time between, waiting on you or on a merge, counts in none;
+  - `phases`: seconds, to a tenth, in each phase it entered: `working` (Working), `waiting`
+    (ToMerge), `merging` (Merging), `resolving` and `fixing`; a ticket that comes back adds to the
+    same phases, and the time between, waiting on you or on a merge, counts in none;
   - `hand_backs`: `resolve`, for conflicts, and `fix`, for a failing check, 0 included;
   - `carried: true` for a ticket carried over from an earlier run;
   - `tokens` and `cost_usd`, its workers' turns' shares summed, left out when none reported any.

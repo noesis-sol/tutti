@@ -84,7 +84,7 @@ guess on the ticket as `predicted_files` metadata. It is gone: a file two ticket
 neither back (see [Footprints](running.md#footprints)), so its guess, a model call a ticket, could
 only warn `LIKELY_CONFLICT`, which two running tickets changing one file get from their worktrees
 anyway. [Footprints](running.md#footprints) still read the `predicted_files` a ticket carries, from
-an earlier tutti or from orchestra's predictor, as the ticket's own files for one naming nothing
+an earlier tutti or another tool, as the ticket's own files for one naming nothing
 else, marked `(predicted)` in the log; tutti writes none.
 
 ## The reviewer and the run report

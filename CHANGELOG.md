@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The docs and the tutti skill describe tutti on its own terms, no longer citing orchestra as its model; they speak of orchestra only for `tutti init`'s import and for a tutti run beside an orchestra run (tutti-h75j.9). `docs/parity.md`, the parity audit, is gone, with `test/parity-doc.test.ts`, which checked it. The skill's worktree paths are `~/.tutti/worktrees/<repo>/`, as they have been since tutti-omox.
+
 ## [0.8.9] - 2026-11-15
 
 - The project's settings may hold a `linear` block, `{ "team": "NOE", "pull_every": "10m" }`, whose presence turns the Linear sync on (§ 8.4; `LinearSettings` in `src/project/settings.ts`; tutti-qatu.2): `team` is required in it, `pull_every` is a time, 10 minutes by default and `0` for the start's pull only. With it, the startup checks warn in the START block, never failing the start, of Linear's credentials missing from the environment, of a bd without `bd linear` and of bd's configuration without the state map, the run going on without the sync; else the START block says `linear: NOE, pull at start and every 10m` (`src/run/linearCheck.ts`). `--no-linear` and `TUTTI_NO_LINEAR=1` run once without it. Without the block a run is as before: no check, no `bd linear` process, nothing said. This starts no sync yet. `test/linear-settings.test.ts` covers it.

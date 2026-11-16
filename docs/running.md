@@ -141,8 +141,7 @@ reasons, so that is yours to decide.
 `tutti -h` lists them. Each run flag has an environment variable, `TUTTI_` and its name in capitals
 (`TUTTI_CONCURRENT`, `TUTTI_TICKET_LIMIT`, `TUTTI_NO_MOUSE`), which counts when the flag isn't given.
 On-or-off flags and variables take `1`, `true`, `yes` or `on`, and `0`, `false`, `no` or `off`; a
-flag given alone is on (`--plain`). Anything else is a setup problem. orchestra's unprefixed variables
-(`LIMIT`, `NOTIFY`, `WT_ROOT`, …) aren't read.
+flag given alone is on (`--plain`). Anything else is a setup problem.
 
 | Flag | |
 |---|---|
@@ -449,8 +448,7 @@ once the screen is gone, before the run's report.
 
 The `START` line says ` · overnight` after the scope, and the start record has `"overnight": true`.
 There is no overnight badge: the title line's ` keep awake ` and ` auto-answer ` pills say what it
-turned on. Unlike orchestra's, the pre-flight doesn't fetch the base from its upstream: tutti's runs
-never fetch.
+turned on. The pre-flight doesn't fetch the base from its upstream: tutti's runs never fetch.
 
 An overnight run has nobody to answer it until the morning. A worker's permission request is
 denied by tutti once it has waited 30 seconds with the machine awake, in nobody's name (`PERMISSION:
@@ -586,7 +584,7 @@ SHA-256; a spec committed already as it is stays as it is.
 commits it as a copy in `.tutti/specs/`, named after the URL's last path segment (`.md` added unless
 it ends in `.md`, `.markdown` or `.txt`); its commits record the URL as `Spec-Source:`, without its
 query and fragment, which may hold a token. Each run fetches it again: the same text is committed
-already, and changed text is an update, as for a file. orchestra's `--spec` takes a file only.
+already, and changed text is an update, as for a file.
 
 ```
 tutti --spec https://github.com/me/shop/blob/main/docs/shop.md
@@ -924,8 +922,9 @@ Tickets that touch the same code don't run side by side. Each ticket has a **foo
   `src/run/cart.ts`) and, matching none yet, those it would match from the repository's root
   (`web/src/*.ts` before there is a `web/`); a name with a `[` (`pages/[id].tsx`) is that file or
   folder as well as the glob;
-- for a ticket naming none of these, the `predicted_files` metadata, if it has one (orchestra's
-  predictor writes it; tutti's own predictor is gone, so tutti reads it and never writes it);
+- for a ticket naming none of these, the `predicted_files` metadata, if it has one (an earlier
+  tutti's predictor or another tool wrote it; tutti's own predictor is gone, so tutti reads it and
+  never writes it);
 - once it runs, the files its worktree has changed, read every 30 seconds.
 
 A ticket with commits on its branch (`tutti/<id>`: reopened, or carried over) is footprinted from the
@@ -1464,18 +1463,14 @@ All but `.tutti/settings.json`, `.tutti/worker-prompt.md` and `.tutti/colour-sch
 
 ## orchestra beside tutti
 
-tutti is a new tool, not a new version of orchestra, and the two can serve one repository, one at a
-time:
+tutti and orchestra can serve one repository, one at a time:
 
-- **They share Beads.** Labels and metadata mean the same to both: `solo`, `human`, `unmerged` (with
-  its `unmerged_fork` metadata), `area:<name>`, `check-full`, `files` and `predicted_files`.
 - **Never at once.** tutti takes orchestra's lock too, so orchestra started during a tutti run refuses,
   naming tutti's PID, and tutti refuses while orchestra runs: `orchestra is running in <repo> (pid …)`.
 - **Separate branches and worktrees.** tutti's branches are `tutti/<id>`, never orchestra's `wt/<id>`,
   and its worktrees go in `~/.tutti/worktrees/<repo>/`, not `<repo>-worktrees/`, so neither reuses the
   other's work.
-  A ticket orchestra labelled `unmerged` loses the label once its work is on the base, as orchestra
-  would remove it.
+  A ticket orchestra labelled `unmerged` loses the label once its work is on the base.
 - **No adoption.** tutti doesn't read orchestra's run state or take over its workers: finish orchestra's
   runs with orchestra. tutti's startup warns when orchestra left workers:
   `orchestra left workers on <ids>; finish them with orchestra first`.

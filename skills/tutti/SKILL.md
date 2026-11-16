@@ -7,14 +7,13 @@ description: Run and look after tutti, which works through a Beads backlog with 
 Install: copy this folder to ~/.claude/skills/tutti/ (every project) or to .claude/skills/tutti/ in
 one project, then ask the agent to "run tutti". tutti itself installs with
 curl -fsSL https://github.com/noesis-sol/tutti/releases/latest/download/install.sh | sh
-(or bunx @noesis-sol/tutti, for development and agents). This is orchestra v0.7.7's orchestra
-skill, rewritten for tutti.
+(or bunx @noesis-sol/tutti, for development and agents).
 -->
 
 # tutti
 
 `tutti` picks the highest-priority ticket from `bd ready`, gives it a git worktree
-(`<repo>-tutti/<ticket>` on branch `tutti/<ticket>`) and starts a worker there: a Claude Code
+(`~/.tutti/worktrees/<repo>/<ticket>` on branch `tutti/<ticket>`) and starts a worker there: a Claude Code
 session, run through the Agent SDK inside tutti's own process, with the project's worker prompt and
 the MCP servers `.tutti/settings.json` names. When the worker's turn ends, tutti reads the ticket
 in Beads. A closed ticket with a commit naming it is rebased, checked with the merge check and
@@ -77,7 +76,8 @@ stream rather than grepping the log, whose wording is for people and may change.
 A repository with `.orchestra/` is orchestra's. tutti doesn't read orchestra's run files or adopt
 its workers; if `.orchestra/run/state.json` names workers, tutti's startup warns `orchestra left
 workers on <ids>; finish them with orchestra first`. Branches differ (`wt/<id>` for orchestra,
-`tutti/<id>` for tutti), and so do the worktree folders (`<repo>-worktrees/` and `<repo>-tutti/`).
+`tutti/<id>` for tutti), and so do the worktree folders (`<repo>-worktrees/` and
+`~/.tutti/worktrees/<repo>/`).
 
 ## Setting a project up
 
@@ -101,7 +101,7 @@ choice it left, so ask the user first and pass the answers as flags:
 - `--concurrent N` / `-c N`, 1 to 16: tickets at the same time. Above 1 needs checks that can run
   side by side, and about 1 GiB of memory per worker; say so.
 - `--mcp a,b`, the MCP servers workers get, by name (`claude mcp list` shows what this machine
-  defines), or `--mcp ""` for none. Unlike orchestra, no `mcp_servers` means no servers.
+  defines), or `--mcp ""` for none. No `mcp_servers` means no servers.
 - `--setup "<command>"`, which installs dependencies in a worktree when a rebase changes a lockfile
   (`bun install --frozen-lockfile`, `npm ci`, `uv sync`, …), or `--setup ""`.
 - `--changelog-union` / `--changelog-union=false`, where the project keeps a `CHANGELOG.md`.
@@ -193,7 +193,7 @@ take `=false` or `0`): `-c N` / `--concurrent N`, `--limit N` (tickets this run 
 `--usage-limit-wait 6h`, `--machine-workers N` (the most workers across the machine's tutti and
 orchestra runs), `--billing api` (bill `ANTHROPIC_API_KEY` beside a subscription login: the
 user's call), `--worktrees <dir>`, `--prompt <file>`, `--claude <path>`. `tutti --help` lists them
-all. orchestra's unprefixed variables (`LIMIT`, `NOTIFY`, `TRIAGE`, …) are not read.
+all.
 
 With several at once, a ticket labelled `solo` runs alone: suggest `bd label add <id> solo` for one
 that restructures code most tickets touch. Tickets that name the same function or file as a running
@@ -214,7 +214,7 @@ changes nothing; run `tutti plan --apply` only once the user approves the propos
   its transcript: `tail -n 5 .tutti/run/workers/<id>/messages.jsonl | jq -c .message.type`.
 - **Answer attention requests** as they come (next section). A plain run holds once a request has
   waited 4 minutes.
-- **To wind the run down** (orchestra's drain: no new tickets, the running ones finish and merge,
+- **To wind the run down** (a drain: no new tickets, the running ones finish and merge,
   the run ends `DRAINED`, exit 0), send `kill -USR1 <pid>`, the PID from `lsof -t .git/tutti.lock`.
   The log says `DRAIN: stopping after …, asked by SIGUSR1`. SIGUSR2 does the same.
 - **To quit now**, `kill <pid>` (SIGTERM; SIGINT and SIGHUP do the same). See [Quitting and
@@ -478,7 +478,7 @@ Lines about single tickets, which don't stop the run (indented under the run's l
 | what waits on a person now | `tutti answer` (`--json`); `bd human list` for question tickets |
 | why a ticket was deferred | `bd show <id>`: the worker's notes, tutti's notes, the triage verdict |
 | what a worker did and said | `.tutti/run/workers/<id>/messages.jsonl` (its SDK messages); `stderr.log` beside it |
-| a ticket's work | worktree `<repo>-tutti/<id>`, branch `tutti/<id>`: `git log --oneline <base>..tutti/<id>` |
+| a ticket's work | worktree `~/.tutti/worktrees/<repo>/<id>`, branch `tutti/<id>`: `git log --oneline <base>..tutti/<id>` |
 | the sessions the last run saved, for the next to resume | `.tutti/run/state.json` in the main checkout |
 | the whole output of the last full check that failed | `.tutti/run/check-full.log` |
 

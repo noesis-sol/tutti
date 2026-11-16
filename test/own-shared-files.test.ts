@@ -15,7 +15,7 @@ const settings = await Effect.runPromise(readSettings(root).pipe(Effect.provide(
 
 const tracked = [
   "docs/spec/tutti-spec.md",
-  "docs/parity.md",
+  "docs/workers.md",
   "docs/dashboard.md",
   "docs/running.md",
   "docs/spikes/01-sdk-session.md",
@@ -53,15 +53,15 @@ describe("this repository's shared files", () => {
 
   test("two tickets sharing only the spec and docs start unwarned", () => {
     const mine =
-      "Change src/run/schedule.ts; update docs/spec/tutti-spec.md, docs/parity.md and docs/running.md."
+      "Change src/run/schedule.ts; update docs/spec/tutti-spec.md, docs/workers.md and docs/running.md."
     const running =
-      "Change src/run/holds.ts; update docs/spec/tutti-spec.md, docs/parity.md and docs/dashboard.md."
+      "Change src/run/holds.ts; update docs/spec/tutti-spec.md, docs/workers.md and docs/dashboard.md."
     expect(heldFor(mine, running)).toBeUndefined()
   })
 
   test("two tickets sharing a source file are warned of it", () => {
     const mine = "Change src/run/holds.ts and update docs/spec/tutti-spec.md."
-    const running = "Change src/run/holds.ts and update docs/parity.md."
+    const running = "Change src/run/holds.ts and update docs/workers.md."
     expect(heldFor(mine, running)).toBe("src/run/holds.ts")
   })
 

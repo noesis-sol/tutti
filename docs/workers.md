@@ -126,7 +126,7 @@ Each rule of the template prevents a way a run goes wrong:
   make is asked in the session itself ([questions](#attention-requests)).
 - **A question gives its options.** Each question ticket has 2 to 4 options, each a label and a
   one-line trade-off, one of them recommended, in its description and in its metadata (`options`,
-  `recommended`, as orchestra's), so tutti can tell which one the worker recommends. A question that
+  `recommended`), so tutti can tell which one the worker recommends. A question that
   asks you to do or give something rather than choose (a key, a step by hand, something under your
   own account), or to say yes to something done in your name, is marked `maintainer_only`: tutti
   never answers it for you.
@@ -399,8 +399,8 @@ off. See [Quitting and the next run](running.md#quitting-and-the-next-run).
 ## Tools left out
 
 Claude Code describes each tool it offers in every request a worker makes. Workers never call
-Artifact, ListAgents, ReportFindings, ScheduleWakeup, SendFeedback, Workflow or Skill (none of
-orchestra's 484 worker sessions did), and their descriptions, with the listing of your skills that
+Artifact, ListAgents, ReportFindings, ScheduleWakeup, SendFeedback, Workflow or Skill (none did in
+484 worker sessions looked at), and their descriptions, with the listing of your skills that
 comes with Skill, came to about 28,000 tokens a call: a worker's first call opened with about 11,900
 tokens rather than 39,200 without them. So every worker's session, resumed ones too, is started with
 them denied (`disallowedTools`); a denied tool isn't described to the model. The login probe's is

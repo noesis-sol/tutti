@@ -433,7 +433,7 @@ tutti's own `scripts/test.ts` sizes its `bun test --parallel` processes by `TUTT
 ## The requires list
 
 What the project needs of the machine (a tool, a service running, a permission) is its requires list,
-`"requires"` in `.tutti/settings.json`, as orchestra's is. Each entry has a `name` (letters, digits and
+`"requires"` in `.tutti/settings.json`. Each entry has a `name` (letters, digits and
 `. _ + -`), a `check` (a shell command, run in the main checkout, that exits 0 when it is met, such as
 `command -v jq`), and either an `install` (a command that meets it, such as `brew install jq`) or a
 `manual` step for a person (`start Docker Desktop`); `platforms`, `darwin` or `linux`, limits it to
