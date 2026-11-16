@@ -184,7 +184,7 @@ describe("the critic organ", () => {
         finding({ title: "throw a tagged error in parser", evidence: "src/b.ts:9" }),
         finding({ detail: "two\nlines" }),
       ]),
-    )
+    ).findings
     expect(read.map((f) => f.severity)).toEqual(["severe", "medium", "low"])
     expect(read.map((f) => f.title)).toEqual([
       "A secret is committed",
@@ -208,7 +208,7 @@ describe("the critic organ", () => {
   test("any answer reads as at most 8 findings, kept as tickets can take them", () => {
     fc.assert(
       fc.property(fc.array(anyFinding, { maxLength: 20 }), fc.array(fc.string()), (all, list) => {
-        const read = findingsOf({ checklist: list, findings: all })
+        const read = findingsOf({ checklist: list, findings: all }).findings
         expect(read.length).toBeLessThanOrEqual(findingsRead)
         const ranks = read.map((f) => severities.indexOf(f.severity))
         expect(ranks).toEqual([...ranks].sort((a, b) => a - b))
@@ -419,6 +419,17 @@ describe("reviews in the run", () => {
       "doubtful",
       "ungrounded",
       "ungrounded",
+    ])
+  })
+
+  test("a finding naming no path:line is dropped with a line in the log", async () => {
+    const { ran, filed } = await reviewed(
+      answer([finding({ title: "Handle the empty input", evidence: "the parser" })]),
+    )
+    expect(filed).toEqual([])
+    expectLog(ran, [
+      /^ {2}review t-1: dropped a finding naming no path:line: Handle the empty input$/,
+      /^ {2}review t-1: 0 findings$/,
     ])
   })
 

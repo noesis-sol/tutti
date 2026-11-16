@@ -8,9 +8,9 @@
 // its ID outside the tags at the end, as Claude reads long inputs best with the request last.
 //
 // Its answer is text a model wrote, so tutti reads it warily (findingsOf): a title is one line, cut
-// to a ticket title's length; a finding without a path:line tutti can read, or with an empty title,
-// is dropped; two findings alike are one. When it is asked, and what becomes of its findings, is
-// run/critic.ts's.
+// to a ticket title's length; a finding without a path:line tutti can read in its evidence's start
+// (the log says which), or with an empty title, is dropped; two findings alike are one. When it is
+// asked, and what becomes of its findings, is run/critic.ts's.
 import { Effect, Schema } from "effect"
 import type { TicketId } from "../services/Beads.ts"
 import { oneLine, titleOf } from "../text/oneLine.ts"
@@ -116,20 +116,30 @@ export const findingsRead = 8
 /** The most of a finding's criterion or detail tutti keeps. */
 export const textCharacters = 1_000
 
-// A path:line: a path of no spaces with a dot or slash in it, a colon, a line number, maybe a range.
-const located = /([^\s:`'"()[\]<>,]*[./][^\s:`'"()[\]<>,]*):(\d+)(?:[-–]\d+)?/
+/** The most of a finding's evidence tutti reads for its location. */
+export const evidenceCharacters = 2_000
 
-/** The path and line `evidence` names first, as `src/a.ts:12`; undefined when it names none. */
+// A path:line: a run of no spaces, colons, quotes, brackets or commas that starts after one of them
+// or at the start, a colon, a line number, maybe a range. A run starts only there, and has nothing
+// to choose between in it, so the scan is linear in the evidence, however long the run.
+const located = /(?<![^\s:`'"()[\]<>,])([^\s:`'"()[\]<>,]+):(\d+)(?:[-–]\d+)?/g
+
+/**
+ * The first path and line `evidence` names, as `src/a.ts:12`: a path with a dot or slash in it,
+ * relative and inside the repository, so the `//localhost:3000` of a URL or an absolute path before
+ * it is passed over; undefined when it names none.
+ */
 export const locationOf = (
   evidence: string,
 ): { readonly file: string; readonly line: number } | undefined => {
-  const match = located.exec(evidence)
-  if (match === null) return undefined
-  const file = (match[1] ?? "").replace(/^\.\//, "")
-  const line = Number(match[2])
-  if (file === "" || file.startsWith("/") || file.split("/").includes("..")) return undefined
-  if (!Number.isSafeInteger(line) || line < 1) return undefined
-  return { file, line }
+  for (const match of evidence.matchAll(located)) {
+    const file = (match[1] ?? "").replace(/^\.\//, "")
+    const line = Number(match[2])
+    if (!/[./]/.test(file) || file.startsWith("/") || file.split("/").includes("..")) continue
+    if (!Number.isSafeInteger(line) || line < 1) continue
+    return { file, line }
+  }
+  return undefined
 }
 
 const words = (text: string): ReadonlySet<string> =>
@@ -156,19 +166,31 @@ export const alike = (one: string, other: string): boolean => {
 
 const rank = (severity: Severity): number => severities.indexOf(severity)
 
+/** The findings tutti reads of an answer, and the titles of those dropped for naming no place. */
+export interface Read {
+  readonly findings: ReadonlyArray<Finding>
+  /** The titles of the findings whose evidence names no path:line tutti can read. */
+  readonly unplaced: ReadonlyArray<string>
+}
+
 /**
  * The findings of `answer` tutti reads, the most severe first, at most `findingsRead`: each with a
- * title and a path:line, its text on one line, and none alike an earlier one (`alike`, or the same
- * criterion at the same place).
+ * title and a path:line in the first `evidenceCharacters` of its evidence, its text on one line,
+ * and none alike an earlier one (`alike`, or the same criterion at the same place).
  */
-export const findingsOf = (answer: CriticAnswer): ReadonlyArray<Finding> => {
+export const findingsOf = (answer: CriticAnswer): Read => {
   const kept: Array<Finding> = []
+  const unplaced: Array<string> = []
   const sorted = [...answer.findings].sort((a, b) => rank(a.severity) - rank(b.severity))
   for (const each of sorted) {
     if (kept.length >= findingsRead) break
-    const where = locationOf(sanitizeLine(each.evidence))
+    const where = locationOf(sanitizeLine(each.evidence.slice(0, evidenceCharacters)))
     const title = titleOf(each.title)
-    if (where === undefined || title === "") continue
+    if (title === "") continue
+    if (where === undefined) {
+      unplaced.push(title)
+      continue
+    }
     const finding: Finding = {
       title,
       severity: each.severity,
@@ -187,7 +209,7 @@ export const findingsOf = (answer: CriticAnswer): ReadonlyArray<Finding> => {
     )
     if (!twin) kept.push(finding)
   }
-  return kept
+  return { findings: kept, unplaced }
 }
 
 /** The priority of the ticket a finding is filed as: high P1, medium P2, low P3. */

@@ -13,8 +13,8 @@
 // A review gives the critic organ (organs/critic.ts) the ticket as bd show gives it, its scorecard,
 // the project's CLAUDE.md and AGENTS.md at the merged commit, the files the merge changed and their
 // diff. Each finding it reports is then judged:
-// - one of low confidence is dropped (doubtful), as is one whose path:line the merged tree hasn't
-//   (ungrounded);
+// - one whose evidence names no path:line is dropped, a line in the log with its title; one of low
+//   confidence is dropped (doubtful), as is one whose path:line the merged tree hasn't (ungrounded);
 // - one alike an open ticket, by its title or by the finding it was filed for, is dropped
 //   (duplicate);
 // - a severe one (a broken build, a security issue) is asked of the maintainer as a question, a
@@ -206,6 +206,10 @@ export const reviewLine = (id: TicketId, findings: ReadonlyArray<ReviewFinding>)
   return detail`review ${id}: ${parts.join("; ")}`
 }
 
+/** `  review <id>: dropped a finding naming no path:line: <title>`. */
+export const unplacedLine = (id: TicketId, title: string): Line =>
+  detail`review ${id}: dropped a finding naming no path:line: ${title}`
+
 /** `  CRITIC_FAILED for <id>: <why>`. */
 export const criticFailedLine = (id: TicketId, why: string): Line =>
   `  ${Tag.criticFailed} for ${line`${id}: ${why}`}` as Line
@@ -261,7 +265,7 @@ export const make = (options: {
     const beads = yield* Beads
     const git = yield* Git
     const events = yield* EventStream
-    const { say, warn } = yield* sayer
+    const { say, warn, info } = yield* sayer
     const state = yield* Ref.make<State>({
       merges: 0,
       due: [],
@@ -455,7 +459,9 @@ export const make = (options: {
           yield* warn(criticFailedLine(due.ticket, failure(answer.failure)), due.ticket)
           return
         }
-        const judged = yield* judge(due, findingsOf(answer.success))
+        const read = findingsOf(answer.success)
+        for (const title of read.unplaced) yield* info(unplacedLine(due.ticket, title), due.ticket)
+        const judged = yield* judge(due, read.findings)
         yield* say({
           kind: "review",
           ticket: due.ticket,
