@@ -1,0 +1,19 @@
+# The code Scheduler.tla describes: <path>|<from>|<to>. With no <from>, the whole file; else the
+# part from the first line matching <from> to the line before the next one matching <to> (to the
+# end of the file with no <to>). check.sh --confirm records each as it is; SKILL.md's table says
+# which action of the model each one is.
+src/run/look.ts||
+src/run/runEnd.ts||
+src/run/wakes.ts||
+src/run/schedule/fill.ts||
+src/run/schedule/slots.ts||
+src/run/schedule/dispatch.ts|^export const mayStart|^export const carriedFootprint
+src/run/schedule/place.ts|^export const placeWaiting|
+src/run/holds.ts|^const notMerged|^const waitedOn
+src/run/holds.ts|^export const takesNew|^export const noMoreWork
+src/run/work.ts|^const mergedSinceCut|^const paused
+src/run/mergequeue.ts|^export const isSettled|^export const make
+src/run/mergequeue.ts|^    const offer: |^    const backInLine
+src/run/mergequeue.ts|^    const merged = |^    // A hand-back to the ticket
+src/run/run/watchers.ts|^    const queueSeen|^    const drains
+src/run/blockedWatch.ts|^    const timed|^    return \{ look \}
