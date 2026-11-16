@@ -1,7 +1,8 @@
 // The checks gate (§ 4.14 "The checks gate"): a spec run's setup writes runners that check nothing,
 // and the breakdown's environment ticket (the solo P0 ticket file_root files under the root epic)
 // gives them their suites. Every later merge of the tree relies on them, so once that ticket has
-// merged, and before the run starts or resumes any other ticket of the tree, the run checks them:
+// merged, or closed with no change, which leaves the runners as the setup wrote them, and before
+// the run starts or resumes any other ticket of the tree, the run checks them:
 //
 // 1. Still empty: a runner on the base that still checks nothing (init's runsNothing), or a check
 //    the settings turn off, holds the tree.
@@ -217,9 +218,9 @@ export interface ChecksGateOptions {
 /** A spec run's checks gate. */
 export interface ChecksGate {
   /**
-   * Runs the gate where it is due: the run's environment ticket merged, and the runners on the base
-   * not passed yet. Called before each look's starts and resumes, and before each start: it holds
-   * them until it is over, and a hold stops the run.
+   * Runs the gate where it is due: the run's environment ticket merged or closed with no change,
+   * and the runners on the base not passed yet. Called before each look's starts and resumes, and
+   * before each start: it holds them until it is over, and a hold stops the run.
    */
   readonly before: Effect.Effect<void>
   /** What the run's summary says of it; null where it didn't run. */
@@ -230,6 +231,9 @@ export interface ChecksGate {
 export const noGate: ChecksGate = { before: Effect.void, said: Effect.succeed(null) }
 
 type GateEnv = AppConfig | AgentHost | Beads | Checks | Git | Worktrees | Ledger | Log | EventStream
+
+/** How the environment ticket finished, as the gate says it. */
+type Finish = "merged" | "closed with no change"
 
 /** How a check of the gate's went. */
 type CheckRan =
@@ -292,12 +296,19 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
       return found
     })
 
-    /** Whether the environment ticket has merged: in this run, or closed and merged before it. */
-    const merged = (issue: Issue) =>
-      Effect.map(ledger.current, (state) => {
+    /**
+     * How the environment ticket finished, null while it hasn't: merged, in this run or closed and
+     * merged before it, or closed in this run with no change of its own, which leaves the runners
+     * as the setup wrote them and gates the tree as a merge does.
+     */
+    const finished = (issue: Issue) =>
+      Effect.map(ledger.current, (state): Finish | null => {
         const phase = state.tickets.get(issue.id)?.phase
-        if (phase !== undefined) return phase._tag === "Done" && phase.outcome._tag === "Merged"
-        return issue.status === "closed" && !issue.labels.includes(unmergedLabel)
+        if (phase !== undefined) {
+          if (phase._tag !== "Done") return null
+          return phase.outcome._tag === "Merged" ? "merged" : "closed with no change"
+        }
+        return issue.status === "closed" && !issue.labels.includes(unmergedLabel) ? "merged" : null
       })
 
     /** The runners on the base at `at`, as `checks` name them. */
@@ -319,7 +330,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
           }),
       )
 
-    const gate = (env: Issue) =>
+    const gate = (env: Issue, how: Finish) =>
       Effect.gen(function* () {
         const began = yield* Clock.currentTimeMillis
         const elapsed = Effect.map(Clock.currentTimeMillis, (now) => now - began)
@@ -364,7 +375,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             const waitingOn = stillOpen[0]
             const filed =
               waitingOn === undefined
-                ? yield* fileQuestion(env, why, outputSaid, fingerprint(runners), runners)
+                ? yield* fileQuestion(env, how, why, outputSaid, fingerprint(runners), runners)
                 : yield* noteQuestion(waitingOn, why, outputSaid, fingerprint(runners))
             const waits =
               filed.question === undefined
@@ -408,7 +419,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             const runners = yield* readRunners(at, checksNow)
             const print = fingerprint(runners)
             yield* logs.write(
-              gateLine`${env.id}, the spec's environment ticket, merged: checking the checks on ${base} at ${shortHash(at)} before the rest of ${root} starts`,
+              gateLine`${env.id}, the spec's environment ticket, ${how}: checking the checks on ${base} at ${shortHash(at)} before the rest of ${root} starts`,
             )
 
             // Answered already for these runners, or asked and not answered yet.
@@ -756,6 +767,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
      */
     const fileQuestion = (
       env: Issue,
+      how: Finish,
       why: Line,
       outputSaid: string,
       print: string,
@@ -784,7 +796,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
           },
         ]
         const description =
-          `The spec's environment ticket ${env.id} merged, and tutti's checks gate held the rest of ` +
+          `The spec's environment ticket ${env.id} ${how}, and tutti's checks gate held the rest of ` +
           `the tree (${root}): ${why}${outputSaid}. Every merge of the tree is checked with ` +
           `scripts/check-fast.sh, and the end of the run with scripts/check-full.sh. They run:\n\n` +
           `${runs}\n\nOptions:\n` +
@@ -824,7 +836,8 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
             yield* Ref.set(settled, true)
             return
           }
-          if (!(yield* merged(env))) return
+          const how = yield* finished(env)
+          if (how === null) return
           // Not while a stop or the usage limit holds the run, or it winds down: the next run does.
           if (!(yield* options.takesWork ?? Effect.succeed(true))) return
           yield* Ref.set(settled, true)
@@ -843,7 +856,7 @@ export const make = (options: ChecksGateOptions): Effect.Effect<ChecksGate, neve
               return
             }
           }
-          yield* gate(env)
+          yield* gate(env, how)
         }),
       )
       .pipe(Effect.provideContext(context))

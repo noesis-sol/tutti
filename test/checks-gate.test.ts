@@ -1,8 +1,8 @@
 // A spec run's checks gate without a terminal (§ 4.14, src/run/checksGate.ts): once the spec's
-// environment ticket merges, before any other ticket of the tree starts, a runner still checking
-// nothing holds the tree with a question for the maintainer, check-fast runs twice more and
-// check-full once on the base's head, a failure holds the tree, and what each runner runs is said;
-// it runs once per spec, and never in a run that isn't a spec run.
+// environment ticket merges, or closes with no change, before any other ticket of the tree starts,
+// a runner still checking nothing holds the tree with a question for the maintainer, check-fast
+// runs twice more and check-full once on the base's head, a failure holds the tree, and what each
+// runner runs is said; it runs once per spec, and never in a run that isn't a spec run.
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -32,7 +32,7 @@ import { HumanLabel, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { CheckFailed, CheckOutput } from "../src/services/Checks.ts"
 import type { EventRecord } from "../src/services/events.ts"
 import { Git } from "../src/services/Git.ts"
-import { claimsAndCloses } from "../src/testing/AgentHost.ts"
+import { claimsAndCloses, defers, type SessionScript } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Seed } from "../src/testing/Beads.ts"
 import type { CheckRun, Script as ChecksScript } from "../src/testing/Checks.ts"
@@ -96,13 +96,23 @@ const commits = (world: World, root: string, id: string, files: Record<string, s
     close: Effect.asVoid(Effect.orDie(world.beads.close(id as TicketId, "done"))),
   })
 
+/** Claims and closes its ticket with no commit, as a worker that finds nothing to change does. */
+const closesUnchanged = (world: World, id: string) =>
+  claimsAndCloses(id as TicketId, {
+    claim: Effect.asVoid(Effect.orDie(world.beads.update(id as TicketId, { claim: true }))),
+    commit: Effect.void,
+    close: Effect.asVoid(Effect.orDie(world.beads.close(id as TicketId, "done"))),
+  })
+
 /**
  * A whole spec run, plain: main holding `onMain` first, the environment ticket's worker committing
- * `environmentWrites`, s-1.2's worker a file of its own.
+ * `environmentWrites` (closing it with no commit where null, or `environmentScript`'s instead),
+ * s-1.2's worker a file of its own.
  */
 const specRun = (o: {
   readonly onMain?: Record<string, string>
-  readonly environmentWrites?: Record<string, string>
+  readonly environmentWrites?: Record<string, string> | null
+  readonly environmentScript?: (world: World) => SessionScript
   readonly checks?: ChecksScript
   readonly backlog?: ReadonlyArray<Seed>
   readonly specRun?: boolean
@@ -119,7 +129,13 @@ const specRun = (o: {
       backlog: o.backlog ?? tree(),
       ...(o.checks === undefined ? {} : { checks: o.checks }),
       scripts: (world) => ({
-        "s-1.1": [commits(world, root, "s-1.1", o.environmentWrites ?? realRunners)],
+        "s-1.1": [
+          o.environmentScript !== undefined
+            ? o.environmentScript(world)
+            : o.environmentWrites === null
+              ? closesUnchanged(world, "s-1.1")
+              : commits(world, root, "s-1.1", o.environmentWrites ?? realRunners),
+        ],
         "s-1.2": [commits(world, root, "s-1.2", { "shop.ts": "export {}\n" })],
         ...(o.updateWrites === undefined
           ? {}
@@ -365,6 +381,64 @@ describe("the checks gate, once the environment ticket merges", () => {
 
   test("never runs in a run that isn't a spec run", async () => {
     const ran = await specRun({ onMain: emptyRunners, specRun: false })
+    expect(gateRecords(ran)).toEqual([])
+    expect(ran.log.some((each) => each.startsWith("CHECKS_GATE"))).toBe(false)
+  })
+})
+
+describe("the checks gate, once the environment ticket closes with no change", () => {
+  test("runners still checking nothing hold the tree: CHECKS_HELD, and nothing else starts", async () => {
+    const ran = await specRun({ onMain: emptyRunners, environmentWrites: null })
+    expectExitCode(ran, 2)
+    expect(started(ran)).toEqual(["s-1.1"])
+    expect(ran.events).toContainEqual(
+      expect.objectContaining({ kind: "closed", ticket: "s-1.1", detail: "no change to merge" }),
+    )
+    const question = ran.issues.find((each) => each.title === gateQuestionTitle)
+    if (question === undefined) throw new Error("no question was filed")
+    expect(question.description).toStartWith(
+      "The spec's environment ticket s-1.1 closed with no change, and tutti's checks gate held",
+    )
+    expect(issue(ran, "s-1.2")?.dependencies.map((link) => link.id)).toContain(question.id)
+    expectLog(ran, [
+      /^CHECKS_GATE: s-1\.1, the spec's environment ticket, closed with no change: checking the checks on main at \w+ before the rest of s-1 starts$/,
+      /^CHECKS_GATE: held on main at \w+: scripts\/check-fast\.sh checks nothing, and scripts\/check-full\.sh checks nothing; /,
+      /^CHECKS_HELD: the checks gate held the spec's tree: /,
+    ])
+    expect(gateRecords(ran)).toMatchObject([
+      { detail: "empty", ticket: "s-1.1", ran: [], question: question.id },
+    ])
+    expect(issue(ran, "s-1")?.metadata[gateKey]).toBeUndefined()
+  })
+
+  test("runners that check something pass it, and the tree goes on", async () => {
+    const ran = await specRun({ onMain: realRunners, environmentWrites: null })
+    expectExitCode(ran, 0)
+    expect(started(ran)).toEqual(["s-1.1", "s-1.2"])
+    // The gate's two check-fast runs and check-full, s-1.2's merge check, and the end's full check.
+    expect(kinds(ran.checkRuns)).toEqual(["fast", "fast", "full", "fast", "full"])
+    expect(gateRecords(ran)).toMatchObject([{ detail: "passed", ticket: "s-1.1" }])
+    expectLog(ran, [
+      /^CHECKS_GATE: s-1\.1, the spec's environment ticket, closed with no change: checking/,
+      /^CHECKS_GATE: passed on main at \w+ in \w+: /,
+      /s-1\.2 dispatching/,
+    ])
+    expect(issue(ran, "s-1")?.metadata[gateKey]).toBeString()
+  })
+
+  test("an environment ticket its worker leaves open gates nothing", async () => {
+    const ran = await specRun({
+      onMain: emptyRunners,
+      environmentScript: (world) =>
+        defers("s-1.1" as TicketId, {
+          claim: Effect.asVoid(
+            Effect.orDie(world.beads.update("s-1.1" as TicketId, { claim: true })),
+          ),
+          defer: Effect.asVoid(Effect.orDie(world.beads.defer("s-1.1" as TicketId))),
+        }),
+    })
+    expect(started(ran)).toEqual(["s-1.1"])
+    expect(ran.checkRuns).toEqual([])
     expect(gateRecords(ran)).toEqual([])
     expect(ran.log.some((each) => each.startsWith("CHECKS_GATE"))).toBe(false)
   })
