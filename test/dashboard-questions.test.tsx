@@ -15,6 +15,7 @@ import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
+import { settle } from "../src/ui/attentionKeys.ts"
 import { dashboardHint, questionsWaiting } from "../src/ui/Dashboard.tsx"
 import { noneOpenText, readingText } from "../src/ui/QuestionsBox.tsx"
 import type { OpenQuestion } from "../src/ui/questions.ts"
@@ -99,10 +100,12 @@ const scene = async (
     readonly news: Settable<ReadonlyArray<QuestionNews>>
     readonly commands: Commands
     readonly rendered: Rendered
+    readonly pass: (ms: number) => void
   }) => Promise<void>,
 ) => {
   const news = external<ReadonlyArray<QuestionNews>>([])
   const commands = Effect.runSync(makeCommands)
+  let time = began + 67_000
   await withRender(
     <Root
       value={{
@@ -111,12 +114,20 @@ const scene = async (
         commands,
         appearance: external<Appearance>("dark"),
         themeOf,
-        now: () => began + 67_000,
+        now: () => time,
         questions: news,
       }}
     />,
     { width: 100, height: 30 },
-    (rendered) => body({ news, commands, rendered }),
+    (rendered) =>
+      body({
+        news,
+        commands,
+        rendered,
+        pass: (ms) => {
+          time += ms
+        },
+      }),
   )
 }
 
@@ -134,7 +145,7 @@ const open = async (rendered: Rendered, commands: Commands): Promise<string> => 
 
 describe("the dashboard's questions box", () => {
   test("Shift+A reads the questions, puts each, and answers with the recommended option", async () => {
-    await scene(async ({ news, commands, rendered }) => {
+    await scene(async ({ news, commands, rendered, pass }) => {
       const uuid = await open(rendered, commands)
       expect(uuid).not.toBe("")
       await rendered.input(() => news.set([QuestionNews.Read({ uuid, questions })]))
@@ -153,7 +164,8 @@ describe("the dashboard's questions box", () => {
       const answered = answers[0]
       const answerUuid = answered?._tag === "AnswerQuestion" ? answered.uuid : ""
 
-      // q-2 has no options: Other first, typed in, then Enter.
+      // q-2 has no options: Other first, typed in, then Enter, once the box has shown it a moment.
+      pass(settle)
       await rendered.input(async (setup) => {
         await setup.mockInput.typeText("teal")
         setup.mockInput.pressEnter()

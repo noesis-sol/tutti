@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The docs and the tutti skill describe tutti on its own terms, no longer citing orchestra as its model; they speak of orchestra only for `tutti init`'s import and for a tutti run beside an orchestra run (tutti-h75j.9). `docs/parity.md`, the parity audit, is gone, with `test/parity-doc.test.ts`, which checked it. The skill's worktree paths are `~/.tutti/worktrees/<repo>/`, as they have been since tutti-omox.
+- The dashboard's questions box takes one answer per question (§ 7.2; `src/ui/QuestionsBox.tsx`; tutti-kr6y): two Enters in one read both answered the question shown, two AnswerQuestion commands going out for it and the box going on by two, so the next question was never put; and an Enter just after one answered the next question with its first option before it was seen. A key now answers only the question it was pressed at, and the box takes no answer at the question it went on to for 500 ms, as an attention card's buttons don't. `test/questions-box-one-answer.test.tsx` covers it.
 
 ## [0.8.9] - 2026-11-15
 

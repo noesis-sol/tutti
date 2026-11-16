@@ -25,6 +25,12 @@
 // panel beside the tickets table, Enter on its Asked row, or the worker view's Answer, the box
 // starts at it in its first frame with the questions, and one no longer open closes it with the
 // same toast, rather than put another question as if it were the one asked for (tutti-34k9.5).
+//
+// The box takes one answer per question (tutti-kr6y): a key that answers names the question it was
+// pressed at, so a second Enter in the same read neither answers that question again nor the next,
+// and the next question takes no answer for `settle` ms after the box goes on to it, as an attention
+// card's buttons don't (attentionKeys.ts), so an Enter meant for the one before can't answer it
+// unseen.
 import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
@@ -33,6 +39,7 @@ import { UiCommand } from "../run/commands.ts"
 import type { QuestionNews } from "../run/questionNews.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
+import { settle } from "./attentionKeys.ts"
 import { type Command, useCommands } from "./keyCommands.ts"
 import { Box, type NeedsAt, useInput } from "./keys.ts"
 import { seg } from "./line.tsx"
@@ -40,7 +47,8 @@ import { Modal } from "./Modal.tsx"
 import { type Closing, OpenQuestionForm } from "./OpenQuestion.tsx"
 import type { OpenQuestion, Reply } from "./questions.ts"
 import type { ToastStore } from "./Toasts.tsx"
-import { useCommand, useQuestionNews, useTheme } from "./useRunView.ts"
+import { useKeyState } from "./useKeyState.ts"
+import { useClock, useCommand, useQuestionNews, useTheme } from "./useRunView.ts"
 
 /** On the dashboard, Esc closes the box, the questions not yet answered left open. */
 export const dashboardClosing: Closing = {
@@ -258,13 +266,17 @@ export const QuestionsBox = ({
 }) => {
   const theme = useTheme()
   const command = useCommand()
+  const clock = useClock()
   const { box, toasts, talks } = useInput()
   const { width, height } = useTerminalDimensions()
   // Opened at a question, a read with none open has no toast of its own: the box's says that
   // question is already answered.
   const [uuid] = useState(() => (first === undefined ? crypto.randomUUID() : quietUuid()))
-  // How many questions were answered or left open in the box: its place is `start` and these.
-  const [advanced, setAdvanced] = useState(0)
+  // How many questions were answered or left open in the box: its place is `start` and these. A key
+  // reads it as it is now, so a second Enter in the read that answered a question sees it went on.
+  const [advanced, setAdvanced, advancedNow] = useKeyState(() => 0)
+  // When the box went on to the question it is at: none for the first, which a read put.
+  const advancedAt = useRef<number | null>(null)
   useEffect(() => command(UiCommand.ReadQuestions({ uuid })), [command, uuid])
   const found = useQuestionNews().find(
     (news) => news.uuid === uuid && (news._tag === "Read" || news._tag === "NotRead"),
@@ -305,7 +317,13 @@ export const QuestionsBox = ({
   }
   const question = questions?.[at]
   if (questions === undefined || question === undefined) return null
+  // Whether a key at the question drawn may answer it: the box is still at it, and has been for
+  // `settle` ms where it went on to it.
+  const settled = () =>
+    advancedNow() === advanced &&
+    (advancedAt.current === null || clock() - advancedAt.current >= settle)
   const reply = (given: Reply) => {
+    if (!settled()) return
     if (given._tag === "Talk") {
       // The talk takes the screen; TalkReturn opens the box, or the list, again once it is over.
       const uuid = crypto.randomUUID()
@@ -329,6 +347,7 @@ export const QuestionsBox = ({
       const answered = given._tag === "Answer"
       return box.set(answered ? answeredIn(back, uuid, question.id) : nextIn(back))
     }
+    advancedAt.current = clock()
     setAdvanced((now) => now + 1)
   }
   return (
