@@ -13,7 +13,9 @@ import {
   Result,
   Schema,
 } from "effect"
+import type { NonEmptyReadonlyArray } from "effect/Array"
 import type { ChildProcessSpawner } from "effect/process"
+import { linearCredentials } from "../core/env.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { ellipsis } from "../text/marks.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
@@ -26,6 +28,17 @@ import {
   showCommand,
   TimeLimit,
 } from "./exec.ts"
+import {
+  judgeStatus,
+  judgeSync,
+  type LinearError,
+  type LinearKey,
+  LinearRefused,
+  type LinearStatus,
+  type LinearSync,
+  LinearUnreadable,
+  linearKeyOf,
+} from "./linearSync.ts"
 
 /** bd's built-in statuses; a project may configure more, so any other string can come back too. */
 export type Status =
@@ -102,6 +115,10 @@ export interface Issue {
   readonly deferUntil?: string
   /** What was said as the ticket closed. */
   readonly closeReason: string
+  /** The issue in another tracker the ticket is linked to, as bd's external_ref: a Linear issue's URL. */
+  readonly externalRef?: string
+  /** The Linear issue's key (NOE-12), when external_ref is a Linear issue's URL. */
+  readonly linearKey?: LinearKey
 }
 
 /** The metadata keys tutti reads (§ 11). */
@@ -173,6 +190,7 @@ const issueFields = {
   created_at: Text,
   defer_until: Text,
   close_reason: Text,
+  external_ref: Text,
   priority: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   labels: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
   metadata: Schema.optionalKey(Schema.Unknown),
@@ -317,7 +335,14 @@ const toIssue = (bd: BdFields, dependencies: ReadonlyArray<Dependency>): Issue =
     createdAt: text(bd.created_at),
     ...(bd.defer_until ? { deferUntil: bd.defer_until } : {}),
     closeReason: text(bd.close_reason),
+    ...(bd.external_ref ? { externalRef: bd.external_ref } : {}),
+    ...linearKeyOrNone(bd.external_ref),
   }
+}
+
+const linearKeyOrNone = (externalRef: string | null | undefined) => {
+  const key = externalRef ? linearKeyOf(externalRef) : undefined
+  return key === undefined ? {} : { linearKey: key }
 }
 
 const fromBd = (bd: Schema.Schema.Type<typeof BdIssue>): Issue => ({
@@ -598,6 +623,27 @@ export interface Checked {
 
 export type Direction = "down" | "up"
 
+/**
+ * How long a bd linear call may take, Linear's credentials with it: a pull of issues by key, a push
+ * of tickets, bd linear status. Spike 09 measured about 1 s a pull of one issue and 2 s a push of
+ * one ticket; a hung call holds bd's sync lock, which every other sync waits on, until it ends.
+ */
+export const LinearTimeLimit = {
+  pull: Duration.seconds(60),
+  push: Duration.seconds(30),
+  status: Duration.seconds(30),
+} as const
+
+/** What a sync given nothing did: nothing, as no bd is run for it. */
+export const noLinearSync: LinearSync = {
+  created: 0,
+  updated: 0,
+  skipped: 0,
+  failed: 0,
+  items: [],
+  warnings: [],
+}
+
 export class Beads extends Context.Service<
   Beads,
   {
@@ -646,16 +692,38 @@ export class Beads extends Context.Service<
     configuration(): Effect.Effect<Readonly<Record<string, string>>, BeadsError>
     /** Whether the installed bd has bd linear, Beads' Linear sync: bd linear --help exits 0. */
     hasLinear(): Effect.Effect<boolean, BeadsError>
+    /**
+     * bd linear sync --pull --relations --issues: pulls these Linear issues and no other, with their
+     * relations. One no ticket links becomes a ticket; a linked ticket is overwritten with Linear's
+     * version, held or not (spike 09), so a caller names only those it may change. There is no pull
+     * without keys: a pull of the whole team would overwrite every linked ticket (tutti-94ru).
+     */
+    linearPull(keys: NonEmptyReadonlyArray<LinearKey>): Effect.Effect<LinearSync, LinearError>
+    /**
+     * bd linear sync --push --prefer-local --issues: pushes these tickets and no other, the local
+     * version winning; one with no external_ref is created in Linear and linked. There is no push
+     * without IDs: bd's would create an issue for every ticket.
+     */
+    linearPush(ids: NonEmptyReadonlyArray<TicketId>): Effect.Effect<LinearSync, LinearError>
+    /** bd linear status: whether bd is configured for a team, and when it last synced. */
+    linearStatus(): Effect.Effect<LinearStatus, LinearError>
   }
 >()("tutti/services/Beads") {
   /**
-   * bd in the repository at cwd. `command`, `timeLimits` and `maxOutputBytes` (exec's cap on the
-   * output kept) are there for tests.
+   * bd in the repository at cwd. `command`, `timeLimits`, `linearTimeLimits` and `maxOutputBytes`
+   * (exec's cap on the output kept) are there for tests, and `environment`, which the bd linear
+   * calls take Linear's credentials from: tutti's own by default.
    */
   static readonly layer = (options: {
     readonly cwd: string
     readonly command?: string
     readonly timeLimits?: { readonly read: Duration.Input; readonly write: Duration.Input }
+    readonly linearTimeLimits?: {
+      readonly pull: Duration.Input
+      readonly push: Duration.Input
+      readonly status: Duration.Input
+    }
+    readonly environment?: Readonly<Record<string, string | undefined>>
     readonly maxOutputBytes?: number
   }) =>
     Layer.effect(
@@ -666,9 +734,14 @@ export class Beads extends Context.Service<
         >()
         const bin = options.command ?? "bd"
         const limits = options.timeLimits ?? TimeLimit
+        const linearLimits = options.linearTimeLimits ?? LinearTimeLimit
         const maxOutputBytes = options.maxOutputBytes ?? defaultMaxOutputBytes
 
-        const bd = (args: ReadonlyArray<string>, timeLimit: Duration.Input) => {
+        const bd = (
+          args: ReadonlyArray<string>,
+          timeLimit: Duration.Input,
+          env: Readonly<Record<string, string>> = {},
+        ) => {
           const command: Command = {
             command: bin,
             args,
@@ -676,7 +749,7 @@ export class Beads extends Context.Service<
             cwd: options.cwd,
             maxOutputBytes,
             // Pins the --json shape. Only bd gets it.
-            env: { BD_JSON_ENVELOPE: "0", NO_COLOR: "1" },
+            env: { BD_JSON_ENVELOPE: "0", NO_COLOR: "1", ...env },
           }
           const shown = showCommand({ command: "bd", args })
           return exec(command).pipe(
@@ -847,6 +920,39 @@ export class Beads extends Context.Service<
           })
         }
 
+        // A bd linear call: the only bd that gets Linear's credentials (src/core/env.ts). bd not
+        // starting refuses it as bd would; output past exec's cap can't be read.
+        const linear = <A>(
+          args: ReadonlyArray<string>,
+          timeLimit: Duration.Input,
+          judge: (
+            command: string,
+            output: Output,
+          ) => Effect.Effect<A, LinearRefused | LinearUnreadable>,
+        ): Effect.Effect<A, LinearError> =>
+          bd(args, timeLimit, linearCredentials(options.environment)).pipe(
+            Effect.catchTag("BeadsFailed", (error) =>
+              Effect.fail(
+                new LinearRefused({
+                  command: error.command,
+                  exitCode: error.exitCode,
+                  reason: error.stderr,
+                }),
+              ),
+            ),
+            Effect.flatMap(({ shown, output }) =>
+              output.truncated.stdout
+                ? Effect.fail(
+                    new LinearUnreadable({
+                      command: shown,
+                      reason: outputCut(maxOutputBytes, "bd's"),
+                      output: "",
+                    }),
+                  )
+                : judge(shown, output),
+            ),
+          )
+
         return Beads.of({
           ready: Effect.fn("Beads.ready")((ready = {}) =>
             read(
@@ -982,6 +1088,43 @@ export class Beads extends Context.Service<
               bd(["linear", "--help"], limits.read),
               ({ output }) => output.exitCode === 0,
             ),
+          ),
+          linearPull: Effect.fn("Beads.linearPull")((keys) =>
+            keys.length === 0
+              ? Effect.succeed(noLinearSync)
+              : dropping(
+                  linear(
+                    [
+                      "linear",
+                      "sync",
+                      "--pull",
+                      "--relations",
+                      `--issues=${keys.join(",")}`,
+                      "--json",
+                    ],
+                    linearLimits.pull,
+                    (command, output) => judgeSync(command, keys, output),
+                  ),
+                ),
+          ),
+          linearPush: Effect.fn("Beads.linearPush")((ids) =>
+            ids.length === 0
+              ? Effect.succeed(noLinearSync)
+              : linear(
+                  [
+                    "linear",
+                    "sync",
+                    "--push",
+                    "--prefer-local",
+                    `--issues=${ids.join(",")}`,
+                    "--json",
+                  ],
+                  linearLimits.push,
+                  (command, output) => judgeSync(command, ids, output),
+                ),
+          ),
+          linearStatus: Effect.fn("Beads.linearStatus")(() =>
+            linear(["linear", "status", "--json"], linearLimits.status, judgeStatus),
           ),
         })
       }),

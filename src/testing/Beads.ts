@@ -8,7 +8,7 @@
 // next call of any bd command fail or time out, as the test Git layer's fail does, which is how
 // scenarios reach bd failing part-way through a run. Its answers are bd's --json output, decoded
 // and judged as the live layer does, so a fault's output reaches the same judgement.
-import { Clock, Context, Effect, Layer, Ref } from "effect"
+import { Clock, Context, type Duration, Effect, Layer, Ref } from "effect"
 import {
   type BdOutput,
   Beads,
@@ -28,8 +28,10 @@ import {
   issueFor,
   judgeRead,
   judgeWrite,
+  LinearTimeLimit,
   type ListOptions,
   type NewIssue,
+  noLinearSync,
   noSuchIssueError,
   type ReadyOptions,
   type Status,
@@ -37,6 +39,14 @@ import {
   type Update,
 } from "../services/Beads.ts"
 import { TimeLimit } from "../services/exec.ts"
+import {
+  judgeStatus,
+  judgeSync,
+  type LinearError,
+  type LinearRefused,
+  type LinearUnreadable,
+  linearKeyOf,
+} from "../services/linearSync.ts"
 
 /** An issue to start the backlog with; what it leaves out takes bd's defaults. */
 export interface Seed {
@@ -59,7 +69,70 @@ export interface Seed {
   readonly metadata?: Readonly<Record<string, unknown>>
   readonly deferUntil?: string
   readonly closeReason?: string
+  /** The issue in another tracker it is linked to: a Linear issue's URL. */
+  readonly externalRef?: string
 }
+
+/** A Linear state's type, which bd maps to a status and back. */
+export type LinearStateType = "backlog" | "unstarted" | "started" | "completed" | "canceled"
+
+/** An issue of the test layer's Linear team. */
+export interface LinearIssue {
+  /** Its key, as NOE-12. */
+  readonly key: string
+  readonly title: string
+  readonly description: string
+  readonly state: LinearStateType
+  /** As a ticket's, 0 to 4. */
+  readonly priority: number
+}
+
+/** An issue to start the Linear team with, or to put there as the maintainer would. */
+export interface LinearSeed {
+  readonly key: string
+  readonly title?: string
+  readonly description?: string
+  /** unstarted (Todo) by default. */
+  readonly state?: LinearStateType
+  readonly priority?: number
+}
+
+/** The Linear team the test layer's bd linear syncs with. */
+export interface TestLinear {
+  /** Its key; NOE by default. */
+  readonly team?: string
+  readonly issues?: ReadonlyArray<LinearSeed>
+  /** Whether bd is configured for it, as bd linear status says; true by default. */
+  readonly configured?: boolean
+}
+
+/** The URL bd writes as the external_ref of a ticket linked to the Linear issue `key`. */
+export const linearUrl = (key: string): string => `https://linear.app/test/issue/${key}`
+
+/** The status bd gives a ticket for a Linear state, by the state map tutti's setup writes. */
+const statusOf: Record<LinearStateType, Status> = {
+  backlog: "deferred",
+  unstarted: "open",
+  started: "in_progress",
+  completed: "closed",
+  canceled: "closed",
+}
+
+/** The Linear state a push gives a ticket's issue, by the outbound map; others leave it. */
+const stateOf: Readonly<Record<string, LinearStateType>> = {
+  open: "unstarted",
+  in_progress: "started",
+  deferred: "backlog",
+  closed: "completed",
+}
+
+const linearIssue = (seed: LinearSeed): LinearIssue => ({
+  key: seed.key,
+  title: seed.title ?? seed.key,
+  description: seed.description ?? "",
+  state: seed.state ?? "unstarted",
+  priority: seed.priority ?? 2,
+})
 
 /**
  * What bd gives the next call of a command instead of what it would, judged as the live layer
@@ -108,6 +181,7 @@ interface Stored {
   readonly createdAt: string
   readonly deferUntil?: string
   readonly closeReason: string
+  readonly externalRef?: string
   /** The comments bd human respond added, oldest first. */
   readonly comments?: ReadonlyArray<string>
   /** Creation order, which breaks ties in bd's sorts. */
@@ -137,6 +211,10 @@ export class Backlog extends Context.Service<
      * `human list`, …) give the fault's output, which fails it unless it decodes.
      */
     fail(op: string, fault?: Fault): Effect.Effect<void>
+    /** The Linear team's issues, in their order, as Linear has them. */
+    readonly linearIssues: Effect.Effect<ReadonlyArray<LinearIssue>>
+    /** Adds the issue to the Linear team, or changes the one with its key, as the maintainer would. */
+    putLinear(seed: LinearSeed): Effect.Effect<void>
   }
 >()("tutti/testing/Beads/Backlog") {}
 
@@ -170,6 +248,7 @@ const bdFields = (issue: Stored) => ({
   created_at: issue.createdAt,
   ...(issue.deferUntil === undefined ? {} : { defer_until: issue.deferUntil }),
   close_reason: issue.closeReason,
+  ...(issue.externalRef === undefined ? {} : { external_ref: issue.externalRef }),
 })
 
 /** The issue as bd ready, bd list and bd's writes give it: its links, by ID. */
@@ -239,6 +318,7 @@ const store = (seed: Seed, seq: number, now: number): Stored => {
     createdAt: new Date(now).toISOString(),
     ...(seed.deferUntil === undefined ? {} : { deferUntil: seed.deferUntil }),
     closeReason: seed.closeReason ?? "",
+    ...(seed.externalRef === undefined ? {} : { externalRef: seed.externalRef }),
     seq,
   }
 }
@@ -249,6 +329,8 @@ export interface TestBd {
   readonly configuration?: Readonly<Record<string, string>>
   /** Whether it has bd linear, as bd 1.3.4 does; true by default. */
   readonly linear?: boolean
+  /** The Linear team its bd linear syncs with; one with no issues by default. */
+  readonly linearTeam?: TestLinear
 }
 
 /** An in-memory Beads, and its Backlog, starting with these issues, its bd as `bd` says. */
@@ -524,6 +606,20 @@ export const layer = (
 
       const faults: Array<{ readonly op: string; readonly fault: Fault; left: number }> = []
 
+      /** The fault a test set for this call of op (about id, or one of ids), counted as used. */
+      const takeFault = (op: string, id: string | undefined, ids: ReadonlyArray<string>) => {
+        const found = faults.find(
+          (each) =>
+            each.op === op &&
+            (each.fault.id === undefined || each.fault.id === id || ids.includes(each.fault.id)),
+        )
+        if (found !== undefined) {
+          found.left -= 1
+          if (found.left <= 0) faults.splice(faults.indexOf(found), 1)
+        }
+        return found?.fault
+      }
+
       /**
        * What bd gives the call of op (about id), or what a test made it give instead, judged as the
        * live layer judges bd's output and decoded as it decodes it.
@@ -538,16 +634,7 @@ export const layer = (
       ): Effect.Effect<A, BeadsError> =>
         Effect.suspend(() => {
           const command = commandOf(op, id)
-          const found = faults.find(
-            (each) =>
-              each.op === op &&
-              (each.fault.id === undefined || each.fault.id === id || ids.includes(each.fault.id)),
-          )
-          if (found !== undefined) {
-            found.left -= 1
-            if (found.left <= 0) faults.splice(faults.indexOf(found), 1)
-          }
-          const fault = found?.fault
+          const fault = takeFault(op, id, ids)
           const output: Effect.Effect<BdOutput, BeadsError> =
             fault === undefined
               ? call
@@ -563,6 +650,170 @@ export const layer = (
               ? judgeRead(command, output, decode)
               : Effect.andThen(judgeWrite(command, output), decode(command, output.stdout)),
           )
+        })
+
+      // The Linear team, and bd linear's pull, push and status against it, as bd 1.3.4 does them:
+      // a pull by key creates a ticket for an issue no ticket links and overwrites a linked one; a
+      // push creates the issue of a ticket with no external_ref and links it, and overwrites a
+      // linked one's. Each prints a SyncResult, judged as the live layer judges bd's.
+      const team = bd.linearTeam?.team ?? "NOE"
+      const linearState = yield* Ref.make(
+        new Map((bd.linearTeam?.issues ?? []).map((seed) => [seed.key, linearIssue(seed)])),
+      )
+      let lastSync: string | undefined
+
+      const syncResult = (
+        counts: { created: number; updated: number; skipped: number; errors: number },
+        warnings: ReadonlyArray<string>,
+        stats: { pulled?: number; pushed?: number },
+      ): BdOutput => ({
+        ...ok({
+          success: true,
+          stats: { pulled: 0, pushed: 0, ...stats, ...counts, conflicts: 0 },
+          ...(lastSync === undefined ? {} : { last_sync: lastSync }),
+          ...(warnings.length === 0 ? {} : { warnings }),
+        }),
+        stderr: ["Acquiring sync lock...", ...warnings.map((each) => `Warning: ${each}`)].join(
+          "\n",
+        ),
+      })
+
+      const linkedTo = (issues: ReadonlyMap<string, Stored>, key: string) =>
+        [...issues.values()].find(
+          (issue) => issue.externalRef !== undefined && linearKeyOf(issue.externalRef) === key,
+        )
+
+      const pull = (keys: ReadonlyArray<string>) =>
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis
+          const linear = yield* Ref.get(linearState)
+          const counts = { created: 0, updated: 0, skipped: 0, errors: 0 }
+          const warnings: Array<string> = []
+          for (const key of keys) {
+            const issue = linear.get(key)
+            if (issue === undefined) {
+              warnings.push(`Issue ${key} not found in Linear`)
+              counts.skipped += 1
+              continue
+            }
+            const fields = {
+              title: issue.title,
+              description: issue.description,
+              status: statusOf[issue.state],
+              priority: issue.priority,
+            }
+            const issues = yield* Ref.get(state)
+            const linked = linkedTo(issues, key)
+            if (linked === undefined) {
+              seq += 1
+              const id = `${idPrefix}-${seq}`
+              const stored = store({ id, ...fields, externalRef: linearUrl(key) }, seq, now)
+              yield* Ref.update(state, (issues) => new Map(issues).set(id, stored))
+              counts.created += 1
+            } else if (
+              Object.entries(fields).every(
+                ([field, value]) => linked[field as keyof typeof fields] === value,
+              )
+            ) {
+              counts.skipped += 1
+            } else {
+              yield* Ref.update(state, (issues) =>
+                new Map(issues).set(linked.id, { ...linked, ...fields }),
+              )
+              counts.updated += 1
+            }
+          }
+          lastSync = new Date(now).toISOString()
+          return syncResult(counts, warnings, { pulled: counts.created + counts.updated })
+        })
+
+      const push = (ids: ReadonlyArray<string>) =>
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis
+          const counts = { created: 0, updated: 0, skipped: 0, errors: 0 }
+          for (const id of ids) {
+            const issues = yield* Ref.get(state)
+            const ticket = issues.get(id)
+            // bd pushes the tickets it has by those IDs; one it hasn't, it counts nowhere.
+            if (ticket === undefined) continue
+            const linear = yield* Ref.get(linearState)
+            const key =
+              ticket.externalRef === undefined ? undefined : linearKeyOf(ticket.externalRef)
+            const before = key === undefined ? undefined : linear.get(key)
+            const pushed: LinearIssue = {
+              key: before?.key ?? `${team}-${linear.size + 1}`,
+              title: ticket.title,
+              description: ticket.description,
+              state: stateOf[ticket.status] ?? before?.state ?? "unstarted",
+              priority: ticket.priority,
+            }
+            if (before !== undefined && JSON.stringify(before) === JSON.stringify(pushed)) {
+              counts.skipped += 1
+              continue
+            }
+            yield* Ref.update(linearState, (linear) => new Map(linear).set(pushed.key, pushed))
+            if (before === undefined) {
+              // A push writes the issue's URL with its slug.
+              const externalRef = `${linearUrl(pushed.key)}/${pushed.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+              yield* Ref.update(state, (issues) =>
+                new Map(issues).set(id, { ...ticket, externalRef }),
+              )
+              counts.created += 1
+            } else {
+              counts.updated += 1
+            }
+          }
+          lastSync = new Date(now).toISOString()
+          return syncResult(counts, [], { pushed: counts.created + counts.updated })
+        })
+
+      const linearStatus = Effect.map(Ref.get(state), (issues) => {
+        const configured = bd.linearTeam?.configured ?? true
+        const all = [...issues.values()]
+        return ok({
+          configured,
+          has_api_key: configured,
+          has_oauth: false,
+          auth_mode: configured ? "api_key" : "none",
+          team_id: configured ? `${team}-team-id` : "",
+          team_ids: configured ? [`${team}-team-id`] : [],
+          last_sync: lastSync ?? "",
+          total_issues: all.length,
+          with_linear_ref: all.filter(
+            (issue) => issue.externalRef !== undefined && linearKeyOf(issue.externalRef),
+          ).length,
+          pending_push: all.filter((issue) => issue.externalRef === undefined).length,
+        })
+      })
+
+      /**
+       * What bd linear gives the call of op (about the asked tickets or issues), or what a test
+       * made it give instead, judged as the live layer judges it.
+       */
+      const linearAnswer = <A>(
+        op: string,
+        args: string,
+        asked: ReadonlyArray<string>,
+        timeLimit: Duration.Duration,
+        call: Effect.Effect<BdOutput>,
+        judge: (
+          command: string,
+          output: BdOutput,
+        ) => Effect.Effect<A, LinearRefused | LinearUnreadable>,
+      ): Effect.Effect<A, LinearError> =>
+        Effect.suspend((): Effect.Effect<A, LinearError> => {
+          const command = `bd ${op}${args} --json`
+          const fault = takeFault(op, undefined, asked)
+          if (fault?.timedOut) return Effect.fail(new BeadsTimedOut({ command, timeLimit }))
+          const output: Effect.Effect<BdOutput> =
+            fault === undefined
+              ? call
+              : Effect.succeed({
+                  exitCode: fault.exitCode ?? 1,
+                  stdout: fault.stdout ?? "",
+                  stderr: fault.stderr ?? `Error: bd ${op} failed`,
+                })
+          return Effect.flatMap(output, (output) => judge(command, output))
         })
 
       const nothing: Decode<void> = () => Effect.void
@@ -707,6 +958,30 @@ export const layer = (
             decodeConfiguration,
           ),
         hasLinear: () => Effect.succeed(bd.linear ?? true),
+        linearPull: (keys) =>
+          keys.length === 0
+            ? Effect.succeed(noLinearSync)
+            : linearAnswer(
+                "linear sync --pull",
+                ` --relations --issues=${keys.join(",")}`,
+                keys,
+                LinearTimeLimit.pull,
+                pull(keys),
+                (command, output) => judgeSync(command, keys, output),
+              ),
+        linearPush: (ids) =>
+          ids.length === 0
+            ? Effect.succeed(noLinearSync)
+            : linearAnswer(
+                "linear sync --push",
+                ` --prefer-local --issues=${ids.join(",")}`,
+                ids,
+                LinearTimeLimit.push,
+                push(ids),
+                (command, output) => judgeSync(command, ids, output),
+              ),
+        linearStatus: () =>
+          linearAnswer("linear status", "", [], LinearTimeLimit.status, linearStatus, judgeStatus),
       })
 
       const backlog = Backlog.of({
@@ -733,6 +1008,9 @@ export const layer = (
         comments: (id) => Effect.map(Ref.get(state), (issues) => issues.get(id)?.comments ?? []),
         fail: (op, fault = {}) =>
           Effect.sync(() => void faults.push({ op, fault, left: fault.times ?? 1 })),
+        linearIssues: Effect.map(Ref.get(linearState), (linear) => [...linear.values()]),
+        putLinear: (seed) =>
+          Ref.update(linearState, (linear) => new Map(linear).set(seed.key, linearIssue(seed))),
       })
 
       return Context.make(Beads, beads).pipe(Context.add(Backlog, backlog))
