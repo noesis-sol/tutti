@@ -802,6 +802,7 @@ describe("the records", () => {
       [
         ...["start", "info", "dispatch", "queue", "closed", "deferred", "asked", "answered"],
         ...["waits", "reopened", "triage", "warn", "hold", "drain", "resume", "probed", "stop"],
+        "linear",
         ...["shared_machine", "machine_hold", "pressure_cap", "disk_hold", "share", "load"],
         ...["slept", "battery"],
         ...["done", "full_check", "checks_gate", "early_check", "end", "phase", "attention"],
