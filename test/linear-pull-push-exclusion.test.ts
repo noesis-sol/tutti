@@ -147,7 +147,9 @@ describe("pulls and pushes to Linear", () => {
         return {
           listings: (yield* listings).length,
           lines: yield* linearLines,
-          tickets: (yield* backlog.issues).map((issue) => [issue.id, issue.linearKey]),
+          tickets: (yield* backlog.issues).map(
+            (issue): ReadonlyArray<string | undefined> => [issue.id, issue.linearKey],
+          ),
           issues: (yield* backlog.linearIssues).map((issue) => issue.key),
         }
       }),
