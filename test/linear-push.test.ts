@@ -425,6 +425,14 @@ const linearLines = (log: ReadonlyArray<string>) => log.filter((text) => /LINEAR
 const linearOf = (events: ReadonlyArray<EventRecord>) =>
   events.filter((record) => record.kind === "linear")
 
+/** The log's push lines: those of linearLines but the pulls' (linearPull.ts). */
+const pushLines = (log: ReadonlyArray<string>) =>
+  linearLines(log).filter((text) => !/^LINEAR(: pulled |_PULL_FAILED: )/.test(text))
+
+/** The event stream's push records. */
+const pushesOf = (events: ReadonlyArray<EventRecord>) =>
+  linearOf(events).filter((record) => record.kind === "linear" && record.sync === "push")
+
 describe("pushing in a whole run", () => {
   test("with the linear block: the ticket's status and its worker's follow-up, not its question or epic", async () => {
     const ran = await wholeRun(true)
@@ -443,11 +451,11 @@ describe("pushing in a whole run", () => {
       "An epic": null,
     })
     // The worker closed t-1 before its claim was read again: its start's push is its close's.
-    expect([...linearLines(ran.log)].sort()).toEqual([
+    expect([...pushLines(ran.log)].sort()).toEqual([
       "  LINEAR: t-1 closed, pushed to NOE-1 (updated)",
       expect.stringMatching(/^ {2}LINEAR: test-\d+ filed, pushed to NOE-2 \(created\)$/),
     ])
-    expect(linearOf(ran.events).map((record) => record.text)).toEqual([...linearLines(ran.log)])
+    expect(pushesOf(ran.events).map((record) => record.text)).toEqual([...pushLines(ran.log)])
   })
 
   test("a push that keeps failing is listed at the end, and the run's outcome is unchanged", async () => {

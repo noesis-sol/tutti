@@ -1,4 +1,4 @@
-// A run's pulls from Linear (§ 5 item 17; tutti-qatu.7), only where the settings hold a linear block.
+// A run's pulls from Linear (§ 5 item 20; tutti-qatu.7), only where the settings hold a linear block.
 // bd's pull of a whole team overwrites every linked ticket, a held one too (spike 09), so each pull
 // lists the team's issues from Linear's API (src/services/LinearIssues.ts) and pulls by key only
 // those it may change (`choose`): an issue no ticket links, which becomes a ticket, and the issue of

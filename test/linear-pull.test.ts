@@ -1,4 +1,4 @@
-// A run's pulls from Linear (§ 5 item 17, tutti-qatu.7): with the settings' linear block, one pull
+// A run's pulls from Linear (§ 5 item 20, tutti-qatu.7): with the settings' linear block, one pull
 // before the first fill and one every pull_every in a fiber of the run's, each listing the team's
 // issues from Linear's API and pulling by key only an issue no ticket links and one whose deferred
 // ticket was handed over; never a ticket the run's ledger has. A pull that fails warns once and the
