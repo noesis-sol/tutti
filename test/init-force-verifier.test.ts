@@ -124,7 +124,11 @@ describe("tutti init --force with the verifier in use", () => {
     expect(prompt.indexOf("## Verify")).toBe(prompt.lastIndexOf("## Verify"))
     expect(read(project, verifierPath)).toBe(verifier)
     expect(lines(summary)).toContain(keptLine)
-    expect(lines(summary).join("\n")).not.toContain("not asked")
+    expect(
+      lines(summary)
+        .filter((line) => line.includes("verifier"))
+        .join("\n"),
+    ).not.toContain("not asked")
   })
 
   test("with a form, it isn't asked about, and is kept", async () => {

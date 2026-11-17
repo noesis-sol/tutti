@@ -88,11 +88,65 @@ export interface LinearQuestions {
   ): Effect.Effect<number, FormCancelled | LinearSetupFailed>
 }
 
-/** What the setup is to write: bd's keys and the settings' block, each where it differs. */
-export interface LinearPlan {
+/** The team, and the Linear state each Beads status is pushed as, chosen. */
+export interface LinearChoice {
   readonly team: LinearTeam
   /** Each Beads status's Linear state, in `outbound`'s order. */
   readonly pushed: ReadonlyArray<readonly [OutboundStatus, LinearState]>
+}
+
+/** A choice of `options`, by its index, as the form or the line forms ask it. */
+export type SelectQuestion = (field: {
+  readonly title: string
+  readonly description: string
+  readonly options: ReadonlyArray<string>
+  readonly initial: number
+}) => Effect.Effect<number, FormCancelled>
+
+/** How a Beads status is said in the question of the Linear state it is pushed as. */
+const statusWords: Record<OutboundStatus, string> = {
+  open: "a ticket open and ready to work",
+  in_progress: "a ticket in progress",
+  deferred: "a ticket deferred",
+  closed: "a ticket closed",
+}
+
+/** The setup's questions, each asked with `select`. */
+export const selectQuestions = (select: SelectQuestion): LinearQuestions => ({
+  team: (teams, initial) =>
+    select({
+      title: "Which Linear team should tutti sync with?",
+      description: "Its issues become tickets, and the tickets a run files are created in it.",
+      options: teams.map((team) => `${team.key}: ${sanitizeLine(team.name)}`),
+      initial,
+    }),
+  state: (status, states, initial) => {
+    const type = outbound.find(([each]) => each === status)?.[1] ?? status
+    return select({
+      title: `Which Linear state is ${statusWords[status]}?`,
+      description: `The team has ${states.length} states of type ${type}; tutti moves the Linear issue of ${statusWords[status]} to the one chosen.`,
+      options: states.map((state) => sanitizeLine(state.name)),
+      initial,
+    })
+  },
+})
+
+/**
+ * The setup's questions with nothing to ask them: the team must be given (`flag` names how), each
+ * state the first of its type.
+ */
+export const unasked = (flag: string): LinearQuestions => ({
+  team: (teams) =>
+    Effect.fail(
+      failed(
+        `the key reaches ${teams.length} teams (${teams.map((team) => team.key).join(", ")}) and there is no terminal to ask which: name one with ${flag}`,
+      ),
+    ),
+  state: (_status, _states, initial) => Effect.succeed(initial),
+})
+
+/** What the setup is to write: bd's keys and the settings' block, each where it differs. */
+export interface LinearPlan extends LinearChoice {
   /** bd's keys to set, each to its value, where bd's configuration differs. */
   readonly configuration: ReadonlyArray<readonly [string, string]>
   /** The settings' text with the block written, where it differs; null where it is there. */
@@ -172,22 +226,27 @@ const blockTeam = (json: Readonly<Record<string, unknown>>): string | null => {
   return Predicate.isObject(block) && typeof block.team === "string" ? block.team : null
 }
 
+/** What the questions offer first: bd's configuration, and the team of the settings' block. */
+export interface LinearCurrent {
+  readonly configuration: Readonly<Record<string, string>>
+  readonly blockTeam: string | null
+}
+
+/** Nothing set yet: each question offers its first option. */
+const nothingSet: LinearCurrent = { configuration: {}, blockTeam: null }
+
 /**
- * Asks the setup's questions in the project at `repo`, and says what it would write: bd's keys and
- * the settings' linear block, each where it differs from what is there. `team`, a team's key, answers
- * the team's question. Nothing is written.
+ * Reads the teams the key reaches and asks which, then reads its states and asks the one each Beads
+ * status is pushed as where its type has more than one: what was chosen. `team`, a team's key,
+ * answers the team's question; `current` says what each question offers first. Nothing is written.
  */
-export const planLinear = (repo: string, questions: LinearQuestions, team?: string) =>
+export const chooseLinear = (
+  questions: LinearQuestions,
+  team?: string,
+  current: LinearCurrent = nothingSet,
+) =>
   Effect.gen(function* () {
-    const settings = yield* readSettingsText(repo)
-    const bd = yield* Beads
-    const hasLinear = yield* Effect.mapError(bd.hasLinear(), (error) =>
-      failed(`could not run bd linear: ${bdWhy(error)}`),
-    )
-    if (!hasLinear) return yield* failed("the installed bd has no bd linear; update Beads")
-    const configuration = yield* Effect.mapError(bd.configuration(), (error) =>
-      failed(`could not read bd's configuration: ${bdWhy(error)}`),
-    )
+    const { configuration } = current
     const api = yield* LinearApi
     const linearWhy = (error: LinearApiFailed) => failed(error.why)
     const teams = yield* Effect.mapError(api.teams(), linearWhy)
@@ -204,9 +263,10 @@ export const planLinear = (repo: string, questions: LinearQuestions, team?: stri
     } else if (teams.length === 1) {
       chosen = teams[0] as LinearTeam
     } else {
-      const current = blockTeam(settings.json)
       const initial = indexOr0(teams, (each) =>
-        current === null ? each.id === configuration[teamIdKey] : each.key === current,
+        current.blockTeam === null
+          ? each.id === configuration[teamIdKey]
+          : each.key === current.blockTeam,
       )
       chosen = teams[yield* questions.team(teams, initial)] as LinearTeam
     }
@@ -226,18 +286,45 @@ export const planLinear = (repo: string, questions: LinearQuestions, team?: stri
       const at = candidates.length === 1 ? 0 : yield* questions.state(status, candidates, initial)
       pushed.push([status, candidates[at] as LinearState])
     }
+    return { team: chosen, pushed } satisfies LinearChoice
+  })
+
+/** The project as the setup finds it: its settings, and bd's configuration. */
+interface Found {
+  readonly settings: Effect.Success<ReturnType<typeof readSettingsText>>
+  readonly configuration: Readonly<Record<string, string>>
+}
+
+/** The project at `repo` as the setup finds it, or why the setup can't be written into it. */
+const readProject = (repo: string) =>
+  Effect.gen(function* () {
+    const settings = yield* readSettingsText(repo)
+    const bd = yield* Beads
+    const hasLinear = yield* Effect.mapError(bd.hasLinear(), (error) =>
+      failed(`could not run bd linear: ${bdWhy(error)}`),
+    )
+    if (!hasLinear) return yield* failed("the installed bd has no bd linear; update Beads")
+    const configuration = yield* Effect.mapError(bd.configuration(), (error) =>
+      failed(`could not read bd's configuration: ${bdWhy(error)}`),
+    )
+    return { settings, configuration } satisfies Found
+  })
+
+/** What writing `choice` into the project, as `readProject` found it, changes. */
+const planFor = ({ settings, configuration }: Found, choice: LinearChoice) =>
+  Effect.gen(function* () {
     const wanted: ReadonlyArray<readonly [string, string]> = [
-      [teamIdKey, chosen.id],
+      [teamIdKey, choice.team.id],
       ...inbound.map(([type, status]) => [stateMapKey(type), status] as const),
-      ...pushed.map(([status, state]) => [outboundKey(status), state.name] as const),
+      ...choice.pushed.map(([status, state]) => [outboundKey(status), state.name] as const),
     ]
     const block = settings.json.linear
     const text =
-      blockTeam(settings.json) === chosen.key
+      blockTeam(settings.json) === choice.team.key
         ? null
         : Predicate.isObject(block)
-          ? setIn(settings.text, ["linear", "team"], chosen.key)
-          : setIn(settings.text, ["linear"], { team: chosen.key })
+          ? setIn(settings.text, ["linear", "team"], choice.team.key)
+          : setIn(settings.text, ["linear"], { team: choice.team.key })
     if (text !== null) {
       const json = parseConfigJson(text)
       const decoded = Result.isSuccess(json)
@@ -250,16 +337,37 @@ export const planLinear = (repo: string, questions: LinearQuestions, team?: stri
       }
     }
     return {
-      team: chosen,
-      pushed,
+      ...choice,
       configuration: wanted.filter(([key, value]) => configuration[key] !== value),
       settings: text,
       storedKey: (configuration[apiKeyKey] ?? "") !== "",
     } satisfies LinearPlan
   })
 
-/** The mapping the plan sets, as the setup shows it before writing it. */
-export const mappingLines = (plan: LinearPlan): ReadonlyArray<string> => [
+/**
+ * Asks the setup's questions in the project at `repo`, and says what it would write: bd's keys and
+ * the settings' linear block, each where it differs from what is there. `team`, a team's key, answers
+ * the team's question. Nothing is written.
+ */
+export const planLinear = (repo: string, questions: LinearQuestions, team?: string) =>
+  Effect.gen(function* () {
+    const found = yield* readProject(repo)
+    const choice = yield* chooseLinear(questions, team, {
+      configuration: found.configuration,
+      blockTeam: blockTeam(found.settings.json),
+    })
+    return yield* planFor(found, choice)
+  })
+
+/**
+ * What writing `choice`, chosen before the project was set up (tutti init's form), into the project
+ * at `repo` changes. Nothing is written.
+ */
+export const planChosen = (repo: string, choice: LinearChoice) =>
+  Effect.flatMap(readProject(repo), (found) => planFor(found, choice))
+
+/** The mapping a choice sets, as the setup shows it before writing it. */
+export const mappingLines = (plan: LinearChoice): ReadonlyArray<string> => [
   `Linear team ${plan.team.key} (${sanitizeLine(plan.team.name)})`,
   `Linear to Beads: ${inbound.map(([type, status]) => `${type} ${status}`).join(", ")}; an issue in Backlog waits, deferred, until it is moved to Todo`,
   `Beads to Linear: ${plan.pushed.map(([status, state]) => `${status} ${sanitizeLine(state.name)}`).join(", ")}`,

@@ -27,6 +27,13 @@ import {
 } from "./checks.ts"
 import { offerDescription } from "./import.ts"
 import type { InitForm } from "./init.ts"
+import { chooseLinear, mappingLines, selectQuestions } from "./linear.ts"
+import {
+  type LinearAnswer,
+  type LinearAsk,
+  linearDescription,
+  noKeyNotes,
+} from "./linearQuestion.ts"
 import {
   concurrencyNote,
   defaultWorkerEffort,
@@ -156,6 +163,45 @@ export const fullChecklistDescription = (scouted: Scouted): string => {
   ].join(" ")
 }
 
+/**
+ * Whether to sync tickets with Linear, No selected; on a Yes with a key, the setup's questions: the
+ * team, from those the key reaches, and the state a Beads status takes where its type has more than
+ * one, then the mapping to confirm. A Yes without a key says how to get one; a setup that fails says
+ * why; neither stops init.
+ */
+const askLinear = (fields: Fields, ask: LinearAsk) =>
+  Effect.gen(function* () {
+    const sync = yield* fields.confirm({
+      question: "Sync tickets with Linear?",
+      description: linearDescription,
+      initial: false,
+    })
+    if (!sync) return { kind: "no" } satisfies LinearAnswer
+    if (ask.api === null) {
+      for (const line of noKeyNotes) yield* fields.note(line)
+      return { kind: "noKey" } satisfies LinearAnswer
+    }
+    const chosen = yield* chooseLinear(selectQuestions(fields.select)).pipe(
+      Effect.provide(ask.api),
+      Effect.map((choice) => ({ kind: "chosen", choice }) satisfies LinearAnswer),
+      Effect.catchTag("LinearSetupFailed", (error) =>
+        Effect.as(fields.note(`Linear: ${error.why}. init goes on without the sync.`), {
+          kind: "failed",
+          why: error.why,
+        } satisfies LinearAnswer),
+      ),
+    )
+    if (chosen.kind !== "chosen") return chosen
+    for (const line of mappingLines(chosen.choice)) yield* fields.note(line)
+    const confirmed = yield* fields.confirm({
+      question: `Sync with team ${chosen.choice.team.key} this way?`,
+      description:
+        "init sets bd's linear.* configuration and writes the linear block to .tutti/settings.json; tutti linear setup changes it later.",
+      initial: true,
+    })
+    return confirmed ? chosen : ({ kind: "no" } satisfies LinearAnswer)
+  })
+
 /** init's form, asked with `fields`. */
 export const initForm = (fields: Fields): InitForm => ({
   workers: (questions) =>
@@ -233,6 +279,9 @@ export const initForm = (fields: Fields): InitForm => ({
           initial: true,
         })
         answers = { ...answers, changelogUnion }
+      }
+      if (questions.linear !== undefined && questions.linear !== null) {
+        answers = { ...answers, linear: yield* askLinear(fields, questions.linear) }
       }
       return answers
     }),

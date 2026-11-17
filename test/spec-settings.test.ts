@@ -118,6 +118,7 @@ describe("a spec run's setup", () => {
       verifier: true,
       changelogUnion: false,
       installBeads: false,
+      linear: false,
       mcp: [],
     })
     expect(specSetupFlags(3).concurrent).toBe(3)

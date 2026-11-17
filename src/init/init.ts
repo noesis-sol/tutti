@@ -70,6 +70,7 @@ import {
 } from "../project/templateVersions.ts"
 import { settingsGlobMatch } from "../run/glob.ts"
 import { TimeLimit } from "../services/exec.ts"
+import type { LinearApi } from "../services/LinearApi.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { joinAnd } from "../text/joinAnd.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
@@ -99,6 +100,7 @@ import {
   orchestraPromptFile,
   promptChangeSteps,
 } from "./import.ts"
+import { linearDecision, linearSteps } from "./linearQuestion.ts"
 import { readmeSteps, requiresSteps } from "./requires.ts"
 import { commitStaged, staging } from "./staged.ts"
 import { type Machine, runSteps, type Step, step, stepLine } from "./steps.ts"
@@ -160,6 +162,8 @@ export interface InitFlags {
   readonly setup?: string
   /** Write the verifier subagent, and have the worker prompt run it. */
   readonly verifier?: boolean
+  /** Sync tickets with this Linear team, by its key; false: don't. */
+  readonly linear?: string | false
   /** Leave the mouse to the terminal: the form takes keys only (§ 7.3). */
   readonly noMouse?: boolean
   /** Replace an existing .tutti/worker-prompt.md with the template. */
@@ -230,6 +234,14 @@ export interface InitOptions<R> {
   readonly account: Layer.Layer<Account, never, AppConfig | R>
   /** Claude Code's user config, .claude.json, where the trust key goes. */
   readonly claudeConfig: string
+  /**
+   * The environment's LINEAR_API_KEY (unset or empty: none), and Linear's API with a key, which the
+   * Linear sync's setup reads the teams and their states from. Absent: no key.
+   */
+  readonly linear?: {
+    readonly key: string | undefined
+    readonly api: (key: string) => Layer.Layer<LinearApi>
+  }
   /**
    * Catches stops once the questions are answered, until init ends, calling `stop` for each: a stop
    * signal, Ctrl+C in the renderer. init then stops after the step under way. None where absent.
@@ -991,6 +1003,9 @@ const initWork = <R>(options: InitOptions<R>) =>
     const workersJson = existing.json?.workers
     const names = (key: string) =>
       Predicate.isObject(workersJson) && Object.hasOwn(workersJson, key)
+    const linearKey = options.linear?.key?.trim() ?? ""
+    const linearApi =
+      options.linear === undefined || linearKey === "" ? null : options.linear.api(linearKey)
     const prefixGiven: PrefixPlan | null =
       flags.prefix === undefined
         ? null
@@ -1013,6 +1028,9 @@ const initWork = <R>(options: InitOptions<R>) =>
           ? { available, chosen: chosenNow, notes: serverNotes(available, defined) }
           : null,
       changelogUnion: flags.changelogUnion === undefined && union,
+      // Asked whether or not there is a key, so that the sync is found; not where a block is there.
+      linear:
+        flags.linear === undefined && current.linear === undefined ? { api: linearApi } : null,
     }
     const answers: WorkersAnswers =
       form !== null && asksAnything(questions) ? yield* form.workers(questions) : {}
@@ -1030,6 +1048,12 @@ const initWork = <R>(options: InitOptions<R>) =>
       flags.changelogUnion,
       questions.changelogUnion,
       answers.changelogUnion,
+    )
+    const linear = linearDecision(
+      flags.linear,
+      current.linear?.team ?? null,
+      form !== null,
+      answers.linear,
     )
     const concurrent = flags.concurrent ?? answers.concurrent ?? null
     const mcp = flags.mcp ?? answers.mcp ?? null
@@ -1274,6 +1298,13 @@ const initWork = <R>(options: InitOptions<R>) =>
               filesTests
                 ? " once it had written the files above, before filing the test work: tutti init again files it"
                 : " once it had written the files above",
+          },
+          {
+            name: "the Linear sync",
+            run: linearSteps(repo, linear, linearApi),
+            whole: true,
+            stopped: () =>
+              " while setting the Linear sync up, once it had written the files above: tutti linear setup sets it up",
           },
           ...(filesTests
             ? [

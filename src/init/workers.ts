@@ -40,6 +40,7 @@ import { readStateText, stateFile } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import { joinAnd } from "../text/joinAnd.ts"
 import type { PrefixQuestion } from "./checks.ts"
+import type { LinearAnswer, LinearAsk } from "./linearQuestion.ts"
 import { type Machine, type Step, step } from "./steps.ts"
 
 /** What the Workers step asks, each question null where a flag answered it or it isn't asked. */
@@ -63,6 +64,11 @@ export interface WorkersQuestions {
   } | null
   /** Whether to add CHANGELOG.md merge=union to .gitattributes. Offered as yes. */
   readonly changelogUnion: boolean
+  /**
+   * Whether to sync tickets with Linear, where the settings hold no block and --linear isn't given.
+   * Offered as no. Absent: not asked.
+   */
+  readonly linear?: LinearAsk | null
 }
 
 /** The Workers step's answers: one for each question asked. */
@@ -74,6 +80,7 @@ export interface WorkersAnswers {
   readonly effort?: Effort
   readonly mcp?: ReadonlyArray<string>
   readonly changelogUnion?: boolean
+  readonly linear?: LinearAnswer
 }
 
 /** Whether the Workers step asks anything. */
@@ -83,7 +90,8 @@ export const asksAnything = (questions: WorkersQuestions): boolean =>
   questions.model ||
   questions.effort ||
   questions.mcp !== null ||
-  questions.changelogUnion
+  questions.changelogUnion ||
+  (questions.linear ?? null) !== null
 
 /**
  * What the concurrency question says under a number above 1: the memory that many workers take,

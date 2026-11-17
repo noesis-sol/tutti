@@ -429,6 +429,7 @@ describe("the Workers step", () => {
         changelogUnion: true,
         model: true,
         effort: true,
+        linear: { api: null },
       },
     ])
     const settings = await readSettings(project)
@@ -460,6 +461,7 @@ describe("the Workers step", () => {
           workerEffort: "medium",
           mcp: [],
           changelogUnion: false,
+          linear: false,
         },
       }),
     )

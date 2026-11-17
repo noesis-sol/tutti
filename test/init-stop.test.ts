@@ -174,6 +174,7 @@ const stepNames = [
   "Beads",
   "the ticket prefix",
   "the setup",
+  "the Linear sync",
   "the test work",
   "the login probe",
   "the requirements",
@@ -257,6 +258,8 @@ describe("tutti init stopped", () => {
         "tutti init: stopped once it had renamed the tickets, before writing .tutti/",
       "the setup":
         "tutti init: stopped once it had written the files above, before filing the test work: tutti init again files it",
+      "the Linear sync":
+        "tutti init: stopped while setting the Linear sync up, once it had written the files above: tutti linear setup sets it up",
       "the test work":
         "tutti init: stopped while filing the test work: tutti init again files what is missing",
       "the login probe":
@@ -286,8 +289,8 @@ describe("tutti init stopped", () => {
       }
       expect(report.includes("✓ settings  wrote .tutti/settings.json")).toBe(written)
       // The test work, interrupted at its start, is filed only where init got past it.
-      expect(filed(issues).length > 0).toBe(at >= 4)
-      expect(report.includes("✓ ticket  filed")).toBe(at >= 4)
+      expect(filed(issues).length > 0).toBe(at >= 5)
+      expect(report.includes("✓ ticket  filed")).toBe(at >= 5)
       expect(report).not.toContain("login")
     }
   })

@@ -727,6 +727,11 @@ export const initFlags = {
     "write .claude/agents/verifier.md, a subagent that checks each ticket's change against the ticket in a fresh context, and have the worker prompt run it before a worker closes its ticket (asked when omitted; =false declines)",
     { onOff: true },
   ),
+  linear: initFlag(
+    "linear",
+    `sync tickets with this Linear team, by its key, such as NOE, as tutti linear setup --team does, with ${linearKeyVariable} in the environment; =false declines (asked when omitted, No selected; a linear block the settings hold is kept)`,
+    { metavar: "team|false" },
+  ),
   prefix: initFlag(
     "prefix",
     "the Beads ticket prefix, IDs reading <prefix>-<hash>: lowercase letters, digits and hyphens, starting with a letter; a new Beads takes it, and an existing one's tickets are all renamed to it with bd rename-prefix (kept when not given)",
@@ -751,8 +756,24 @@ export const initFlags = {
 
 /** The texts of init's flags, as effect/cli parsed them. */
 export type InitFlagTexts = {
-  readonly [K in Exclude<keyof typeof initFlags, "force" | "update">]: Option.Option<string>
-} & { readonly force: boolean; readonly update?: boolean }
+  readonly [K in Exclude<
+    keyof typeof initFlags,
+    "force" | "update" | "linear"
+  >]: Option.Option<string>
+} & {
+  readonly force: boolean
+  readonly update?: boolean
+  readonly linear?: Option.Option<string>
+}
+
+/** --linear's value: a Linear team's key, or false (0, false, no, off). */
+const linearTeam: Reader<string | false> = (text) => {
+  const off = onOff(text)
+  if (Result.isSuccess(off) && !off.success) return Result.succeed(false)
+  return Result.isFailure(off) && /^[A-Za-z0-9]+$/.test(text)
+    ? Result.succeed(text)
+    : Result.fail(`must be a Linear team's key, such as NOE, or false (got '${text}')`)
+}
 
 /** Reads init's flags: their values, or every problem with them, each after `--name`. */
 export const readInitFlags = (
@@ -789,6 +810,7 @@ export const readInitFlags = (
     ...pick("changelogUnion", read("changelog-union", given.changelogUnion, onOff)),
     ...pick("installBeads", read("install-beads", given.installBeads, onOff)),
     ...pick("verifier", read("verifier", given.verifier, onOff)),
+    ...pick("linear", read("linear", given.linear ?? Option.none(), linearTeam)),
     ...pick("prefix", read("prefix", given.prefix, asIs)),
     ...pick("checkFast", read("check-fast", given.checkFast, asIs)),
     ...pick("checkFull", read("check-full", given.checkFull, asIs)),
@@ -1198,6 +1220,7 @@ const runInit = (
         configure,
         account: Account.layer,
         claudeConfig,
+        linear: { key: process.env[linearKeyVariable], api: LinearApi.live },
         catchStops,
       }).pipe(Effect.provide(RunLock.layer), Effect.provide(Beads.layer({ cwd: repo }))),
     )
@@ -1250,6 +1273,7 @@ export const specSetupFlags = (concurrent: number | null): InitFlags => ({
   verifier: true,
   changelogUnion: false,
   installBeads: false,
+  linear: false,
   mcp: [],
   ...(concurrent === null ? {} : { concurrent }),
 })

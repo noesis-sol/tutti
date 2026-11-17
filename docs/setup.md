@@ -200,6 +200,17 @@ lines; `Ctrl+D` cancels.
 - **Merge CHANGELOG.md by union?** Where the project keeps a `CHANGELOG.md`: tickets that each add a
   changelog entry at the same spot conflict, and `CHANGELOG.md merge=union` in `.gitattributes` has
   git keep both sides' lines.
+- **Sync tickets with Linear?**, No selected: whether issues filed in a Linear team become tickets,
+  tutti writing their status back (see [The linear block](#the-linear-block)). It is asked whether or
+  not `LINEAR_API_KEY` is in the environment. No writes nothing and asks nothing more. Yes, with the
+  key, takes the setup's steps there, as `tutti linear setup` does: the team, from those the key
+  reaches, the state a status takes where the team has more than one of its type, and the mapping
+  to confirm; once Beads and the settings are written, `init` sets bd's `linear.*` configuration
+  and writes the `linear` block. Yes without the key says where to create one and how to export it,
+  writes nothing of the sync, and `init` goes on: `tutti linear setup` turns it on later. A setup
+  that fails says why and leaves the sync off, `init` going on too. A project whose settings hold
+  the block already isn't asked, and the block is kept. Without a terminal it isn't asked, the sync
+  is left off, and the summary says so.
 
 ### Checks
 
@@ -250,6 +261,7 @@ lines; `Ctrl+D` cancels.
 | `--changelog-union[=false]` | add `CHANGELOG.md merge=union` to `.gitattributes`, or not |
 | `--install-beads[=false]` | install Beads where it is missing, or not |
 | `--verifier[=false]` | write the verifier, or not |
+| `--linear <team>`, `--linear=false` | sync tickets with this Linear team, by its key (`NOE`), as `tutti linear setup --team` does, each state the first of its type; or not, a block the settings hold kept |
 | `--prefix <name>` | the ticket prefix: lowercase letters, digits and hyphens, starting with a letter |
 | `--no-mouse` | leave the mouse to the terminal, for its own selection; the form takes keys only. Else the form takes clicks on its buttons and options, unless `"mouse": false` is in the [user config](#the-user-config) |
 | `--force` | replace `.tutti/worker-prompt.md` with the built-in template |
@@ -667,7 +679,8 @@ their Linear link.
 #### Turning it on: `tutti linear setup`
 
 `tutti linear setup` writes the block, and the configuration bd's Linear sync needs, in a project
-`tutti init` has set up. It needs a personal API key in the environment:
+`tutti init` has set up; `tutti init`'s *Sync tickets with Linear?* takes the same steps
+([Workers](#workers)). It needs a personal API key in the environment:
 
 1. Create one in Linear, under Settings, Account, Security & access
    (<https://linear.app/settings/account/security>).

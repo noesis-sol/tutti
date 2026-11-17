@@ -91,6 +91,7 @@ describe("Ctrl+C while init sets up, before it catches stops", () => {
                 workerEffort: "high",
                 mcp: [],
                 changelogUnion: false,
+                linear: false,
               },
               form,
               scout: Effect.fail("there is no scout in this test"),

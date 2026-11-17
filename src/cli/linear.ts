@@ -10,12 +10,12 @@ import { linearKeyVariable } from "../core/env.ts"
 import {
   applyLinear,
   type LinearQuestions,
-  LinearSetupFailed,
   mappingLines,
   noKeyLines,
-  outbound,
   planLinear,
+  selectQuestions,
   storedKeyLine,
+  unasked,
 } from "../init/linear.ts"
 import { exitCodes } from "../run/holds.ts"
 import type { LinearApi } from "../services/LinearApi.ts"
@@ -33,44 +33,12 @@ export interface Say {
 export const linearSetupExits =
   "Exit codes: 0 set up, or nothing to change; 2 no key, or the setup failed, the settings' block not written, so the sync stays off; 130 cancelled, nothing written."
 
-/** How a Beads status is said in the question of the Linear state it is pushed as. */
-const statusWords: Record<(typeof outbound)[number][0], string> = {
-  open: "a ticket open and ready to work",
-  in_progress: "a ticket in progress",
-  deferred: "a ticket deferred",
-  closed: "a ticket closed",
-}
-
 /** The setup's questions asked as lines, on `io`. */
-export const lineQuestions = (io: LineIO): LinearQuestions => ({
-  team: (teams, initial) =>
-    select(io, {
-      title: "Which Linear team should tutti sync with?",
-      description: "Its issues become tickets, and the tickets a run files are created in it.",
-      options: teams.map((team) => `${team.key}: ${team.name}`),
-      initial,
-    }),
-  state: (status, states, initial) => {
-    const type = outbound.find(([each]) => each === status)?.[1] ?? status
-    return select(io, {
-      title: `Which Linear state is ${statusWords[status]}?`,
-      description: `The team has ${states.length} states of type ${type}; tutti moves the Linear issue of ${statusWords[status]} to the one chosen.`,
-      options: states.map((state) => state.name),
-      initial,
-    })
-  },
-})
+export const lineQuestions = (io: LineIO): LinearQuestions =>
+  selectQuestions((field) => select(io, field))
 
 /** The setup's questions with no terminal to ask them: the team must be given, each state the first. */
-export const unaskedQuestions: LinearQuestions = {
-  team: (teams) =>
-    Effect.fail(
-      new LinearSetupFailed({
-        why: `the key reaches ${teams.length} teams (${teams.map((team) => team.key).join(", ")}) and there is no terminal to ask which: name one with --team`,
-      }),
-    ),
-  state: (_status, _states, initial) => Effect.succeed(initial),
-}
+export const unaskedQuestions: LinearQuestions = unasked("--team")
 
 /**
  * `tutti linear setup` in the project at `repo`, `key` the environment's LINEAR_API_KEY (unset or
