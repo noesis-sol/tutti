@@ -123,7 +123,9 @@ describe("a ticket's row", () => {
   test("an unlinked one is drawn as before, beside no linked one", () => {
     const view = viewOf([{ ...unlinked, row: 0 }])
     expect(view.rows[0]?.linear).toBeUndefined()
-    expect(drawn(view)).toEqual(drawn(viewOf([{ ...unlinked, row: 0, issue: undefined } as Entry])))
+    // As a ticket whose issue the run hasn't read, as the tables were before this.
+    const { issue: _unread, ...unread } = unlinked
+    expect(drawn(view)).toEqual(drawn(viewOf([{ ...unread, row: 0 }])))
     expect(drawn(view).find((each) => each.includes("t-2"))).toContain("│ t-2     │")
   })
 
@@ -279,7 +281,7 @@ describe("the report's evidence", () => {
     const parts = await Effect.runPromise(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        for (const ticket of ["a", "b"] as ReadonlyArray<TicketId>) {
+        for (const ticket of ["a", "b"].map((each) => each as TicketId)) {
           yield* ledger.transition(ticket, Move.Ready(), { title: `Do ${ticket}` })
           yield* ledger.transition(ticket, Move.Dispatched())
           yield* ledger.transition(ticket, Move.Verified({ place: 1 }))
