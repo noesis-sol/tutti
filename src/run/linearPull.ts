@@ -7,7 +7,8 @@
 // run. One pull runs at the start, before the first fill, listing every issue not done; then one
 // every pull_every in a fiber of the run's, listing those changed since the last listing, skipped
 // while a pull holds `busy` or a push is queued or under way (the pushes' own busy, given to
-// `every`), and waking a look when it added or released a ticket. Each push to Linear takes `busy`
+// `every`), and waking a look when it added or released a ticket, until the run's end stops them
+// (`stop`, end.ts's wind-down). Each push to Linear takes `busy`
 // too (linearPush.ts), so none runs beside a pull: a pull that listed an issue a push had created
 // but not yet linked would add a second ticket for it. Each
 // is a `linear` record and its line; one that fails says LINEAR_PULL_FAILED and changes nothing,
@@ -128,6 +129,11 @@ export interface LinearPulls {
    * `pushing`, the pushes' busy, says a push is queued or under way.
    */
   every(pushing: Effect.Effect<boolean>): Effect.Effect<void>
+  /**
+   * Stops the pulls every pull_every, at the run's end: none begins from now, and it waits for one
+   * under way to end, so that no pull is said after the run's end.
+   */
+  readonly stop: Effect.Effect<void>
   /** Held by a pull, and by a push, so that one runs at a time: a pull finding it held is skipped. */
   readonly busy: Semaphore.Semaphore
 }
@@ -146,6 +152,9 @@ export const make = (options: {
   Effect.gen(function* () {
     const { linear, source, beads, held, sayer, wakeUp } = options
     const busy = yield* Semaphore.make(1)
+    // Held by each pull every pull_every, which `stop` waits for; once stopped, none begins.
+    const pulling = yield* Semaphore.make(1)
+    let stopped = false
     // When the last pull that went through began listing, which the next lists the changes since.
     let listedAt: number | null = null
 
@@ -210,12 +219,25 @@ export const make = (options: {
           : Effect.forever(
               Effect.andThen(
                 Effect.sleep(linear.pull_every),
-                // Read under `busy`: a push queued after it waits for the pull to finish.
-                busy.withPermitsIfAvailable(1)(
-                  Effect.flatMap(pushing, (going) => (going ? Effect.void : pullAndSay(false))),
+                pulling.withPermits(1)(
+                  Effect.suspend(() =>
+                    stopped
+                      ? Effect.void
+                      : // Read under `busy`: a push queued after it waits for the pull to finish.
+                        busy.withPermitsIfAvailable(1)(
+                          Effect.flatMap(pushing, (going) =>
+                            going ? Effect.void : pullAndSay(false),
+                          ),
+                        ),
+                  ),
                 ),
               ),
             ),
+      stop: pulling.withPermits(1)(
+        Effect.sync(() => {
+          stopped = true
+        }),
+      ),
       busy,
     }
   })

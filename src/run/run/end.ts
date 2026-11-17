@@ -62,7 +62,7 @@ export const windDown = (
 ): Effect.Effect<Wound, never, RunEnv | Ledger> =>
   Effect.gen(function* () {
     const { options, begun } = parts
-    const { attention, base, status, commands, holds } = parts.services
+    const { attention, base, status, commands, holds, linear } = parts.services
     const { changeHolds, currentStops } = holds
     const { quitting, setUps, usage } = parts.holds
     const { queue, mergeStop } = parts.merge
@@ -88,6 +88,9 @@ export const windDown = (
     if (quit === null) yield* Effect.andThen(scheduler.interrupt, quits.refuseAnswers)
     yield* showEndOfRun(status, null)
     if (quit !== null) yield* quits.quitNow(quit)
+    // No pull from Linear begins from here, as no look would take up what it added; one under way
+    // ends first, so that none is said after the end (linearPull.ts). The pushes go on.
+    if (linear !== null) yield* linear.stop
     yield* mergeStop(yield* queue.state)
     // A ticket set aside and merged by hand since the base last moved counts closed, for the end
     // line and the report (handMerged.ts).
