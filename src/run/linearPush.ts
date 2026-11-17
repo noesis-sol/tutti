@@ -8,12 +8,15 @@
 // pushed once as it is found, which creates its Linear issue and links it.
 //
 // One fiber works the queue, one push at a time, after the ticket's own step is done: the step
-// only queues it, so a merge never waits on Linear. Each push reads the ticket first: one linked to
-// a Linear issue is pushed, and so is one filed in the run that isn't a question for the
-// maintainer (label human), an epic or ephemeral; any other, the backlog's history, never is. A
-// start is pushed once the worker has claimed its ticket, as bd has it open until then: it is read
-// again every claimPoll, for up to claimWait, then pushed as it is. tutti pushes by ticket ID only,
-// with the local version winning (Beads.linearPush).
+// only queues it, so a merge never waits on Linear. Each push holds the sync, the pulls' `busy`
+// (linearPull.ts), so that a pull and a push run one at a time: a pull racing the push of a ticket
+// filed in the run would read it as not yet linked and import its issue again.
+//
+// Each push reads the ticket first: one linked to a Linear issue is pushed, and so is one filed in
+// the run that isn't a question for the maintainer (label human), an epic or ephemeral; any other,
+// the backlog's history, never is. A start is pushed once the worker has claimed its ticket, as bd
+// has it open until then: it is read again every claimPoll, for up to claimWait, then pushed as it
+// is. tutti pushes by ticket ID only, with the local version winning (Beads.linearPush).
 //
 // Each push is a `linear` record and a LINEAR line. A failed one is said so and kept: the end
 // (finish), before the summary, looks for filed tickets once more, waits for the queue, tries each
@@ -29,6 +32,7 @@ import {
   Ref,
   Result,
   type Scope,
+  type Semaphore,
   Stream,
   SubscriptionRef,
 } from "effect"
@@ -52,7 +56,7 @@ export interface LinearPushes {
   changed(ticket: TicketId, why: PushWhy): Effect.Effect<void>
   /** Queues a look for the tickets filed since the run began, each of which is pushed once. */
   readonly scan: Effect.Effect<void>
-  /** Whether a push is under way or queued: the run's pulls skip while one is. */
+  /** Whether a push is under way or queued. */
   readonly busy: Effect.Effect<boolean>
   /**
    * The run's end: one more look for filed tickets, the queue waited for and each failed push
@@ -178,10 +182,12 @@ interface Failed {
 
 /**
  * The run's pushes, for a run that began at `since` (epoch ms), its queue worked by a fiber of the
- * run's. `times` are LinearPushTimes, for tests.
+ * run's, each push holding `sync`, the pulls' `busy`, where the run pulls. `times` are
+ * LinearPushTimes, for tests.
  */
 export const make = (options: {
   readonly since: number
+  readonly sync?: Semaphore.Semaphore
   readonly times?: Partial<{ readonly [K in keyof typeof LinearPushTimes]: Duration.Duration }>
 }): Effect.Effect<LinearPushes, never, Beads | Log | EventStream | RunFibers | Scope.Scope> =>
   Effect.gen(function* () {
@@ -244,6 +250,10 @@ export const make = (options: {
 
     const fibers = yield* (yield* RunFibers).make<unknown, never>("linear")
 
+    // Runs `effect` holding the sync, where the run pulls.
+    const held = (effect: Effect.Effect<void>): Effect.Effect<void> =>
+      options.sync === undefined ? effect : options.sync.withPermits(1)(effect)
+
     // Reads `ticket` and pushes it if it is to be pushed; `last`: the end's try, which says
     // nothing of a failure, as the end lists what still failed.
     const push = (ticket: TicketId, why: PushWhy, last: boolean): Effect.Effect<void> =>
@@ -304,6 +314,7 @@ export const make = (options: {
             ? Effect.failCause(cause)
             : failed(ticket, why, causeWhy(cause), last),
         ),
+        held,
       )
 
     // Queues each ticket filed in the run not found before.

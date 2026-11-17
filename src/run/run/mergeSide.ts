@@ -38,7 +38,7 @@ export interface MergeSide {
 
 /** The run's merge side, made over `services` and `holds`, in the run's scope. */
 export const make = (
-  services: Pick<Services, "config" | "base" | "status" | "wakeUp" | "holds">,
+  services: Pick<Services, "config" | "base" | "status" | "wakeUp" | "holds" | "linear">,
   runHolds: Pick<
     Holds,
     | "panicked"
@@ -156,7 +156,14 @@ export const make = (
     const branches = yield* closedBranches({ repo: config.repo, base })
     // The pushes to Linear (linearPush.ts), only with the settings' linear block: told of each
     // ticket whose status changes (followChanges, in the watchers), they run one at a time in the
-    // background, and the end waits for them before its summary.
-    const linear = config.linear === null ? linearOff : yield* makeLinearPushes({ since: begun })
+    // background, each holding the pulls' sync where the run pulls, and the end waits for them
+    // before its summary.
+    const linear =
+      config.linear === null
+        ? linearOff
+        : yield* makeLinearPushes({
+            since: begun,
+            ...(services.linear === null ? {} : { sync: services.linear.busy }),
+          })
     return { early, criticIdle, critic, auditor, playbook, queue, mergeStop, branches, linear }
   })
