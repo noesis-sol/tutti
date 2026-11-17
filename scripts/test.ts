@@ -1092,6 +1092,7 @@ export const hiddenTools: ReadonlyArray<string> = ["claude", "bd", "brew", "tmux
 const keptTuttiVariable = (name: string): boolean =>
   name === "TUTTI_SLOW" ||
   name === "TUTTI_LIVE" ||
+  name === "TUTTI_LIVE_LINEAR" ||
   name.startsWith("TUTTI_TEST_") ||
   name.startsWith("TUTTI_FIXTURE_")
 

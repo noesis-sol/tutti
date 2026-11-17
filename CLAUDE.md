@@ -135,6 +135,11 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   Claude Code and this machine's Claude login. They spend a few cents of real model turns. Run them
   on every SDK bump (§ 13). Usage limits can't be reached on demand: `test/fixtures/usage-limit/`
   holds their messages.
+- The contract tests against a real Linear team, `test/contract/linear.test.ts`, run only with
+  `TUTTI_LIVE_LINEAR=1` and `LINEAR_API_KEY` in the environment
+  (`TUTTI_LIVE_LINEAR=1 TUTTI_TEST_LINEAR_TEAM=NOE scripts/test.sh test/contract/linear.test.ts`),
+  with the machine's bd in a scratch Beads database. They file throwaway issues in the team and
+  delete them for good. Run them on every bd bump (§ 13, `docs/linear.md`).
 - shellcheck is a pinned release fetched into `.cache/shellcheck/` (git-ignored) and checked against
   its sha256. Offline, the check says so and skips it.
 

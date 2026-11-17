@@ -653,7 +653,9 @@ A run's flags override the settings for that run; [Running](running.md#options) 
 The Linear sync is off unless the settings hold a `linear` block, which the example above leaves
 out, as `init` does unless you set the sync up. Its presence is what turns the sync on; there is no
 on or off key, and the user config can't turn it on. Without the block a run knows nothing of
-Linear: no `bd linear`, no check and no line of output.
+Linear: no `bd linear`, no check and no line of output. [The Linear sync](linear.md) takes you
+from no key to a synced run and back to off: the key, the Todo gate, what goes to Linear and what
+never does, and what a failed pull or push means.
 
 ```json
 {

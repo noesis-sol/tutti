@@ -138,7 +138,7 @@ filing a batch of tickets: it proposes blocks links between tickets that touch t
 | `tutti login` | logs in to Claude, then says which account and billing workers get |
 | `tutti colours [<name>]` | previews a colour scheme, and checks it |
 | `tutti requires [--no-install] [--markdown\|--readme]` | checks what the machine must have for the project, installing what it can, or writes the README's section on it |
-| `tutti linear setup [--team <key>]` | turns the Linear sync on: the team, how Beads' statuses map to its states, bd's configuration and the settings' `linear` block; [Turning it on](docs/setup.md#turning-it-on-tutti-linear-setup) |
+| `tutti linear setup [--team <key>]` | turns the Linear sync on: the team, how Beads' statuses map to its states, bd's configuration and the settings' `linear` block; [The Linear sync](docs/linear.md) |
 | `tutti update [--check] [--force]` | updates tutti to the latest signed release |
 | `tutti --version` | the version |
 
@@ -209,6 +209,8 @@ Effect's guide and source for the installed version are in `node_modules/effect`
   `tutti answer`, steering, hand-backs, sessions, MCP servers
 - [docs/organs.md](docs/organs.md): triage, the reviewer and the run report, the critic, the
   auditor, the reflector and the scout
+- [docs/linear.md](docs/linear.md): the Linear sync: the key, turning it on, the Todo gate, what
+  goes to Linear and what never does, failed pulls and pushes, turning it off
 - [docs/events.md](docs/events.md): the event stream for scripts and agents, with `jq` recipes
 - [docs/analytics.md](docs/analytics.md): ready-made DuckDB queries over the event stream, the
   workers' transcripts and bd's export: runs, throughput and bottlenecks, tickets, checks and
