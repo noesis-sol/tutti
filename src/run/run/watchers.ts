@@ -261,9 +261,9 @@ export const afterStart = (
     // The ready poll, the merge queue's changes a look can act on (wakes.ts's mergeWakes) and drain
     // requests each wake the run. The merges stopping is taken up at every change.
     yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp("poll"))))
-    // The pulls from Linear every pull_every, outside the scheduler's path: one that added or
-    // released a ticket wakes the run (linearPull.ts).
-    if (linear !== null) yield* watch(linear.every)
+    // The pulls from Linear every pull_every, outside the scheduler's path, each skipped while a
+    // push is queued or under way: one that added or released a ticket wakes the run (linearPull.ts).
+    if (linear !== null) yield* watch(linear.every(parts.merge.linear.busy))
     const queueSeen = yield* Ref.make<QueueState | null>(null)
     yield* watch(
       Stream.runForEach(queue.changes, (state) =>

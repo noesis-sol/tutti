@@ -6,7 +6,10 @@
 // run's ledger has is never pulled: one a worker has, one waiting to merge, one set aside in this
 // run. One pull runs at the start, before the first fill, listing every issue not done; then one
 // every pull_every in a fiber of the run's, listing those changed since the last listing, skipped
-// while a pull or a push holds `busy`, and waking a look when it added or released a ticket. Each
+// while a pull holds `busy` or a push is queued or under way (the pushes' own busy, given to
+// `every`), and waking a look when it added or released a ticket. Each push to Linear takes `busy`
+// too (linearPush.ts), so none runs beside a pull: a pull that listed an issue a push had created
+// but not yet linked would add a second ticket for it. Each
 // is a `linear` record and its line; one that fails says LINEAR_PULL_FAILED and changes nothing,
 // and the run goes on with the backlog it has.
 import { Clock, Duration, Effect, Result, Semaphore } from "effect"
@@ -120,8 +123,11 @@ export const pullFailedLine = (why: string): Line =>
 export interface LinearPulls {
   /** The pull at the start, before the first fill: it waits for a pull or push under way. */
   readonly atStart: Effect.Effect<void>
-  /** The pulls every pull_every, for the run's fiber; none with pull_every 0. */
-  readonly every: Effect.Effect<void>
+  /**
+   * The pulls every pull_every, for the run's fiber; none with pull_every 0. Each is skipped while
+   * `pushing`, the pushes' busy, says a push is queued or under way.
+   */
+  every(pushing: Effect.Effect<boolean>): Effect.Effect<void>
   /** Held by a pull, and by a push, so that one runs at a time: a pull finding it held is skipped. */
   readonly busy: Semaphore.Semaphore
 }
@@ -198,14 +204,18 @@ export const make = (options: {
 
     return {
       atStart: busy.withPermits(1)(pullAndSay(true)),
-      every: Duration.isZero(linear.pull_every)
-        ? Effect.void
-        : Effect.forever(
-            Effect.andThen(
-              Effect.sleep(linear.pull_every),
-              busy.withPermitsIfAvailable(1)(pullAndSay(false)),
+      every: (pushing) =>
+        Duration.isZero(linear.pull_every)
+          ? Effect.void
+          : Effect.forever(
+              Effect.andThen(
+                Effect.sleep(linear.pull_every),
+                // Read under `busy`: a push queued after it waits for the pull to finish.
+                busy.withPermitsIfAvailable(1)(
+                  Effect.flatMap(pushing, (going) => (going ? Effect.void : pullAndSay(false))),
+                ),
+              ),
             ),
-          ),
       busy,
     }
   })

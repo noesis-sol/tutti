@@ -318,7 +318,7 @@ describe("the pulls on their own", () => {
     between?: (at: number) => Effect.Effect<void, unknown, Backlog | Listings>,
   ) =>
     Effect.gen(function* () {
-      const fiber = yield* Effect.forkChild(pulls.every)
+      const fiber = yield* Effect.forkChild(pulls.every(Effect.succeed(false)))
       yield* settle
       for (let at = 1; at <= minutes; at++) {
         if (between !== undefined) yield* between(at)
@@ -491,7 +491,7 @@ describe("the pulls on their own", () => {
   test("a pull is skipped while a pull or a push holds the sync", async () => {
     const ran = await pulling({}, ({ pulls }) =>
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(pulls.every)
+        const fiber = yield* Effect.forkChild(pulls.every(Effect.succeed(false)))
         yield* settle
         // A push holds it over the first pull's time; the second runs.
         yield* pulls.busy.withPermits(1)(Effect.andThen(TestClock.adjust(minute), settle))
