@@ -26,7 +26,10 @@ import {
 import { sanitizeLine } from "../text/sanitize.ts"
 import type { FormCancelled } from "../ui/questions.ts"
 
-/** The setup couldn't be done: why, on one line. Nothing was written. */
+/**
+ * The setup couldn't be done: why, on one line. The settings' block wasn't written, so the sync is
+ * off; bd's keys set before a failed one stay set.
+ */
 export class LinearSetupFailed extends Schema.TaggedError<LinearSetupFailed>()(
   "LinearSetupFailed",
   { why: Schema.String },

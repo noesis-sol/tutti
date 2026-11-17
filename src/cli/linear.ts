@@ -31,7 +31,7 @@ export interface Say {
 
 /** The exit codes, as the command's help gives them. */
 export const linearSetupExits =
-  "Exit codes: 0 set up, or nothing to change; 2 no key, or the setup failed, with nothing written; 130 cancelled."
+  "Exit codes: 0 set up, or nothing to change; 2 no key, or the setup failed, the settings' block not written, so the sync stays off; 130 cancelled, nothing written."
 
 /** How a Beads status is said in the question of the Linear state it is pushed as. */
 const statusWords: Record<(typeof outbound)[number][0], string> = {
