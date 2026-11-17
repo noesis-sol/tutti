@@ -1,14 +1,17 @@
 // The API-outage hold (§ 4.2, apiOutage.ts), over whole runs: a turn failing with a 529 after
 // Claude Code's retries leaves its worker waiting, not settled, so its fresh ticket isn't deferred
 // or triaged; no new ticket starts while the run holds; a probe that gets no answer is tried again
-// after a doubled wait; and once one is answered, the hold lifts and the worker carries on.
+// after a doubled wait; and once one is answered, the hold lifts and the worker carries on. The
+// machine's sleep (the test Wake layer) has the hold ask again a few seconds after the wake, the
+// backoff afresh, and a probe a sleep cut doesn't double the wait.
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Deferred, Effect, Exit, Fiber } from "effect"
+import { Clock, Deferred, Effect, Exit, Fiber } from "effect"
 import { ProbeAnswer } from "../src/organs/UsageProbe.ts"
+import { askAfterWake } from "../src/run/apiOutage.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
 import { apiBackText, nudgeText } from "../src/run/told.ts"
@@ -28,6 +31,7 @@ import {
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import type { Scripted } from "../src/testing/UsageProbe.ts"
+import { Asleep, layer as wakeLayer } from "../src/testing/Wake.ts"
 import {
   advance,
   backlog,
@@ -84,13 +88,16 @@ const untilLogged = (pattern: RegExp, count = 1) =>
 /** Lets the run go as far as it can, in real time, without the clock moving. */
 const settle = Effect.promise(() => Bun.sleep(50))
 
-/** A whole run on main with a dashboard, each ticket's worktree made in git first. */
+/**
+ * A whole run on main with a dashboard, each ticket's worktree made in git first, the machine
+ * sleeping only when `during` says so.
+ */
 const runs = (plan: {
   readonly tickets: ReadonlyArray<string>
   readonly concurrent?: number
   readonly probes?: ReadonlyArray<Scripted>
   readonly scripts: (world: World, root: string) => Scripts
-  readonly during: Effect.Effect<void, unknown, Env>
+  readonly during: Effect.Effect<void, unknown, Env | Asleep>
 }) => {
   const repo = folder("repo")
   const root = folder("worktrees")
@@ -115,7 +122,7 @@ const runs = (plan: {
       )
       yield* plan.during
       return yield* Fiber.join(fiber)
-    }),
+    }).pipe(Effect.provide(wakeLayer)),
   )
 }
 
@@ -229,5 +236,92 @@ describe("a turn failing as Claude's API is unavailable", () => {
       expect.stringContaining("tutti asks it in 1m"),
       expect.stringContaining("tutti asks it in 1m"),
     ])
+  })
+})
+
+/** Notes that the machine slept the last `ms` before now, as the live Wake finds it at the wake. */
+const sleptLast = (ms: number) =>
+  Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis
+    yield* (yield* Asleep).noted({ from: now - ms, to: now })
+  })
+
+describe("the API-outage hold and the machine's sleep", () => {
+  test("a wake during a long wait has it ask the API a few seconds after, and lift", async () => {
+    const ran = await runs({
+      tickets: ["t-1"],
+      probes: [
+        ProbeAnswer.Unanswered({ reason: "API Error: 529 Overloaded" }),
+        ProbeAnswer.Unanswered({ reason: "API Error: 529 Overloaded" }),
+      ],
+      scripts: (world, root) => ({
+        "t-1": [[wait, ...overloaded, ...finishes(world, root, "t-1" as TicketId)]],
+      }),
+      during: Effect.gen(function* () {
+        yield* untilLogged(holds)
+        yield* advance("1 minute")
+        yield* untilLogged(/got no answer either/)
+        yield* advance("2 minutes")
+        yield* untilLogged(/got no answer either/, 2)
+        // A minute into the 4m wait, the machine wakes from a sleep of 50s.
+        yield* advance("1 minute")
+        yield* sleptLast(50_000)
+        yield* untilLogged(/the machine woke/)
+        yield* settle
+        expect(yield* logged(lifted)).toBe(0)
+        yield* advance(askAfterWake)
+        yield* untilLogged(lifted)
+      }),
+    })
+    expectExitCode(ran, 0)
+    expectPhases(ran, { "t-1": "Done" })
+    expectLog(ran, [
+      holds,
+      "API_UNAVAILABLE: a probe of Claude's API got no answer either (API Error: 529 Overloaded); tutti asks it again in 2m",
+      "API_UNAVAILABLE: a probe of Claude's API got no answer either (API Error: 529 Overloaded); tutti asks it again in 4m",
+      "  the machine woke: tutti asks Claude's API again in 5s",
+      "API_UNAVAILABLE: lifted: Claude's API answered a probe 4m5s after the hold",
+      "  t-1: Claude's API answers again; its worker carries on",
+    ])
+  })
+
+  test("a probe a sleep cut doesn't double the wait: asked again after the wake, then firstProbe's", async () => {
+    const asked = Deferred.makeUnsafe<void>()
+    const answered = Deferred.makeUnsafe<void>()
+    const cut: Scripted = Effect.gen(function* () {
+      yield* Deferred.succeed(asked, undefined)
+      yield* Deferred.await(answered)
+      return ProbeAnswer.Unanswered({ reason: "getaddrinfo ENOTFOUND api.anthropic.com" })
+    })
+    const ran = await runs({
+      tickets: ["t-1"],
+      probes: [cut, ProbeAnswer.Unanswered({ reason: "API Error: 529 Overloaded" })],
+      scripts: (world, root) => ({
+        "t-1": [[wait, ...overloaded, ...finishes(world, root, "t-1" as TicketId)]],
+      }),
+      during: Effect.gen(function* () {
+        yield* untilLogged(holds)
+        yield* advance("1 minute")
+        yield* Deferred.await(asked)
+        // The machine sleeps 30s while the probe is asked; it gets no answer as it wakes.
+        yield* advance("30 seconds")
+        yield* sleptLast(30_000)
+        yield* Deferred.succeed(answered, undefined)
+        yield* untilLogged(/got no answer as the machine slept/)
+        yield* advance(askAfterWake)
+        yield* untilLogged(/got no answer either/)
+        yield* advance("1 minute")
+        yield* untilLogged(lifted)
+      }),
+    })
+    expectExitCode(ran, 0)
+    expectPhases(ran, { "t-1": "Done" })
+    expectLog(ran, [
+      holds,
+      "  a probe of Claude's API got no answer as the machine slept (getaddrinfo ENOTFOUND api.anthropic.com); tutti asks it again in 5s",
+      "API_UNAVAILABLE: a probe of Claude's API got no answer either (API Error: 529 Overloaded); tutti asks it again in 1m",
+      "API_UNAVAILABLE: lifted: Claude's API answered a probe 2m35s after the hold",
+    ])
+    expect(ran.log.filter((text) => /got no answer either/.test(text))).toHaveLength(1)
   })
 })

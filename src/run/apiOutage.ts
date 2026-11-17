@@ -12,6 +12,10 @@
 //   twice as long after each probe that got no answer, up to probeEveryMost, for as long as it
 //   takes: an outage overnight holds the run until the API is back, rather than defer the queue a
 //   ticket at a time or end the run. Each hold starts the backoff afresh.
+// - The machine's sleep (Wake's sleeps) has it ask again askAfterWake after the wake, whatever wait
+//   was left, the backoff afresh: the network may be back with the machine, as the lid opened. A
+//   probe a sleep cut that got no answer is the sleep's, not the API's: it doesn't double the wait,
+//   and the hold asks again askAfterWake after the wake (tutti-ko5f).
 // - A probe answered, even refused for the usage limit (the usage-limit hold takes that on), lifts
 //   the hold (`API_UNAVAILABLE lifted`): each ApiUnavailable worker you haven't steered is sent a
 //   client_composed message to carry on where it left off, but one whose hand-back was taken from
@@ -21,7 +25,17 @@
 // breakdown, which ends on it as on a failed turn (breakdown.ts), are left out: no hold runs before
 // the run to carry them on. A worker whose ticket has gone on since, its hand-back ended or set
 // aside, isn't told to carry on either.
-import { Clock, Duration, Effect, FiberSet, Ref, type Scope, Semaphore, Stream } from "effect"
+import {
+  Clock,
+  Duration,
+  Effect,
+  FiberSet,
+  Option,
+  Ref,
+  type Scope,
+  Semaphore,
+  Stream,
+} from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { interviewWorker } from "../agent/inView.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
@@ -31,6 +45,7 @@ import { formatDuration } from "../project/configFile.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { EventStream } from "../services/EventStream.ts"
 import { Notifier } from "../services/Notifier.ts"
+import { Wake } from "../services/Wake.ts"
 import { breakdownWorker } from "./breakdown.ts"
 import { probeWorker } from "./environment.ts"
 import { Ledger } from "./ledger.ts"
@@ -44,6 +59,9 @@ export const firstProbe: Duration.Duration = Duration.minutes(1)
 
 /** The longest wait between two probes that the doubling reaches. */
 export const probeEveryMost: Duration.Duration = Duration.minutes(15)
+
+/** How long after the machine wakes the hold asks the API, its network given time to come back. */
+export const askAfterWake: Duration.Duration = Duration.seconds(5)
 
 /** How long the hold waits before its probe after `probes` probes that got no answer. */
 export const probeAfter = (probes: number): Duration.Duration =>
@@ -60,6 +78,14 @@ export const unansweredLine = (reason: string, wait: Duration.Duration): Line =>
   tagged(
     holdWord,
   )`a probe of Claude's API got no answer either (${reason}); tutti asks it again in ${formatDuration(wait)}`
+
+/** The line said as the machine woke in the hold's wait, its probe due in `wait`. */
+export const wokeLine = (wait: Duration.Duration): Line =>
+  detail`the machine woke: tutti asks Claude's API again in ${formatDuration(wait)}`
+
+/** The line said as a probe a sleep cut got no answer, for `reason`, the next due in `wait`. */
+export const sleptProbeLine = (reason: string, wait: Duration.Duration): Line =>
+  detail`a probe of Claude's API got no answer as the machine slept (${reason}); tutti asks it again in ${formatDuration(wait)}`
 
 /** The line said as the hold is lifted, `after` it began. */
 export const liftedLine = (after: Duration.Duration): Line =>
@@ -102,6 +128,7 @@ export const make = (options: {
     const logs = yield* Log
     const events = yield* EventStream
     const notifier = yield* Notifier
+    const wake = yield* Wake
     // When the hold began, null while it doesn't hold the run.
     const since = yield* Ref.make<number | null>(null)
     const waiting = yield* Ref.make<Waiting>(new Map())
@@ -165,13 +192,49 @@ export const make = (options: {
       yield* options.wakeUp
     }).pipe(one.withPermit)
 
-    // Asks the API after each wait, doubled after each probe that got no answer, until one is.
+    // The first sleep of the machine noticed that ended after the instant `from`; never without one.
+    const wokeAfter = (from: number) =>
+      wake.sleeps.pipe(
+        Stream.filter((sleep) => sleep.to > from),
+        Stream.runHead,
+        Effect.flatMap((woke) => (Option.isSome(woke) ? Effect.succeed(woke.value) : Effect.never)),
+      )
+
+    // Asks the API after each wait, doubled after each probe that got no answer, until one is; a
+    // sleep of the machine has it ask again askAfterWake after the wake, the backoff afresh.
     const probing = Effect.gen(function* () {
-      for (let tried = 0; ; tried++) {
-        yield* Effect.sleep(probeAfter(tried))
+      let wait = probeAfter(0)
+      // The wait after the next probe that gets no answer: probeAfter(doubled).
+      let doubled = 1
+      // Where the sleeps already acted on end, so that one isn't taken for a wake again.
+      let seen = 0
+      const woken = (to: number) => {
+        seen = Math.max(seen, to)
+        wait = askAfterWake
+        doubled = 0
+      }
+      for (;;) {
+        const from = yield* Clock.currentTimeMillis
+        const woke = yield* Effect.raceFirst(
+          Effect.as(Effect.sleep(wait), null),
+          wokeAfter(Math.max(from, seen)),
+        )
+        if (woke !== null || (yield* wake.sleptSince(from)) > 0) {
+          woken(woke?.to ?? (yield* Clock.currentTimeMillis))
+          yield* logs.write(wokeLine(wait))
+          continue
+        }
+        const asked = yield* Clock.currentTimeMillis
         const answer = yield* probe.probe(null)
         if (answer._tag !== "Unanswered") return yield* lift
-        yield* logs.write(unansweredLine(answer.reason, probeAfter(tried + 1)))
+        if ((yield* wake.sleptSince(asked)) > 0) {
+          woken(yield* Clock.currentTimeMillis)
+          yield* logs.write(sleptProbeLine(answer.reason, wait))
+          continue
+        }
+        wait = probeAfter(doubled)
+        doubled += 1
+        yield* logs.write(unansweredLine(answer.reason, wait))
       }
     })
 
