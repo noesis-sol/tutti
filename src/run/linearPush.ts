@@ -10,7 +10,9 @@
 // One fiber works the queue, one push at a time, after the ticket's own step is done: the step
 // only queues it, so a merge never waits on Linear. Each push holds the sync, the pulls' `busy`
 // (linearPull.ts), so that a pull and a push run one at a time: a pull racing the push of a ticket
-// filed in the run would read it as not yet linked and import its issue again.
+// filed in the run would read it as not yet linked and import its issue again. It holds it for bd's
+// push alone, not for the reads around it nor a start's wait for its claim, so that a pull is held
+// off no longer than a push takes.
 //
 // Each push reads the ticket first: one linked to a Linear issue is pushed, and so is one filed in
 // the run that isn't a question for the maintainer (label human), an epic or ephemeral; any other,
@@ -251,7 +253,7 @@ export const make = (options: {
     const fibers = yield* (yield* RunFibers).make<unknown, never>("linear")
 
     // Runs `effect` holding the sync, where the run pulls.
-    const held = (effect: Effect.Effect<void>): Effect.Effect<void> =>
+    const held = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
       options.sync === undefined ? effect : options.sync.withPermits(1)(effect)
 
     // Reads `ticket` and pushes it if it is to be pushed; `last`: the end's try, which says
@@ -283,7 +285,7 @@ export const make = (options: {
           }
         }
         claims.delete(ticket)
-        const sync = yield* Effect.result(beads.linearPush([ticket]))
+        const sync = yield* Effect.result(held(beads.linearPush([ticket])))
         if (Result.isFailure(sync)) {
           return yield* failed(ticket, why, linearWhy(sync.failure), last)
         }
@@ -314,7 +316,6 @@ export const make = (options: {
             ? Effect.failCause(cause)
             : failed(ticket, why, causeWhy(cause), last),
         ),
-        held,
       )
 
     // Queues each ticket filed in the run not found before.
