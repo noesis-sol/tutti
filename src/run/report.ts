@@ -593,7 +593,7 @@ export const gather = (
       section("tutti's log for this run", cappedLog(logLines.map(filed), startBlockEnd)),
       section(`Commits merged into ${run.base} in this run`, read.commits),
       section(
-        "Tickets closed in this run, merged or with no change to merge (ID, title, phase, the Linear issue it is synced with where it has one, close reason)",
+        "Tickets closed in this run, merged or with no change to merge (ID, title, phase, close reason)",
         cappedList(read.closed, listCaps.closed, { one: "closed ticket", many: "closed tickets" }),
       ),
       section(
