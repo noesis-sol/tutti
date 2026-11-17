@@ -345,6 +345,8 @@ export interface Row extends Shown {
   readonly ticket: TicketId
   /** Its ticket's ID as drawn: a worker files tickets, so it is sanitised (§ 7.10). */
   readonly label: string
+  /** Its Linear issue's key, drawn beside its ID, where its ticket links one (`NOE-12`). */
+  readonly linear?: string
   readonly title: string
   /** What the row says of the ticket: its title, how it finished, or the question it waits on. */
   readonly note: string
@@ -459,6 +461,8 @@ export interface Card {
   readonly ticket: TicketId
   /** Its ticket's ID as drawn: a worker files tickets, so it is sanitised (§ 7.10). */
   readonly label: string
+  /** Its Linear issue's key, drawn beside its ID, where its ticket links one (`NOE-12`). */
+  readonly linear?: string
   readonly title: string
   /** Its worker's number, stable for the session: the cards' order, never shown (§ 7.2). */
   readonly worker: number
@@ -1162,6 +1166,16 @@ const textsOf = (entry: Entry) => {
   return texts
 }
 
+/**
+ * The Linear issue's key of `entry`'s ticket, as the run last read its issue, for its row and card:
+ * none where it links none, or the run hasn't read it. A key is letters, digits and a dash
+ * (linearKey), so nothing in it needs sanitising.
+ */
+const linearOf = (entry: Entry): { readonly linear?: string } => {
+  const key = entry.issue?.linearKey
+  return key === undefined ? {} : { linear: key }
+}
+
 /** What stopped a ticket's merge, its worktree, files and reason sanitised (§ 7.2). */
 const sanitisedAbout = (about: BlockedAbout): BlockedAbout => ({
   ...about,
@@ -1249,6 +1263,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     const phase = entry.phase
     const activity = activityOf(state, open)
     const { label, title } = textsOf(entry)
+    const linear = linearOf(entry)
     // A ticket set aside has the triage organ's verdict in place of its note.
     const verdict =
       phaseFacts[phase._tag].notice === "setAside"
@@ -1306,6 +1321,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         row: {
           ticket: entry.ticket,
           label,
+          ...linear,
           title,
           ...(slotOnly ? answeredRow : rowStatus(phase, activity)),
           note: noteOf(entry, title, branch, status, resumes),
@@ -1325,6 +1341,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       cards.push({
         ticket: entry.ticket,
         label,
+        ...linear,
         title,
         worker: entry.worker,
         phase,

@@ -2,7 +2,8 @@
 // `Tickets` label, a rounded frame with a row per ticket the run picked up but those Current shows,
 // whatever their phase, so that no ticket is shown twice, in the order of what they want of you
 // (byAttention): Blocked, Asked, set aside, then the rest. Where Current isn't drawn (the end-of-run
-// box), the running tickets keep their rows. A row's glyph, word and ID take its
+// box), the running tickets keep their rows. A ticket linked to a Linear issue has the issue's key
+// beside its ID, faint (the epic tutti-qatu). A row's glyph, word and ID take its
 // state's tone, as RunView worked it out (marks.ts); the rest of a finished ticket's row is faint, and a ticket set aside shows the
 // triage organ's verdict, `◆ …`, once it is in.
 //
@@ -30,7 +31,7 @@ import {
   seg,
   targeting,
 } from "./line.tsx"
-import type { Theme } from "./theme.ts"
+import type { Style, Theme } from "./theme.ts"
 import { lookOf } from "./tone.ts"
 
 /** The lines a section takes besides its rows: its label, and its frame's top and bottom. */
@@ -177,6 +178,22 @@ export const copiedCell = (width: number): string => {
   return Bun.stringWidth(said) <= width ? said : marks.done
 }
 
+/** A row's ID cell as text: its ID, and its ticket's Linear issue's key beside it, where it has one. */
+const idText = (row: Row): string =>
+  row.linear === undefined ? row.label : `${row.label} ${row.linear}`
+
+/**
+ * A row's ID cell, `width` wide: its ID in `style`, and its Linear issue's key beside it faint, where
+ * its ticket links one and the ID leaves room for it.
+ */
+const idCell = (row: Row, width: number, style: Style | null, theme: Theme): Segments => {
+  const id = fit(row.label, width)
+  const room = width - Bun.stringWidth(id) - 1
+  return row.linear === undefined || room < 1
+    ? [seg(id, style)]
+    : [seg(id, style), seg(` ${fit(row.linear, room)}`, theme.styles.dim)]
+}
+
 /**
  * A row's last column: its verdict in `organ` bold, its note faint or plain. The row selected lifts
  * it to the pointer's look, what `bold` alone can't do for a faint note, which stays dim, or for a
@@ -212,7 +229,7 @@ export const ticketsLines = (
   // A worker files tickets, so an ID is untrusted, and one longer than a third of the table is cut.
   const idWidth = Math.max(
     Math.min(
-      Math.max(minIdWidth, ...rows.map((row) => Bun.stringWidth(row.label))),
+      Math.max(minIdWidth, ...rows.map((row) => Bun.stringWidth(idText(row)))),
       Math.max(Math.floor(width / 3), minIdWidth),
       room([stateColumn, minAboutWidth]),
     ),
@@ -237,11 +254,9 @@ export const ticketsLines = (
         : [selected ? seg(`${marks.selected} `, styles.key) : seg(" ".repeat(gutter))]
     const drawn: ReadonlyArray<Segments> = [
       [...pointer, seg(fit(`${marks[row.mark]} ${row.word}`, stateWidth), style)],
-      [
-        reach?.copied === row.ticket
-          ? seg(copiedCell(idWidth), styles.closed)
-          : seg(fit(row.label, idWidth), style),
-      ],
+      reach?.copied === row.ticket
+        ? [seg(copiedCell(idWidth), styles.closed)]
+        : idCell(row, idWidth, style, theme),
       about,
     ]
     const bold = (cell: Segments): Segments =>

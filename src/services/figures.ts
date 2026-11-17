@@ -11,7 +11,9 @@
 //   the cache's share as "The prompt cache" gives it, a ticket's dollars as "Each ticket" does;
 // - the usage windows, from the `usage_window` records: each window's first figure, as the run
 //   started, and its last;
-// - the time the machine slept, from the `slept` records.
+// - the time the machine slept, from the `slept` records;
+// - the Linear sync, with the settings' linear block, from the `linear` records: the pulls and the
+//   issues they added, released and updated, the tickets pushed, and what still failed.
 import { Duration } from "effect"
 import { formatDuration } from "../project/configFile.ts"
 import type { checkResults, checkSuites, Event, Tokens } from "./events.ts"
@@ -57,6 +59,27 @@ export interface EarlyFigures {
   readonly spent: number
 }
 
+/**
+ * What the run's syncs with Linear came to (src/run/linearPull.ts, linearPush.ts), each issue and
+ * ticket counted once however often it was synced.
+ */
+export interface LinearFigures {
+  /** The pulls, and those of them that failed whole (LINEAR_PULL_FAILED). */
+  readonly pulls: number
+  readonly pullsFailed: number
+  /** The Linear issues pulled as new tickets, handed over (Todo) and otherwise changed, by key. */
+  readonly added: ReadonlySet<string>
+  readonly released: ReadonlySet<string>
+  readonly updated: ReadonlySet<string>
+  /** The issues bd skipped or failed in a pull and no later pull took, by key. */
+  readonly notPulled: ReadonlySet<string>
+  /** The tickets pushed, and those whose push created their Linear issue. */
+  readonly pushed: ReadonlySet<string>
+  readonly created: ReadonlySet<string>
+  /** The tickets whose push still failed at the run's end (LINEAR_PUSH_FAILED). */
+  readonly notPushed: ReadonlySet<string>
+}
+
 /** What the run's records add up to. Times are epoch milliseconds. */
 export interface Figures {
   /** Each ticket's phase as its last `phase` record left it, with its hold and when it began. */
@@ -82,6 +105,8 @@ export interface Figures {
   readonly slept: number
   /** Each ticket's tally and latest scorecard (scorecard.ts). */
   readonly scoring: Scoring
+  /** The Linear sync's, from its first record; null in a run without it. */
+  readonly linear: LinearFigures | null
 }
 
 export const noFigures: Figures = {
@@ -97,6 +122,56 @@ export const noFigures: Figures = {
   windows: new Map(),
   slept: 0,
   scoring: noScoring,
+  linear: null,
+}
+
+const noLinear: LinearFigures = {
+  pulls: 0,
+  pullsFailed: 0,
+  added: new Set(),
+  released: new Set(),
+  updated: new Set(),
+  notPulled: new Set(),
+  pushed: new Set(),
+  created: new Set(),
+  notPushed: new Set(),
+}
+
+const adding = (set: ReadonlySet<string>, keys: ReadonlyArray<string>): ReadonlySet<string> =>
+  keys.length === 0 ? set : new Set([...set, ...keys])
+
+/** `linear` with the `linear` record `event` added. */
+const linearSums = (linear: LinearFigures, event: Extract<Event, { kind: "linear" }>) => {
+  if (event.sync === "pull") {
+    const added = event.added ?? []
+    const released = event.released ?? []
+    const updated = event.updated ?? []
+    const took = new Set([...added, ...released, ...updated])
+    const notPulled = new Set([...linear.notPulled].filter((key) => !took.has(key)))
+    return {
+      ...linear,
+      pulls: linear.pulls + 1,
+      // Only a pull that failed whole says why.
+      pullsFailed: linear.pullsFailed + (event.why === undefined ? 0 : 1),
+      added: adding(linear.added, added),
+      released: adding(linear.released, released),
+      updated: adding(linear.updated, updated),
+      notPulled: adding(notPulled, event.failed ?? []),
+    }
+  }
+  const { ticket } = event
+  // A look for the tickets filed in the run that failed names no ticket: nothing pushed or not.
+  if (ticket === undefined) return linear
+  if (event.outcome === "failed") {
+    return event.last === true
+      ? { ...linear, notPushed: adding(linear.notPushed, [ticket]) }
+      : linear
+  }
+  return {
+    ...linear,
+    pushed: adding(linear.pushed, [ticket]),
+    created: event.outcome === "created" ? adding(linear.created, [ticket]) : linear.created,
+  }
 }
 
 const plus = <K>(map: ReadonlyMap<K, number>, key: K, n: number): ReadonlyMap<K, number> =>
@@ -198,6 +273,8 @@ const sums = (figures: Figures, event: Event, at: number): Figures => {
     }
     case "slept":
       return { ...figures, slept: figures.slept + event.seconds * 1000 }
+    case "linear":
+      return { ...figures, linear: linearSums(figures.linear ?? noLinear, event) }
     case "usage_window": {
       const was = figures.windows.get(event.window)
       return {
@@ -220,7 +297,7 @@ export interface Part {
 
 /** A line of the figures: its label, and its parts, joined by ` · `. */
 export interface FiguresLine {
-  readonly label: "Time" | "Checks" | "Scores" | "Spent" | "Usage"
+  readonly label: "Time" | "Checks" | "Scores" | "Spent" | "Usage" | "Linear"
   readonly parts: ReadonlyArray<Part>
 }
 
@@ -387,6 +464,36 @@ export const scoresParts = (scoring: Scoring): ReadonlyArray<Part> => {
   ]
 }
 
+/** `ids`, the first `named` of them, and how many more: `t-1, t-2, t-3, +2 more`. */
+const namedIds = (ids: ReadonlySet<string>): string => {
+  const all = [...ids]
+  const more = all.length > named ? [`+${all.length - named} more`] : []
+  return [...all.slice(0, named), ...more].join(", ")
+}
+
+/**
+ * The Linear line's parts, in a run with the sync: its pulls, the issues they added, released and
+ * updated, the tickets pushed and those of them created in Linear, then what failed: `3 pulls · 2
+ * added · 1 released · 4 pushed (1 created) · failed: 1 pull, NOE-9 not pulled, t-3 not pushed`.
+ */
+export const linearParts = (linear: LinearFigures | null): ReadonlyArray<Part> => {
+  if (linear === null) return []
+  const created = linear.created.size === 0 ? "" : ` (${linear.created.size} created)`
+  const failed = [
+    ...(linear.pullsFailed > 0 ? [counted(linear.pullsFailed, "pull")] : []),
+    ...(linear.notPulled.size > 0 ? [`${namedIds(linear.notPulled)} not pulled`] : []),
+    ...(linear.notPushed.size > 0 ? [`${namedIds(linear.notPushed)} not pushed`] : []),
+  ]
+  return [
+    { text: counted(linear.pulls, "pull") },
+    ...(linear.added.size > 0 ? [{ text: `${linear.added.size} added` }] : []),
+    ...(linear.released.size > 0 ? [{ text: `${linear.released.size} released` }] : []),
+    ...(linear.updated.size > 0 ? [{ text: `${linear.updated.size} updated` }] : []),
+    ...(linear.pushed.size > 0 ? [{ text: `${linear.pushed.size} pushed${created}` }] : []),
+    ...(failed.length > 0 ? [{ text: `failed: ${failed.join(", ")}` }] : []),
+  ]
+}
+
 /** A count of tokens to two figures at most: `950`, `12k`, `1.2M`, `53M`. */
 export const tokenCount = (n: number): string => {
   for (const [size, unit] of [
@@ -437,8 +544,9 @@ const usageParts = (figures: Figures, label: (window: string) => string): Readon
   })
 
 /**
- * The figures' lines, each left out with nothing to say: Time, Checks, Scores, Spent and, on a
- * `subscription` login, Usage, its windows named by `label`, as the title line names them.
+ * The figures' lines, each left out with nothing to say: Time, Checks, Scores, Spent, on a
+ * `subscription` login Usage, its windows named by `label`, as the title line names them, and, in a
+ * run with the Linear sync, Linear.
  */
 export const figuresLines = (
   figures: Figures,
@@ -454,6 +562,7 @@ export const figuresLines = (
         label: "Usage",
         parts: options.subscription ? usageParts(figures, options.label) : [],
       },
+      { label: "Linear", parts: linearParts(figures.linear) },
     ] satisfies ReadonlyArray<FiguresLine>
   ).filter((each) => each.parts.length > 0)
 

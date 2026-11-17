@@ -592,8 +592,11 @@ describe("a whole run", () => {
     expectLog(ran, [
       "START tutti 0.1.0-test",
       "LINEAR: pulled from NOE at the start: added NOE-1",
-      "[1] test-1 dispatching: From Linear",
+      "[1] test-1 (NOE-1) dispatching: From Linear",
     ])
+    // The summary counts the sync, and the ticket's row names its Linear issue (tutti-qatu.9).
+    expect(ran.log).toContain("  Linear  1 pull · 1 added · 1 pushed")
+    expect(ran.log.some((each) => each.startsWith("  ✓ test-1 (NOE-1) done: "))).toBe(true)
     expect<string | undefined>(ran.issues.find((issue) => issue.id === "test-1")?.linearKey).toBe(
       "NOE-1",
     )
@@ -630,9 +633,9 @@ describe("a whole run", () => {
     expectPhases(ran, { a: "Done", "test-2": "Done" })
     expectLog(ran, [
       "LINEAR: pulled from NOE at the start: nothing new",
-      "[1] a dispatching: Held",
+      "[1] a (NOE-1) dispatching: Held",
       "LINEAR: pulled from NOE: added NOE-2",
-      "[2] test-2 dispatching: Filed in Linear",
+      "[2] test-2 (NOE-2) dispatching: Filed in Linear",
     ])
     // The look the pull woke started it at once, not the ready poll 30 s on.
     const dispatched = ran.events.find(

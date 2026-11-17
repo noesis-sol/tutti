@@ -9,7 +9,7 @@ import type { Card } from "../../run/runView.ts"
 import type { TicketId } from "../../services/Beads.ts"
 import { ellipsis, marks } from "../../text/marks.ts"
 import { sanitizeLine } from "../../text/sanitize.ts"
-import { cardMark, statusLook } from "../Card.tsx"
+import { cardMark, statusLook, ticketSegments } from "../Card.tsx"
 import { finishedWords } from "../Composer.tsx"
 import { clickable } from "../click.ts"
 import { minHeight, minWidth } from "../Dashboard.tsx"
@@ -113,7 +113,7 @@ export const lineOneSegments = (
       [
         cardMark(card, theme, inputs.spin),
         seg(markGap),
-        seg(card.label, theme.styles.picked),
+        ...ticketSegments(card, theme),
         seg(fieldGap),
         ...inputs.status,
         ...(card.steered ? [seg(fieldGap), seg("steered", theme.look("emphasis"))] : []),

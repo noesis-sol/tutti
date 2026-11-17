@@ -14,11 +14,17 @@ import { recorded, remember, soloState } from "./queue.ts"
 import { claimRoom, current, mergingIn, occupy, slotFree } from "./slots.ts"
 import { progress, reached, type Scheduling } from "./state.ts"
 
-/** `[n/limit] <id> dispatching: <title>`, the dispatch's log line; `dispatching solo` for one. */
-export const dispatchLine = (n: number, limit: number | null, issue: Issue): Line =>
-  isSolo(issue)
-    ? line`[${progress(n, limit)}] ${issue.id} dispatching solo: ${issue.title}`
-    : line`[${progress(n, limit)}] ${issue.id} dispatching: ${issue.title}`
+/**
+ * `[n/limit] <id> dispatching: <title>`, the dispatch's log line; `dispatching solo` for one, and
+ * `<id> (NOE-12)` for a ticket linked to a Linear issue.
+ */
+export const dispatchLine = (n: number, limit: number | null, issue: Issue): Line => {
+  const id =
+    issue.linearKey === undefined ? line`${issue.id}` : line`${issue.id} (${issue.linearKey})`
+  return isSolo(issue)
+    ? line`[${progress(n, limit)}] ${id} dispatching solo: ${issue.title}`
+    : line`[${progress(n, limit)}] ${id} dispatching: ${issue.title}`
+}
 
 /** `<id> footprint: …`, under the dispatch's line with footprints on (§ 5 item 5). */
 export const footprintLine = (id: TicketId, fp: Footprint): Line =>

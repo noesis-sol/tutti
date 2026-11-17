@@ -18,6 +18,7 @@ import {
   checksGateLabel,
   type Ending,
   type Summary,
+  shownFigures,
 } from "../run/summary.ts"
 import { type FiguresLine, labelWidth } from "../services/figures.ts"
 import { marks } from "../text/marks.ts"
@@ -161,7 +162,8 @@ const parts = (theme: Theme, width: number) => {
 /**
  * The summary `width` columns wide (`minWidth` at the least), in `theme`'s styles: a blank line,
  * the title, the totals, how a spec run's checks gate went and, when the run took any up, its
- * figures and every ticket; then what --auto-answer answered, if anything.
+ * figures (the Linear sync's whether or not) and every ticket; then what --auto-answer answered,
+ * if anything.
  */
 export const summary = (s: Summary, theme: Theme, width: number): string => {
   const p = parts(theme, width)
@@ -170,7 +172,8 @@ export const summary = (s: Summary, theme: Theme, width: number): string => {
     p.title(s),
     ...p.totals(s.totals),
     ...p.gate(s.checksGate),
-    ...(s.rows.length === 0 ? [] : [...p.figures(s.figures), ...p.tickets(s.rows)]),
+    ...p.figures(shownFigures(s)),
+    ...(s.rows.length === 0 ? [] : p.tickets(s.rows)),
     ...p.autoAnswered(s.autoAnswered ?? []),
   ]
     .map(paint)

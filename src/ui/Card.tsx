@@ -1,7 +1,8 @@
 // The dashboard's Current section (§ 5.1 "How the phases are shown", § 7.2, § 7.11): under its
 // `Current` label, a card for each ticket with work under way, in its worker's number order, a
 // number the card doesn't show (§ 7.2). A card says its mark (the spinner while the worker works,
-// `◼` to merge, `◆` merging, `•` once its turn has ended), its ticket, its status (`steered` beside
+// `◼` to merge, `◆` merging, `•` once its turn has ended), its ticket (its Linear issue's key
+// beside it, faint, where it links one: the epic tutti-qatu), its status (`steered` beside
 // it), how long it has been in its phase, the memory its worker's processes take once the run has
 // read it (`1.2 GB`, `? GB` when they can't be found, src/run/load.ts), its title, and its action
 // line: the phase's (a merge's step, a recheck), or else the worker's latest action behind `▸`, a
@@ -131,6 +132,12 @@ const frameOf = (card: Card, theme: Theme): Look =>
 const steeredOf = (card: Card, theme: Theme): Segments =>
   card.steered ? [seg(fieldGap), seg("steered", theme.look("emphasis"))] : []
 
+/** A card's ticket: its ID, and its Linear issue's key beside it, faint, where it links one. */
+export const ticketSegments = (card: Pick<Card, "label" | "linear">, theme: Theme): Segments => [
+  seg(card.label, theme.styles.picked),
+  ...(card.linear === undefined ? [] : [seg(` ${card.linear}`, theme.styles.dim)]),
+]
+
 /** The cells of a card's first line but its mark: its ticket, status, elapsed time and memory. */
 interface HeadCells {
   readonly ticket: Segments
@@ -149,7 +156,7 @@ const noColumns: HeadColumns = { ticket: 0, status: 0, time: 0, memory: 0 }
 const cellsOf = (card: Card, theme: Theme, now: number, status: Segments): HeadCells => {
   const { styles } = theme
   return {
-    ticket: [seg(card.label, styles.picked)],
+    ticket: ticketSegments(card, theme),
     status: [...status, ...steeredOf(card, theme)],
     time: [seg(elapsed(now - card.since), styles.dim)],
     memory: card.memory === undefined ? [] : [seg(workerMemory(card.memory), styles.dim)],

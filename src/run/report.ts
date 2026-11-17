@@ -100,7 +100,7 @@ export interface ReportRun {
 export interface Readings {
   /** The commits merged, as the reviewer reads them. */
   readonly commits: string
-  /** Each ticket closed in the run, as the reviewer reads it. */
+  /** Each ticket closed in the run, as the reviewer reads it, with its Linear issue's key where it has one. */
   readonly closed: ReadonlyArray<string>
   /** Each ticket set aside in the run, as the reviewer reads it. */
   readonly setAside: ReadonlyArray<string>
@@ -498,6 +498,7 @@ export const readEvidence = (
           const reason = oneLine(issue.closeReason, closeReasonWidth)
           return (
             `${entry.ticket}: ${issue.title}\n${phaseSaid(entry.phase)}\n` +
+            (issue.linearKey === undefined ? "" : `Linear issue: ${issue.linearKey}\n`) +
             `Close reason: ${reason === "" ? "(none given)" : reason}`
           )
         }),
@@ -592,7 +593,7 @@ export const gather = (
       section("tutti's log for this run", cappedLog(logLines.map(filed), startBlockEnd)),
       section(`Commits merged into ${run.base} in this run`, read.commits),
       section(
-        "Tickets closed in this run, merged or with no change to merge (ID, title, phase, close reason)",
+        "Tickets closed in this run, merged or with no change to merge (ID, title, phase, the Linear issue it is synced with where it has one, close reason)",
         cappedList(read.closed, listCaps.closed, { one: "closed ticket", many: "closed tickets" }),
       ),
       section(

@@ -49,7 +49,10 @@ export interface Summary {
   /** How long the run took, in milliseconds. */
   readonly took: number
   readonly totals: Totals
-  /** The run's figures, each line with something to say (figures.ts); none shown without rows. */
+  /**
+   * The run's figures, each line with something to say (figures.ts); without rows only Linear's is
+   * shown (shownFigures).
+   */
   readonly figures: ReadonlyArray<FiguresLine>
   /** Every ticket the run took up, in the order it took them up. */
   readonly rows: ReadonlyArray<Row>
@@ -58,6 +61,13 @@ export interface Summary {
   /** How a spec run's checks gate went (src/run/checksGate.ts); none where it didn't run. */
   readonly checksGate?: string
 }
+
+/**
+ * The figures the summary shows: every line where the run took up a ticket; else only Linear's,
+ * as a run with the sync pulls at its start whether or not it finds work.
+ */
+export const shownFigures = (s: Pick<Summary, "figures" | "rows">): ReadonlyArray<FiguresLine> =>
+  s.rows.length > 0 ? s.figures : s.figures.filter((each) => each.label === "Linear")
 
 /** What the summary's line on a spec run's checks gate starts with. */
 export const checksGateLabel = "Checks gate:"

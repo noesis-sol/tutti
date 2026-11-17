@@ -52,6 +52,7 @@ import {
   checksGateLabel,
   Ending,
   type Summary,
+  shownFigures,
 } from "./summary.ts"
 import { labelAtEnd } from "./unmerged.ts"
 import { neverHanded, type UsageLimitHold } from "./usageLimit.ts"
@@ -88,8 +89,11 @@ export const summaryLines = (s: {
     line`tutti ${s.version} on ${s.base}${scoped} · ${runTime(s.took)}`,
     detail`Completed ${totals.completed} · Set aside ${totals.deferred + totals.review} · Needs you ${totals.needsYou}`,
     ...(s.checksGate === undefined ? [] : [detail`${checksGateLabel} ${s.checksGate}`]),
-    ...(s.rows.length === 0 ? [] : s.figures.map((each) => detail`${figuresText(each)}`)),
-    ...s.rows.map((row) => detail`${marks[row.mark]} ${row.ticket} ${row.word}: ${row.note}`),
+    ...shownFigures(s).map((each) => detail`${figuresText(each)}`),
+    ...s.rows.map(
+      (row) =>
+        detail`${marks[row.mark]} ${row.ticket}${row.linear === undefined ? "" : line` (${row.linear})`} ${row.word}: ${row.note}`,
+    ),
     ...(auto.length === 0 ? [] : [detail`${autoAnsweredHeading}:`]),
     ...auto.map((text) => detail`  ${text}`),
   ]
