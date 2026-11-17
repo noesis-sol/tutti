@@ -199,8 +199,8 @@ export const make = (options: {
     const failures = new Map<TicketId, Failed>()
     // The items queued or being worked: the end waits for none.
     const outstanding = yield* SubscriptionRef.make(0)
-    // The ticket being pushed now.
-    let pushing: TicketId | undefined
+    // The ticket the queue's fiber works on now, read or pushed, and why.
+    let working: { readonly ticket: TicketId; readonly why: PushWhy } | undefined
     // Set by finish: a start waits for no claim, and nothing more is queued once it is over.
     let ending = false
     let over = false
@@ -273,14 +273,7 @@ export const make = (options: {
           }
         }
         claims.delete(ticket)
-        pushing = ticket
-        const sync = yield* Effect.result(beads.linearPush([ticket])).pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              pushing = undefined
-            }),
-          ),
-        )
+        const sync = yield* Effect.result(beads.linearPush([ticket]))
         if (Result.isFailure(sync)) {
           return yield* failed(ticket, why, linearWhy(sync.failure), last)
         }
@@ -342,7 +335,13 @@ export const make = (options: {
       }
       const why = pending.get(item.ticket) ?? "filed"
       pending.delete(item.ticket)
-      return push(item.ticket, why, false)
+      working = { ticket: item.ticket, why }
+      return Effect.ensuring(
+        push(item.ticket, why, false),
+        Effect.sync(() => {
+          working = undefined
+        }),
+      )
     }
 
     yield* FiberSet.run(
@@ -357,7 +356,7 @@ export const make = (options: {
       ),
     )
 
-    const busy = Effect.map(SubscriptionRef.get(outstanding), (n) => n > 0 || pushing !== undefined)
+    const busy = Effect.map(SubscriptionRef.get(outstanding), (n) => n > 0)
 
     // Waits until nothing is queued or being worked.
     const drained = SubscriptionRef.changes(outstanding).pipe(
@@ -383,13 +382,15 @@ export const make = (options: {
         times.endWait,
       )
       over = true
-      // What the end's time left unpushed: the push under way, and those queued.
-      const left = new Set<TicketId>(done._tag === "None" ? [...pending.keys()] : [])
-      if (done._tag === "None" && pushing !== undefined) left.add(pushing)
+      // What the end's time left unpushed, the ticket under way and those queued, is pushed no
+      // more: the queue's fiber stops, and its starts waiting for a claim with it.
+      const left: ReadonlyArray<readonly [TicketId, PushWhy]> =
+        done._tag === "None"
+          ? [...(working === undefined ? [] : [[working.ticket, working.why] as const]), ...pending]
+          : []
+      yield* FiberSet.clear(fibers)
       const unpushed = `not pushed within the run end's ${formatDuration(times.endWait)}`
-      for (const ticket of left) {
-        failures.set(ticket, { why: pending.get(ticket) ?? "filed", reason: unpushed })
-      }
+      for (const [ticket, why] of left) failures.set(ticket, { why, reason: unpushed })
       for (const [ticket, { reason }] of failures) {
         yield* say({
           kind: "linear",
