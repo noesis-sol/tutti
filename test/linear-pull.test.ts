@@ -255,7 +255,9 @@ describe("Linear's API's answers", () => {
     const without = await Effect.runPromise(
       Effect.flip(liveLinearIssues({}, http).list("NOE", null)),
     )
-    expect(without.reason).toBe("no LINEAR_API_KEY in the environment to list Linear's issues with")
+    expect(without.reason).toBe(
+      "no LINEAR_API_KEY (nor LINEAR_OAUTH_CLIENT_ID and LINEAR_OAUTH_CLIENT_SECRET) in the environment to list Linear's issues with",
+    )
     expect(sent).toHaveLength(2)
   })
 })
