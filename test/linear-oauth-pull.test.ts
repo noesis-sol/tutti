@@ -8,6 +8,7 @@ import { HttpClient, HttpClientResponse } from "effect/http"
 import fc from "fast-check"
 import {
   credentialOf,
+  type ListedIssue,
   linearApi,
   linearTokenUrl,
   liveLinearIssues,
@@ -80,7 +81,11 @@ const token = (value: string, expiresIn = 2_591_999) =>
     { access_token: value, token_type: "Bearer", expires_in: expiresIn, scope: "read write" },
   ] as const
 
-const NOE1 = [{ key: linearKey("NOE-1"), state: "unstarted" }]
+const noe1 = linearKey("NOE-1")
+if (noe1 === undefined) throw new Error("NOE-1 is no Linear key")
+
+/** What the fake Linear's API lists. */
+const NOE1: ReadonlyArray<ListedIssue> = [{ key: noe1, state: "unstarted" }]
 
 describe("the credential a listing uses", () => {
   test("bd's OAuth pair where both halves are set, over the key; else the key; else none", () => {
