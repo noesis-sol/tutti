@@ -1,15 +1,23 @@
 // Pushes to Linear hold the sync the run's pulls hold (tutti-mwsd): a push waits for a pull under
 // way, and a pull during the run finds the sync held while a push is under way and is skipped
 // (linearPull.ts), so that a pull never reads a ticket filed in the run as not yet linked while
-// its push links it, and imports its issue again.
+// its push links it, and imports its issue again; in a whole run too, where the pushes take the
+// pulls' own.
 import { describe, expect, test } from "bun:test"
-import { Deferred, Effect, Layer, Option, type Scope, Semaphore } from "effect"
+import { mkdtempSync, realpathSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { Deferred, Duration, Effect, Fiber, Layer, Option, type Scope, Semaphore } from "effect"
 import { TestClock } from "effect/testing"
-import type { Log } from "../src/core/log.ts"
+import { type Log, line } from "../src/core/log.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { type LinearPushes, make } from "../src/run/linearPush.ts"
+import { run } from "../src/run/run.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import type { EventStream } from "../src/services/EventStream.ts"
+import { Git } from "../src/services/Git.ts"
+import { bash, result, sleep, turn } from "../src/testing/AgentHost.ts"
+import { appConfig } from "../src/testing/AppConfig.ts"
 import {
   Backlog,
   layer as beadsLayer,
@@ -18,7 +26,9 @@ import {
   type Seed,
 } from "../src/testing/Beads.ts"
 import { type Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
+import { Listings } from "../src/testing/LinearIssues.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { expectExitCode, scenario, type World } from "./harness.ts"
 
 type Env = Beads | Backlog | Log | EventStream | Captured | RunFibers | Scope.Scope
 
@@ -122,4 +132,82 @@ describe("pushes and pulls hold one sync", () => {
       lines: ["  LINEAR: t-1 closed, pushed to NOE-1 (updated)"],
     })
   })
+})
+
+describe("a whole run", () => {
+  const folder = (name: string) =>
+    realpathSync(mkdtempSync(join(tmpdir(), `tutti-linear-push-sync-${name}-`)))
+
+  test("the pulls every pull_every are skipped while a push is under way, and go on after it", async () => {
+    const repo = folder("repo")
+    const root = folder("worktrees")
+    const id = "t-1" as TicketId
+    // Linear answers t-1's pushes only once `answered`, at the start of the 6th minute.
+    const answered = Effect.runSync(Deferred.make<void>())
+    const ran = await scenario(
+      {
+        config: {
+          repo,
+          settings: appConfig().settings,
+          linear: { team: "NOE", pull_every: Duration.seconds(50) },
+        },
+        backlog: [linked],
+        bd: { linearTeam: { issues: team, pushWaits: Deferred.await(answered) } },
+        git: { dir: repo },
+        worktrees: { root },
+        scripts: (world: World) => ({
+          "t-1": [
+            turn(
+              [
+                ...bash(
+                  "bd update t-1 --claim",
+                  Effect.orDie(world.beads.update(id, { claim: true })),
+                ),
+                sleep("8 minutes"),
+                ...bash(
+                  'git commit -am "Change (t-1)"',
+                  Effect.orDie(
+                    world.repository.commit(join(root, id), "Change (t-1)", { "t.txt": "x\n" }),
+                  ),
+                ),
+                ...bash("bd close t-1", Effect.orDie(world.beads.close(id, "done"))),
+              ],
+              result("Closed t-1."),
+            ),
+          ],
+        }),
+      },
+      Effect.gen(function* () {
+        const git = yield* Git
+        const listings = yield* Listings
+        yield* git.addWorktree(repo, join(root, id), { branch: "tutti/t-1", base: "main" })
+        const fiber = yield* Effect.forkChild(
+          run({ version: "0.1.0-test", base: "main", start: [line`START tutti 0.1.0-test`] }),
+        )
+        let held = 0
+        for (let step = 0; step < 30 * 6; step++) {
+          yield* Effect.promise(() => Bun.sleep(5))
+          if (step === 5 * 6) {
+            held = (yield* listings.asked).length
+            yield* Deferred.succeed(answered, undefined)
+          }
+          yield* TestClock.adjust("10 seconds")
+        }
+        const outcome = yield* Fiber.join(fiber)
+        return { ...outcome, held, asked: (yield* listings.asked).length }
+      }),
+    )
+    expectExitCode(ran, 0)
+    const seen = ran.exit._tag === "Success" ? ran.exit.value : { held: -1, asked: -1 }
+    // The start's pull alone, over the five minutes t-1's start was being pushed.
+    expect(seen.held).toBe(1)
+    expect(seen.asked).toBeGreaterThan(1)
+    expect(ran.log.filter((text) => /LINEAR/.test(text))).toEqual(
+      expect.arrayContaining([
+        "LINEAR: pulled from NOE at the start: nothing new",
+        "  LINEAR: t-1 started, pushed to NOE-1 (updated)",
+        "  LINEAR: t-1 closed, pushed to NOE-1 (updated)",
+      ]),
+    )
+  }, 30_000)
 })

@@ -108,6 +108,8 @@ export interface TestLinear {
   readonly issues?: ReadonlyArray<LinearSeed>
   /** Whether bd is configured for it, as bd linear status says; true by default. */
   readonly configured?: boolean
+  /** What each push waits for before bd answers, for a test to hold one under way; none by default. */
+  readonly pushWaits?: Effect.Effect<void>
 }
 
 /** The URL bd writes as the external_ref of a ticket linked to the Linear issue `key`. */
@@ -1008,7 +1010,7 @@ export const layer = (
                 ` --prefer-local --issues=${ids.join(",")}`,
                 ids,
                 LinearTimeLimit.push,
-                push(ids),
+                Effect.andThen(bd.linearTeam?.pushWaits ?? Effect.void, push(ids)),
                 (command, output) => judgeSync(command, ids, output),
               ),
         linearStatus: () =>
