@@ -161,7 +161,24 @@ export interface Fault {
   readonly stdout?: string
   /** How many calls fail; 1 by default, every one with Infinity. */
   readonly times?: number
+  /**
+   * The call takes this long on the clock before it answers: as bd would where the fault sets no
+   * other output (timedOut, exitCode, stderr, stdout), else as they say.
+   */
+  readonly takes?: Duration.Input
 }
+
+/** Whether `fault` only slows its call, which then answers as bd would. */
+const onlySlows = (fault: Fault): boolean =>
+  fault.takes !== undefined &&
+  fault.timedOut === undefined &&
+  fault.exitCode === undefined &&
+  fault.stderr === undefined &&
+  fault.stdout === undefined
+
+/** `answer`, after the time `fault` says its call takes. */
+const after = <A, E>(fault: Fault | undefined, answer: Effect.Effect<A, E>): Effect.Effect<A, E> =>
+  fault?.takes === undefined ? answer : Effect.andThen(Effect.sleep(fault.takes), answer)
 
 /** bd's stdout as bd show --json answers an ID it has no issue for, for a Fault's stdout. */
 export const noSuchIssueStdout = JSON.stringify({ error: noSuchIssueError })
@@ -658,7 +675,7 @@ export const layer = (
           const command = commandOf(op, id)
           const fault = takeFault(op, id, ids)
           const output: Effect.Effect<BdOutput, BeadsError> =
-            fault === undefined
+            fault === undefined || onlySlows(fault)
               ? call
               : fault.timedOut
                 ? Effect.fail(new BeadsTimedOut({ command, timeLimit: TimeLimit[kind] }))
@@ -667,10 +684,13 @@ export const layer = (
                     stdout: fault.stdout ?? "",
                     stderr: fault.stderr ?? `Error: bd ${op} failed`,
                   })
-          return Effect.flatMap(output, (output) =>
-            kind === "read"
-              ? judgeRead(command, output, decode)
-              : Effect.andThen(judgeWrite(command, output), decode(command, output.stdout)),
+          return after(
+            fault,
+            Effect.flatMap(output, (output) =>
+              kind === "read"
+                ? judgeRead(command, output, decode)
+                : Effect.andThen(judgeWrite(command, output), decode(command, output.stdout)),
+            ),
           )
         })
 
@@ -826,16 +846,21 @@ export const layer = (
         Effect.suspend((): Effect.Effect<A, LinearError> => {
           const command = `bd ${op}${args} --json`
           const fault = takeFault(op, undefined, asked)
-          if (fault?.timedOut) return Effect.fail(new BeadsTimedOut({ command, timeLimit }))
+          if (fault?.timedOut) {
+            return after(fault, Effect.fail(new BeadsTimedOut({ command, timeLimit })))
+          }
           const output: Effect.Effect<BdOutput> =
-            fault === undefined
+            fault === undefined || onlySlows(fault)
               ? call
               : Effect.succeed({
                   exitCode: fault.exitCode ?? 1,
                   stdout: fault.stdout ?? "",
                   stderr: fault.stderr ?? `Error: bd ${op} failed`,
                 })
-          return Effect.flatMap(output, (output) => judge(command, output))
+          return after(
+            fault,
+            Effect.flatMap(output, (output) => judge(command, output)),
+          )
         })
 
       const nothing: Decode<void> = () => Effect.void

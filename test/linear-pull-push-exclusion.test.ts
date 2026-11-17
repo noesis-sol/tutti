@@ -3,17 +3,25 @@
 // or under way, and a push waits for a pull under way, as a pull that listed an issue a push had
 // created but not yet linked would add a second ticket for it.
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, realpathSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { Duration, Effect, Fiber, Layer, Ref, type Scope } from "effect"
 import { TestClock } from "effect/testing"
-import type { Log } from "../src/core/log.ts"
+import { type Log, line } from "../src/core/log.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import type { Ledger } from "../src/run/ledger.ts"
 import { type LinearPulls, make as makePulls } from "../src/run/linearPull.ts"
 import { type LinearPushes, make as makePushes } from "../src/run/linearPush.ts"
+import { run } from "../src/run/run.ts"
 import { sayer } from "../src/run/say.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import type { EventStream } from "../src/services/EventStream.ts"
+import type { EventRecord } from "../src/services/events.ts"
+import { Git } from "../src/services/Git.ts"
 import { LinearIssues } from "../src/services/LinearIssues.ts"
+import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
+import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import {
   Backlog,
   layer as beadsLayer,
@@ -24,6 +32,7 @@ import {
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { Listings, layer as linearIssuesLayer } from "../src/testing/LinearIssues.ts"
 import { texts } from "../src/testing/Log.ts"
+import { expectExitCode, scenario, type World } from "./harness.ts"
 
 type Env = Beads | Backlog | Listings | Ledger | Log | EventStream | RunFibers | Scope.Scope
 
@@ -162,4 +171,154 @@ describe("pulls and pushes to Linear", () => {
     expect(seen.tickets).toEqual([["f", "NOE-1"]])
     expect(seen.issues).toEqual(["NOE-1"])
   })
+})
+
+describe("pulls and pushes in a whole run", () => {
+  const folder = (name: string) =>
+    realpathSync(mkdtempSync(join(tmpdir(), `tutti-linear-exclusion-${name}-`)))
+
+  /** A worker that claims its ticket, does `first`, takes `span`, then commits and closes it. */
+  const works = (
+    world: World,
+    root: string,
+    id: string,
+    span: Duration.Input,
+    first: ReadonlyArray<ReturnType<typeof bash>[number]> = [],
+  ): SessionScript =>
+    turn(
+      [
+        ...bash(
+          `bd update ${id} --claim`,
+          Effect.asVoid(Effect.orDie(world.beads.update(id as TicketId, { claim: true }))),
+        ),
+        ...first,
+        sleep(span),
+        ...bash(
+          `git commit -am "Change (${id})"`,
+          Effect.asVoid(
+            Effect.orDie(
+              world.repository.commit(join(root, id), `Change (${id})`, { [`${id}.txt`]: "x\n" }),
+            ),
+          ),
+        ),
+        ...bash(
+          `bd close ${id}`,
+          Effect.asVoid(Effect.orDie(world.beads.close(id as TicketId, "done"))),
+        ),
+      ],
+      result(`Closed ${id}.`),
+    )
+
+  /**
+   * A whole run with a pull every minute of t-1, linked to NOE-1, and t-2, the backlog's history,
+   * whose worker keeps the run going 8 minutes; the clock moved on 10 s at a time, `during` run at
+   * the start of each minute.
+   */
+  const runs = (setup: {
+    readonly t1: (world: World, root: string) => SessionScript
+    readonly before?: Effect.Effect<void, never, Backlog>
+    readonly during?: (minute: number) => Effect.Effect<void, never, Backlog>
+  }) => {
+    const repo = folder("repo")
+    const root = folder("worktrees")
+    const defaults = TestAppConfig.appConfig().settings
+    return scenario(
+      {
+        config: {
+          repo,
+          settings: { ...defaults, concurrent: 2 },
+          linear: { team: "NOE", pull_every: minute },
+        },
+        backlog: [
+          { id: "t-1", externalRef: linearUrl("NOE-1"), createdAt: before },
+          { id: "t-2", createdAt: before },
+        ],
+        bd: { linearTeam: { issues: [{ key: "NOE-1", title: "t-1" }] } },
+        git: { dir: repo },
+        worktrees: { root },
+        scripts: (world: World) => ({
+          "t-1": [setup.t1(world, root)],
+          "t-2": [works(world, root, "t-2", "8 minutes")],
+        }),
+      },
+      Effect.gen(function* () {
+        const git = yield* Git
+        for (const id of ["t-1", "t-2"]) {
+          yield* git.addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
+        }
+        if (setup.before !== undefined) yield* setup.before
+        const fiber = yield* Effect.forkChild(
+          run({ version: "0.1.0-test", base: "main", start: [line`START tutti 0.1.0-test`] }),
+        )
+        for (let step = 0; step < 15 * 6; step++) {
+          yield* Effect.promise(() => Bun.sleep(5))
+          if (setup.during !== undefined && step % 6 === 0) yield* setup.during(step / 6)
+          yield* TestClock.adjust("10 seconds")
+        }
+        return yield* Fiber.join(fiber)
+      }),
+    )
+  }
+
+  /** The run's Linear records of `sync`, each with its time in seconds since the run began. */
+  const synced = (events: ReadonlyArray<EventRecord>, sync: "pull" | "push") =>
+    events.flatMap((record) =>
+      record.kind === "linear" && record.sync === sync
+        ? [{ ...record, at: Date.parse(record.time) / 1000 }]
+        : [],
+    )
+
+  test("a push waits for the pull under way", async () => {
+    const ran = await runs({
+      // The pull of NOE-2, filed in Linear at a minute, takes a minute.
+      before: Effect.flatMap(Backlog, (backlog) =>
+        backlog.fail("linear sync --pull", { takes: minute }),
+      ),
+      during: (at) =>
+        at === 1
+          ? Effect.flatMap(Backlog, (backlog) =>
+              backlog.putLinear({ key: "NOE-2", title: "Filed in Linear", state: "backlog" }),
+            )
+          : Effect.void,
+      t1: (world, root) => works(world, root, "t-1", "130 seconds"),
+    })
+    expectExitCode(ran, 0)
+    const pulled = synced(ran.events, "pull").find((record) => record.added !== undefined)
+    const closed = synced(ran.events, "push").find(
+      (record) => record.ticket === "t-1" && /closed/.test(record.text),
+    )
+    expect(pulled?.added).toEqual(["NOE-2"])
+    // t-1 closed at 2:20, as the pull from 2:00 to 3:00 went: its push waited for the pull's end.
+    expect(closed?.at).toBeGreaterThanOrEqual(pulled?.at ?? Infinity)
+  }, 30_000)
+
+  test("a pull is skipped while a push is under way", async () => {
+    const ran = await runs({
+      // The push of t-1's follow-up reads it for 3 minutes before it pushes it.
+      t1: (world, root) =>
+        works(
+          world,
+          root,
+          "t-1",
+          "1 minute",
+          bash(
+            'bd create "A follow-up"',
+            Effect.orDie(
+              Effect.gen(function* () {
+                const filed = yield* world.beads.create({ title: "A follow-up" })
+                yield* world.beads.defer(filed.id)
+                yield* world.backlog.fail("show", { id: filed.id, takes: "3 minutes" })
+              }),
+            ),
+          ),
+        ),
+    })
+    expectExitCode(ran, 0)
+    const filed = synced(ran.events, "push").find((record) => /filed/.test(record.text))
+    const pulls = synced(ran.events, "pull").filter((record) => record.start !== true)
+    expect(filed?.issue).toBe("NOE-2")
+    const at = filed?.at ?? 0
+    expect(pulls.filter((pull) => pull.at > at - 180 && pull.at < at)).toEqual([])
+    expect(pulls.length).toBeGreaterThan(0)
+  }, 30_000)
 })
