@@ -258,6 +258,10 @@ export const linearOutcomes = ["created", "updated", "skipped", "failed"] as con
  * A sync with Linear through bd linear: `push`, one ticket pushed (`ticket`), its issue's key
  * (`issue`) where it has one, what the push did (`outcome`; `skipped`: Linear had it so already),
  * and why one `failed`; `last`, a push that still failed at the run's end, LINEAR_PUSH_FAILED.
+ * `pull`, a pull from Linear (§ 5 item 20), at the start (`start`) or during the run: the issues it
+ * added as tickets, released (moved to Todo, their deferred tickets opened) and otherwise updated,
+ * by their Linear keys, and those bd skipped or failed (`failed`); `why`, with none of them, says
+ * why the whole pull failed, LINEAR_PULL_FAILED.
  */
 export const Linear = Schema.Struct({
   ...head("linear"),
@@ -265,6 +269,12 @@ export const Linear = Schema.Struct({
   ticket: optional(Schema.String),
   issue: optional(Schema.String),
   outcome: optional(Schema.Literals(linearOutcomes)),
+  /** A pull: the one at the run's start, before its first fill. */
+  start: optional(Schema.Literal(true)),
+  added: optional(Schema.Array(Schema.String)),
+  released: optional(Schema.Array(Schema.String)),
+  updated: optional(Schema.Array(Schema.String)),
+  failed: optional(Schema.Array(Schema.String)),
   why: optional(Schema.String),
   last: optional(Schema.Literal(true)),
   text: Schema.String,

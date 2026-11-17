@@ -555,6 +555,8 @@ export interface ListOptions {
   readonly ids?: ReadonlyArray<TicketId>
   /** Only issues created after this time, RFC 3339 (bd list --created-after), to the second. */
   readonly createdAfter?: string
+  /** Only issues whose external_ref holds this text, in any case (bd list --external-contains). */
+  readonly externalContains?: string
 }
 
 /**
@@ -572,7 +574,8 @@ const keptList = (list: ListOptions): boolean =>
   (list.labels ?? []).length > 0 &&
   list.ids === undefined &&
   list.parent === undefined &&
-  list.metadata === undefined
+  list.metadata === undefined &&
+  list.externalContains === undefined
 
 export interface Update {
   /** Assign it to the actor and put it in progress, as bd update --claim does. */
@@ -909,6 +912,7 @@ export class Beads extends Context.Service<
             ),
             ...listFlag("id", list.ids),
             ...flag("created-after", list.createdAfter),
+            ...flag("external-contains", list.externalContains),
           ]
           // bd list --id matches IDs whole; only those asked for are given back all the same.
           const read = Effect.map(listed(args), (issues) =>

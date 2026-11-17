@@ -28,6 +28,7 @@ import { Beads } from "../../services/Beads.ts"
 import { Checks } from "../../services/Checks.ts"
 import { EventStream } from "../../services/EventStream.ts"
 import { Git, GitWriter } from "../../services/Git.ts"
+import { LinearIssues, liveLinearIssues } from "../../services/LinearIssues.ts"
 import { otherWorkers } from "../../services/machine.ts"
 import { layer as notifierLayer } from "../../services/Notifier.ts"
 import { OrganCost } from "../../services/OrganCost.ts"
@@ -73,6 +74,8 @@ export const liveLayers = (started: Started, at: string, sink: Sink) => {
     Layer.succeed(Battery, liveBattery()),
     // Why the machine slept, which the run reads for each SLEPT line (src/run/sleepCause.ts).
     Layer.succeed(SleepCauses, liveSleepCauses()),
+    // Linear's issues, which a run whose settings hold a linear block lists to pull by key.
+    Layer.succeed(LinearIssues, liveLinearIssues()),
     // The environment of the setup, the checks and the requires list's commands: the workers' but
     // tutti's variables, the API key handled as theirs is (§ 4.13).
     Layer.succeed(

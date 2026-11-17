@@ -2,8 +2,9 @@
 // requirements checked (requires.ts), the tickets earlier runs left `unmerged` (unmerged.ts), the
 // lock files, rebased branches and worktrees a killed run left (branch.ts, mergetrain.ts,
 // fullcheck.ts, environment.ts, trash.ts), the workers the last run left taken up (carry.ts), each
-// suspended one resumed in a slot, counting toward no limit, and the DEFERRED_FREE lines of the
-// START block (deferredFree.ts). A quit cuts the step under way short and skips the rest.
+// suspended one resumed in a slot, counting toward no limit, the DEFERRED_FREE lines of the START
+// block (deferredFree.ts) and, where the settings hold a linear block, the pull from Linear before
+// the first fill (linearPull.ts). A quit cuts the step under way short and skips the rest.
 import { Effect, Ref, Result } from "effect"
 import { beadsWhy, type TicketId } from "../../services/Beads.ts"
 import { clearStaleLocks } from "../branch.ts"
@@ -37,7 +38,7 @@ export const make = (
   watchers: Pick<Watchers, "untilQuit">,
 ): Effect.Effect<Started, never, RunEnv | Ledger> =>
   Effect.gen(function* () {
-    const { config, base, context, holds } = parts.services
+    const { config, base, context, holds, linear } = parts.services
     const { stopped } = holds
     const { setUps, triage, overnight } = parts.holds
     const { queue, branches } = parts.merge
@@ -140,6 +141,11 @@ export const make = (
         undefined,
       )
     }
+
+    // The pull from Linear, after the workers carried over are in the ledger, which it leaves as
+    // they are, and before the first fill, which takes up what it added; not when the run stops for
+    // its requirements. One that fails says so, and the run goes on with the backlog it has.
+    if (linear !== null && missing === "") yield* untilQuit(linear.atStart, undefined)
 
     return { unslotted, carryOptions, waitingOf }
   })

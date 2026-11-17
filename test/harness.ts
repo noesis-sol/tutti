@@ -69,6 +69,7 @@ import {
 } from "../src/testing/Checks.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { type Seed as GitSeed, layer as gitLayer, Repository } from "../src/testing/Git.ts"
+import { type Listings, layer as linearIssuesLayer } from "../src/testing/LinearIssues.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { Captured as Notices, layer as notifierLayer } from "../src/testing/Notifier.ts"
 import { type Held, layer as lockLayer } from "../src/testing/RunLock.ts"
@@ -116,6 +117,7 @@ export type Env =
   | OrganCost
   | Spending
   | RunFibers
+  | Listings
   | Trash
   | Strays
   | TestClock.TestClock
@@ -282,6 +284,8 @@ export const environment = (
     Layer.provideMerge(trashLayer),
     Layer.provideMerge(notifying),
     Layer.provideMerge(notifierLayer),
+    // Linear's API, listing the Linear team bd linear syncs with (src/testing/LinearIssues.ts).
+    Layer.provideMerge(linearIssuesLayer),
     Layer.provideMerge(
       Layer.mergeAll(
         configLayer(config),

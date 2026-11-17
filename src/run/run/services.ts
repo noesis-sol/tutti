@@ -1,8 +1,8 @@
 // The run's services and what shows it (run.ts, § 5): the services it runs on, the base's commit as
 // it starts, the START block, the attention files served (§ 7.6), its status and the dashboard
 // shown from it when Tty says the terminal can draw one and main gave the run one (screen.ts,
-// § 7.1), the screen's commands (screenCommands.ts), its wakes (wakes.ts) and what holds it
-// (holdsGate.ts).
+// § 7.1), the screen's commands (screenCommands.ts), its wakes (wakes.ts), what holds it
+// (holdsGate.ts) and its pulls from Linear where the settings hold a linear block (linearPull.ts).
 import { type Context, Effect, type Scope, SubscriptionRef } from "effect"
 import { AgentHost } from "../../agent/AgentHost.ts"
 import { Attention } from "../../agent/Attention.ts"
@@ -14,13 +14,16 @@ import { schemeNotices } from "../../project/scheme.ts"
 import { Beads } from "../../services/Beads.ts"
 import { EventStream } from "../../services/EventStream.ts"
 import { Git } from "../../services/Git.ts"
+import { LinearIssues } from "../../services/LinearIssues.ts"
 import { Store } from "../../services/Store.ts"
 import { outputMode, Tty } from "../../services/Tty.ts"
 import { autoAnswerName } from "../autoAnswer.ts"
 import { RunFibers } from "../fibers.ts"
 import { type HoldsGate, make as makeHoldsGate } from "../holdsGate.ts"
 import { Ledger } from "../ledger.ts"
+import { type LinearPulls, make as makeLinearPulls } from "../linearPull.ts"
 import { emptyStatus, type Status } from "../runView.ts"
+import { sayer } from "../say.ts"
 import { type ScreenInputs, show } from "../screen.ts"
 import { make as makeScreenCommands, type ScreenCommands } from "../screenCommands.ts"
 import { make as makeWakes, type Wakes } from "../wakes.ts"
@@ -55,6 +58,8 @@ export interface Services {
   readonly wakeUp: Wakes["wakeUp"]
   /** What holds the run: its stops, the tickets past --ticket-limit, the machine's hold. */
   readonly holds: HoldsGate
+  /** Its pulls from Linear: none without the settings' linear block, or a source to list from. */
+  readonly linear: LinearPulls | null
 }
 
 /** The run's services, its START block said and its dashboard shown, begun at `begun`. */
@@ -115,6 +120,20 @@ export const make = (
     // hold and the usage limit's view, each shown on the dashboard as it comes. A stop holds the
     // run, said as it comes while tickets still run, and wakes it.
     const holds = yield* makeHoldsGate({ status, notices, wakeUp: wakeUp("hold") })
+    // Its pulls from Linear (linearPull.ts): only with the settings' linear block, the startup
+    // checks having found nothing it lacks. A pull never changes a ticket the ledger has.
+    const source = yield* LinearIssues
+    const linear =
+      config.linear === null || source === null
+        ? null
+        : yield* makeLinearPulls({
+            linear: config.linear,
+            source,
+            beads,
+            held: Effect.map(ledger.current, (now) => new Set(now.tickets.keys())),
+            sayer: yield* sayer,
+            wakeUp: wakeUp("linear"),
+          })
     return {
       config,
       beads,
@@ -134,5 +153,6 @@ export const make = (
       wakes,
       wakeUp,
       holds,
+      linear,
     }
   })

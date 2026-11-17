@@ -6,8 +6,9 @@
 // so that a quit during the start's steps cuts the step under way short. After them: the machine's
 // poll, what the dashboard shows of triage, the checks ahead, the probe and each worker's figures
 // (§ 7.5), the machine's load (load.ts) and the workers' share of it (share.ts), the screen's
-// commands, the ready poll, the merge queue's changes, drain requests (drain.ts), BLOCKED
-// (blockedWatch.ts) and how far the checks running have got (checking.ts).
+// commands, the ready poll, the pulls from Linear every pull_every (linearPull.ts), the merge
+// queue's changes, drain requests (drain.ts), BLOCKED (blockedWatch.ts) and how far the checks
+// running have got (checking.ts).
 import { availableParallelism } from "node:os"
 import {
   Deferred,
@@ -158,7 +159,8 @@ export const afterStart = (
 ): Effect.Effect<void, never, RunEnv | Ledger | Scope.Scope> =>
   Effect.gen(function* () {
     const { options } = parts
-    const { config, host, logs, events, status, screen, commands, wakeUp, holds } = parts.services
+    const { config, host, logs, events, status, screen, commands, wakeUp, holds, linear } =
+      parts.services
     const { environment, pressed, pressure, disk, overnight, triage } = parts.holds
     const { queue, mergeStop } = parts.merge
     const { machine, lookAround } = parts.starting
@@ -259,6 +261,9 @@ export const afterStart = (
     // The ready poll, the merge queue's changes a look can act on (wakes.ts's mergeWakes) and drain
     // requests each wake the run. The merges stopping is taken up at every change.
     yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp("poll"))))
+    // The pulls from Linear every pull_every, outside the scheduler's path: one that added or
+    // released a ticket wakes the run (linearPull.ts).
+    if (linear !== null) yield* watch(linear.every)
     const queueSeen = yield* Ref.make<QueueState | null>(null)
     yield* watch(
       Stream.runForEach(queue.changes, (state) =>

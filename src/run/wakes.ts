@@ -11,7 +11,7 @@ import type { QueueState } from "./mergequeue.ts"
 /**
  * Why the run woke: the ready poll, a slot freed, a merge-queue change, a hold put on or lifted
  * (a stop, BLOCKED, the usage limit, the machine's cap), an attention change, a screen command, a
- * triage verdict, a drain request.
+ * triage verdict, a drain request, a pull from Linear that added or released a ticket.
  */
 export type Wake =
   | "poll"
@@ -22,6 +22,7 @@ export type Wake =
   | "command"
   | "verdict"
   | "drain"
+  | "linear"
 
 /**
  * The reasons a look takes up without reading bd or git. Only an attention change for now: a

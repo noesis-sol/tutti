@@ -513,6 +513,10 @@ export const layer = (
                 (options.parent === undefined || parentOf(issue) === options.parent) &&
                 (options.ids === undefined || options.ids.includes(issue.id as TicketId)) &&
                 (options.labels ?? []).every((label) => issue.labels.includes(label)) &&
+                (options.externalContains === undefined ||
+                  (issue.externalRef ?? "")
+                    .toLowerCase()
+                    .includes(options.externalContains.toLowerCase())) &&
                 Object.entries(options.metadata ?? {}).every(
                   ([key, value]) =>
                     Object.hasOwn(issue.metadata, key) && metadataIs(issue.metadata[key], value),

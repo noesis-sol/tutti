@@ -132,6 +132,22 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       last: true,
       text: "  LINEAR_PUSH_FAILED: a-1: bd took longer than 30s",
     },
+    {
+      ...head,
+      kind: "linear",
+      sync: "pull",
+      start: true,
+      added: ["NOE-5"],
+      released: ["NOE-3"],
+      text: "LINEAR: pulled from NOE at the start: added NOE-5; released NOE-3",
+    },
+    {
+      ...head,
+      kind: "linear",
+      sync: "pull",
+      why: "Linear's API answered HTTP 503",
+      text: "LINEAR_PULL_FAILED: Linear's API answered HTTP 503; the run goes on with the backlog it has",
+    },
   ],
   triage: [
     {

@@ -959,6 +959,36 @@
             "failed"
           ]
         },
+        "start": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
+        },
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "released": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "updated": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "why": {
           "type": "string"
         },
