@@ -148,10 +148,7 @@ export const make = (options: {
         const began = yield* Clock.currentTimeMillis
         const since =
           atStart || listedAt === null ? null : listedAt - Duration.toMillis(listOverlap)
-        const listed = yield* Effect.mapError(
-          source.list(linear.team, since),
-          (error) => error.reason,
-        )
+        const listed = yield* Effect.mapError(source.list(linear.team, since), (error) => error.why)
         const linked = yield* Effect.mapError(
           beads.list({ all: true, externalContains: "linear.app" }),
           (error) => `could not list the linked tickets: ${beadsWhy(error)}`,

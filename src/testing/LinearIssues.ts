@@ -3,13 +3,8 @@
 // team has, as a pull may list more than changed and must choose among them; with none, those
 // neither completed nor canceled. Each listing is kept for tests, and Listings scripts a failure.
 import { Context, Effect, Layer, Ref } from "effect"
-import { formatDuration } from "../project/configFile.ts"
-import {
-  LinearIssues,
-  LinearListFailed,
-  type ListedIssue,
-  listTimeLimit,
-} from "../services/LinearIssues.ts"
+import { LinearApiFailed, linearTimedOutWhy } from "../services/LinearApi.ts"
+import { LinearIssues, type ListedIssue } from "../services/LinearIssues.ts"
 import { type LinearKey, linearKey } from "../services/linearSync.ts"
 import { Backlog } from "./Beads.ts"
 
@@ -51,10 +46,10 @@ export const layer: Layer.Layer<Listings, never, Backlog> = Layer.effectContext(
         if (fault !== undefined) {
           const left = (fault.times ?? 1) - 1
           yield* Ref.set(faults, left > 0 ? [{ ...fault, times: left }, ...rest] : rest)
-          return yield* new LinearListFailed({
-            reason: fault.timedOut
-              ? `Linear's API took longer than ${formatDuration(listTimeLimit)}`
-              : `Linear's API said: ${fault.reason ?? "Internal server error"}`,
+          return yield* new LinearApiFailed({
+            why: fault.timedOut
+              ? linearTimedOutWhy
+              : `Linear said: ${fault.reason ?? "Internal server error"}`,
           })
         }
         const issues = yield* backlog.linearIssues

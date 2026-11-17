@@ -4,17 +4,21 @@
 // state's type: those changed since a time, or, with none, those neither completed nor canceled.
 // It authenticates as bd linear does (tutti-n1yi): with bd's OAuth pair where both halves are set,
 // exchanged for a token kept for the run, else with LINEAR_API_KEY; it sends them to api.linear.app
-// and nothing else, and every other call to Linear is bd's. Linear wrote what it answers, so it is
-// read leniently: an identifier that isn't a key is left out.
+// and nothing else, through sendToLinear (src/services/LinearApi.ts, tutti-pkqj), within its time
+// limit all pages together, and every other call to Linear is bd's. Linear wrote what it answers, so
+// it is read leniently: an identifier that isn't a key is left out.
 import { Clock, Context, Duration, Effect, type Layer, Option, Result, Schema } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { FetchHttpClient, type HttpClient, HttpClientRequest } from "effect/http"
 import { linearCredentials, linearKeyVariable, linearOAuthVariables } from "../core/env.ts"
-import { formatDuration } from "../project/configFile.ts"
-import { sanitizeLine } from "../text/sanitize.ts"
+import {
+  clip,
+  graphqlRequest,
+  LinearApiFailed,
+  readAnswer,
+  sendToLinear,
+  withinLinearTimeLimit,
+} from "./LinearApi.ts"
 import { type LinearKey, linearKey } from "./linearSync.ts"
-
-/** Linear's GraphQL endpoint: the one place tutti sends the key. */
-export const linearApi = "https://api.linear.app/graphql"
 
 /** Linear's OAuth token endpoint, where the OAuth pair is exchanged for a token. */
 export const linearTokenUrl = "https://api.linear.app/oauth/token"
@@ -28,9 +32,6 @@ export const tokenScope = "read,write"
 /** How long before its expiry a token is exchanged again, as bd does. */
 export const tokenMargin: Duration.Duration = Duration.minutes(5)
 
-/** How long a whole listing may take, every page of it. */
-export const listTimeLimit: Duration.Duration = Duration.seconds(30)
-
 /** How many issues a page asks for: Linear's most. */
 const pageSize = 250
 
@@ -41,12 +42,6 @@ export interface ListedIssue {
   readonly state: string
 }
 
-/** Linear's API couldn't list the team's issues: no key, the request failed, or its answer. */
-export class LinearListFailed extends Schema.TaggedError<LinearListFailed>()("LinearListFailed", {
-  /** Why, in a line. */
-  reason: Schema.String,
-}) {}
-
 /** Lists a Linear team's issues. */
 export interface LinearIssuesSource {
   /**
@@ -56,7 +51,7 @@ export interface LinearIssuesSource {
   readonly list: (
     team: string,
     since: number | null,
-  ) => Effect.Effect<ReadonlyArray<ListedIssue>, LinearListFailed>
+  ) => Effect.Effect<ReadonlyArray<ListedIssue>, LinearApiFailed>
 }
 
 /** Where a run lists Linear's issues from: none unless its layers give one (src/main.ts). */
@@ -97,10 +92,6 @@ const Page = Schema.Struct({
   }),
 })
 
-const Errors = Schema.Struct({
-  errors: Schema.Array(Schema.Struct({ message: Schema.String })).check(Schema.isMinLength(1)),
-})
-
 const Json = Schema.fromJsonString(Schema.Unknown)
 
 /** A page of the listing: its issues, and the cursor of the next page, or null after the last. */
@@ -109,34 +100,22 @@ export interface ListedPage {
   readonly next: string | null
 }
 
-/** At most 200 characters of `text`, on one line. */
-const clip = (text: string): string => {
-  const line = sanitizeLine(text.trim().split("\n")[0] ?? "")
-  return line.length > 200 ? `${line.slice(0, 200)}…` : line
-}
-
-/**
- * Reads what Linear's API answered a page's request with, its HTTP status and body: the page, or
- * why not, from Linear's first error where it gave one.
- */
-export const readPage = (status: number, body: string): Result.Result<ListedPage, string> => {
-  const json = Schema.decodeUnknownOption(Json)(body)
-  const errors = Option.flatMap(json, Schema.decodeUnknownOption(Errors))
-  if (Option.isSome(errors)) {
-    const said = clip(errors.value.errors[0]?.message ?? "")
-    return Result.fail(`Linear's API said: ${said || `HTTP ${status}`}`)
-  }
-  if (status < 200 || status >= 300) return Result.fail(`Linear's API answered HTTP ${status}`)
-  const page = Option.flatMap(json, Schema.decodeUnknownOption(Page))
-  if (Option.isNone(page)) return Result.fail("Linear's API answered with no list of issues")
-  const { nodes, pageInfo } = page.value.data.issues
+/** The page Linear answered: its issues by key, and the cursor of the next. */
+const pageOf = (answer: typeof Page.Type): ListedPage => {
+  const { nodes, pageInfo } = answer.data.issues
   const issues = nodes.flatMap((node) => {
     const key = linearKey(node.identifier)
     return key === undefined ? [] : [{ key, state: node.state?.type ?? "" }]
   })
-  const next = pageInfo.hasNextPage ? (pageInfo.endCursor ?? null) : null
-  return Result.succeed({ issues, next })
+  return { issues, next: pageInfo.hasNextPage ? (pageInfo.endCursor ?? null) : null }
 }
+
+/**
+ * Reads what Linear's API answered a page's request with, its HTTP status and body: the page, or
+ * why not, as askLinear reads it.
+ */
+export const readPage = (status: number, body: string): Result.Result<ListedPage, string> =>
+  Result.map(readAnswer(status, body, Page), pageOf)
 
 /** What a listing authenticates with: the API key, or bd's OAuth pair, which bd takes over it. */
 export type Credential =
@@ -190,10 +169,6 @@ export const readToken = (status: number, body: string): Result.Result<Token, st
   return Result.succeed({ token: answer.value.access_token, expiresIn: answer.value.expires_in })
 }
 
-/** Why a request didn't reach Linear's API or its answer couldn't be read, in a line. */
-const requestWhy = (error: unknown): string =>
-  clip(error instanceof Error ? error.message : String(error)) || "the request failed"
-
 /**
  * The source over Linear's API, through `http` (the platform's fetch by default), with the
  * credential in `env`: tutti's own environment by default. The OAuth pair's token is kept for the
@@ -211,28 +186,10 @@ export const liveLinearIssues = (
       Effect.gen(function* () {
         const credential = credentialOf(env)
         if (credential === null) {
-          return yield* new LinearListFailed({
-            reason: `no ${linearKeyVariable} (nor ${linearOAuthVariables.join(" and ")}) in the environment to list Linear's issues with`,
+          return yield* new LinearApiFailed({
+            why: `no ${linearKeyVariable} (nor ${linearOAuthVariables.join(" and ")}) in the environment to list Linear's issues with`,
           })
         }
-        const client = yield* HttpClient.HttpClient
-        // The status and body `request` was answered with, or why it wasn't.
-        const send = (request: HttpClientRequest.HttpClientRequest, what: string) =>
-          Effect.result(
-            Effect.flatMap(client.execute(request), (response) =>
-              Effect.map(response.text, (body) => ({ status: response.status, body })),
-            ),
-          ).pipe(
-            Effect.flatMap((answered) =>
-              Result.isSuccess(answered)
-                ? Effect.succeed(answered.success)
-                : Effect.fail(
-                    new LinearListFailed({
-                      reason: `could not reach ${what}: ${requestWhy(answered.failure)}`,
-                    }),
-                  ),
-            ),
-          )
         // What the Authorization header carries: the key, or the pair's token, exchanged anew where
         // none is held or the one held is near its expiry.
         const authorization = Effect.gen(function* () {
@@ -251,26 +208,20 @@ export const liveLinearIssues = (
               actor: "application",
             }),
           )
-          const answered = yield* send(request, "Linear's token endpoint")
+          const answered = yield* sendToLinear(request, "Linear's token endpoint")
           const read = readToken(answered.status, answered.body)
-          if (Result.isFailure(read)) return yield* new LinearListFailed({ reason: read.failure })
+          if (Result.isFailure(read)) return yield* new LinearApiFailed({ why: read.failure })
           held = { token: read.success.token, expires: now + read.success.expiresIn * 1000 }
           return `Bearer ${held.token}`
         })
         // A page of the listing, from the one after the cursor `after`, or the first.
-        const page = (after: string | null): Effect.Effect<ListedPage, LinearListFailed> =>
+        const page = (
+          after: string | null,
+        ): Effect.Effect<ListedPage, LinearApiFailed, HttpClient.HttpClient> =>
           Effect.gen(function* () {
+            const variables = { filter: filterOf(team, since), after }
             const ask = Effect.flatMap(authorization, (value) =>
-              send(
-                HttpClientRequest.post(linearApi).pipe(
-                  HttpClientRequest.setHeaders({ authorization: value }),
-                  HttpClientRequest.bodyText(
-                    JSON.stringify({ query, variables: { filter: filterOf(team, since), after } }),
-                    "application/json",
-                  ),
-                ),
-                "Linear's API",
-              ),
+              sendToLinear(graphqlRequest(value, query, variables)),
             )
             let answered = yield* ask
             if (answered.status === 401 && credential._tag === "OAuth") {
@@ -278,7 +229,7 @@ export const liveLinearIssues = (
               answered = yield* ask
             }
             const read = readPage(answered.status, answered.body)
-            if (Result.isFailure(read)) return yield* new LinearListFailed({ reason: read.failure })
+            if (Result.isFailure(read)) return yield* new LinearApiFailed({ why: read.failure })
             return read.success
           })
         const issues: Array<ListedIssue> = []
@@ -289,18 +240,6 @@ export const liveLinearIssues = (
           after = read.next
         } while (after !== null)
         return issues
-      }).pipe(
-        Effect.provideService(HttpClient.TracerPropagationEnabled, false),
-        Effect.provide(http),
-        Effect.timeoutOrElse({
-          duration: listTimeLimit,
-          orElse: () =>
-            Effect.fail(
-              new LinearListFailed({
-                reason: `Linear's API took longer than ${formatDuration(listTimeLimit)}`,
-              }),
-            ),
-        }),
-      ),
+      }).pipe(withinLinearTimeLimit, Effect.provide(http)),
   }
 }

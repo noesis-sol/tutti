@@ -56,7 +56,7 @@ export const layer = (linear: TestLinear, asked: Array<Asked> = []): Layer.Layer
           }
           const team = linear.teams.find((each) => each.id === teamId)
           return team === undefined
-            ? Effect.fail(new LinearApiFailed({ why: `Entity not found: Team` }))
+            ? Effect.fail(new LinearApiFailed({ why: "Linear said: Entity not found: Team" }))
             : Effect.succeed(team.states)
         }),
     }),

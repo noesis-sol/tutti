@@ -9,7 +9,6 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Fiber, Layer, Result } from "effect"
-import { HttpClient, HttpClientResponse } from "effect/http"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { line } from "../src/core/log.ts"
@@ -25,11 +24,11 @@ import { run } from "../src/run/run.ts"
 import { sayer } from "../src/run/say.ts"
 import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
+import { linearEndpoint } from "../src/services/LinearApi.ts"
 import {
   filterOf,
   LinearIssues,
   type ListedIssue,
-  linearApi,
   liveLinearIssues,
   readPage,
 } from "../src/services/LinearIssues.ts"
@@ -44,6 +43,7 @@ import {
   type Seed,
 } from "../src/testing/Beads.ts"
 import * as TestEvents from "../src/testing/EventStream.ts"
+import * as TestHttp from "../src/testing/HttpClient.ts"
 import { Listings, layer as linearIssuesLayer } from "../src/testing/LinearIssues.ts"
 import * as TestLog from "../src/testing/Log.ts"
 import { expectExitCode, expectLog, expectPhases, scenario, type World } from "./harness.ts"
@@ -172,13 +172,11 @@ describe("Linear's API's answers", () => {
   })
 
   test("Linear's error, an HTTP status, or a body that isn't a list, as why", () => {
-    expect(
-      readPage(400, JSON.stringify({ errors: [{ message: "Authentication required" }] })),
-    ).toEqual(Result.fail("Linear's API said: Authentication required"))
-    expect(readPage(503, "<html>down</html>")).toEqual(
-      Result.fail("Linear's API answered HTTP 503"),
+    expect(readPage(400, JSON.stringify({ errors: [{ message: "Rate limited" }] }))).toEqual(
+      Result.fail("Linear said: Rate limited"),
     )
-    expect(readPage(200, "{}")).toEqual(Result.fail("Linear's API answered with no list of issues"))
+    expect(readPage(503, "<html>down</html>")).toEqual(Result.fail("Linear answered HTTP 503"))
+    expect(readPage(200, "{}")).toEqual(Result.fail("Linear's answer isn't what tutti reads"))
   })
 
   test("any body reads as a page of keys or a reason on one line, never more", () => {
@@ -207,27 +205,15 @@ describe("Linear's API's answers", () => {
   })
 
   test("the live source sends the key to Linear's API alone, a page at a time", async () => {
-    const sent: Array<{ url: string; authorization: string | undefined; body: unknown }> = []
-    const pages = [
-      page([{ identifier: "NOE-1", state: { type: "unstarted" } }], "c1"),
-      page([{ identifier: "NOE-2", state: { type: "backlog" } }]),
-    ]
-    const http = Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make((request, url) =>
-        Effect.sync(() => {
-          const body = request.body._tag === "Uint8Array" ? request.body.body : new Uint8Array()
-          sent.push({
-            url: url.href,
-            authorization: request.headers.authorization,
-            body: JSON.parse(new TextDecoder().decode(body)),
-          })
-          return HttpClientResponse.fromWeb(
-            request,
-            new Response(pages[sent.length - 1] ?? "{}", { status: 200 }),
-          )
-        }),
-      ),
+    const sent: Array<TestHttp.Sent> = []
+    const http = TestHttp.layer(
+      {
+        [linearEndpoint]: [
+          { body: page([{ identifier: "NOE-1", state: { type: "unstarted" } }], "c1") },
+          { body: page([{ identifier: "NOE-2", state: { type: "backlog" } }]) },
+        ],
+      },
+      sent,
     )
     const source = liveLinearIssues({ LINEAR_API_KEY: "lin_api_test" }, http)
     const issues = await Effect.runPromise(source.list("NOE", 60_000))
@@ -235,11 +221,11 @@ describe("Linear's API's answers", () => {
       { key: key("NOE-1"), state: "unstarted" },
       { key: key("NOE-2"), state: "backlog" },
     ])
-    expect(sent.map((each) => [each.url, each.authorization])).toEqual([
-      [linearApi, "lin_api_test"],
-      [linearApi, "lin_api_test"],
+    expect(sent.map((each) => [each.url, each.headers.authorization])).toEqual([
+      [linearEndpoint, "lin_api_test"],
+      [linearEndpoint, "lin_api_test"],
     ])
-    expect(sent.map((each) => (each.body as { variables: unknown }).variables)).toEqual([
+    expect(sent.map((each) => JSON.parse(each.body).variables)).toEqual([
       { filter: filterOf("NOE", 60_000), after: null },
       { filter: filterOf("NOE", 60_000), after: "c1" },
     ])
@@ -255,7 +241,7 @@ describe("Linear's API's answers", () => {
     const without = await Effect.runPromise(
       Effect.flip(liveLinearIssues({}, http).list("NOE", null)),
     )
-    expect(without.reason).toBe(
+    expect(without.why).toBe(
       "no LINEAR_API_KEY (nor LINEAR_OAUTH_CLIENT_ID and LINEAR_OAUTH_CLIENT_SECRET) in the environment to list Linear's issues with",
     )
     expect(sent).toHaveLength(2)
@@ -471,13 +457,13 @@ describe("the pulls on their own", () => {
       }),
     )
     expect(ran.log).toEqual([
-      pullFailedLine("Linear's API said: Internal server error"),
+      pullFailedLine("Linear said: Internal server error"),
       pullFailedLine("bd took longer than 1m"),
       "LINEAR: pulled from NOE: added NOE-1",
       "LINEAR: pulled from NOE: nothing new",
     ])
     expect(ran.records.slice(0, 2)).toMatchObject([
-      { start: true, why: "Linear's API said: Internal server error" },
+      { start: true, why: "Linear said: Internal server error" },
       { why: "bd took longer than 1m" },
     ])
     // A pull that failed moves the listing on from nothing: the next lists every issue not done.

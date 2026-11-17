@@ -2,15 +2,15 @@
 // from Linear's API (its test layer here), asks the team and, where a type has more than one state,
 // which one a status takes, shows the mapping and writes bd's linear.* keys and the settings' linear
 // block; run again, it changes nothing and says so. Without a key it writes nothing and says how to
-// get one. The key reaches no bd config, no file and no output. LinearApi's live layer sends it to
-// api.linear.app alone.
+// get one. The key reaches no bd config, no file and no output. LinearApi's live layer, which sends
+// it to api.linear.app alone, is test/linear-api.test.ts'.
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { PassThrough } from "node:stream"
 import { BunServices } from "@effect/platform-bun"
-import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Result } from "effect"
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer } from "effect"
 import { Command } from "effect/cli"
 import { tuttiWith } from "../src/cli/commands.ts"
 import { linearSetup, lineQuestions, unaskedQuestions } from "../src/cli/linear.ts"
@@ -21,12 +21,10 @@ import { readSettings, settingsFile } from "../src/project/settings.ts"
 import { stateMapKey } from "../src/run/linearCheck.ts"
 import { check, startBlock } from "../src/run/startup.ts"
 import { Beads } from "../src/services/Beads.ts"
-import { LinearApi, linearEndpoint } from "../src/services/LinearApi.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import * as TestGit from "../src/testing/Git.ts"
-import * as TestHttp from "../src/testing/HttpClient.ts"
 import * as TestLinear from "../src/testing/LinearApi.ts"
 import { layer as lockLayer } from "../src/testing/RunLock.ts"
 import { streamInput } from "../src/ui/plain/forms.ts"
@@ -483,77 +481,4 @@ describe("what tutti linear setup refuses", () => {
   test("the inbound map holds Backlog as deferred: the gate", () => {
     expect(inbound).toContainEqual(["backlog", "deferred"])
   })
-})
-
-describe("LinearApi's live layer", () => {
-  const teamsBody = JSON.stringify({
-    data: { teams: { nodes: [{ id: "team-eng", key: "ENG", name: "Engineering" }] } },
-  })
-
-  /** What `use` gives over an HttpClient answering Linear's endpoint with `answer`, and what it sent. */
-  const call = async <A>(
-    answer: TestHttp.Answer,
-    use: (api: LinearApi["Service"]) => Effect.Effect<A, unknown>,
-  ) => {
-    const sent: Array<TestHttp.Sent> = []
-    const result = await Effect.runPromise(
-      Effect.result(Effect.flatMap(LinearApi, use)).pipe(
-        Effect.provide(
-          LinearApi.layer(key).pipe(
-            Layer.provide(TestHttp.layer({ [linearEndpoint]: answer }, sent)),
-          ),
-        ),
-      ),
-    )
-    return { result, sent }
-  }
-
-  test("sends the key to api.linear.app's GraphQL endpoint alone, and reads the teams", async () => {
-    const { result, sent } = await call({ body: teamsBody }, (api) => api.teams())
-    expect(result).toEqual(Result.succeed([{ id: "team-eng", key: "ENG", name: "Engineering" }]))
-    expect(sent.map((each) => each.url)).toEqual(["https://api.linear.app/graphql"])
-    expect(sent[0]?.headers.authorization).toBe(key)
-  })
-
-  test("reads a team's states", async () => {
-    const body = JSON.stringify({
-      data: {
-        team: {
-          states: { nodes: [{ id: "s1", name: "Todo", type: "unstarted", position: 1.5 }] },
-        },
-      },
-    })
-    const { result } = await call({ body }, (api) => api.states("team-eng"))
-    expect(result).toEqual(
-      Result.succeed([{ id: "s1", name: "Todo", type: "unstarted", position: 1.5 }]),
-    )
-  })
-
-  for (const [name, answer, why] of [
-    [
-      "an authentication error",
-      {
-        status: 400,
-        body: JSON.stringify({
-          errors: [
-            {
-              message: "Authentication required, not authenticated",
-              extensions: { code: "AUTHENTICATION_ERROR" },
-            },
-          ],
-        }),
-      },
-      "Linear refused the key: Authentication required, not authenticated",
-    ],
-    ["a 401 with no body", { status: 401 }, "Linear refused the key (HTTP 401)"],
-    ["a 500", { status: 500, body: "oops" }, "Linear answered HTTP 500"],
-    ["an answer of another shape", { body: "{}" }, "Linear's answer isn't what tutti reads"],
-  ] as const) {
-    test(`fails on ${name}, saying why without the key`, async () => {
-      const { result } = await call(answer, (api) => api.teams())
-      if (Result.isSuccess(result)) throw new Error("it read the teams")
-      expect(result.failure).toMatchObject({ _tag: "LinearApiFailed", why })
-      expect(JSON.stringify(result.failure)).not.toContain(key)
-    })
-  }
 })

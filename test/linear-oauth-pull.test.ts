@@ -6,10 +6,10 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Result } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import fc from "fast-check"
+import { linearEndpoint as linearApi } from "../src/services/LinearApi.ts"
 import {
   credentialOf,
   type ListedIssue,
-  linearApi,
   linearTokenUrl,
   liveLinearIssues,
   readToken,
@@ -204,7 +204,7 @@ describe("the live source with bd's OAuth pair", () => {
     const failed = await Effect.runPromise(
       Effect.flip(liveLinearIssues(pair, refused.http).list("NOE", null)),
     )
-    expect(failed.reason).toBe("Linear's API said: Authentication required")
+    expect(failed.why).toBe("Linear refused the key: Authentication required")
     expect(refused.sent).toHaveLength(4)
   })
 
@@ -215,8 +215,8 @@ describe("the live source with bd's OAuth pair", () => {
     ])
     const source = liveLinearIssues(pair, linear.http)
     const failed = await Effect.runPromise(Effect.flip(source.list("NOE", null)))
-    expect(failed.reason).toBe("Linear refused the OAuth pair: Client authentication failed")
-    expect(failed.reason).not.toContain("client-secret")
+    expect(failed.why).toBe("Linear refused the OAuth pair: Client authentication failed")
+    expect(failed.why).not.toContain("client-secret")
     expect(linear.sent.map((each) => each.url)).toEqual([linearTokenUrl])
     expect(await Effect.runPromise(source.list("NOE", null))).toEqual(NOE1)
   })
