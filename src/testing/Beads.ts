@@ -211,6 +211,8 @@ export class Backlog extends Context.Service<
      * `human list`, …) give the fault's output, which fails it unless it decodes.
      */
     fail(op: string, fault?: Fault): Effect.Effect<void>
+    /** bd's configuration, as bd config set left it. */
+    readonly configuration: Effect.Effect<Readonly<Record<string, string>>>
     /** The Linear team's issues, in their order, as Linear has them. */
     readonly linearIssues: Effect.Effect<ReadonlyArray<LinearIssue>>
     /** Adds the issue to the Linear team, or changes the one with its key, as the maintainer would. */
@@ -345,6 +347,9 @@ export const layer = (
         new Map(seeds.map((seed, seq) => [seed.id, store(seed, seq, start)] as const)),
       )
       let seq = seeds.length
+      const configuration = yield* Ref.make<Readonly<Record<string, string>>>({
+        ...bd.configuration,
+      })
 
       const ancestors = (issues: ReadonlyMap<string, Stored>, issue: Stored): Array<Stored> => {
         const found: Array<Stored> = []
@@ -954,8 +959,19 @@ export const layer = (
             "read",
             "config list",
             undefined,
-            Effect.succeed(ok({ ...bd.configuration, schema_version: 1 })),
+            Effect.map(Ref.get(configuration), (set) => ok({ ...set, schema_version: 1 })),
             decodeConfiguration,
+          ),
+        setConfiguration: (key, value) =>
+          answer(
+            "write",
+            "config set",
+            key,
+            Effect.as(
+              Ref.update(configuration, (set) => ({ ...set, [key]: value })),
+              ok({ data: { key, value }, schema_version: 1 }),
+            ),
+            nothing,
           ),
         hasLinear: () => Effect.succeed(bd.linear ?? true),
         linearPull: (keys) =>
@@ -1008,6 +1024,7 @@ export const layer = (
         comments: (id) => Effect.map(Ref.get(state), (issues) => issues.get(id)?.comments ?? []),
         fail: (op, fault = {}) =>
           Effect.sync(() => void faults.push({ op, fault, left: fault.times ?? 1 })),
+        configuration: Ref.get(configuration),
         linearIssues: Effect.map(Ref.get(linearState), (linear) => [...linear.values()]),
         putLinear: (seed) =>
           Ref.update(linearState, (linear) => new Map(linear).set(seed.key, linearIssue(seed))),

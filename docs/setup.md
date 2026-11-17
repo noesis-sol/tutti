@@ -664,6 +664,40 @@ at all. Otherwise the START block names it: `linear: NOE, pull at start and ever
 `linear: off, --no-linear`. Removing the block turns the sync off; tickets already linked keep
 their Linear link.
 
+#### Turning it on: `tutti linear setup`
+
+`tutti linear setup` writes the block, and the configuration bd's Linear sync needs, in a project
+`tutti init` has set up. It needs a personal API key in the environment:
+
+1. Create one in Linear, under Settings, Account, Security & access
+   (<https://linear.app/settings/account/security>).
+2. Export it in your shell's profile (`~/.zshrc`, `~/.bashrc`), so that every shell that starts
+   tutti has it: `export LINEAR_API_KEY=lin_api_...`, then open a new shell.
+
+tutti never stores the key: it isn't written to the settings, to bd's configuration (which the
+Beads database syncs to its git remote) or to the log, and only the `bd linear` processes tutti
+starts get it, never a worker, a check or an organ. Without it, `tutti linear setup` says where to
+create one and how to export it, and writes nothing.
+
+With the key, it reads the teams the key reaches from Linear's API and asks which one to sync with
+(`--team NOE` answers it; a key that reaches one team takes it), reads that team's workflow states,
+and shows the mapping:
+
+```
+Linear team NOE (Noesis)
+Linear to Beads: backlog deferred, unstarted open, started in_progress, completed closed, canceled closed; an issue in Backlog waits, deferred, until it is moved to Todo
+Beads to Linear: open Todo, in_progress In Progress, deferred Backlog, closed Done
+```
+
+An issue filed in Linear's Backlog is pulled as a deferred ticket, which no run starts; moving it
+to Todo hands it to tutti. Where the team has more than one state of a type, such as In Progress
+and In Review, both started, setup asks which one a ticket in progress moves the Linear issue to,
+the first by Linear's order offered first. It then sets bd's `linear.team_id`,
+`linear.state_map.<type>` and `linear.outbound_state_map.<status>` with `bd config set`, writes the
+block, and lists what it changed. Run again, it sets only what differs, and says `Nothing changed`
+when nothing does. Without a terminal it asks nothing: each state is the first of its type, and a
+key that reaches several teams needs `--team`.
+
 `keep_awake` is in both places on purpose: the project's settings say whether its runs keep the
 machine awake by default, and your user config overrides that for you, as keeping a machine awake
 is the choice of whoever runs tutti on it. `init` writes `"keep_awake": true`, and `init --update`

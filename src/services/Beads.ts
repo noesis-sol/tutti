@@ -690,6 +690,8 @@ export class Beads extends Context.Service<
     unsetMetadata(id: TicketId, key: string): Effect.Effect<void, BeadsError>
     /** bd config list: bd's configuration in the Beads database, each key's text. */
     configuration(): Effect.Effect<Readonly<Record<string, string>>, BeadsError>
+    /** bd config set: sets one key of bd's configuration to `value`. Never a credential's key. */
+    setConfiguration(key: string, value: string): Effect.Effect<void, BeadsError>
     /** Whether the installed bd has bd linear, Beads' Linear sync: bd linear --help exits 0. */
     hasLinear(): Effect.Effect<boolean, BeadsError>
     /**
@@ -1081,6 +1083,9 @@ export class Beads extends Context.Service<
           ),
           configuration: Effect.fn("Beads.configuration")(() =>
             read(["config", "list", "--json"], decodeConfiguration),
+          ),
+          setConfiguration: Effect.fn("Beads.setConfiguration")((key, value) =>
+            Effect.asVoid(write(["config", "set", key, value, "--json"])),
           ),
           // A bd without bd linear refuses it as an unknown command; --help talks to no one.
           hasLinear: Effect.fn("Beads.hasLinear")(() =>

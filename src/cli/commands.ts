@@ -34,7 +34,7 @@ import {
 } from "../answer/questions.ts"
 import { AppConfig, SetupProblem } from "../core/AppConfig.ts"
 import { type AnswerWord, answerWords } from "../core/answerWith.ts"
-import { WorkerEnv, workerEnv } from "../core/env.ts"
+import { linearKeyVariable, WorkerEnv, workerEnv } from "../core/env.ts"
 import { Log } from "../core/log.ts"
 import { scoutCostSteps, scoutSearch } from "../init/checks.ts"
 import {
@@ -80,6 +80,7 @@ import { load, loadLenient, withScheme } from "../run/resolveConfig.ts"
 import { checkGit, findRepository } from "../run/startup.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
+import { LinearApi } from "../services/LinearApi.ts"
 import { OrganCost } from "../services/OrganCost.ts"
 import { RunLock } from "../services/RunLock.ts"
 import * as Tty from "../services/Tty.ts"
@@ -99,6 +100,7 @@ import {
 import { releaseKeys } from "../update/keys.ts"
 import { type Build, githubReleases, update } from "../update/update.ts"
 import { colours } from "./colours.ts"
+import { linearSetup, linearSetupExits, lineQuestions, unaskedQuestions } from "./linear.ts"
 import { login, runInTerminal } from "./login.ts"
 import { playbook, playbookAct, playbookExits } from "./playbook.ts"
 import { requires, requiresExits } from "./requires.ts"
@@ -517,6 +519,80 @@ export const requiresCommand = <E extends { readonly message: string } | string,
     Command.withDescription(
       `check what this machine must have for the project, the requires list in .tutti/settings.json of the checkout it is started in (a worktree's own), as each run does before its first ticket: run each entry's check, and for one that fails, its install, then check again. It prints each entry's state; what is still missing says its manual step, or why its install failed and where its output is. --markdown and --readme give the list as the README's section on what to install instead, for people to read. ${requiresExits}`,
     ),
+  )
+
+/** The theme `tutti linear setup` asks its questions in: the terminal's own colours. */
+const linearTheme = makeTheme(tuttiSchemeLoaded.scheme, {
+  appearance: "dark",
+  depth: "256",
+  noColor: true,
+})
+
+/**
+ * `tutti linear setup`, in the main checkout `repo` finds, with bd from `services` and Linear's API
+ * from `api`, given the environment's LINEAR_API_KEY: it asks as lines where stdin and stdout are a
+ * terminal, and asks nothing elsewhere (src/cli/linear.ts).
+ */
+export const linearCommand = <E extends { readonly message: string } | string, R, S>(
+  repo: Effect.Effect<string, E, R>,
+  services: (repo: string) => Layer.Layer<Beads | Git | RunLock, never, S>,
+  api: (key: string) => Layer.Layer<LinearApi> = LinearApi.live,
+) =>
+  Command.make("linear").pipe(
+    Command.withDescription(
+      "the Linear sync, on while .tutti/settings.json holds a linear block: tutti linear setup turns it on",
+    ),
+    Command.withSubcommands([
+      Command.make(
+        "setup",
+        {
+          team: Flag.String("team").pipe(
+            Flag.withDescription("the Linear team's key, such as NOE: the team isn't asked"),
+            Flag.optional,
+          ),
+        },
+        (given) =>
+          Effect.gen(function* () {
+            const found = yield* Effect.result(repo)
+            if (Result.isFailure(found)) {
+              const why = found.failure
+              yield* Console.error(
+                `tutti linear setup: ${typeof why === "string" ? why : why.message}`,
+              )
+              process.exitCode = exitCodes.setup
+              return
+            }
+            const top = found.success
+            process.exitCode = yield* Effect.scoped(
+              Effect.gen(function* () {
+                const ask =
+                  process.stdin.isTTY && process.stdout.isTTY
+                    ? lineQuestions({
+                        input: yield* streamInput(process.stdin),
+                        write: (text) => process.stdout.write(text),
+                        theme: linearTheme,
+                      })
+                    : unaskedQuestions
+                return yield* linearSetup(
+                  top,
+                  process.env[linearKeyVariable],
+                  ask,
+                  Option.getOrUndefined(given.team),
+                  {
+                    out: (line) => process.stdout.write(`${line}\n`),
+                    error: (line) => process.stderr.write(`${line}\n`),
+                  },
+                  api,
+                ).pipe(Effect.provide(services(top)))
+              }),
+            )
+          }),
+      ).pipe(
+        Command.withDescription(
+          `turn the Linear sync on for this project: with ${linearKeyVariable} in the environment, it reads the teams the key reaches and asks which (--team names it), reads the team's workflow states, shows how Beads' statuses map to them, asking which state a status takes where the team has more than one of its type, and writes bd's linear.* configuration (bd config set) and the linear block of .tutti/settings.json. Issues in Linear's Backlog are pulled deferred, held until moved to Todo. Run again, it changes only what differs and says what it changed. Without a key it says where to create one and how to export it, and writes nothing; the key is never stored or printed. Without a terminal it asks nothing, each state the first of its type. ${linearSetupExits}`,
+        ),
+      ),
+    ]),
   )
 
 /** What the running tutti is, for tutti update and a run's daily check for a newer release. */
@@ -1321,6 +1397,7 @@ export const tuttiWith = <
       coloursCommand(repo),
       requiresCommand(here),
       playbookCommand(repo),
+      linearCommand(repo, services),
       updateCommand,
     ]),
   )
