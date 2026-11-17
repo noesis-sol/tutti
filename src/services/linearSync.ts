@@ -8,6 +8,7 @@
 // warning tutti knows names nothing, and output that isn't a SyncResult is unreadable.
 import { Effect, Option, Schema } from "effect"
 import { formatDuration } from "../project/configFile.ts"
+import { ellipsis } from "../text/marks.ts"
 import type { BdOutput, BeadsTimedOut } from "./Beads.ts"
 
 /** A Linear issue's key, as NOE-12: its team's key, a dash and its number. */
@@ -157,7 +158,7 @@ const payload = (json: unknown): unknown =>
 
 /** At most `max` characters of text. */
 const clip = (value: string, max: number): string =>
-  value.length > max ? `${value.slice(0, max)}…` : value
+  value.length > max ? `${value.slice(0, max)}${ellipsis}` : value
 
 /** What bd said as it refused: its JSON error or failed sync's, else stderr's Error: line. */
 const refusal = (output: BdOutput, json: Option.Option<unknown>): string => {

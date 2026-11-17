@@ -110,7 +110,7 @@ describe("a ticket set aside in this run", () => {
     expectPhases(ran, { a: "Deferred", b: "Done" })
     expectLog(ran, [
       "LINEAR: pulled from NOE at the start: nothing new",
-      "[1] a dispatching: Set aside",
+      "[1] a (NOE-1) dispatching: Set aside",
       "LINEAR: pulled from NOE: nothing new",
     ])
     // Pulls ran after the issue moved, and none of them released it.

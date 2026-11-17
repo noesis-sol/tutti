@@ -8,6 +8,7 @@
 // printed, and what Linear answers is said without it, on one line.
 import { Context, Duration, Effect, Layer, Option, Result, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { ellipsis } from "../text/marks.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 
 /** Linear's GraphQL endpoint: the only URL the key is sent to. */
@@ -79,7 +80,7 @@ const statesQuery =
 /** At most 200 characters of `text`, on one line: how a reason quotes what Linear wrote. */
 export const clip = (text: string): string => {
   const line = sanitizeLine(text.trim().split("\n")[0] ?? "")
-  return line.length > 200 ? `${line.slice(0, 200)}…` : line
+  return line.length > 200 ? `${line.slice(0, 200)}${ellipsis}` : line
 }
 
 /** Why a call failed when Linear didn't answer within linearApiTimeLimit. */
