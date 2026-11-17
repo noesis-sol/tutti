@@ -34,7 +34,7 @@ export const assemble = (
   E.gen(function* () {
     const services = yield* makeServices(options, begun)
     const holds = yield* makeHolds(services)
-    const merge = yield* makeMergeSide(services, holds)
+    const merge = yield* makeMergeSide(services, holds, begun)
     const starting = yield* makeStarting(options, services, holds, merge)
     return { options, begun, services, holds, merge, starting }
   })

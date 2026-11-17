@@ -71,6 +71,10 @@ export interface Seed {
   readonly closeReason?: string
   /** The issue in another tracker it is linked to: a Linear issue's URL. */
   readonly externalRef?: string
+  /** When it was created, RFC 3339; when the backlog was made, or when it was put, by default. */
+  readonly createdAt?: string
+  /** A short-lived wisp (bd create --ephemeral), which bd list leaves out. */
+  readonly ephemeral?: boolean
 }
 
 /** A Linear state's type, which bd maps to a status and back. */
@@ -182,6 +186,7 @@ interface Stored {
   readonly deferUntil?: string
   readonly closeReason: string
   readonly externalRef?: string
+  readonly ephemeral?: true
   /** The comments bd human respond added, oldest first. */
   readonly comments?: ReadonlyArray<string>
   /** Creation order, which breaks ties in bd's sorts. */
@@ -251,6 +256,7 @@ const bdFields = (issue: Stored) => ({
   ...(issue.deferUntil === undefined ? {} : { defer_until: issue.deferUntil }),
   close_reason: issue.closeReason,
   ...(issue.externalRef === undefined ? {} : { external_ref: issue.externalRef }),
+  ...(issue.ephemeral === undefined ? {} : { ephemeral: true }),
 })
 
 /** The issue as bd ready, bd list and bd's writes give it: its links, by ID. */
@@ -317,10 +323,11 @@ const store = (seed: Seed, seq: number, now: number): Stored => {
     labels: [...new Set(seed.labels ?? [])],
     links,
     metadata: seed.metadata ?? {},
-    createdAt: new Date(now).toISOString(),
+    createdAt: seed.createdAt ?? new Date(now).toISOString(),
     ...(seed.deferUntil === undefined ? {} : { deferUntil: seed.deferUntil }),
     closeReason: seed.closeReason ?? "",
     ...(seed.externalRef === undefined ? {} : { externalRef: seed.externalRef }),
+    ...(seed.ephemeral === true ? { ephemeral: true as const } : {}),
     seq,
   }
 }
@@ -496,6 +503,10 @@ export const layer = (
           [...issues.values()]
             .filter(
               (issue) =>
+                // bd list leaves wisps out without --include-ephemeral.
+                issue.ephemeral === undefined &&
+                (options.createdAfter === undefined ||
+                  Date.parse(issue.createdAt) > Date.parse(options.createdAfter)) &&
                 (options.status === undefined
                   ? options.all || issue.status !== "closed"
                   : issue.status === options.status) &&

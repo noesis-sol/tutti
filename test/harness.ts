@@ -61,7 +61,7 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
-import { Backlog, layer as backlogLayer, type Seed } from "../src/testing/Beads.ts"
+import { Backlog, layer as backlogLayer, type Seed, type TestBd } from "../src/testing/Beads.ts"
 import {
   type CheckRun,
   type Script as ChecksScript,
@@ -139,6 +139,8 @@ export interface Setup {
   readonly account?: Initialization | AccountProbeFailed
   /** The backlog's issues: `backlog()`'s builder makes them. */
   readonly backlog?: ReadonlyArray<Seed>
+  /** What its bd has: its configuration, bd linear, the Linear team that syncs with. */
+  readonly bd?: TestBd
   /**
    * Each ticket's worker sessions, in the order they start or resume; given as a function, the
    * scripts can change the in-memory Beads and Git as the worker's commands would.
@@ -284,7 +286,7 @@ export const environment = (
       Layer.mergeAll(
         configLayer(config),
         accountLayer(setup.account).pipe(Layer.provide(configLayer(config))),
-        backlogLayer(setup.backlog),
+        backlogLayer(setup.backlog, setup.bd),
         gitLayer(setup.git),
         checksLayer(setup.checks, checkRuns).pipe(Layer.provide(configLayer(config))),
         storeLayer(setup.state),

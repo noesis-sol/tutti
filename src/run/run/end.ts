@@ -149,7 +149,7 @@ export const summarise = (
     const { options, begun } = parts
     const { config, beads, ledger, events, base, startHead } = parts.services
     const { quitting, organs, pressure } = parts.holds
-    const { early, playbook, queue } = parts.merge
+    const { early, playbook, queue, linear } = parts.merge
     const { quit } = looped
     const { end, all } = wound
     // The follow-ups the run's workers filed that it didn't take up, on their tickets' scorecards
@@ -168,6 +168,9 @@ export const summarise = (
         }),
       { concurrency: showConcurrency, discard: true },
     )
+    // The pushes to Linear still queued, and those that failed tried once more, within their time;
+    // what still failed is listed before the summary (linearPush.ts).
+    yield* linear.finish
     // The summary lines, then the closing line: the stops', or how the run ended by itself.
     const state = yield* ledger.current
     const { lines: summary, summary: summarised } = yield* end.summary(state)

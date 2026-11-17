@@ -1,7 +1,7 @@
 // The run's watchers (run.ts, § 3.4): the fibers of the run's scope that follow its sources while
 // it goes, each forked into a FiberSet of the scope, one that dies panicking the run. Before the
 // start's steps: the login check and the API outage, the auditor's and the playbook's ends, the
-// keep-awake badge, the machine's sleeps, the battery (battery.ts), a spec's breakdown filing the
+// tickets whose status changes, pushed to Linear with the settings' linear block, the keep-awake badge, the machine's sleeps, the battery (battery.ts), a spec's breakdown filing the
 // scope, and the requests to quit (quitting.ts, § 4.8), heard from before the requirements check
 // so that a quit during the start's steps cuts the step under way short. After them: the machine's
 // poll, what the dashboard shows of triage, the checks ahead, the probe and each worker's figures
@@ -30,6 +30,7 @@ import { Checking, sayChecking, showChecking } from "../checking.ts"
 import { hear } from "../drain.ts"
 import { stopFor, withBattery, withFiling } from "../holds.ts"
 import type { Ledger } from "../ledger.ts"
+import { followChanges, off as linearOff } from "../linearPush.ts"
 import { Load, pressing, watchLoad } from "../load.ts"
 import { watchLogins } from "../login.ts"
 import type { QueueState } from "../mergequeue.ts"
@@ -62,7 +63,7 @@ export const make = (
     const { config, ledger, fibers, status, wakeUp, holds } = parts.services
     const { changeHolds } = holds
     const { quitting, panicked, apiOutage, loginCheck, triage } = parts.holds
-    const { critic, auditor, playbook, queue } = parts.merge
+    const { critic, auditor, playbook, queue, linear } = parts.merge
     const { scheduler } = parts.starting
     // The run's watchers: one that dies panics the run.
     const watchers = yield* fibers.make("run")
@@ -80,6 +81,8 @@ export const make = (
     if (auditor !== auditorOff) yield* watch(followEnds(ledger.changes, auditor))
     // And counted for the lessons it was given, and towards the next reflection (playbookRun.ts).
     if (playbook !== playbookOff) yield* watch(followEnds(ledger.changes, playbook))
+    // And pushed to Linear as its status changes, with the settings' linear block (linearPush.ts).
+    if (linear !== linearOff) yield* watch(followChanges(ledger.changes, linear))
     // The title line's badge while the keep-awake command holds the machine awake.
     if (options.keepingAwake !== undefined) {
       yield* watch(Stream.runForEach(options.keepingAwake, showOn(status, "keepAwake")))

@@ -109,6 +109,8 @@ export const Tag = {
   released: "RELEASED",
   message: "MESSAGE",
   filed: "FILED",
+  linear: "LINEAR",
+  linearPushFailed: "LINEAR_PUSH_FAILED",
   organ: "ORGAN",
   spec: "SPEC",
   triageFailed: "TRIAGE_FAILED",

@@ -251,6 +251,25 @@ export const Reopened = Schema.Struct({
   text: Schema.String,
 })
 
+/** What a sync with Linear (tutti-qatu) did with a ticket or an issue. */
+export const linearOutcomes = ["created", "updated", "skipped", "failed"] as const
+
+/**
+ * A sync with Linear through bd linear: `push`, one ticket pushed (`ticket`), its issue's key
+ * (`issue`) where it has one, what the push did (`outcome`; `skipped`: Linear had it so already),
+ * and why one `failed`; `last`, a push that still failed at the run's end, LINEAR_PUSH_FAILED.
+ */
+export const Linear = Schema.Struct({
+  ...head("linear"),
+  sync: Schema.Literals(["pull", "push"]),
+  ticket: optional(Schema.String),
+  issue: optional(Schema.String),
+  outcome: optional(Schema.Literals(linearOutcomes)),
+  why: optional(Schema.String),
+  last: optional(Schema.Literal(true)),
+  text: Schema.String,
+})
+
 /** Something to review while the run goes on: `CHECKS_FAILED`, `MERGE_CONFLICT`, … */
 export const Warn = Schema.Struct({
   ...head("warn"),
@@ -1145,6 +1164,7 @@ export const kinds = {
   auto_answered: AutoAnswered,
   waits: Waits,
   reopened: Reopened,
+  linear: Linear,
   triage: Triage,
   warn: Warn,
   hold: Hold,

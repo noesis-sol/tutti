@@ -119,6 +119,8 @@ export interface Issue {
   readonly externalRef?: string
   /** The Linear issue's key (NOE-12), when external_ref is a Linear issue's URL. */
   readonly linearKey?: LinearKey
+  /** A short-lived wisp (bd create --ephemeral), which bd list leaves out. */
+  readonly ephemeral?: true
 }
 
 /** The metadata keys tutti reads (§ 11). */
@@ -191,6 +193,7 @@ const issueFields = {
   defer_until: Text,
   close_reason: Text,
   external_ref: Text,
+  ephemeral: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
   priority: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   labels: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
   metadata: Schema.optionalKey(Schema.Unknown),
@@ -337,6 +340,7 @@ const toIssue = (bd: BdFields, dependencies: ReadonlyArray<Dependency>): Issue =
     closeReason: text(bd.close_reason),
     ...(bd.external_ref ? { externalRef: bd.external_ref } : {}),
     ...linearKeyOrNone(bd.external_ref),
+    ...(bd.ephemeral === true ? { ephemeral: true as const } : {}),
   }
 }
 
@@ -549,6 +553,8 @@ export interface ListOptions {
   readonly metadata?: Readonly<Record<string, string>>
   /** Only the issues by these very IDs (bd list --id); none for none. Closed ones too with `all`. */
   readonly ids?: ReadonlyArray<TicketId>
+  /** Only issues created after this time, RFC 3339 (bd list --created-after), to the second. */
+  readonly createdAfter?: string
 }
 
 /**
@@ -902,6 +908,7 @@ export class Beads extends Context.Service<
               ([key, value]) => `--metadata-field=${key}=${value}`,
             ),
             ...listFlag("id", list.ids),
+            ...flag("created-after", list.createdAfter),
           ]
           // bd list --id matches IDs whole; only those asked for are given back all the same.
           const read = Effect.map(listed(args), (issues) =>

@@ -112,6 +112,27 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       text: "x",
     },
   ],
+  linear: [
+    {
+      ...head,
+      kind: "linear",
+      sync: "push",
+      ticket: "a-1",
+      issue: "NOE-12",
+      outcome: "updated",
+      text: "  LINEAR: a-1 closed, pushed to NOE-12 (updated)",
+    },
+    {
+      ...head,
+      kind: "linear",
+      sync: "push",
+      ticket: "a-1",
+      outcome: "failed",
+      why: "bd took longer than 30s",
+      last: true,
+      text: "  LINEAR_PUSH_FAILED: a-1: bd took longer than 30s",
+    },
+  ],
   triage: [
     {
       ...head,

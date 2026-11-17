@@ -934,6 +934,74 @@
         "kind": {
           "type": "string",
           "enum": [
+            "linear"
+          ]
+        },
+        "sync": {
+          "type": "string",
+          "enum": [
+            "pull",
+            "push"
+          ]
+        },
+        "ticket": {
+          "type": "string"
+        },
+        "issue": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "created",
+            "updated",
+            "skipped",
+            "failed"
+          ]
+        },
+        "why": {
+          "type": "string"
+        },
+        "last": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "v",
+        "time",
+        "run",
+        "kind",
+        "sync",
+        "text"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "enum": [
+            1
+          ]
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
             "triage"
           ]
         },

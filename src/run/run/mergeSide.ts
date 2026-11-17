@@ -1,8 +1,9 @@
 // The run's merge side (run.ts, § 5 item 8): each finished ticket's branch checked early
 // (earlyCheck.ts), the critic, the auditor and the playbook's reflections when the run has organs
 // (critic.ts, auditor.ts, playbookRun.ts), the merge queue (mergequeue.ts), the stop a merge
-// that stopped the merges holds the run with, taken up once, and the closed blockers whose work
-// git finds only on their branch (closedBranches.ts).
+// that stopped the merges holds the run with, taken up once, the closed blockers whose work
+// git finds only on their branch (closedBranches.ts), and, with the settings' linear block, the
+// pushes to Linear of the tickets whose status changes (linearPush.ts).
 import { Effect, Option, Ref, type Scope } from "effect"
 import { Organs } from "../../organs/Organs.ts"
 import { type Auditor, off as auditorOff, make as makeAuditor } from "../auditor.ts"
@@ -11,6 +12,7 @@ import { type Critic, off as criticOff, make as makeCritic } from "../critic.ts"
 import { type EarlyChecks, make as makeEarlyChecks } from "../earlyCheck.ts"
 import { stopFor, stopOfLine } from "../holds.ts"
 import { Ledger } from "../ledger.ts"
+import { type LinearPushes, off as linearOff, make as makeLinearPushes } from "../linearPush.ts"
 import { type MergeQueue, make as makeQueue, type QueueState } from "../mergequeue.ts"
 import { make as makePlaybook, type RunPlaybook } from "../playbookRun.ts"
 import { showOn } from "../runView.ts"
@@ -30,6 +32,8 @@ export interface MergeSide {
   /** The merge that stopped the merges, taken up once, by its watcher or by the end. */
   readonly mergeStop: (state: QueueState) => Effect.Effect<void>
   readonly branches: ClosedBranches
+  /** The pushes to Linear, `off` without the settings' linear block. */
+  readonly linear: LinearPushes
 }
 
 /** The run's merge side, made over `services` and `holds`, in the run's scope. */
@@ -48,6 +52,7 @@ export const make = (
     | "pressure"
     | "overnight"
   >,
+  begun: number,
 ): Effect.Effect<MergeSide, never, RunEnv | Ledger | Scope.Scope> =>
   Effect.gen(function* () {
     const { config, base, status, wakeUp } = services
@@ -149,5 +154,9 @@ export const make = (
     // A closed blocker the run knows nothing of hasn't merged while git finds its work only on its
     // branch (closedBranches.ts): the holds, WAITS_FOR_MERGE and DEFERRED_FREE all count it so.
     const branches = yield* closedBranches({ repo: config.repo, base })
-    return { early, criticIdle, critic, auditor, playbook, queue, mergeStop, branches }
+    // The pushes to Linear (linearPush.ts), only with the settings' linear block: told of each
+    // ticket whose status changes (followChanges, in the watchers), they run one at a time in the
+    // background, and the end waits for them before its summary.
+    const linear = config.linear === null ? linearOff : yield* makeLinearPushes({ since: begun })
+    return { early, criticIdle, critic, auditor, playbook, queue, mergeStop, branches, linear }
   })
