@@ -100,7 +100,10 @@ export interface ReportRun {
 export interface Readings {
   /** The commits merged, as the reviewer reads them. */
   readonly commits: string
-  /** Each ticket closed in the run, as the reviewer reads it, with its Linear issue's key where it has one. */
+  /**
+   * Each ticket closed in the run, as the reviewer reads it, with its Linear issue's key where it
+   * has one in a run with the sync.
+   */
   readonly closed: ReadonlyArray<string>
   /** Each ticket set aside in the run, as the reviewer reads it. */
   readonly setAside: ReadonlyArray<string>
@@ -498,7 +501,9 @@ export const readEvidence = (
           const reason = oneLine(issue.closeReason, closeReasonWidth)
           return (
             `${entry.ticket}: ${issue.title}\n${phaseSaid(entry.phase)}\n` +
-            (issue.linearKey === undefined ? "" : `Linear issue: ${issue.linearKey}\n`) +
+            (config.linear === null || issue.linearKey === undefined
+              ? ""
+              : `Linear issue: ${issue.linearKey}\n`) +
             `Close reason: ${reason === "" ? "(none given)" : reason}`
           )
         }),

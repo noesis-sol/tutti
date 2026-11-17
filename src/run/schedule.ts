@@ -243,6 +243,8 @@ export interface Options {
   readonly concurrent: number
   /** The most tickets this run starts (--limit), or null for no limit. */
   readonly limit: number | null
+  /** The run syncs with Linear: a linked ticket's dispatch line names its Linear key. */
+  readonly linear?: boolean
   /** The ticket the run is scoped to (--ticket), or null for the whole of bd ready. */
   readonly scope: TicketId | null
   /** The queue's `exclude_types`. */

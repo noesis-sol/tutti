@@ -2,12 +2,13 @@
 // tutti-qatu's "Shown and recorded"; tutti-qatu.9): a linked ticket's row, card and dispatch line
 // have its Linear key beside its ID, an unlinked one's are as before; the summary's Linear line
 // counts the pulls and pushes and lists what failed, and a run without the sync has none; the
-// report's evidence names the Linear issue of each ticket the run closed.
+// report's evidence names the Linear issue of each ticket the run closed. A run without the sync
+// shows none of it, a linked ticket's row, card, lines and evidence as before.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Layer } from "effect"
+import { Duration, Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { renderInput } from "../src/organs/evidence.ts"
 import { summary } from "../src/print/summary.ts"
@@ -86,8 +87,8 @@ const entryOf = (issue: Issue, phase: TicketPhase, row: number, worker: number |
   tallies: emptyTallies,
 })
 
-/** RunView of `entries`. */
-const viewOf = (entries: ReadonlyArray<Entry>): RunView =>
+/** RunView of `entries`, in a run with the Linear sync unless `linear` is false. */
+const viewOf = (entries: ReadonlyArray<Entry>, linear = true): RunView =>
   project({
     ledger: {
       tickets: new Map(entries.map((entry) => [entry.ticket, entry])),
@@ -97,7 +98,14 @@ const viewOf = (entries: ReadonlyArray<Entry>): RunView =>
     },
     workers: new Map(),
     requests: [],
-    status: { ...emptyStatus, version: "0.1.0", branch: "main", began: 0, concurrency: 3 },
+    status: {
+      ...emptyStatus,
+      version: "0.1.0",
+      branch: "main",
+      began: 0,
+      concurrency: 3,
+      linear,
+    },
     actions: new Map(),
   })
 
@@ -127,6 +135,14 @@ describe("a ticket's row", () => {
     const { issue: _unread, ...unread } = unlinked
     expect(drawn(view)).toEqual(drawn(viewOf([{ ...unread, row: 0 }])))
     expect(drawn(view).find((each) => each.includes("t-2"))).toContain("│ t-2     │")
+  })
+
+  test("in a run without the sync, a linked one's is drawn as an unlinked one's", () => {
+    const off = viewOf([linked, unlinked], false)
+    expect(off.rows.map((row) => row.linear)).toEqual([undefined, undefined])
+    const lines = drawn(off)
+    expect(lines.find((each) => each.includes("t-1"))).toContain("│ t-1     │")
+    expect(lines.some((each) => each.includes("NOE"))).toBe(false)
   })
 
   test("a narrow table cuts the key before the ID, and leaves it out where the ID takes the room", () => {
@@ -159,14 +175,27 @@ describe("a ticket's card", () => {
     expect(head(view, "t-2")).toMatch(/t-2 {2}\S/)
     expect(head(view, "t-2")).not.toContain("NOE")
   })
+
+  test("in a run without the sync, a linked one's is as an unlinked one's", () => {
+    const view = viewOf([entryOf(issueOf("t-1", "NOE-12"), working, 0, 1)], false)
+    expect(head(view, "t-1")).not.toContain("NOE")
+  })
 })
 
 describe("the dispatch line", () => {
   test("names a linked ticket's Linear key beside its ID", () => {
-    expect(String(dispatchLine(1, null, issueOf("t-1", "NOE-12")))).toBe(
+    expect(String(dispatchLine(1, null, issueOf("t-1", "NOE-12"), true))).toBe(
       "[1] t-1 (NOE-12) dispatching: Title of t-1",
     )
-    expect(String(dispatchLine(2, 5, issueOf("t-2")))).toBe("[2/5] t-2 dispatching: Title of t-2")
+    expect(String(dispatchLine(2, 5, issueOf("t-2"), true))).toBe(
+      "[2/5] t-2 dispatching: Title of t-2",
+    )
+  })
+
+  test("in a run without the sync is as before, a linked ticket's too", () => {
+    expect(String(dispatchLine(1, null, issueOf("t-1", "NOE-12"), false))).toBe(
+      "[1] t-1 dispatching: Title of t-1",
+    )
   })
 })
 
@@ -259,14 +288,20 @@ describe("the summary's Linear line", () => {
     expect(plain.find((each) => each.includes("t-1"))).toMatch(/^ {2}\S+ t-1 \(NOE-12\) done: /)
     expect(plain.find((each) => each.includes("t-2"))).toMatch(/^ {2}\S+ t-2 done: /)
     expect(plain.some((each) => each.includes("Linear"))).toBe(false)
+    // A run without the sync: as before, the linked ticket's row too.
+    const off = viewOf([entryOf(issueOf("t-1", "NOE-12"), merged, 0, null)], false).rows
+    const before = summaryLines({ ...summarised(noFigures, off), base: "main" }).map(String)
+    expect(before.find((each) => each.includes("t-1"))).toMatch(/^ {2}\S+ t-1 done: /)
   })
 })
 
 describe("the report's evidence", () => {
-  test("names the Linear issue of each ticket the run closed that links one", async () => {
+  /** The reviewer's input for a run that closed `a`, linked to NOE-12, and `b`, with the sync or not. */
+  const evidence = async (linear: boolean): Promise<string> => {
     const repo = mkdtempSync(join(tmpdir(), "tutti-linear-shown-"))
+    const settings = { team: "NOE", pull_every: Duration.minutes(10) }
     const deps = Layer.mergeAll(
-      configLayer(appConfig({}, repo)),
+      configLayer(appConfig({ linear: linear ? settings : null }, repo)),
       beadsLayer([
         { id: "a", title: "Do a", status: "closed", externalRef: linearUrl("NOE-12") },
         { id: "b", title: "Do b", status: "closed" },
@@ -298,8 +333,18 @@ describe("the report's evidence", () => {
         })
       }).pipe(Effect.provide(services), Effect.provide(TestClock.layer())),
     )
-    const input = renderInput("0123456789abcdef", parts)
+    return renderInput("0123456789abcdef", parts)
+  }
+
+  test("names the Linear issue of each ticket the run closed that links one", async () => {
+    const input = await evidence(true)
     expect(input).toContain("a: Do a\nDone (merged in abc123)\nLinear issue: NOE-12\nClose reason:")
     expect(input).toContain("b: Do b\nDone (merged in abc123)\nClose reason:")
+  })
+
+  test("in a run without the sync is as before, a linked ticket's too", async () => {
+    const input = await evidence(false)
+    expect(input).not.toContain("Linear issue")
+    expect(input).toContain("a: Do a\nDone (merged in abc123)\nClose reason:")
   })
 })

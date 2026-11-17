@@ -96,6 +96,7 @@ export const make = (
       ...(config.specPath === null ? {} : { spec: config.specPath }),
       began: begun,
       concurrency: config.settings.concurrent,
+      linear: config.linear !== null,
       autoAnswer:
         config.autoAnswer === null
           ? null

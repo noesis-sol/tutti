@@ -320,7 +320,12 @@ export const make = (options: {
           ledger: state,
           workers: new Map(),
           requests: [],
-          status: { ...emptyStatus, branch: base, concurrency: config.settings.concurrent },
+          status: {
+            ...emptyStatus,
+            branch: base,
+            concurrency: config.settings.concurrent,
+            linear: config.linear !== null,
+          },
         })
         const gate = yield* options.checksGate ?? Effect.succeed(null)
         const summarised: Summary = {

@@ -16,11 +16,18 @@ import { progress, reached, type Scheduling } from "./state.ts"
 
 /**
  * `[n/limit] <id> dispatching: <title>`, the dispatch's log line; `dispatching solo` for one, and
- * `<id> (NOE-12)` for a ticket linked to a Linear issue.
+ * `<id> (NOE-12)` for a ticket linked to a Linear issue in a run with the `linear` sync.
  */
-export const dispatchLine = (n: number, limit: number | null, issue: Issue): Line => {
+export const dispatchLine = (
+  n: number,
+  limit: number | null,
+  issue: Issue,
+  linear = false,
+): Line => {
   const id =
-    issue.linearKey === undefined ? line`${issue.id}` : line`${issue.id} (${issue.linearKey})`
+    !linear || issue.linearKey === undefined
+      ? line`${issue.id}`
+      : line`${issue.id} (${issue.linearKey})`
   return isSolo(issue)
     ? line`[${progress(n, limit)}] ${id} dispatching solo: ${issue.title}`
     : line`[${progress(n, limit)}] ${id} dispatching: ${issue.title}`
@@ -57,7 +64,7 @@ export const dispatch = (
   Effect.gen(function* () {
     const { options } = sched
     const s = yield* Ref.updateAndGet(sched.slots, (s) => ({ ...s, started: s.started + 1 }))
-    const text = dispatchLine(s.started, options.limit, issue)
+    const text = dispatchLine(s.started, options.limit, issue, options.linear === true)
     const solo = isSolo(issue)
       ? { ticket: issue.id }
       : soloState(s, (yield* Ref.get(sched.memo)).soloNext)

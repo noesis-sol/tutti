@@ -260,6 +260,7 @@ export const make = (
     const scheduler = yield* makeScheduler({
       concurrent: config.settings.concurrent,
       limit: config.limit,
+      linear: config.linear !== null,
       scope: config.ticket,
       excludeTypes: config.settings.queue.exclude_types,
       start: { start: ticketFiber },

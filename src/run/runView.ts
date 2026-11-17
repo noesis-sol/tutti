@@ -132,6 +132,11 @@ export interface Status {
   readonly began: number
   /** How many workers may run at once. */
   readonly concurrency: number
+  /**
+   * The run syncs with Linear (the settings' linear block, its startup checks passed): a linked
+   * ticket's row and card show its Linear key. Without it they are as they were before the sync.
+   */
+  readonly linear: boolean
   readonly holds: ReadonlyArray<RunHold>
   readonly usage: Usage | null
   /** The account's windows, in the order the SDK first gave them; none until it has. */
@@ -223,6 +228,7 @@ export const emptyStatus: Status = {
   scope: null,
   began: 0,
   concurrency: 0,
+  linear: false,
   holds: [],
   usage: null,
   windows: [],
@@ -1167,8 +1173,8 @@ const textsOf = (entry: Entry) => {
 }
 
 /**
- * The Linear issue's key of `entry`'s ticket, as the run last read its issue, for its row and card:
- * none where it links none, or the run hasn't read it. A key is letters, digits and a dash
+ * The Linear issue's key of `entry`'s ticket, as the run last read its issue, for its row and card
+ * in a run with the sync: none where it links none, or the run hasn't read it. A key is letters, digits and a dash
  * (linearKey), so nothing in it needs sanitising.
  */
 const linearOf = (entry: Entry): { readonly linear?: string } => {
@@ -1263,7 +1269,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     const phase = entry.phase
     const activity = activityOf(state, open)
     const { label, title } = textsOf(entry)
-    const linear = linearOf(entry)
+    const linear = status.linear ? linearOf(entry) : {}
     // A ticket set aside has the triage organ's verdict in place of its note.
     const verdict =
       phaseFacts[phase._tag].notice === "setAside"
