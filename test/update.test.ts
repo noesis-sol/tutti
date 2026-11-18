@@ -15,6 +15,7 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Fiber, Option } from "effect"
 import fc from "fast-check"
+import { compareVersions } from "../src/text/version.ts"
 import { parsePublicKey, releaseKeys } from "../src/update/keys.ts"
 import {
   archiveName,
@@ -24,7 +25,6 @@ import {
   checkEvery,
   checksForUpdates,
   checksumOf,
-  compareVersions,
   newerNotice,
   newerRelease,
   type Releases,

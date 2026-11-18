@@ -184,7 +184,7 @@ interface Scenario {
 
 /**
  * The startup checks in a project set up, with `scenario`: what they gave, and the calls of bd's
- * configuration and bd linear they made.
+ * configuration, bd linear and bd version they made.
  */
 const run = async (scenario: Scenario = {}) => {
   const repo = project()
@@ -203,6 +203,11 @@ const run = async (scenario: Scenario = {}) => {
           Effect.andThen(
             Effect.sync(() => calls.push("linear")),
             beads.hasLinear(),
+          ),
+        version: () =>
+          Effect.andThen(
+            Effect.sync(() => calls.push("version")),
+            beads.version(),
           ),
         ...scenario.beads?.(beads),
       }),
@@ -257,7 +262,7 @@ describe("the startup checks of the Linear sync", () => {
       env: key,
       bd: { configuration: stateMaps },
     })
-    expect(calls.toSorted()).toEqual(["config list", "linear"])
+    expect(calls.toSorted()).toEqual(["config list", "linear", "version"])
     expect(started.warnings).toEqual([])
     expect(started.config.linear).toEqual(block)
     expect(linearNotes(started)).toEqual(["  linear: NOE, pull at start and every 10m"])

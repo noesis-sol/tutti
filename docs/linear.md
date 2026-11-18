@@ -206,14 +206,15 @@ The sync never stops a run, holds a fill or changes the exit code.
 ### The start's warnings
 
 With the block there, a run's start checks for the credentials, for a `bd` that has `bd linear`,
-and for bd's state map. Each lack is a warning, and the run goes on without the sync:
+at 1.3.0 or later (`bd version`), and for bd's state map. Each lack is a warning, and the run goes on without the sync:
 
 | Warning | What to do |
 |---|---|
 | `linear: not syncing: no LINEAR_API_KEY in the environment …` | export the key in the shell that starts tutti ([Creating the key](#creating-the-key-and-keeping-it)) |
 | `linear: not syncing: the installed bd has no bd linear; update Beads` | update Beads to 1.3.0 or later |
+| `linear: not syncing: bd 1.2.2 is older than 1.3.0, which the sync needs; update Beads` | update Beads to 1.3.0 or later: an older `bd linear` has no outbound state map, and its pushes fail |
 | `linear: not syncing: bd's configuration has no state map for …` | run `tutti linear setup` |
-| `linear: not syncing: could not run bd linear: …` or `could not read bd's configuration: …` | what bd said follows; `bd doctor` may say more |
+| `linear: not syncing: could not run bd linear: …`, `could not read bd's version: …` or `could not read bd's configuration: …` | what bd said follows; `bd doctor` may say more |
 
 ## Turning it off
 

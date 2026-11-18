@@ -490,6 +490,15 @@ export const decodeConfiguration = (
     ),
   )
 
+const decodeBdVersion = decodeWith(Schema.Struct({ version: Schema.String }), "bd's version")
+
+/** Decodes the output of bd version --json: the version, as bd gives it (`1.3.4`). */
+export const decodeVersion = (
+  command: string,
+  stdout: string,
+): Effect.Effect<string, BeadsUnreadable> =>
+  Effect.map(decodeBdVersion(command, stdout), ({ version }) => version)
+
 /** Whether bd's output says it has no issue by the ID it was given. */
 export const saysNoSuchIssue = (stdout: string): boolean =>
   Option.match(Schema.decodeUnknownOption(BdError)(stdout.trim()), {
@@ -703,6 +712,8 @@ export class Beads extends Context.Service<
     setConfiguration(key: string, value: string): Effect.Effect<void, BeadsError>
     /** Whether the installed bd has bd linear, Beads' Linear sync: bd linear --help exits 0. */
     hasLinear(): Effect.Effect<boolean, BeadsError>
+    /** bd version: the installed bd's version (`1.3.4`). */
+    version(): Effect.Effect<string, BeadsError>
     /**
      * bd linear sync --pull --relations --issues: pulls these Linear issues and no other, with their
      * relations. One no ticket links becomes a ticket; a linked ticket is overwritten with Linear's
@@ -1105,6 +1116,7 @@ export class Beads extends Context.Service<
               ({ output }) => output.exitCode === 0,
             ),
           ),
+          version: Effect.fn("Beads.version")(() => read(["version", "--json"], decodeVersion)),
           linearPull: Effect.fn("Beads.linearPull")((keys) =>
             keys.length === 0
               ? Effect.succeed(noLinearSync)

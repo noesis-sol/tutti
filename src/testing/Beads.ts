@@ -23,6 +23,7 @@ import {
   decodeIssue,
   decodeIssues,
   decodeQuestions,
+  decodeVersion,
   HumanLabel,
   type Issue,
   issueFor,
@@ -357,6 +358,8 @@ export interface TestBd {
   readonly configuration?: Readonly<Record<string, string>>
   /** Whether it has bd linear, as bd 1.3.4 does; true by default. */
   readonly linear?: boolean
+  /** Its version, as bd version gives it; 1.3.4 by default. */
+  readonly version?: string
   /** The Linear team its bd linear syncs with; one with no issues by default. */
   readonly linearTeam?: TestLinear
 }
@@ -1016,6 +1019,14 @@ export const layer = (
             nothing,
           ),
         hasLinear: () => Effect.succeed(bd.linear ?? true),
+        version: () =>
+          answer(
+            "read",
+            "version",
+            undefined,
+            Effect.succeed(ok({ version: bd.version ?? "1.3.4", schema_version: 1 })),
+            decodeVersion,
+          ),
         linearPull: (keys) =>
           keys.length === 0
             ? Effect.succeed(noLinearSync)

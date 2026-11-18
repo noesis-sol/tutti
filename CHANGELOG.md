@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A run's start with the Linear sync warns of a bd older than 1.3.0 (§ 8.4's `linear`; `src/run/linearCheck.ts`; tutti-j9no): bd 1.2.2 has `bd linear` but not `linear.outbound_state_map`, so it passed the startup check and every push failed. The check now reads `bd version` too and says `linear: not syncing: bd 1.2.2 is older than 1.3.0, which the sync needs; update Beads`, the run going on without the sync. The Beads service gains `version`; the version comparison of `tutti update` moves to `src/text/version.ts`. `test/linear-bd-version.test.ts` covers it.
+
 ## [0.8.11] - 2026-11-17
 
 - A run's pulls from Linear stop at its end (§ 5 item 20; `stop` in `src/run/linearPull.ts`, `src/run/run/end.ts`; tutti-h22c): the pull every `pull_every` was a fiber of the run's scope, which the run's caller closes, so it went on through the end's steps, and in a run that wrote its own end record, after it, every `pull_every` while the scope stayed open. The wind-down now stops them: no pull begins from then on, one under way ends first, and the pushes go on. `test/linear-pull-end.test.ts` covers it.

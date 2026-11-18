@@ -27,14 +27,16 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Duration, Effect, Layer, Schema } from "effect"
+import { Duration, Effect, Layer, Option, Schema } from "effect"
 import { FetchHttpClient } from "effect/http"
 import { applyLinear, planLinear, statesOfType, unasked } from "../../src/init/linear.ts"
 import { settingsFile } from "../../src/project/settings.ts"
+import { minimumBd, versionWarning } from "../../src/run/linearCheck.ts"
 import { Beads, type Issue, LinearTimeLimit, type TicketId } from "../../src/services/Beads.ts"
 import { askLinear, LinearApi, type LinearState } from "../../src/services/LinearApi.ts"
 import { liveLinearIssues } from "../../src/services/LinearIssues.ts"
 import { type LinearKey, type LinearSync, linearKey } from "../../src/services/linearSync.ts"
+import { compareVersions } from "../../src/text/version.ts"
 import { machineWhich, testEnv } from "../env.ts"
 import { linearLive } from "../gates.ts"
 
@@ -380,11 +382,10 @@ linearLive.describe("against a real Linear team", () => {
   })
 
   linearLive.test("6. bd is 1.3.0 or later, and has bd linear", async () => {
-    const said = sh(dir, bd, "version")
-    const version = /(\d+)\.(\d+)\.(\d+)/.exec(said)?.slice(1).map(Number)
-    expect(version).toBeDefined()
-    const [major = 0, minor = 0] = version ?? []
-    expect([said.trim(), major > 1 || (major === 1 && minor >= 3)]).toEqual([said.trim(), true])
+    // Through the service, as the startup check reads it: its decode meets the real bd's output.
+    const version = await beads((b) => b.version())
+    expect(compareVersions(version, minimumBd)).not.toEqual(Option.none())
+    expect(versionWarning(version)).toBeUndefined()
     expect(await beads((b) => b.hasLinear())).toBe(true)
   })
 })
