@@ -10,6 +10,9 @@ workers side by side, each in its own git worktree. It rebases, checks and fast-
 finished ticket, one at a time, into the branch you started on. A live terminal dashboard shows the
 run, and you can open any worker to read what it is doing or talk to it.
 
+It can also sync with [Linear](#linear): file an issue in your Linear team, and tutti works it and
+moves it to Done.
+
 <img width="3216" height="2100" alt="Screenshot 2026-11-10 at 12 40 15 PM" src="https://github.com/user-attachments/assets/92037c8f-c6bd-4571-bb56-796f1d2f2fee" />
 
 
@@ -123,6 +126,27 @@ How a run goes:
 `tutti -h` lists every flag; [Running](docs/running.md#options) has them all. Run `tutti plan` after
 filing a batch of tickets: it proposes blocks links between tickets that touch the same code, and
 `--apply` adds them.
+
+## Linear
+
+tutti can take its work from a Linear team and show its progress there. It is optional, and off
+unless you set it up.
+
+```sh
+export LINEAR_API_KEY=lin_api_...   # a personal API key, in your shell's profile
+tutti linear setup                  # asks the team and confirms how statuses map
+```
+
+- **In.** File an issue in the team and move it to **Todo** when it is ready: the run's next pull,
+  at its start and every 10 minutes, makes it a ticket. An issue still in Backlog waits.
+- **Out.** Linear shows the issue move to **In Progress** and **Done** as its ticket is worked,
+  merged and closed. The tickets a run files, a worker's follow-ups say, are created in Linear too.
+- **Never sent.** The backlog's history and the questions tutti files for you stay in Beads.
+
+Beads stays what a run reads and writes: the sync is built on Beads' own (`bd linear`, Beads 1.3.0
+or later). tutti reads the key from the environment only and gives it to no worker. `tutti init`
+offers the setup too. [The Linear sync](docs/linear.md) has the rest: the key, the Todo gate, failed
+pulls and pushes, and turning it off.
 
 ## Commands
 
