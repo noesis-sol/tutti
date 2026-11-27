@@ -11,8 +11,8 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Fiber, Layer } from "effect"
 import { line } from "../src/core/log.ts"
-import { type Outcome, run } from "../src/run/run.ts"
 import { defaultSettings } from "../src/run/resolveConfig.ts"
+import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import {
@@ -113,7 +113,7 @@ describe("the live layer", () => {
   }
 
   test("a script that isn't there could not be run, the shell's line its reason", async () => {
-    const error = failure(await fast(`./${"check-fast.sh"}`))
+    const error = failure(await fast("./check-fast.sh"))
     expect(error).toBeInstanceOf(CheckNotRun)
     expect((error as CheckNotRun).reason).toContain("check-fast.sh")
   })
@@ -135,7 +135,9 @@ describe("the live layer", () => {
   })
 
   test("a suite inside it that exits 127, the script going on to exit 1, fails", async () => {
-    const error = failure(await fast("./check.sh", "no-such-tool-tutti-test\necho '1 fail'\nexit 1"))
+    const error = failure(
+      await fast("./check.sh", "no-such-tool-tutti-test\necho '1 fail'\nexit 1"),
+    )
     expect(error).toBeInstanceOf(CheckFailed)
     expect(error).toMatchObject({ exitCode: 1 })
   })
