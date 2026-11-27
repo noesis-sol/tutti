@@ -239,7 +239,7 @@ describe("an older worker prompt or verifier", () => {
         }),
       ).pipe(
         Effect.scoped,
-        Effect.provide(TestGit.layer({ dir: repo })),
+        Effect.provide(TestGit.layer({ dir: repo, files: TestAppConfig.testFiles })),
         Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { HOME: home } }))),
         Effect.provide(BunServices.layer),
       ),

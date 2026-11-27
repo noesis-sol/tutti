@@ -17,7 +17,12 @@ import * as TestGit from "../src/testing/Git.ts"
 import { Repository } from "../src/testing/Git.ts"
 
 /** What the main checkout's one commit holds. */
-const committed = { "README.md": "# Shop\n", "docs/shop.md": "# Shop\n", ".gitattributes": "" }
+const committed = {
+  "README.md": "# Shop\n",
+  "docs/shop.md": "# Shop\n",
+  ".gitattributes": "",
+  "scripts/check-fast.sh": "#!/bin/sh\n",
+}
 
 /** A project `tutti init` has set up, its spec on disk as `docs/shop.md`. */
 const project = (spec = "# Shop\n") => {

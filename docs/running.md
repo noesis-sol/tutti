@@ -36,9 +36,15 @@ tutti cannot start:
 ```
 
 It checks the repository and its main checkout (on a branch, no uncommitted changes to tracked
-files but in `.tutti/run/` and `.beads/`; an untracked file, such as a `.DS_Store`, is left to git), `bd` and the Beads database, the Claude Code it runs, the login and your Claude Code
+files but in `.tutti/run/` and `.beads/`; an untracked file, such as a `.DS_Store`, is left to git), the
+scripts the merge check, the full check and the setup command run, committed on the base (a
+ticket's worktree has only what is committed, so `scripts/check-fast.sh, the merge check, is not
+committed on main: a ticket's worktree would not have it. Commit it (git add scripts/check-fast.sh
+.tutti && git commit), then start again.`; a command found on PATH, such as `npm test`, isn't looked
+at, nor a path git ignores), `bd` and the Beads database, the Claude Code it runs, the login and your Claude Code
 settings ([Login and billing](setup.md#login-and-billing)), the settings and your user config, the MCP
-servers workers get, and the worker prompt. In a repository `tutti init` hasn't set up, it says so
+servers workers get, and the worker prompt; `.tutti/settings.json` or `.tutti/worker-prompt.md`
+untracked is a warning, as a ticket's worker reads them from its own tree. In a repository `tutti init` hasn't set up, it says so
 first:
 
 ```

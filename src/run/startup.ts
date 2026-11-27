@@ -1,7 +1,8 @@
 // The startup checks (§ 5 item 1): everything a run needs before it takes the run lock, each
 // problem collected so that they are all reported at once, and the run exits 2. A repository
 // `tutti init` hasn't set up says so first, in place of the problems that init fixes. In § 5's
-// order: git, 2.38 or later; the git repository and its main checkout, on a branch; a clean tree; bd and the Beads
+// order: git, 2.38 or later; the git repository and its main checkout, on a branch; a clean tree;
+// the checks' scripts committed on the base (committedChecks.ts); bd and the Beads
 // database, and the ticket --ticket names (open, and work rather than a question); the login probe
 // (§ 4.13); organs' provider (§ 6.1); the settings, flags, variables and user config; the MCP names
 // (§ 4.6); the worker prompt (§ 4.11). A run that starts notes the project's worker prompt and
@@ -40,6 +41,7 @@ import { lenientKey } from "../services/lenient.ts"
 import { aboveCapNote, machineWorkersLabel } from "../services/machine.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import { autoAnswerName } from "./autoAnswer.ts"
+import { checkScriptsCommitted, projectFilesUntracked } from "./committedChecks.ts"
 import { featureLine } from "./feature.ts"
 import { keepAwakeNotes } from "./keepAwake.ts"
 import { checkLinear, linearLine, linearOffLine } from "./linearCheck.ts"
@@ -454,36 +456,42 @@ export const check = <R>(checking: Checking<R>) =>
       ...(checking.uncommitted ?? []),
     ]
 
-    const [branch, tree, beads, account, mcp, prompt, leftWorkers, linear] = yield* Effect.all(
-      [
-        checkBranch(repo),
-        checkCleanTree(repo, specPath),
-        checkBeads(repo, checking.beads(repo), notSetUp, config.ticket),
-        collect(
-          "the login probe",
-          // Built in the caller's Scope, which awaits the probe's Claude Code's exit, so the
-          // checks don't wait out its exit flush (§ 4.13).
-          Layer.build(Layer.provide(checking.account, Layer.succeed(AppConfig, config))).pipe(
-            Effect.flatMap((built) =>
-              Effect.provideContext(
-                Effect.flatMap(Account, (account) => account.probe),
-                built,
+    const [branch, tree, beads, account, mcp, prompt, leftWorkers, linear, untracked] =
+      yield* Effect.all(
+        [
+          checkBranch(repo),
+          checkCleanTree(repo, specPath),
+          checkBeads(repo, checking.beads(repo), notSetUp, config.ticket),
+          collect(
+            "the login probe",
+            // Built in the caller's Scope, which awaits the probe's Claude Code's exit, so the
+            // checks don't wait out its exit flush (§ 4.13).
+            Layer.build(Layer.provide(checking.account, Layer.succeed(AppConfig, config))).pipe(
+              Effect.flatMap((built) =>
+                Effect.provideContext(
+                  Effect.flatMap(Account, (account) => account.probe),
+                  built,
+                ),
               ),
             ),
           ),
-        ),
-        collect("the MCP servers", resolveServers(repo, config.settings.workers.mcp_servers)),
-        notSetUp
-          ? Effect.succeed({ value: Option.none<WorkerPrompt>(), problems: [] })
-          : collect("the worker prompt", loadWorkerPrompt(config)),
-        orchestraWorkers(repo),
-        // Only with the settings' linear block: without one, nothing of Linear runs.
-        config.linear === null
-          ? Effect.succeed([])
-          : checkLinear(checking.env).pipe(Effect.provide(checking.beads(repo))),
-      ],
-      { concurrency: "unbounded" },
-    )
+          collect("the MCP servers", resolveServers(repo, config.settings.workers.mcp_servers)),
+          notSetUp
+            ? Effect.succeed({ value: Option.none<WorkerPrompt>(), problems: [] })
+            : collect("the worker prompt", loadWorkerPrompt(config)),
+          orchestraWorkers(repo),
+          // Only with the settings' linear block: without one, nothing of Linear runs.
+          config.linear === null
+            ? Effect.succeed([])
+            : checkLinear(checking.env).pipe(Effect.provide(checking.beads(repo))),
+          notSetUp ? Effect.succeed([]) : projectFilesUntracked(repo, ownPrompt, specPath),
+        ],
+        { concurrency: "unbounded" },
+      )
+    // A ticket's worktree has only what the base's head commit holds, its check scripts among it.
+    const scripts = Result.isSuccess(branch)
+      ? yield* checkScriptsCommitted(repo, branch.success, config.settings.checks, specPath)
+      : []
 
     const problems = [
       ...(linked === null
@@ -491,6 +499,7 @@ export const check = <R>(checking: Checking<R>) =>
         : [`${linked} is a linked worktree. Run this from the main checkout.`]),
       ...(Result.isFailure(branch) ? [branch.failure] : []),
       ...tree,
+      ...scripts,
       ...(Result.isFailure(spec) ? [spec.failure] : []),
       ...beads,
       ...claude.problems,
@@ -506,6 +515,7 @@ export const check = <R>(checking: Checking<R>) =>
       ...retiredIn(given.settings),
       ...keepAwakeNotes(given),
       ...linear,
+      ...untracked,
     ]
     if (
       notSetUp ||

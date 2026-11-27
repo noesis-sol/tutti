@@ -25,6 +25,15 @@ export const testSettings: Settings = {
 }
 
 /**
+ * What a project with testSettings commits, for the Git test layer's seed: the layer's README and
+ * the merge check's script, which the startup checks look for on the base (committedChecks.ts).
+ */
+export const testFiles: Readonly<Record<string, string>> = {
+  "README.md": "# demo\n",
+  "scripts/check-fast.sh": "#!/bin/sh\n",
+}
+
+/**
  * A run's configuration in the project at `repo` (`overrides.repo` where it gives one): resolved
  * from `overrides.settings`, else testSettings, as a run's is, so the paths derived from the
  * repository and resolve's checks follow them; the other `overrides` are laid over it.

@@ -340,7 +340,7 @@ describe("the startup checks", () => {
         }),
       ).pipe(
         Effect.scoped,
-        Effect.provide(TestGit.layer({ dir: repo })),
+        Effect.provide(TestGit.layer({ dir: repo, files: TestAppConfig.testFiles })),
         Effect.provide(
           ConfigProvider.layer(ConfigProvider.fromEnv({ env: { HOME: join(repo, "..", "home") } })),
         ),

@@ -15,7 +15,7 @@ import { Account, startProbe } from "../src/agent/Account.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { check } from "../src/run/startup.ts"
-import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
+import { appConfig, layer as configLayer, testFiles } from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import * as TestGit from "../src/testing/Git.ts"
 import { testEnv } from "./env.ts"
@@ -126,7 +126,7 @@ describe("the login probe's Claude Code exits in the background", () => {
       }).pipe(
         Effect.tap(() => Effect.sync(() => (exitedAtCheck = exited(log)))),
         Effect.scoped,
-        Effect.provide(TestGit.layer({ dir })),
+        Effect.provide(TestGit.layer({ dir, files: testFiles })),
         Effect.provide(
           ConfigProvider.layer(ConfigProvider.fromEnv({ env: { HOME: join(dir, "home") } })),
         ),

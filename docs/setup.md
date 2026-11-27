@@ -165,7 +165,9 @@ scripts/check-full.sh            committed: every check, run once at the end of 
 README.md                        committed, where there is one: its section on what to install
 ```
 
-Commit them afterwards: a ticket's worktree has only what is committed. `init` ends with a summary
+Commit them afterwards: a ticket's worktree has only what is committed. A run doesn't start while
+a check's script is not committed on the base, and warns while the settings or the worker prompt
+are untracked ([Running](running.md)). `init` ends with a summary
 of what it did and what is left (`✗` for what is missing), a **Next** box, and
 `♪ tutti is ready.` or `♪ Almost ready: fix what's missing above.`
 
