@@ -1,16 +1,16 @@
-// A worker's own check on its card (§ 7.2): a testing Bash call of its worker, as the session's hooks
-// show it begin and end (AgentHost's testRuns), is watched in Checking under ownCheckKey while it
-// runs, so that its card draws a bar beside its action as it draws its merge check's. Nothing comes
-// from the hooks between the two, and the worker can say nothing while its Bash call runs, so the
-// count comes from the command: the worker's session names a file in its worktree's .tutti/run/ in
-// TUTTI_PROGRESS_FILE, the runners tutti init writes copy their SUITE: and PROGRESS: lines to it as
-// they print them, and the file is read every showEvery while the call runs, as a check's output is
-// (CheckOutput). It is emptied as each call begins, so that what a killed command left there isn't
-// read for the next one, and forgotten as it ends. The bar waits ownBarAfter from the call's start:
-// a narrow run of a test file ends in seconds, and a bar on its card would only flash. A command that copies nothing there, a
-// project's own runner, has the estimate alone: the time it has run against the median of its last
-// passes, kept by its command for the run, or the merge check's or the full check's where it is
-// theirs, which count from the run's first.
+// A worker's own check on its card (§ 7.2): a testing Bash call of its worker, as the session's
+// hooks show it begin and end (AgentHost's testRuns), is watched in Checking under ownCheckKey
+// while it runs, so that its card draws a bar beside its action as it draws its merge check's.
+// Nothing comes from the hooks between the two, and the worker can say nothing while its Bash call
+// runs, so the count comes from the command: the worker's session names a file in its worktree's
+// .tutti/run/ in TUTTI_PROGRESS_FILE, the runners tutti init writes copy their SUITE: and PROGRESS:
+// lines to it as they print them, and the file is read every showEvery while the call runs, as a
+// check's output is (CheckOutput). It is emptied as each call begins, so that what a killed command
+// left there isn't read for the next one, and forgotten as it ends. The bar waits ownBarAfter from
+// the call's start: a narrow run of a test file ends in seconds, and a bar on its card would only
+// flash. A command that copies nothing there, a project's own runner, has the estimate alone: the
+// time it has run against the median of its last passes, kept by its command for the run, or the
+// merge check's or the full check's where it is theirs, which count from the run's first.
 import { Clock, Duration, Effect, FiberMap, Stream } from "effect"
 import type { TestRun } from "../agent/AgentHost.ts"
 import type { TicketId } from "../services/Beads.ts"
@@ -88,9 +88,10 @@ interface Running {
 
 /**
  * Watches each worker's test runs, `runs`, in `checking`, for the scope, each from ownBarAfter
- * after its start: one at a time per ticket, a run begun while another runs taking its place. A run that passed keeps its time among its
- * command's passes: the time its hook gave, else the time from its start to its end. The kind
- * whose passes estimate a command is read from `checks` as each run begins.
+ * after its start: one at a time per ticket, a run begun while another runs taking its place. A run
+ * that passed keeps its time among its command's passes: the time its hook gave, else the time from
+ * its start to its end. The kind whose passes estimate a command is read from `checks` as each run
+ * begins.
  */
 export const followOwnChecks = (
   runs: Stream.Stream<TestRun>,
