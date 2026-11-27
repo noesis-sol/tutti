@@ -340,8 +340,14 @@ against the median of that check's recent passes, marked as an estimate, `tsc �
 no pass to go by there is no bar. A spec run's checks gate, before its tickets start, shows the
 same under the title `Starting the run`. A ticket's merge check shows its 8-cell bar beside its
 card's action, `running the check on main · test ━━────── 212/848`, in a quiet grey a step
-brighter than faint, its filled cells in the text's colour and the rest faint. The environment
-probe has a card of its own, labelled `probe`. Elapsed times update every 3 seconds.
+brighter than faint, its filled cells in the text's colour and the rest faint. While a worker's own
+Bash call runs a check (its status `testing`), its card has the same beside its latest action,
+`▸ scripts/check-fast.sh · ━━━━──── ≈50%`: the estimate from the last runs of that command in the
+run, or the merge check's or the full check's recent passes where it is that check's command, and the
+count where the command copies its `SUITE:` and `PROGRESS:` lines to the file tutti names in
+`TUTTI_PROGRESS_FILE`, as the runners `tutti init` writes do ([Setting up](setup.md)). A command
+never timed and counting nothing shows no bar. The environment probe has a card of its own,
+labelled `probe`. Elapsed times update every 3 seconds.
 
 ### Attention cards
 

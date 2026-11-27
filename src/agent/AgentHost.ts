@@ -15,7 +15,11 @@
 // usage-limit hold (§ 4.12). Each compaction a worker's PreCompact hook reports goes on one stream
 // for the run to count and log (§ 4.2). Each worker's verifier rounds, which its hooks show (hooks.ts), are
 // kept beside its state, for a ticket deferred with its last fix unverified (src/run/lastRound.ts),
-// and each round's begin goes on one stream too, for the early check (src/run/earlyCheck.ts).
+// and each round's begin goes on one stream too, for the early check (src/run/earlyCheck.ts). Each
+// test run of a worker's own, a testing Bash call its hooks show begin and end (hooks.ts'
+// testRunEvent), goes on one stream as well, for its card's bar (src/run/ownCheck.ts): a call still
+// running as its turn's result comes, or its session ends or gives way to another, ends there, not
+// passed, as a call cut off may say nothing more.
 //
 // The caller draws each new session's ID, and saves it once the session has begun (§ 4.8). A
 // resumed session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so
@@ -53,7 +57,14 @@ import { EventStream } from "../services/EventStream.ts"
 import { Spending } from "../services/Spending.ts"
 import { Attention } from "./Attention.ts"
 import type { ContextUsage } from "./contextUsage.ts"
-import { noRounds, roundStep, type VerifierRounds, verifierEvent } from "./hooks.ts"
+import {
+  noRounds,
+  roundStep,
+  TestRunEvent,
+  testRunEvent,
+  type VerifierRounds,
+  verifierEvent,
+} from "./hooks.ts"
 import { type Call, type Reading, read } from "./reading.ts"
 import type { SessionKind } from "./sessionKind.ts"
 import { Transcripts } from "./Transcripts.ts"
@@ -142,6 +153,17 @@ export interface VerifierCall {
   readonly ticket: TicketId
   /** The Agent call's tool use ID. */
   readonly call: string
+}
+
+/** A test run of a worker's own, as its hooks show it begin or end (hooks.ts' testRunEvent). */
+export interface TestRun {
+  readonly ticket: TicketId
+  /**
+   * The worktree its session runs in, where it is a worker's: its TUTTI_PROGRESS_FILE names the
+   * file there its checks copy their SUITE: and PROGRESS: lines to (Checks' progressFileOf).
+   */
+  readonly worktree?: string
+  readonly event: TestRunEvent
 }
 
 /** The SDK user message that carries `message`, stamped `uuid`, into session `session`. */
@@ -301,6 +323,11 @@ export class AgentHost extends Context.Service<
      */
     readonly verifierCalls: Stream.Stream<VerifierCall>
     /**
+     * Every worker's test runs of its own, from now on, each as its hooks show it begin and end;
+     * each one begun ends, if only with its turn or its session.
+     */
+    readonly testRuns: Stream.Stream<TestRun>
+    /**
      * How full each worker's context window is, by ticket, as its session last said after a model
      * call or a finished turn (§ 7.5): now, then on each change. A worker ended is left out.
      */
@@ -344,6 +371,10 @@ export interface WorkerEntry {
   readonly calls: Map<string, Readonly<Record<string, unknown>>>
   /** Its verifier rounds, as its sessions' hooks showed them (§ 4.11). */
   readonly rounds: Ref.Ref<VerifierRounds>
+  /** Its testing Bash calls begun and not yet ended, by tool use ID (TestRun). */
+  readonly tests: Set<string>
+  /** The worktree of its session now, where it is a worker's, for its test runs (TestRun). */
+  readonly worktree: Ref.Ref<string | undefined>
 }
 
 /** How many pages of a transcript are read back for a resumed session's last result. */
@@ -374,7 +405,12 @@ export interface Workers {
    */
   readonly open: (
     ticket: TicketId,
-    opened: { readonly session: string; readonly resumed: boolean },
+    opened: {
+      readonly session: string
+      readonly resumed: boolean
+      /** The worktree the session runs in, where it is a worker's, for its test runs (TestRun). */
+      readonly worktree?: string
+    },
   ) => Effect.Effect<WorkerEntry>
   readonly get: (ticket: TicketId) => Effect.Effect<WorkerEntry, AgentGone>
   /**
@@ -412,6 +448,8 @@ export interface Workers {
   readonly compactions: Stream.Stream<Compaction>
   /** Every worker's calls to the verifier, from now on, each once as it begins. */
   readonly verifierCalls: Stream.Stream<VerifierCall>
+  /** Every worker's test runs of its own, from now on, as they begin and end. */
+  readonly testRuns: Stream.Stream<TestRun>
   /** How full the worker's context window is, as its session said after a model call or a turn. */
   readonly measured: (entry: WorkerEntry, usage: ContextUsage) => Effect.Effect<void>
   /** How full each worker's context window is, by ticket: now, then on each change. */
@@ -448,6 +486,7 @@ export const makeWorkers = (
     const one = yield* Semaphore.make(1)
     const compactions = yield* PubSub.unbounded<Compaction>()
     const verifierCalls = yield* PubSub.unbounded<VerifierCall>()
+    const testRuns = yield* PubSub.unbounded<TestRun>()
     const contexts = yield* SubscriptionRef.make<ReadonlyMap<TicketId, ContextUsage>>(new Map())
     const log = yield* Log
     const usage = yield* Effect.serviceOption(UsageLimits)
@@ -460,9 +499,43 @@ export const makeWorkers = (
       return log.write(detail`${ticket}: ${text}`)
     }
 
+    // The worker's test run `event`, published where it begins a call or ends one begun.
+    const tested = (entry: WorkerEntry, event: TestRunEvent): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        if (event._tag === "Began") {
+          if (entry.tests.has(event.call)) return
+          entry.tests.add(event.call)
+          const worktree = yield* Ref.get(entry.worktree)
+          const run = { ticket: entry.ticket, event }
+          yield* PubSub.publish(testRuns, worktree === undefined ? run : { ...run, worktree })
+          return
+        }
+        if (!entry.tests.delete(event.call)) return
+        yield* PubSub.publish(testRuns, { ticket: entry.ticket, event })
+      })
+
+    // The worker's test runs still running end, not passed: their turn, or their session, has.
+    const testsEnded = (entry: WorkerEntry): Effect.Effect<void> =>
+      Effect.forEach(
+        [...entry.tests],
+        (call) => tested(entry, TestRunEvent.Ended({ call, passed: false })),
+        { discard: true },
+      )
+
     const fold = (entry: WorkerEntry, event: WorkerEvent): Effect.Effect<void> =>
       Effect.gen(function* () {
         if (event.session !== (yield* Ref.get(entry.session))) return
+        if (event._tag === "Hook") {
+          const run = testRunEvent(event.input, (yield* SubscriptionRef.get(entry.worker)).checks)
+          if (run !== undefined) yield* tested(entry, run)
+        }
+        if (
+          (event._tag === "Message" && event.reading._tag === "Result") ||
+          event._tag === "Closed" ||
+          event._tag === "Ended"
+        ) {
+          yield* testsEnded(entry)
+        }
         if (event._tag === "Hook") {
           const round = verifierEvent(event.input)
           if (round !== undefined) {
@@ -541,7 +614,7 @@ export const makeWorkers = (
         fold(entry, WorkerEvent.Requests({ session, pending })),
       )
 
-    const make = (ticket: TicketId, session: string) =>
+    const make = (ticket: TicketId, session: string, worktree: string | undefined) =>
       Effect.gen(function* () {
         const entry: WorkerEntry = {
           ticket,
@@ -551,6 +624,8 @@ export const makeWorkers = (
           ended: yield* Deferred.make<void>(),
           calls: new Map(),
           rounds: yield* Ref.make(noRounds),
+          tests: new Set(),
+          worktree: yield* Ref.make(worktree),
         }
         // Counts its open requests into its state, until it is ended; it has counted the requests
         // open now before the entry is handed out, so none is missed.
@@ -592,19 +667,21 @@ export const makeWorkers = (
         return Option.some(left)
       })
 
-    const open: Workers["open"] = (ticket, { session, resumed }) =>
+    const open: Workers["open"] = (ticket, { session, resumed, worktree }) =>
       Effect.gen(function* () {
         if (resumed) yield* seedSpending(ticket, session)
         // A new session's context starts empty: the last one's figure is no longer its.
         else yield* forgetContext(ticket)
         const found = known.get(ticket)
         if (found === undefined) {
-          const entry = yield* make(ticket, session)
+          const entry = yield* make(ticket, session, worktree)
           known.set(ticket, entry)
           yield* SubscriptionRef.set(knownTickets, new Set(known.keys()))
           return entry
         }
         const pending = yield* openCount(ticket)
+        yield* one.withPermit(testsEnded(found))
+        yield* Ref.set(found.worktree, worktree)
         yield* Ref.set(found.session, session)
         yield* SubscriptionRef.set(found.worker, { ...initial(yield* checks), pending })
         yield* fold(found, WorkerEvent.Requests({ session, pending }))
@@ -678,6 +755,7 @@ export const makeWorkers = (
         Effect.asVoid(PubSub.publish(compactions, { ticket: entry.ticket, trigger })),
       compactions: Stream.fromPubSub(compactions),
       verifierCalls: Stream.fromPubSub(verifierCalls),
+      testRuns: Stream.fromPubSub(testRuns),
       measured: (entry, usage) =>
         Effect.suspend(() =>
           known.get(entry.ticket) === entry
@@ -691,6 +769,7 @@ export const makeWorkers = (
           const found = known.get(ticket)
           if (found === undefined) return
           known.delete(ticket)
+          yield* one.withPermit(testsEnded(found))
           yield* SubscriptionRef.set(knownTickets, new Set(known.keys()))
           yield* forgetContext(ticket)
           if (Option.isSome(usage)) yield* usage.value.limited(ticket, undefined)

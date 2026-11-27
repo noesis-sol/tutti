@@ -78,6 +78,8 @@ export interface WorkerShare {
   readonly memory?: number
   /** The file its current share is kept in (src/run/share.ts), where the run keeps one. */
   readonly file?: string
+  /** The file its checks copy their SUITE: and PROGRESS: lines to (TUTTI_PROGRESS_FILE). */
+  readonly progress?: string
 }
 
 /** What a session is opened with. */

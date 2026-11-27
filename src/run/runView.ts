@@ -34,8 +34,7 @@ import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
 import type { Motion, Shown, Tone } from "../ui/tone.ts"
 import { afterMerging, afterSolo, soloNextAfter, soloNextRun } from "./after.ts"
-import type { CheckShown } from "./checking.ts"
-import { fullCheckKey } from "./checking.ts"
+import { type CheckShown, fullCheckKey, ownCheckKey } from "./checking.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import type { FullCheckRun } from "./fullcheck.ts"
 import {
@@ -492,7 +491,10 @@ export interface Card {
   readonly steered: boolean
   /** Its worker's open requests, oldest first. */
   readonly requests: ReadonlyArray<ShownRequest>
-  /** How far its merge check has got, while one runs (§ 7.2); absent when none does. */
+  /**
+   * How far its merge check has got, while one runs, else its worker's own check, while its Bash
+   * call runs one (§ 7.2); absent when neither does.
+   */
   readonly check?: CheckShown
   /** Its issue, for its worker view's description and whole ticket; absent until the run reads it. */
   readonly issue?: TicketText
@@ -999,12 +1001,15 @@ const shownCheck = (checking: Status["checking"], key: string): CheckShown | und
   return { ...shown, suite: sanitizeLine(shown.suite) }
 }
 
-/** A card's merge check, while one runs: `check`, left out when none does. */
+/**
+ * A card's merge check, while one runs, else its worker's own (ownCheckKey): `check`, left out when
+ * neither does.
+ */
 const checkingOf = (
   checking: Status["checking"],
   key: string,
 ): Pick<Card, "check"> | Record<never, never> => {
-  const shown = shownCheck(checking, key)
+  const shown = shownCheck(checking, key) ?? shownCheck(checking, ownCheckKey(key))
   return shown === undefined ? {} : { check: shown }
 }
 

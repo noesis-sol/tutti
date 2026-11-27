@@ -29,7 +29,7 @@
 // A worktree addDetached made (an early check's, the full check's, the checks gate's) has what was
 // left running in it stopped before removeDetached deletes it, where the layer is built with Strays:
 // a check's server, out of its process group, would hold its port for every check after it.
-import { readSync, writeSync } from "node:fs"
+import { fstatSync, readSync, writeSync } from "node:fs"
 import { basename, join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Option, Result, Schema, type Scope } from "effect"
 import type { PlatformError } from "effect/PlatformError"
@@ -336,6 +336,30 @@ export const readRunFile = (
           n = readSync(fd, bytes, read, most - read, null)
         }
         return bytes.subarray(0, read).toString("utf8")
+      }),
+    ),
+  )
+
+/**
+ * The bytes of the run file `name` in the worktree from `from` on, at most `most` of them, and how
+ * long the file is now (see openRunFile): for one that grows as a command writes it.
+ */
+export const readRunFileFrom = (
+  worktree: string,
+  name: string,
+  from: number,
+  most: number,
+): Effect.Effect<{ readonly size: number; readonly bytes: Uint8Array }, RunFilesError> =>
+  Effect.scoped(
+    Effect.flatMap(openRunFile(worktree, name, O.RDONLY), (fd) =>
+      Effect.sync(() => {
+        const size = fstatSync(fd).size
+        const bytes = Buffer.alloc(Math.max(0, Math.min(most, size - from)))
+        let read = 0
+        for (let n = -1; n !== 0 && read < bytes.length; read += n) {
+          n = readSync(fd, bytes, read, bytes.length - read, from + read)
+        }
+        return { size, bytes: bytes.subarray(0, read) }
       }),
     ),
   )

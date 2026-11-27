@@ -366,6 +366,14 @@ bun test
   optional: a suite that prints none fills the bar by the time it has run against the median of
   that check's recent passes, marked as an estimate (`≈`), and a check with no pass to go by yet
   shows no bar. Without a dashboard, a line says each check's count every minute instead.
+  A worker's own run of a check fills a bar on its card too: tutti names a file in its worktree's
+  `.tutti/run/` in `TUTTI_PROGRESS_FILE`, and the runners `tutti init` writes copy the `SUITE:` and
+  `PROGRESS:` lines they print on stdout there as well, when it is set (the lines at the top of
+  each runner, before `set -e`); a command that copies none has the estimate from its last runs
+  alone. A runner written before has no such lines: copy them from a new `tutti init`'s, or have
+  the runner append its `SUITE:` and `PROGRESS:` lines to `"$TUTTI_PROGRESS_FILE"` itself. A test
+  runner that prints no count can be given one: vitest, for one, with a reporter whose
+  `onTestModuleEnd` prints `PROGRESS: <done>/<total>` over the test files it collected.
 - **`lock <name>` and `unlock`**, around a suite, have it take turns with the same suite in other
   worktrees, for a suite that can't run twice at once (a fixed port, a shared database).
 

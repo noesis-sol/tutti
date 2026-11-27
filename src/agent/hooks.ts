@@ -15,6 +15,10 @@
 // start, with the commits its prompt names, and its PostToolUse or PostToolUseFailure its end. The
 // host keeps each worker's rounds as it folds the activity (AgentHost.ts), so that a ticket deferred
 // after three rounds with its last fix unverified gets one more (src/run/lastRound.ts).
+//
+// A Bash call that is testing (WorkerState.ts' classify) shows a test run of the worker's own
+// (testRunEvent): its PreToolUse the run's start, with its command, and its PostToolUse,
+// PostToolUseFailure or PermissionDenied its end, for its card's bar (src/run/ownCheck.ts).
 import type {
   HookCallback,
   HookCallbackMatcher,
@@ -27,6 +31,7 @@ import { Cause, Data, Effect, FiberSet, Predicate } from "effect"
 import type { TicketId } from "../services/Beads.ts"
 import type { verdicts } from "../services/events.ts"
 import type { SessionFibers } from "./callbacks.ts"
+import { classify } from "./WorkerState.ts"
 
 /** The hook events a worker's activity comes from. */
 export const activityEvents = [
@@ -167,6 +172,57 @@ export const roundStep = (rounds: VerifierRounds, event: VerifierEvent): Verifie
     rounds: rounds.rounds.map((round) =>
       round.call === event.call ? { ...round, ended: true } : round,
     ),
+  }
+}
+
+/**
+ * A test run of a worker's own as its hooks show it: its Bash call `call`, testing, began with
+ * `command`; or a Bash call ended, `passed` where it ended in PostToolUse, as a command that exits
+ * 0 does, `ms` the time it ran where the hook says.
+ */
+export type TestRunEvent = Data.TaggedEnum<{
+  Began: { readonly call: string; readonly command: string }
+  Ended: { readonly call: string; readonly passed: boolean; readonly ms?: number }
+}>
+
+export const TestRunEvent = Data.taggedEnum<TestRunEvent>()
+
+/**
+ * The test run `input` shows, `checks` being the project's check commands: a PreToolUse of a Bash
+ * call that is testing, in the foreground, begins one; the end of any Bash call ends it, if it was
+ * one. undefined for anything else, or input it can't read.
+ */
+export const testRunEvent = (
+  input: HookInput,
+  checks: ReadonlyArray<string>,
+): TestRunEvent | undefined => {
+  try {
+    switch (input.hook_event_name) {
+      case "PreToolUse": {
+        const toolInput = input.tool_input
+        if (input.tool_name !== "Bash" || !Predicate.isObject(toolInput)) return undefined
+        // A command run in the background ends its call at once: its time is no test run's.
+        if (toolInput.run_in_background === true) return undefined
+        if (typeof toolInput.command !== "string") return undefined
+        if (classify(input.tool_name, toolInput, checks) !== "testing") return undefined
+        return TestRunEvent.Began({ call: input.tool_use_id, command: toolInput.command.trim() })
+      }
+      case "PostToolUse":
+      case "PostToolUseFailure":
+      case "PermissionDenied": {
+        if (input.tool_name !== "Bash") return undefined
+        const call = input.tool_use_id
+        if (input.hook_event_name !== "PostToolUse")
+          return TestRunEvent.Ended({ call, passed: false })
+        const ms = input.duration_ms
+        return typeof ms === "number" && Number.isFinite(ms) && ms > 0
+          ? TestRunEvent.Ended({ call, passed: true, ms })
+          : TestRunEvent.Ended({ call, passed: true })
+      }
+    }
+    return undefined
+  } catch {
+    return undefined
   }
 }
 

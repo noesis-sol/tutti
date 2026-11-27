@@ -8,7 +8,7 @@
 // (§ 7.5), the machine's load (load.ts) and the workers' share of it (share.ts), the screen's
 // commands, the ready poll, the pulls from Linear every pull_every (linearPull.ts), the merge
 // queue's changes, drain requests (drain.ts), BLOCKED (blockedWatch.ts) and how far the checks
-// running have got (checking.ts).
+// running have got (checking.ts), the workers' own among them on the dashboard (ownCheck.ts).
 import { availableParallelism } from "node:os"
 import {
   Deferred,
@@ -22,6 +22,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import { tagged } from "../../core/log.ts"
+import { Checks } from "../../services/Checks.ts"
 import { OtherWorkers } from "../../services/machine.ts"
 import { Spending, showSums } from "../../services/Spending.ts"
 import { off as auditorOff, followEnds } from "../auditor.ts"
@@ -35,6 +36,7 @@ import { followChanges, off as linearOff } from "../linearPush.ts"
 import { Load, pressing, watchLoad } from "../load.ts"
 import { watchLogins } from "../login.ts"
 import type { QueueState } from "../mergequeue.ts"
+import { followOwnChecks } from "../ownCheck.ts"
 import { off as playbookOff } from "../playbookRun.ts"
 import { make as makeQuits, type Quits } from "../quitting.ts"
 import { showOn } from "../runView.ts"
@@ -183,6 +185,17 @@ export const afterStart = (
           ? sayChecking(checking.value, logs)
           : showChecking(checking.value, showOn(status, "checking", Object.is)),
       )
+      // A worker's own checks, on its card while its Bash call runs one: a plain run has no card.
+      if (screen !== null) {
+        const checks = yield* Checks
+        yield* watch(
+          followOwnChecks(
+            host.testRuns,
+            checking.value,
+            Effect.map(checks.now, (now) => ({ fast: now.fast.command, full: now.full.command })),
+          ),
+        )
+      }
     }
     // What each worker consumes, for its view's figures (§ 7.5): its tokens and dollars, live
     // while a turn goes on, at most once a second (showSums); and how full its context is, as the

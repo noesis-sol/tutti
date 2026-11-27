@@ -158,6 +158,12 @@ export const memoryVariable = "TUTTI_MEMORY_MB"
 /** The variable naming the file tutti keeps a worker's current share in (src/run/share.ts). */
 export const shareFileVariable = "TUTTI_SHARE_FILE"
 
+/**
+ * The variable naming the file a worker's checks copy their SUITE: and PROGRESS: lines to, for its
+ * card's bar (src/run/ownCheck.ts), as the runners tutti init writes do.
+ */
+export const progressVariable = "TUTTI_PROGRESS_FILE"
+
 // The checks' memory share (src/services/share.ts, src/run/share.ts): tune it here.
 /** The memory the budget leaves for the machine to breathe in, beside what the checks may take. */
 export const memoryReserve = 2 * 1024 ** 3
@@ -362,14 +368,19 @@ export const wholeCheckVariable = "TUTTI_CHECK_WHOLE"
 
 /**
  * `env`, a WorkerEnv, with a worker's share of the machine: Bash's timeouts for its merge check's
- * `checkTimeout`, and its checks' share (checkShareEnv).
+ * `checkTimeout`, and its checks' share (checkShareEnv); and the file its checks copy their SUITE:
+ * and PROGRESS: lines to (progressVariable), where it has one.
  */
 export const sharedEnv = (
   env: Readonly<Record<string, string>>,
-  share: CheckShare & { readonly checkTimeout: Duration.Duration },
+  share: CheckShare & {
+    readonly checkTimeout: Duration.Duration
+    readonly progress?: string
+  },
 ): Record<string, string> => ({
   ...checkShareEnv(env, share),
   ...bashTimeouts(share.checkTimeout),
+  ...(share.progress === undefined ? {} : { [progressVariable]: share.progress }),
 })
 
 /** The account probe's environment: a worker's, always without the key, to find the login (§ 4.13). */

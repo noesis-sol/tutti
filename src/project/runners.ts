@@ -11,7 +11,9 @@
 // Their format: a suite a line, each in
 // a subshell under a comment saying where it was found, after a line printing `SUITE: <name>`; a
 // suite that can't run in two worktrees at once between `lock <name>` and `unlock`. A runner with no
-// suites is `exit 0`. The headers are the templates beside the worker prompt.
+// suites is `exit 0`. The headers are the templates beside the worker prompt. Run by a worker, whose
+// session names a file in TUTTI_PROGRESS_FILE, a runner copies its SUITE: and PROGRESS: lines there
+// as it prints them (progressCopy), for the worker's card's bar (src/run/ownCheck.ts).
 import fastHeader from "./templates/check-fast.sh" with { type: "text" }
 import fullHeader from "./templates/check-full.sh" with { type: "text" }
 
@@ -45,6 +47,27 @@ export interface Suite {
   /** A full suite that runs all check-fast.sh does and more: check-full.sh runs it instead. */
   readonly coversFast?: boolean
 }
+
+/**
+ * The lines a runner with suites starts with: with TUTTI_PROGRESS_FILE set, a worker's run, it runs
+ * itself again, its output through awk, which prints it as it comes and copies the SUITE: and
+ * PROGRESS: lines on stdout to that file too, and exits with its status. Before `set -e`, which
+ * would end the subshell at a failing run before its status is kept; once, as the run within, and a
+ * runner it calls, check-fast.sh by way of check-full.sh, has TUTTI_PROGRESS_COPIED.
+ */
+export const progressCopy = `# Run by a worker of tutti's, which names a file in TUTTI_PROGRESS_FILE: the lines it prints that
+# start SUITE: or PROGRESS: are copied there too, for the worker's card on tutti's dashboard.
+if [ -n "\${TUTTI_PROGRESS_FILE:-}" ] && [ -z "\${TUTTI_PROGRESS_COPIED:-}" ]; then
+	TUTTI_PROGRESS_COPIED=1
+	export TUTTI_PROGRESS_COPIED
+	exec 3>&1
+	progress_status=$({ {
+		sh "$0" "$@"
+		echo $? >&4
+	} | awk -v file="$TUTTI_PROGRESS_FILE" '{ print; fflush() } /^[ \\t]*(SUITE|PROGRESS):/ { print >>file; fflush(file) }' >&3; } 4>&1)
+	exit "$progress_status"
+fi
+`
 
 /** The shell functions a runner with a serial suite starts with. */
 export const lockFunctions = `
@@ -187,7 +210,7 @@ const runnerScript = (header: string, suites: ReadonlyArray<Suite>): string => {
   if (lines.length === 0) {
     return `${header}# It checks nothing yet: add a line for each suite.\nexit 0\n`
   }
-  let script = `${header}set -e\ncd "$(dirname "$0")/.."\n`
+  let script = `${header}${progressCopy}set -e\ncd "$(dirname "$0")/.."\n`
   if (lines.some((suite) => suite.serial)) script += lockFunctions
   for (const suite of lines) {
     script += `\n${suiteComment(suite)}\n`
@@ -264,6 +287,7 @@ const isMarkerLine = (line: string): boolean => {
  */
 export const runnerCommands = (script: string): ReadonlyArray<string> =>
   script
+    .replace(progressCopy, "")
     .replace(lockFunctions, "")
     .split("\n")
     .map((line) => line.trim())

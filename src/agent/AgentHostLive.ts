@@ -77,6 +77,7 @@ import type { WorkerPrompt } from "../project/prompt.ts"
 import { readmeName } from "../project/requires.ts"
 import { checkCommands, type WorkerChecks } from "../project/settings.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { progressFileOf } from "../services/Checks.ts"
 import { OtherWorkers } from "../services/machine.ts"
 import { budgetOf, Shares, shareFileOf, shareOf } from "../services/share.ts"
 import { timeoutAwake } from "../services/Wake.ts"
@@ -726,9 +727,13 @@ export const layer = (
             })
           }
           const sessionId = session.sessionId
+          // A worker's checks copy their SUITE: and PROGRESS: lines to a file in its worktree, for
+          // its card's bar.
+          const worker = kindOf(session)._tag === "Worker"
           const entry = yield* workers.open(ticket, {
             session: sessionId,
             resumed: how._tag === "Resume",
+            ...(worker ? { worktree: session.cwd } : {}),
           })
           // What the SDK calls back into tutti runs in the session's scope, which ends it.
           const fibers = yield* Scope.provide(sessionFibers, of)
@@ -745,7 +750,10 @@ export const layer = (
             ),
             services,
           )
-          const share = yield* shareNow
+          const share = {
+            ...(yield* shareNow),
+            ...(worker ? { progress: progressFileOf(session.cwd) } : {}),
+          } satisfies WorkerShare
           const {
             servers,
             options: spec,
@@ -1042,6 +1050,7 @@ export const layer = (
         workers: workers.workers,
         compactions: workers.compactions,
         verifierCalls: workers.verifierCalls,
+        testRuns: workers.testRuns,
         contexts: workers.contexts,
         processes: Effect.sync(() => {
           const pids = new Map<TicketId, number>()

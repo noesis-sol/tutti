@@ -11,6 +11,11 @@
 // read as the run starts and written as each check passes, so that a run's first check of a kind,
 // the end-of-run full check above all, which runs once a run, has its last runs' to go by.
 //
+// A worker's own check, a testing command its Bash runs (src/run/ownCheck.ts), is watched here too,
+// under ownCheckKey, for its card on the dashboard: its passes are kept by its command, for this run
+// alone, and where the command is the merge check's or the full check's, that check's passes serve
+// from the first.
+//
 // Nothing here is an Effect in the hot path: a check's output moves its entry through a plain
 // callback, as CheckOutput takes its chunks, and the run's watchers read `now` as they draw
 // (src/run/run/watchers.ts), which also writes the count as lines at intervals for a plain run,
@@ -28,10 +33,16 @@ import { marks } from "../text/marks.ts"
 import { same } from "./same.ts"
 
 /** What a check running is called where it is shown. */
-export type CheckName = "merge check" | "full check" | "checks gate"
+export type CheckName = "merge check" | "full check" | "checks gate" | "own check"
 
 /** Where the full check and the checks gate are kept: Current's box shows the one that runs. */
 export const fullCheckKey = "the full check"
+
+/**
+ * Where `ticket`'s worker's own check is kept: beside its merge check, which its card shows first.
+ * No ticket's ID has a `#`.
+ */
+export const ownCheckKey = (ticket: string): string => `${ticket}#own`
 
 /** How many of a check's last passes the estimate's median is of. */
 export const recentPasses = 5
@@ -49,7 +60,7 @@ export interface CheckShown {
   readonly suite: string | null
   /** The latest PROGRESS: line of that suite; null where it has printed none. */
   readonly progress: CheckProgress | null
-  /** The median of the recent passes of its kind, in seconds; null before any has passed. */
+  /** The median of the recent passes of its kind (or its command), in seconds; null before any. */
   readonly usual: number | null
   /** How full its bar is and what the count beside it says; null where no bar is drawn for it. */
   readonly fill: CheckFill | null
@@ -107,7 +118,8 @@ export interface Watched {
 /** A check running, as the service keeps it. */
 interface Entry {
   readonly name: CheckName
-  readonly kind: CheckKind
+  /** The median of the recent passes it is estimated from, in seconds, as they stand now. */
+  readonly usual: () => number | null
   readonly began: number
   at: CheckAt
 }
@@ -137,16 +149,19 @@ export const makeChecking = (
 ): Checking["Service"] => {
   const entries = new Map<string, Entry>()
   let passes = carried
+  // A worker's own checks' recent passes, by command, for this run alone.
+  const own = new Map<string, ReadonlyArray<number>>()
   // The last snapshot, kept until something changes, so that showing it publishes nothing new.
   let snapshot: ReadonlyMap<string, CheckShown> | null = null
-  const usualOf = (kind: CheckKind): number | null => {
-    const times = recentOf(passes[kind])
-    return times.length === 0 ? null : median(times)
+  const medianOf = (times: ReadonlyArray<number> | undefined): number | null => {
+    const recent = recentOf(times)
+    return recent.length === 0 ? null : median(recent)
   }
+  const usualOf = (kind: CheckKind): number | null => medianOf(passes[kind])
   const take = (now: number): ReadonlyMap<string, CheckShown> => {
     const taken = new Map<string, CheckShown>()
     for (const [key, entry] of entries) {
-      const usual = usualOf(entry.kind)
+      const usual = entry.usual()
       taken.set(key, {
         name: entry.name,
         began: entry.began,
@@ -161,28 +176,47 @@ export const makeChecking = (
     snapshot = taken
     return taken
   }
+  // `key`'s check, `entry`, watched for the scope; its entry goes when the scope closes, though
+  // another check under the same key has taken its place since.
+  const watching = (key: string, entry: Entry): Effect.Effect<Watched, never, Scope.Scope> =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        entries.set(key, entry)
+        return {
+          onAt: (at: CheckAt) => {
+            entry.at = at
+          },
+        } satisfies Watched
+      }),
+      () =>
+        Effect.sync(() => {
+          if (entries.get(key) === entry) entries.delete(key)
+        }),
+    )
   return {
     watch: (key, how) =>
-      Effect.acquireRelease(
-        Effect.sync(() => {
-          entries.set(key, { name: how.name, kind: how.kind, began: how.began, at: how.at })
-          return {
-            onAt: (at: CheckAt) => {
-              const entry = entries.get(key)
-              if (entry === undefined) return
-              entry.at = at
-            },
-          } satisfies Watched
-        }),
-        () =>
-          Effect.sync(() => {
-            entries.delete(key)
-          }),
-      ),
+      watching(key, {
+        name: how.name,
+        usual: () => usualOf(how.kind),
+        began: how.began,
+        at: how.at,
+      }),
+    watchOwn: (ticket, how) =>
+      watching(ownCheckKey(ticket), {
+        name: "own check",
+        usual: () =>
+          (how.kind === null ? null : usualOf(how.kind)) ?? medianOf(own.get(how.command)),
+        began: how.began,
+        at: noCheckAt,
+      }),
     passed: (kind, seconds) =>
       Effect.suspend(() => {
         passes = withPass(passes, kind, seconds)
         return keep(kind, seconds)
+      }),
+    ownPassed: (command, seconds) =>
+      Effect.sync(() => {
+        own.set(command, recentOf([...(own.get(command) ?? []), seconds]))
       }),
     now: Effect.map(Clock.currentTimeMillis, take),
   }
@@ -208,10 +242,27 @@ export class Checking extends Context.Service<
       },
     ): Effect.Effect<Watched, never, Scope.Scope>
     /**
+     * `ticket`'s worker runs a check of its own for the scope, under ownCheckKey: `command`, its
+     * Bash call's, estimated from the recent passes of `kind` where it is the merge check's or the
+     * full check's and they have any, else from its own (ownPassed). As watch, its entry goes
+     * when the scope closes.
+     */
+    watchOwn(
+      ticket: string,
+      how: {
+        readonly command: string
+        readonly kind: CheckKind | null
+        /** When it began, in epoch milliseconds. */
+        readonly began: number
+      },
+    ): Effect.Effect<Watched, never, Scope.Scope>
+    /**
      * A check of `kind` passed in `seconds`: its kind's recent passes, which the estimate is of,
      * kept for the next run too.
      */
     passed(kind: CheckKind, seconds: number): Effect.Effect<void>
+    /** A worker's own `command` passed in `seconds`: its recent passes, for this run alone. */
+    ownPassed(command: string, seconds: number): Effect.Effect<void>
     /**
      * The checks running now, by key, their bars filled at the time it is read; the map read before
      * where nothing drawn has changed since.

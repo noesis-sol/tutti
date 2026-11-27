@@ -18,6 +18,7 @@
 // What a check that failed, timed out or was interrupted left running in its folder outside that
 // group (setsid, nohup, a double fork), a server on a fixed port that would fail every check after
 // it, is stopped as it ends, where the run has Strays (stoppingStrays).
+import { join } from "node:path"
 import {
   Context,
   Duration,
@@ -38,6 +39,7 @@ import { ellipsis } from "../text/marks.ts"
 import { exec } from "./exec.ts"
 import { processCount, Strays } from "./Strays.ts"
 import { mergeShareFileOf, Shares } from "./share.ts"
+import { runFolder } from "./Worktrees.ts"
 
 export const checkKinds = ["setup", "fast", "full"] as const
 export type CheckKind = (typeof checkKinds)[number]
@@ -46,6 +48,16 @@ export type CheckKind = (typeof checkKinds)[number]
 export const checkLogName = "check.log"
 /** The file in a worktree's .tutti/run/ that holds the whole output of its last setup (§ 9.1). */
 export const setupLogName = "setup.log"
+
+/**
+ * The file in a worktree's .tutti/run/ its worker's checks copy their SUITE: and PROGRESS: lines
+ * to, as its TUTTI_PROGRESS_FILE names it, for its card's bar (src/run/ownCheck.ts).
+ */
+export const progressLogName = "progress.log"
+
+/** The progress file of the worker in `worktree`, as its TUTTI_PROGRESS_FILE names it. */
+export const progressFileOf = (worktree: string): string =>
+  join(worktree, runFolder, progressLogName)
 
 /** How much of a check's output is held in memory. */
 export const OutputBounds = {
