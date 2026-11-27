@@ -1,10 +1,10 @@
 // The UI's colours and layouts (§ 7.11, § 13 "UI tests", § 14 M3): scenes drawn at fixed sizes, in
 // the light and the dark variant. Each state's cells carry the role § 7.11 gives it, in the
-// `tutti` scheme's colours as § 7.11's tables give them; a scheme that changes one role changes
-// only that role's cells; NO_COLOR leaves every glyph, word, bold and faint in place, in the
-// terminal's own colours; and every colour drawn is a role's. Then a snapshot of each layout: narrow,
-// 120 columns, the smallest size, attention cards (with defaultToNo), the end-of-run box, the usage
-// banner, wind-down, and one per phase.
+// `tutti` scheme's colours as § 7.11's tables give them; every colour drawn is a role's, the same
+// cells' in both variants; a scheme that changes one role changes only that role's cells, in dark;
+// and NO_COLOR leaves every glyph, word, bold and faint in place, in the terminal's own colours.
+// Then a snapshot of each layout: narrow, 120 columns, the smallest size, attention cards (with
+// defaultToNo), the end-of-run box, the usage banner, wind-down, and one per phase.
 
 import { describe, expect, test } from "bun:test"
 import type { PermissionUpdate, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
@@ -1088,22 +1088,28 @@ const rolesIn = (frame: Frame) =>
   )
 
 describe("a scheme's roles", () => {
+  // The appearance picks each role's colour, not which cells carry it: only a role left to the
+  // terminal's default colour in one variant, as no role of these schemes is, could change that.
+  // So the cells' roles are the same in light and dark, and one role is changed in dark alone.
   for (const scene of scenes) {
-    test.each(variants)(
-      `every colour is a role's: ${scene.name}, %s`,
-      async (appearance) => {
+    test(
+      `every colour is a role's, the same cells' in light and dark: ${scene.name}`,
+      async () => {
         // roleOf throws on a colour that isn't one of marked's.
-        const frame = await draw(scene, themeIn(marked), appearance)
-        expect(rolesIn(frame).flat().length).toBeGreaterThan(0)
+        const light = rolesIn(await draw(scene, themeIn(marked), "light"))
+        const dark = rolesIn(await draw(scene, themeIn(marked), "dark"))
+        expect(dark.flat().length).toBeGreaterThan(0)
+        expect(light).toEqual(dark)
       },
-      renderTime,
+      2 * renderTime,
     )
   }
 
   for (const scene of scenes) {
-    test.each(variants)(
-      `changing one role changes only its cells: ${scene.name}, %s`,
-      async (appearance) => {
+    test(
+      `changing one role changes only its cells: ${scene.name}`,
+      async () => {
+        const appearance = "dark"
         const map = rolesIn(await draw(scene, themeIn(marked), appearance))
         const used = new Set(map.flat().flatMap((cell) => [cell.fg, cell.bg]))
         const before = cellsOf(await draw(scene, themeIn(tuttiScheme), appearance))

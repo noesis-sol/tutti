@@ -3,7 +3,8 @@
 // command's lines on stdout and stderr and its exit code: answer's listing and its errors as the
 // command prints them (src/answer/answer.ts), plan's proposal and the problems it stops on
 // (src/plan/plan.ts' settingsProblem and beadsProblem), and requires' exit codes. bd taking too
-// long is the one case run in-process, as bd's read limit is 30 s.
+// long and an answer no run takes are run in-process, as bd's read limit is 30 s and the answer's wait
+// 10 s.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import {
   chmodSync,
@@ -19,7 +20,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Console, Effect, Layer } from "effect"
+import { Console, Duration, Effect, Layer } from "effect"
 import { Command } from "effect/cli"
 import {
   answerFile,
@@ -27,16 +28,17 @@ import {
   refusedFile,
   requestFile,
 } from "../src/agent/attentionFiles.ts"
+import { TakeWithin } from "../src/answer/answer.ts"
 import { tuttiWith } from "../src/cli/commands.ts"
 import { Beads } from "../src/services/Beads.ts"
+import { layer as beadsLayer } from "../src/testing/Beads.ts"
 import { layer as gitLayer } from "../src/testing/Git.ts"
 import { layer as lockLayer } from "../src/testing/RunLock.ts"
 import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
 
-// Each test starts tutti as a bun process, which bun's 5 s default fails beside other checks; an
-// answer no run takes waits its 10 s first.
+// Each test starts tutti as a bun process, which bun's 5 s default fails beside other checks.
 setDefaultTimeout(60_000)
 
 const main = join(import.meta.dir, "..", "src", "main.ts")
@@ -63,6 +65,36 @@ const tutti = async (cwd: string, args: ReadonlyArray<string>, bin?: string) => 
     new Response(proc.stderr).text(),
   ])
   return { code, stdout, stderr }
+}
+
+/**
+ * `tutti …args` run in-process in `dir` over in-memory git, with `beads` for its Beads and
+ * `provide` around it: its exit and the lines it wrote to stderr.
+ */
+const inProcess = async (
+  dir: string,
+  args: ReadonlyArray<string>,
+  beads: () => Layer.Layer<Beads, never, BunServices.BunServices>,
+  provide: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R> = (effect) => effect,
+) => {
+  const errors: Array<string> = []
+  const console: Console.Console = Object.assign(Object.create(globalThis.console), {
+    log: () => {},
+    error: (...said: ReadonlyArray<unknown>) => errors.push(said.join(" ")),
+  })
+  const services = () => Layer.mergeAll(beads(), gitLayer({ dir, files: {} }), lockLayer())
+  const exit = await Effect.runPromise(
+    Command.runWith(tuttiWith(Effect.succeed(dir), services), {
+      version: "test",
+      renderErrors: false,
+    })(args).pipe(
+      provide,
+      Effect.provideService(Console.Console, console),
+      Effect.exit,
+      Effect.provide(BunServices.layer),
+    ),
+  )
+  return { exit, errors }
 }
 
 // tutti playbook
@@ -255,17 +287,23 @@ describe("tutti answer", () => {
     expect(existsSync(join(repo.dir, answerFile("r1")))).toBe(false)
   })
 
-  slow.test("an answer no run takes: exit 1 after 10 s, and the answer withdrawn", async () => {
-    const repo = withRequest()
-    const started = Date.now()
-    const { code, stdout, stderr } = await tutti(repo.dir, ["answer", "r1", "deny"])
-    expect(stderr).toBe(
-      "tutti answer: the run didn't take the answer to request r1 within 10 s, so it was withdrawn; is tutti running in this repository?\n",
+  // The wait is the command's own, 10 s, so the command runs in-process with TakeWithin shorter;
+  // the cases above prove a failure's exit code and stderr through the binary.
+  test("an answer no run takes: the command fails after the wait, and the answer withdrawn", async () => {
+    const dir = folder()
+    mkdirSync(join(dir, attentionFolder), { recursive: true })
+    writeFileSync(join(dir, requestFile(request.id)), `${JSON.stringify(request)}\n`)
+    const { exit, errors } = await inProcess(
+      dir,
+      ["answer", "r1", "deny"],
+      () => beadsLayer(),
+      Effect.provideService(TakeWithin, Duration.millis(300)),
     )
-    expect(stdout).toBe("")
-    expect(code).toBe(1)
-    expect(Date.now() - started).toBeGreaterThanOrEqual(10_000)
-    expect(existsSync(join(repo.dir, answerFile("r1")))).toBe(false)
+    expect(exit._tag).toBe("Failure")
+    expect(errors).toEqual([
+      "tutti answer: the run didn't take the answer to request r1 within 0.3 s, so it was withdrawn; is tutti running in this repository?",
+    ])
+    expect(existsSync(join(dir, answerFile("r1")))).toBe(false)
   })
 
   slow.test("an answer the run takes: exit 0, and the answer as written", async () => {
@@ -413,30 +451,12 @@ describe("tutti plan", () => {
   test("bd taking too long to list the tickets: the command fails, saying so", async () => {
     const dir = folder()
     const bd = fakeBd(() => "sleep 30\n")
-    const errors: Array<string> = []
-    const console: Console.Console = Object.assign(Object.create(globalThis.console), {
-      log: () => {},
-      error: (...said: ReadonlyArray<unknown>) => errors.push(said.join(" ")),
-    })
-    const services = () =>
-      Layer.mergeAll(
-        Beads.layer({
-          cwd: dir,
-          command: join(bd.bin, "bd"),
-          timeLimits: { read: "300 millis", write: "300 millis" },
-        }),
-        gitLayer({ dir, files: {} }),
-        lockLayer(),
-      )
-    const exit = await Effect.runPromise(
-      Command.runWith(tuttiWith(Effect.succeed(dir), services), {
-        version: "test",
-        renderErrors: false,
-      })(["plan"]).pipe(
-        Effect.provideService(Console.Console, console),
-        Effect.exit,
-        Effect.provide(BunServices.layer),
-      ),
+    const { exit, errors } = await inProcess(dir, ["plan"], () =>
+      Beads.layer({
+        cwd: dir,
+        command: join(bd.bin, "bd"),
+        timeLimits: { read: "300 millis", write: "300 millis" },
+      }),
     )
     expect(exit._tag).toBe("Failure")
     expect(errors).toHaveLength(1)

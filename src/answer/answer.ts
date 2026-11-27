@@ -5,7 +5,7 @@
 // written. It is then written as `<request-id>.answer.json`, created exclusively with mode 0600, and
 // the command waits up to 10 seconds for the run to take it: the run removes the file once it has
 // read it, leaving `<request-id>.refused.json` beside it when it refused it.
-import { Duration, Effect, Result, Schema } from "effect"
+import { Context, Duration, Effect, Result, Schema } from "effect"
 import {
   type AnswerFile,
   answerFile,
@@ -30,6 +30,14 @@ import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 
 /** How long `tutti answer` waits for the run to take an answer (§ 4.5). */
 export const takeWithin: Duration.Duration = Duration.seconds(10)
+
+/**
+ * The wait `answer` uses when its options name none: `takeWithin` by default. The command's tests
+ * set it shorter, as they run the command in-process.
+ */
+export const TakeWithin = Context.Reference<Duration.Duration>("tutti/answer/answer/TakeWithin", {
+  defaultValue: () => takeWithin,
+})
 
 /** How often it looks whether the run has. */
 export const lookEvery: Duration.Duration = Duration.millis(100)
@@ -118,7 +126,7 @@ export const answerFileOf = (given: Given): AnswerFile => ({
 
 /**
  * Answers the open request `given.request` in the run at `repo`: checks the answer against the
- * request, writes it, and waits up to `within` for the run to take it.
+ * request, writes it, and waits up to `within`, else TakeWithin, for the run to take it.
  */
 export const answer = (
   repo: string,
@@ -153,7 +161,7 @@ export const answer = (
       ),
     )
 
-    const within = Duration.fromInputUnsafe(options.within ?? takeWithin)
+    const within = Duration.fromInputUnsafe(options.within ?? (yield* TakeWithin))
     const every = options.every ?? lookEvery
     const gone = Effect.map(readFileUnder(repo, answerFile(id)), (read) => read._tag === "Missing")
     const taken = yield* Effect.gen(function* () {
