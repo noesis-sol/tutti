@@ -811,6 +811,7 @@ describe("the merge train", () => {
           {
             ...options,
             noMore: Effect.succeed(undefined),
+            holdNotRun: () => Effect.void,
             atReset: noReset,
             loaded: Effect.succeed(false),
             recheckSlot: () => Effect.succeed(true),

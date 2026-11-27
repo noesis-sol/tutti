@@ -94,8 +94,12 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         // So with a ticket's fiber that ends during the fill or after it: the fill may have held a
         // ticket back for it (a solo ticket, a source or a subticket not merged, an overlap), and the
         // run is done only when none ended since the last fill began; its freed wake has it look again.
+        // A hold for a check that could not be run, lifted by the fill (mergequeue.ts' checkableAgain),
+        // lets the turns go on: one may merge before the queue is read settled again below, so the
+        // look counts as one a merge ended in unless the queue holds for the same check still.
         const why = yield* wakes.take
-        const mergedBefore = isSettled(yield* queue.state)
+        const before = yield* queue.state
+        const settledBefore = isSettled(before)
         yield* Effect.logDebug(
           `look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`,
         )
@@ -111,7 +115,6 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         const running = yield* scheduler.running
         const gate = yield* parts.gate
         const look: Look = {
-          mergedBefore,
           tickets: (yield* parts.ledger.current).tickets,
           overLimit: (yield* holds.now).overLimit,
           asking: (yield* parts.attention.current).map((request) => request.ticket),
@@ -122,7 +125,10 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
           filing: parts.filing === undefined ? false : yield* parts.filing,
           unread: parts.unread === undefined ? false : yield* parts.unread,
           diskHeld: parts.diskHeld === undefined ? false : yield* parts.diskHeld,
-          settled: isSettled(yield* queue.state),
+          ...(yield* Effect.map(queue.state, (after) => ({
+            settled: isSettled(after),
+            mergedBefore: settledBefore && after.notRun === before.notRun,
+          }))),
           triagePending: yield* parts.triage.pending,
           reviewsPending: parts.critic === undefined ? 0 : yield* parts.critic.pending,
           auditsPending: parts.auditor === undefined ? 0 : yield* parts.auditor.pending,

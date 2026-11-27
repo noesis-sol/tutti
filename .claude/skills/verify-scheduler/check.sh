@@ -35,6 +35,8 @@ break-no-ended-since-fill|NoEndWhileReady|2 2 3 1 FALSE||noEndedSinceFill
 break-filled-at-after|NoEndWhileReady|2 2 3 1 FALSE||filledAtAfter
 break-no-running-check|NeverStartedTwice|2 2 3 1 FALSE||noRunningCheck
 break-no-refill|NoEndWhileReady|2 2 3 1 FALSE||noRefill
+break-unlocked-lift|HeldWhileNotRun|2 2 3 1 FALSE||unlockedLift
+break-no-lifted-look|NoEndWhileReady|2 2 3 1 FALSE||noLiftedLook
 deep-three-tickets|holds|3 2 3 0 FALSE||asCode
 "
 
@@ -110,6 +112,7 @@ INVARIANTS
   TypeOK
   NoEndWhileReady
   NeverStartedTwice
+  HeldWhileNotRun
 EOF
   status=0
   (cd "$work" && java -XX:+UseParallelGC -cp "$jar" tlc2.TLC -config "$name.cfg" \

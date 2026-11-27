@@ -55,6 +55,12 @@ export interface MergeOptions {
    */
   readonly noMore: Effect.Effect<string | undefined>
   /**
+   * Holds the run for a check that could not be run in a merge (CHECK_NOT_RUN), as `notRun` says,
+   * before the queue holds its turns for it; null lifts that hold, once the queue has let them go
+   * on. Nothing holds the run without it.
+   */
+  readonly holdNotRun: (notRun: NotRun | null) => Effect.Effect<void>
+  /**
    * Where a hand-back due to a worker at the account's usage limit waits for the limit to lift: the
    * usage-limit hold, which sends it at the reset (handback.ts's give). Without it, it is sent at once (noReset).
    */

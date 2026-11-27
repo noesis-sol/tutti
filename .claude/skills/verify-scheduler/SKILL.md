@@ -13,11 +13,14 @@ them, in a small model of the code: `Scheduler.tla`, checked by TLC through `che
 - **The run never ends while a ticket it would start is ready** (`NoEndWhileReady`). Harm when
   it breaks: `tutti` exits with work left that the next fill would have started, and an unattended
   run stops hours early.
+- **The run holds while the merge queue holds for a check that could not be run**
+  (`HeldWhileNotRun`, CHECK_NOT_RUN): no turn is taken and no new ticket starts until the base moves
+  on. Harm when it breaks: the run takes tickets whose checks will all fail to run.
 - **A ticket is never started twice** (`NeverStartedTwice`): it is not dispatched while its last
   fiber still holds its slot, and it is dispatched again only for each time it went back in the
   queue. Harm when it breaks: two workers in one worktree on one branch.
 
-Both hold for the code as it is, with no assumption: the findings the model first gave are
+All three hold for the code as it is, with no assumption: the findings the model first gave are
 mended, and the check expects none.
 
 ## Run it
@@ -61,7 +64,8 @@ inside one makes the check exit 2 and name it. The actions of `Scheduler.tla` th
 | `slots.ts` `occupy`'s `release` (its end counted in the update that frees its slot), `requeued` | `Release1`, `Release2` |
 | `src/run/holds.ts` `mergeHold`, `notMerged`, `takesNew` | `MergeHeld`, `started < Limit` |
 | `src/run/work.ts` `mergedSinceCut` | `RequeueBd`, `Requeue` |
-| `src/run/mergequeue.ts` `offer` (ledger, then the line), `merged` (the ledger says Merged first), `isSettled` | `Offer1`, `Offer2`, `Merge1`, `Merge2`, `inQueue = {}` |
+| `src/run/mergequeue.ts` `offer` (ledger, then the line), `turn` (none while `notRun`), `merged` (the ledger says Merged first), `isSettled` (settled too while `notRun`) | `Offer1`, `Offer2`, `Merge1`, `Merge2`, `Settled` |
+| `mergequeue.ts` `waitForBase` (the run's hold first, `holdNotRun`, then the queue's `notRun`, under the line's lock), `checkableAgain` (`notRun` cleared, then the hold lifted, under the lock, from the fill's `queue.recheck`), `src/run/run/mergeSide.ts` `holdNotRun`; `look.ts` `nothingLeft`'s `mergedBefore`, false when the queue's `notRun` changed during the look | `NotRun1`, `NotRun2`, `Recheck`, `Lift`, `held` in `K2`, `P2` and `Startable` |
 | `src/run/run/watchers.ts` the merge wake, `src/run/blockedWatch.ts` the attention wake | why `Wake` may come at any time, for either reason |
 
 ## When the covered code changed

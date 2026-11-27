@@ -15,5 +15,8 @@ src/run/work.ts|^const mergedSinceCut|^const paused
 src/run/mergequeue.ts|^export const isSettled|^export const make
 src/run/mergequeue.ts|^    const offer: |^    const backInLine
 src/run/mergequeue.ts|^    const merged = |^    // A hand-back to the ticket
+src/run/mergequeue.ts|^    const waitForBase = |^    // A ticket left Blocked
+src/run/mergequeue.ts|^    const checkableAgain = |^    // `at`: where the base is
+src/run/run/mergeSide.ts|^    const holdNotRun = |^    const queue = 
 src/run/run/watchers.ts|^    const queueSeen|^    const drains
 src/run/blockedWatch.ts|^    const timed|^    return \{ look \}

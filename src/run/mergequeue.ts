@@ -202,6 +202,7 @@ export const make = (
     const options: MergeOptions = {
       ...given,
       noMore: given.noMore ?? Effect.succeed(undefined),
+      holdNotRun: given.holdNotRun ?? (() => Effect.void),
       atReset: given.atReset ?? noReset,
       loaded: given.loaded ?? Effect.succeed(false),
       recheckSlot: given.recheckSlot ?? (() => Effect.succeed(true)),
@@ -326,6 +327,9 @@ export const make = (
     ) =>
       lock.withPermit(
         Effect.gen(function* () {
+          const held: NotRun = { ticket: ticket.id, onto: notRun.onto, why: notRun.why }
+          // The run holds first: the queue is settled for it once it holds its turns.
+          yield* options.holdNotRun(held)
           yield* ledger.transition(ticket.id, Move.CheckNotRun({ place: 1 }))
           yield* renumber([ticket.id, ...(yield* SubscriptionRef.get(ref)).waiting])
           yield* Ref.update(line, (now) => new Map(now).set(ticket.id, ticket))
@@ -333,7 +337,7 @@ export const make = (
             ...now,
             waiting: [ticket.id, ...now.waiting],
             merging: null,
-            notRun: { ticket: ticket.id, onto: notRun.onto, why: notRun.why },
+            notRun: held,
           }))
         }),
       )
@@ -364,7 +368,14 @@ export const make = (
       Effect.gen(function* () {
         const notRun = (yield* SubscriptionRef.get(ref)).notRun
         if (notRun === undefined || !(yield* notRunDue(notRun, options, at))) return
-        yield* SubscriptionRef.update(ref, ({ notRun: _, ...now }) => now)
+        // Under the line's lock, as the hold was taken: the next turn, whose check may hold the run
+        // again, begins once this hold is lifted.
+        yield* lock.withPermit(
+          Effect.andThen(
+            SubscriptionRef.update(ref, ({ notRun: _, ...now }) => now),
+            options.holdNotRun(null),
+          ),
+        )
       })
     // `at`: where the base is, as a merge just put it, for neither to ask git again.
     const recheckFrom = (at?: Sha) =>

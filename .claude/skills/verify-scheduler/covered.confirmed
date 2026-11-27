@@ -1,16 +1,19 @@
-ccef6d403dae44db7a2dc7db4a69d9eb74c8376e
-src/run/look.ts||6790a067569cabae35eff18516a7f977a5a5a5f5
+e5ba03ef288be82b30e5dd1924847017f5369b83
+src/run/look.ts||84587ccf46e75ee33720f1dcb68c5b8122f74aad
 src/run/runEnd.ts||2ad0273679689a5ed1741e784515cfd0cb6d2af4
-src/run/wakes.ts||871a09d267ed96954b862777014c93fd7e198eb2
+src/run/wakes.ts||89669e1d246abca4b6d2c4ea61cfd4c74491be71
 src/run/schedule/fill.ts||d0218661906e02e9c95c06301284d0c11431bd38
 src/run/schedule/slots.ts||c41ef3d90f3e281f5816079b5fd7b98da6d7f98e
-src/run/schedule/dispatch.ts|^export const mayStart|f4dbccbd1b13fafe7a52925df8179f3bcb4f30c0
+src/run/schedule/dispatch.ts|^export const mayStart|d4843d4fdabf355ddc7b0c62658b23ab22563152
 src/run/schedule/place.ts|^export const placeWaiting|7955fe828838185a818bd14b2d58bf715484254f
 src/run/holds.ts|^const notMerged|462801cda12a94e18caca3152621aa4d6433c2fa
 src/run/holds.ts|^export const takesNew|075dad16222f1972a998710f7c436b9208464cdc
 src/run/work.ts|^const mergedSinceCut|d19e82c78a7ef9b9a8f2112603d867c5cd9c8e28
-src/run/mergequeue.ts|^export const isSettled|fccc8996a876a46d87c6ec6c854becbd4970b2ca
-src/run/mergequeue.ts|^    const offer: |7563fa06591457f4e2b1e30d9317a72d12722810
+src/run/mergequeue.ts|^export const isSettled|1494b845747a1047b06dcdec0a0bb5957e35a67b
+src/run/mergequeue.ts|^    const offer: |0864c59d3a19378968b3c37989eeec24a17d7b98
 src/run/mergequeue.ts|^    const merged = |44483782cf5ddbe6c730f3917f759eac19ac6467
+src/run/mergequeue.ts|^    const waitForBase = |93f24d536ce0b4fce72c27de78b416c7abab870f
+src/run/mergequeue.ts|^    const checkableAgain = |91a33c681e581a7ad84fb7be75be3151ea3bb2b8
+src/run/run/mergeSide.ts|^    const holdNotRun = |450aa273b42b8c9840b167ba87679cf145f336fc
 src/run/run/watchers.ts|^    const queueSeen|c7f753eed8f121a58ee92aea35d5639e375bab4a
 src/run/blockedWatch.ts|^    const timed|12296f6af0645e75129af6c6ef9ee5b7235d636f

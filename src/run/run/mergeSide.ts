@@ -15,6 +15,7 @@ import { changeStops, type StopReason, stopFor, stopOfLine, swapStop } from "../
 import { Ledger } from "../ledger.ts"
 import { type LinearPushes, off as linearOff, make as makeLinearPushes } from "../linearPush.ts"
 import { type MergeQueue, make as makeQueue, type QueueState } from "../mergequeue.ts"
+import type { NotRun } from "../mergeShared.ts"
 import { make as makePlaybook, type RunPlaybook } from "../playbookRun.ts"
 import { showOn } from "../runView.ts"
 import type { Holds } from "./holds.ts"
@@ -30,10 +31,7 @@ export interface MergeSide {
   readonly auditor: Auditor
   readonly playbook: RunPlaybook
   readonly queue: MergeQueue
-  /**
-   * The merge that stopped the merges, taken up once, by its watcher or by the end; and the stop of
-   * a check that could not be run, raised while the queue holds for it and lifted once it doesn't.
-   */
+  /** The merge that stopped the merges, taken up once, by its watcher or by the end. */
   readonly mergeStop: (state: QueueState) => Effect.Effect<void>
   readonly branches: ClosedBranches
   /** The pushes to Linear, `off` without the settings' linear block. */
@@ -114,8 +112,24 @@ export const make = (
       steered: (ticket) =>
         Effect.map(ledger.current, (state) => state.tickets.get(ticket)?.steered === true),
     })
+    // A check that could not be run in a merge holds the run while no ticket takes its turn for it
+    // (CHECK_NOT_RUN, its line said by the merge), the stop lifted once the base has moved on.
+    const notRunStop = yield* Ref.make<StopReason | null>(null)
+    const holdNotRun = (notRun: NotRun | null) =>
+      Effect.gen(function* () {
+        if (notRun !== null) {
+          const stop = stopFor("CHECK_NOT_RUN", notRun.why, { ticket: notRun.ticket, held: true })
+          if ((yield* Ref.getAndSet(notRunStop, stop)) === null) yield* stopped(stop)
+          return
+        }
+        const lifted = yield* Ref.getAndSet(notRunStop, null)
+        if (lifted === null) return
+        yield* changeHolds((now) => changeStops(now, (all) => swapStop(all, lifted, null)))
+        yield* wakeUp("hold")
+      })
     const queue = yield* makeQueue(
       {
+        holdNotRun,
         repo: config.repo,
         base,
         early,
@@ -139,37 +153,10 @@ export const make = (
       (where, defect) =>
         panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
     )
-    // The check that could not be run in a merge holds the run while no ticket takes its turn for
-    // it (CHECK_NOT_RUN, its line said by the merge), the stop lifted once the base has moved on.
-    const notRunStop = yield* Ref.make<StopReason | null>(null)
-    const checkHold = (state: QueueState) =>
-      Effect.gen(function* () {
-        const { notRun } = state
-        const raise =
-          notRun === undefined
-            ? null
-            : stopFor("CHECK_NOT_RUN", notRun.why, { ticket: notRun.ticket, held: true })
-        type Change = readonly [StopReason | null, StopReason | null]
-        const [raised, lifted] = yield* Ref.modify(
-          notRunStop,
-          (now): readonly [Change, StopReason | null] =>
-            raise !== null && now === null
-              ? [[raise, null], raise]
-              : raise === null && now !== null
-                ? [[null, now], null]
-                : [[null, null], now],
-        )
-        if (raised !== null) yield* stopped(raised)
-        if (lifted !== null) {
-          yield* changeHolds((now) => changeStops(now, (all) => swapStop(all, lifted, null)))
-          yield* wakeUp("hold")
-        }
-      })
     // The merge that stopped the merges, taken up once, by its watcher or by the end.
     const mergeStopSeen = yield* Ref.make(false)
     const mergeStop = (state: QueueState) =>
       Effect.gen(function* () {
-        yield* checkHold(state)
         const stop = state.stop
         if (stop === null || (yield* Ref.getAndSet(mergeStopSeen, true))) return
         yield* showOn(status, "mergesStopped")(true)
