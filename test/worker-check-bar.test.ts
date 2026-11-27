@@ -25,7 +25,7 @@ import {
   showEvery,
 } from "../src/run/checking.ts"
 import { emptyTallies, type State } from "../src/run/ledger.ts"
-import { followOwnChecks, ownKindOf } from "../src/run/ownCheck.ts"
+import { followOwnChecks, ownBarAfter, ownKindOf } from "../src/run/ownCheck.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -250,14 +250,18 @@ const ownNow = (checking: Checking["Service"]) =>
 /** One read of the progress file, and the follower's turn after it. */
 const aRead = Effect.andThen(advance(showEvery), settle)
 
+/** The wait before a run's bar, and the follower's turn after it. */
+const barShown = Effect.andThen(advance(ownBarAfter), settle)
+
 describe("a worker's own check in Checking", () => {
   test("a command never timed shows no bar; timed twice, the third run has the estimate", async () => {
     const seen = await following((offer, checking) =>
       Effect.gen(function* () {
         const fills: Array<CheckShown["fill"] | undefined> = []
         yield* offer(began("c1", "bun test a.test.ts"))
+        yield* barShown
         fills.push((yield* ownNow(checking))?.fill)
-        yield* advance("10 seconds")
+        yield* advance("5 seconds")
         // Its hook's time, where it gives one, counts over the clock's.
         yield* offer(ended("c1", true, 20_000))
         yield* offer(began("c2", "bun test a.test.ts"))
@@ -301,7 +305,7 @@ describe("a worker's own check in Checking", () => {
       Effect.gen(function* () {
         const counts: Array<string | null | undefined> = []
         yield* offer(began("c1", "scripts/check-fast.sh", where))
-        yield* aRead
+        yield* barShown
         appendFileSync(file, "SUITE: test\nPROGRESS: 3/10\n")
         yield* aRead
         counts.push((yield* ownNow(checking))?.fill?.count)
@@ -327,14 +331,14 @@ describe("a worker's own check in Checking", () => {
     const seen = await following((offer, checking) =>
       Effect.gen(function* () {
         yield* offer(began("c1", "scripts/check-fast.sh", where))
-        yield* aRead
+        yield* barShown
         appendFileSync(file, "SUITE: old\nPROGRESS: 9/10\n")
         yield* aRead
         const before = yield* ownNow(checking)
         // Killed: its session ended it, not passed, and the file kept its lines.
         yield* offer(ended("c1", false))
         yield* offer(began("c2", "scripts/check-fast.sh", where))
-        yield* aRead
+        yield* barShown
         const after = yield* ownNow(checking)
         appendFileSync(file, "SUITE: new\nPROGRESS: 1/4\n")
         yield* aRead
@@ -376,11 +380,12 @@ describe("a worker's own check in Checking", () => {
           yield* advance("50 seconds")
           yield* offer(began("c2", "scripts/check-fast.sh"))
           yield* offer(ended("c1", true))
+          yield* barShown
           return (yield* ownNow(checking))?.fill
         }),
       { fast: [100] },
     )
-    expect(seen).toEqual({ filled: 0, count: "≈0%", estimate: true })
+    expect(seen).toEqual({ filled: 0.05, count: "≈5%", estimate: true })
   })
 })
 

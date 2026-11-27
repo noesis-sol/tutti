@@ -6,11 +6,12 @@
 // TUTTI_PROGRESS_FILE, the runners tutti init writes copy their SUITE: and PROGRESS: lines to it as
 // they print them, and the file is read every showEvery while the call runs, as a check's output is
 // (CheckOutput). It is emptied as each call begins, so that what a killed command left there isn't
-// read for the next one, and forgotten as it ends. A command that copies nothing there, a
+// read for the next one, and forgotten as it ends. The bar waits ownBarAfter from the call's start:
+// a narrow run of a test file ends in seconds, and a bar on its card would only flash. A command that copies nothing there, a
 // project's own runner, has the estimate alone: the time it has run against the median of its last
 // passes, kept by its command for the run, or the merge check's or the full check's where it is
 // theirs, which count from the run's first.
-import { Clock, Effect, FiberMap, Stream } from "effect"
+import { Clock, Duration, Effect, FiberMap, Stream } from "effect"
 import type { TestRun } from "../agent/AgentHost.ts"
 import type { TicketId } from "../services/Beads.ts"
 import {
@@ -25,6 +26,9 @@ import { type Checking, showEvery } from "./checking.ts"
 
 /** How much of the progress file is read at a time: more waits for the next read. */
 export const progressChunk = 64 * 1024
+
+/** How long a worker's test run goes before its card has a bar: one that ends sooner has none. */
+export const ownBarAfter = Duration.seconds(5)
 
 /** The project's checks whose passes estimate a worker's run of the same command. */
 export interface OwnCheckCommands {
@@ -83,8 +87,8 @@ interface Running {
 }
 
 /**
- * Watches each worker's test runs, `runs`, in `checking`, for the scope: one at a time per ticket,
- * a run begun while another runs taking its place. A run that passed keeps its time among its
+ * Watches each worker's test runs, `runs`, in `checking`, for the scope, each from ownBarAfter
+ * after its start: one at a time per ticket, a run begun while another runs taking its place. A run that passed keeps its time among its
  * command's passes: the time its hook gave, else the time from its start to its end. The kind
  * whose passes estimate a command is read from `checks` as each run begins.
  */
@@ -109,6 +113,7 @@ export const followOwnChecks = (
               if (worktree !== undefined) {
                 yield* Effect.ignore(writeRunFile(worktree, progressLogName, ""))
               }
+              yield* Effect.sleep(ownBarAfter)
               const watched = yield* checking.watchOwn(ticket, {
                 command: run.command,
                 kind,

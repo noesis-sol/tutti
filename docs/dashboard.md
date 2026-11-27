@@ -346,7 +346,8 @@ Bash call runs a check (its status `testing`), its card has the same beside its 
 run, or the merge check's or the full check's recent passes where it is that check's command, and the
 count where the command copies its `SUITE:` and `PROGRESS:` lines to the file tutti names in
 `TUTTI_PROGRESS_FILE`, as the runners `tutti init` writes do ([Setting up](setup.md)). A command
-never timed and counting nothing shows no bar. The environment probe has a card of its own,
+never timed and counting nothing shows no bar, nor does a run over within 5 seconds: the bar
+waits that long, so that a run of one test file doesn't flash one. The environment probe has a card of its own,
 labelled `probe`. Elapsed times update every 3 seconds.
 
 ### Attention cards
