@@ -16,17 +16,22 @@ import * as TestAppConfig from "../src/testing/AppConfig.ts"
 
 const check = "scripts/check-fast.sh"
 
-/** The reason resultOf gives for a check that exited with 127, having printed `printed`. */
-const reasonOf = (printed: string): string => {
-  const output = new CheckOutput()
-  output.write(new TextEncoder().encode(printed))
-  const exit = Effect.runSync(Effect.exit(resultOf("fast", check, 127, output, "/dev/fd/9")))
+/** The CheckNotRun `exit` failed with. */
+const notRunOf = <A, E>(exit: Exit.Exit<A, E>): CheckNotRun => {
   if (Exit.isSuccess(exit)) throw new Error("expected a failure")
   const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")
   if (error === undefined || !(error.error instanceof CheckNotRun)) {
     throw new Error(`expected CheckNotRun, got ${exit.cause}`)
   }
-  return error.error.reason
+  return error.error
+}
+
+/** The reason resultOf gives for a check that exited with 127, having printed `printed`. */
+const reasonOf = (printed: string): string => {
+  const output = new CheckOutput()
+  output.write(new TextEncoder().encode(printed))
+  return notRunOf(Effect.runSync(Effect.exit(resultOf("fast", check, 127, output, "/dev/fd/9"))))
+    .reason
 }
 
 describe("the reason of a check that could not be run", () => {
@@ -115,10 +120,7 @@ describe("the live layer", () => {
         ),
       ),
     )
-    if (Exit.isSuccess(exit)) throw new Error("expected a failure")
-    const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")
-    expect(error?.error).toBeInstanceOf(CheckNotRun)
-    const reason = (error?.error as CheckNotRun).reason
+    const { reason } = notRunOf(exit)
     expect(reason).toContain("check-own-tutti-missing.sh")
     expect(reason).not.toContain("SUITE:")
   })
