@@ -9,7 +9,8 @@ import { join } from "node:path"
 import { Console, Duration, Effect, Fiber, Queue } from "effect"
 import type { AppConfigValue } from "../src/core/AppConfig.ts"
 import { line } from "../src/core/log.ts"
-import { endIfNothing } from "../src/print/nothing.ts"
+import { endWith } from "../src/print/nothing.ts"
+import { check as checkNothing } from "../src/run/nothing.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -253,18 +254,16 @@ describe("a whole run notifies", () => {
       },
       Effect.gen(function* () {
         const repository = yield* Repository
-        return yield* endIfNothing(
-          {
-            scope: null,
-            filter: { excludeTypes: [] },
-            repo: repository.dir,
-            base: "main",
-            carried: new Set(),
-            unmerged: new Set(),
-            held: () => Effect.succeed(undefined),
-          },
-          { _tag: "Plain" },
-        )
+        const nothing = yield* checkNothing({
+          scope: null,
+          filter: { excludeTypes: [] },
+          repo: repository.dir,
+          base: "main",
+          carried: new Set(),
+          unmerged: new Set(),
+          held: () => Effect.succeed(undefined),
+        })
+        return nothing === null ? null : yield* endWith(nothing, { _tag: "Plain" })
       }).pipe(Effect.provideService(Console.Console, quiet)),
     )
     expect(ran.exit._tag === "Success" && ran.exit.value).toBe(0)

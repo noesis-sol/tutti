@@ -13,8 +13,9 @@ import { dlopen, FFIType } from "bun:ffi"
 import { writeSync } from "node:fs"
 import { join } from "node:path"
 import { Effect } from "effect"
-import { flockExclusiveNonBlocking, libcPath, O, openCloexec } from "../../../src/native/libc.ts"
+import { flockExclusiveNonBlocking, O, openCloexec } from "../../../src/native/libc.ts"
 import { RunLock } from "../../../src/services/RunLock.ts"
+import { libcPath } from "../../libc.ts"
 
 const [commonDir, who, spawn] = process.argv.slice(2)
 if (commonDir === undefined) throw new Error("usage: holder.ts <git folder> <tutti|orchestra>")

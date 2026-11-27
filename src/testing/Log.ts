@@ -1,12 +1,19 @@
 // The Log test layer: the live log over a file that keeps nothing. Its lines are captured in
 // memory, dated with Effect's Clock (so TestClock sets their time) and printed to stdout when the
-// sink says so, as live. `texts` gives them without their time, for a test to compare.
+// sink says so, as live. `texts` gives them without their time, for a test to compare, and
+// `undated` a line read back from the log's file or a report.
 import { Effect, type Layer } from "effect"
 import { Log, type Sink } from "../core/log.ts"
 
 /** A captured log, its lines also printed when `sink` is stdout. */
 export const layer = (options: { readonly sink?: Sink } = {}): Layer.Layer<Log> =>
   Log.layerOn({ file: { writeAll: () => Effect.void }, ...options })
+
+/** The time a dated line starts with, and the space after it. */
+const stamped = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d\d:\d\d /
+
+/** A dated line without its time: the line as written. */
+export const undated = (dated: string): string => dated.replace(stamped, "")
 
 /** The captured lines without their time. */
 export const texts: Effect.Effect<ReadonlyArray<string>, never, Log> = Effect.gen(function* () {

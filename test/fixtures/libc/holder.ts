@@ -10,7 +10,8 @@
 // Prints `child <pid>` for the sleep, then `held` once the lock is taken, or `refused`.
 import { dlopen, FFIType } from "bun:ffi"
 import { Effect } from "effect"
-import { flockExclusiveNonBlocking, libcPath, O, openCloexec } from "../../../src/native/libc.ts"
+import { flockExclusiveNonBlocking, O, openCloexec } from "../../../src/native/libc.ts"
+import { libcPath } from "../../libc.ts"
 
 const [path, how, spawn] = process.argv.slice(2)
 if (path === undefined) throw new Error("usage: holder.ts <lock file> <cloexec|plain> [system]")

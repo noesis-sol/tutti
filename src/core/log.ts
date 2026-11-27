@@ -478,12 +478,6 @@ export const filed = (kept: Kept): string => `${kept.stamp} ${kept.text}`
 export const dated = (lines: ReadonlyArray<Written>): Effect.Effect<ReadonlyArray<string>> =>
   Effect.map(keep(lines), (kept) => kept.map(filed))
 
-/** The time a dated line starts with, and the space after it. */
-const stamped = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d\d:\d\d /
-
-/** A dated line without its time: the line as written. */
-export const undated = (dated: string): string => dated.replace(stamped, "")
-
 /** Where else the log's lines go: none, or stdout, for plain mode (§ 7.6). */
 export type Sink = "none" | "stdout"
 

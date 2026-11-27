@@ -9,10 +9,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Console, Deferred, Duration, Effect, Fiber, Queue } from "effect"
 import { line } from "../src/core/log.ts"
-import { endIfNothing } from "../src/print/nothing.ts"
+import { endWith } from "../src/print/nothing.ts"
 import { carriedTickets } from "../src/run/carry.ts"
 import type { DrainRequest } from "../src/run/drain.ts"
-import { heldAtStart } from "../src/run/nothing.ts"
+import { check as checkNothing, heldAtStart } from "../src/run/nothing.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import { stillUnmerged } from "../src/run/unmerged.ts"
@@ -1194,18 +1194,16 @@ describe("nothing to run", () => {
       },
       Effect.gen(function* () {
         const unmerged = yield* stillUnmerged({ repo, base: "main" })
-        const exitCode = yield* endIfNothing(
-          {
-            scope: null,
-            filter: { excludeTypes: ["epic"] },
-            repo,
-            base: "main",
-            carried: yield* carriedTickets,
-            unmerged,
-            held: heldAtStart(yield* Beads, unmerged),
-          },
-          { _tag: "Plain" },
-        )
+        const nothing = yield* checkNothing({
+          scope: null,
+          filter: { excludeTypes: ["epic"] },
+          repo,
+          base: "main",
+          carried: yield* carriedTickets,
+          unmerged,
+          held: heldAtStart(yield* Beads, unmerged),
+        })
+        const exitCode = nothing === null ? null : yield* endWith(nothing, { _tag: "Plain" })
         return { exitCode, records: yield* (yield* Captured).records }
       }).pipe(Effect.provideService(Console.Console, console)),
     )

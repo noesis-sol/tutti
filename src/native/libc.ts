@@ -54,10 +54,8 @@ export const O = {
   CLOEXEC: os.O_CLOEXEC,
 } as const
 
-const F_GETFD = 1
 const F_GETFL = 3
 const F_SETFL = 4
-const FD_CLOEXEC = 1
 const LOCK_SH = 1
 const LOCK_EX = 2
 const LOCK_NB = 4
@@ -82,8 +80,7 @@ const zeros = (n: number) => Array<number>(n).fill(0)
 const symbols = {
   flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
   close: { args: [FFIType.i32], returns: FFIType.i32 },
-  // Variadic too: F_SETFL's third argument goes where open's mode does; F_GETFD and F_GETFL
-  // ignore it.
+  // Variadic too: F_SETFL's third argument goes where open's mode does; F_GETFL ignores it.
   fcntl: {
     args: [FFIType.i32, FFIType.i32, ...padding(padFcntl), FFIType.i64],
     returns: FFIType.i32,
@@ -108,7 +105,7 @@ const openLibc = () => {
   const errors: Array<string> = []
   for (const path of libcCandidates) {
     try {
-      return { path, lib: dlopen(path, symbols) }
+      return dlopen(path, symbols)
     } catch (e) {
       errors.push(`${path}: ${(e as Error).message}`)
     }
@@ -118,10 +115,7 @@ const openLibc = () => {
 
 const libc = openLibc()
 
-/** The libc that was loaded, for a test's own bindings. */
-export const libcPath: string = libc.path
-
-const s = libc.lib.symbols as unknown as {
+const s = libc.symbols as unknown as {
   flock: (fd: number, op: number) => number
   close: (fd: number) => number
   fcntl: (...args: Array<unknown>) => number
@@ -252,16 +246,6 @@ export const unlock = (fd: number): Effect.Effect<void, LibcError> =>
   Effect.suspend(() => unwrap(attempt("flock", `fd ${fd}`, () => s.flock(fd, LOCK_UN)))).pipe(
     Effect.asVoid,
   )
-
-/** Whether `fd` is marked close-on-exec, from fcntl(F_GETFD). */
-export const isCloseOnExec = (fd: number): Effect.Effect<boolean, LibcError> =>
-  Effect.suspend(() => unwrap(rawFcntl(fd, F_GETFD))).pipe(
-    Effect.map((flags) => (flags & FD_CLOEXEC) !== 0),
-  )
-
-/** Creates a file that must not exist yet (O_EXCL), never through a link: attention files. */
-export const createExclusive = (path: string, mode = 0o600): Effect.Effect<number, LibcError> =>
-  openCloexec(path, O.WRONLY | O.CREAT | O.EXCL | O.NOFOLLOW, mode)
 
 const isSymlink = (path: string): boolean => {
   try {

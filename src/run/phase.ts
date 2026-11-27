@@ -1137,9 +1137,6 @@ export const countsUnder = (
 /** The phases with work under way, which have a card. */
 export const hasCard = (phase: TicketPhase): boolean => phaseFacts[phase._tag].card
 
-/** Whether `phase` is final: only Done is. */
-export const isFinal = (phase: TicketPhase): boolean => phase._tag === "Done"
-
 // The phases the table moves to Stopped as the run ends.
 const stopping: ReadonlySet<From> = new Set(
   transitions.filter((transition) => transition.when === "RunEnded").map(({ from }) => from),

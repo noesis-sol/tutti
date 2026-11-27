@@ -22,7 +22,7 @@ import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as beadsLayer } from "../src/testing/Beads.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as gitLayer, Repository } from "../src/testing/Git.ts"
-import { layer as logLayer } from "../src/testing/Log.ts"
+import { layer as logLayer, undated } from "../src/testing/Log.ts"
 
 const at = new Date(2026, 9, 17, 9, 5, 3).getTime()
 
@@ -170,6 +170,6 @@ describe("the report reads tags and tickets, not text", () => {
         part.title ===
           "The attention requests, answers and denials of this run, as the log has them",
     )
-    expect((section?.body ?? "").split("\n").map(log.undated)).toEqual([permission.line])
+    expect((section?.body ?? "").split("\n").map(undated)).toEqual([permission.line])
   })
 })

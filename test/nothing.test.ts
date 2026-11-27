@@ -5,10 +5,11 @@ import fc from "fast-check"
 import type { Log } from "../src/core/log.ts"
 import {
   box,
+  endWith,
   lines,
   noStyles,
-  nothingToRun,
   plainLines,
+  report,
   themeStyles,
 } from "../src/print/nothing.ts"
 import { tuttiScheme } from "../src/project/scheme.ts"
@@ -555,27 +556,38 @@ describe("a run with nothing to run", () => {
     return { printed, console }
   }
 
+  /** The check's message for the run `options()` describes, which has nothing to run. */
+  const nothing = Effect.gen(function* () {
+    const n = yield* check(options())
+    if (n === null) throw new Error("the run has something to run")
+    return n
+  })
+
   test("prints the box, records its done line and ends: no dashboard", async () => {
     const { printed, console } = capturing()
     const ended = await run(
       [{ id: "k-1", status: "closed" }],
       Effect.gen(function* () {
-        const ended = yield* nothingToRun(options(), { _tag: "Box", width: 80, styles: noStyles })
-        return { ended, log: yield* texts, records: yield* (yield* Captured).records }
+        const exitCode = yield* endWith(yield* nothing, {
+          _tag: "Box",
+          width: 80,
+          styles: noStyles,
+        })
+        return { exitCode, log: yield* texts, records: yield* (yield* Captured).records }
       }).pipe(Effect.provideService(Console.Console, console)),
     )
-    expect(ended.ended).toBe(true)
+    expect(ended.exitCode).toBe(0)
     expect(printed).toEqual([box(make({ allDone: true }), 80, noStyles)])
     expect(boxWith(printed[0] ?? "", "All done").lines).toEqual(["✓ All done"])
     expect(ended.log).toEqual(["READY_EMPTY after 0 tickets: everything is done"])
-    expect(ended.records.map((r) => r.kind)).toEqual(["done"])
+    expect(ended.records.map((r) => r.kind)).toEqual(["done", "end"])
   })
 
   test("in plain mode prints the lines after the time", async () => {
     const { printed, console } = capturing()
     await run(
       [{ id: "q-1", labels: ["human"] }],
-      nothingToRun(options(), { _tag: "Plain" }).pipe(
+      Effect.flatMap(nothing, (n) => report(n, { _tag: "Plain" })).pipe(
         Effect.provideService(Console.Console, console),
       ),
     )
@@ -584,15 +596,7 @@ describe("a run with nothing to run", () => {
     ).toEqual(["○ Nothing ready to run", "  1 question waits for your answer: bd human list"])
   })
 
-  test("a run with a ticket to start goes on to its loop, printing nothing", async () => {
-    const { printed, console } = capturing()
-    const ended = await run(
-      [{ id: "k-1" }],
-      nothingToRun(options(), { _tag: "Plain" }).pipe(
-        Effect.provideService(Console.Console, console),
-      ),
-    )
-    expect(ended).toBe(false)
-    expect(printed).toEqual([])
+  test("a run with a ticket to start goes on to its loop", async () => {
+    expect(await run([{ id: "k-1" }], check(options()))).toBeNull()
   })
 })

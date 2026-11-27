@@ -16,7 +16,6 @@ import {
   chosenLayer,
   defaultModel,
   organProvider,
-  providerProblems,
   providerVariable,
 } from "../src/organs/AnthropicProvider.ts"
 import { section } from "../src/organs/evidence.ts"
@@ -142,10 +141,10 @@ describe("organProvider", () => {
 
   test("anthropic with no key, or an empty one, is a setup problem", () => {
     for (const key of [undefined, ""]) {
-      expect(providerProblems({ [providerVariable]: "anthropic", ANTHROPIC_API_KEY: key })).toEqual(
-        [
+      expect(organProvider({ [providerVariable]: "anthropic", ANTHROPIC_API_KEY: key })).toEqual(
+        Result.fail(
           "TUTTI_ORGAN_PROVIDER=anthropic needs ANTHROPIC_API_KEY, the API key organs are billed to",
-        ],
+        ),
       )
     }
   })
@@ -155,9 +154,9 @@ describe("organProvider", () => {
       fc.property(
         fc.string().filter((s) => !["", "agent-sdk", "anthropic"].includes(s)),
         (value) => {
-          const problems = providerProblems({ [providerVariable]: value })
-          expect(problems).toHaveLength(1)
-          expect(problems[0]).toContain("it must be agent-sdk or anthropic")
+          const chosen = organProvider({ [providerVariable]: value })
+          if (Result.isSuccess(chosen)) throw new Error(`${value} chose ${chosen.success._tag}`)
+          expect(chosen.failure).toContain("it must be agent-sdk or anthropic")
         },
       ),
     )

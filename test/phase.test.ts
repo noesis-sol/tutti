@@ -8,7 +8,6 @@ import {
   hasCard,
   holdBacks,
   InvalidTransition,
-  isFinal,
   Move,
   type MoveTag,
   type PhaseTag,
@@ -519,10 +518,10 @@ describe("transition, driven by random moves", () => {
     )
   })
 
-  test("only Done is final: nothing leaves it", () => {
+  test("Done is final: nothing leaves it", () => {
     fc.assert(
       fc.property(phaseArb, moveArb, (phase, move) => {
-        if (isFinal(phase)) {
+        if (phase._tag === "Done") {
           expect(Result.isFailure(transition(phase, move))).toBe(true)
         }
       }),
@@ -592,10 +591,6 @@ describe("what the UI and totals read", () => {
     expect(countsUnder(Working(), "answer")).toEqual(["workers", "needsYou"])
     expect(countsUnder(Working(), "limit")).toEqual(["workers"])
     expect(countsUnder(Working())).toEqual(["workers"])
-  })
-
-  test("only Done is final", () => {
-    expect(phaseNames.filter((tag) => isFinal(sample(tag)))).toEqual(["Done"])
   })
 
   test("Working, ToMerge, Resolving and Fixing become Stopped as the run ends", () => {

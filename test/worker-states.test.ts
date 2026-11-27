@@ -3,7 +3,7 @@ import { Effect, Fiber, Layer, type Scope, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
-import { holdsWorker, Ledger } from "../src/run/ledger.ts"
+import { keepsWorker, Ledger } from "../src/run/ledger.ts"
 import { Move } from "../src/run/phase.ts"
 import { workerStates } from "../src/run/screen.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -63,8 +63,8 @@ describe("the workers' states on the dashboard", () => {
         const ledger = yield* Ledger
         yield* dispatch("t-1" as TicketId)
         yield* dispatch("t-2" as TicketId)
-        const phases = [...(yield* ledger.current).tickets.values()].map((e) => e.phase)
-        expect(phases.every(holdsWorker)).toBe(true)
+        const entries = [...(yield* ledger.current).tickets.values()]
+        expect(entries.every(keepsWorker)).toBe(true)
         // The dashboard follows from here: both tickets hold a worker the host doesn't know yet.
         const states = yield* workerStates
         const both = yield* first(states, (all) => all.size === 2)

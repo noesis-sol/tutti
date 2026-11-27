@@ -665,18 +665,6 @@ const takenAs = (
 }
 
 /**
- * What the worker is told when its hand-back is past its time limit, `limit`, with what it was
- * asked done already: its branch, at commit `at` (undefined when git couldn't say), is taken as it
- * is, to be checked with `check`.
- */
-export const handBackTaken = (
-  handBack: HandBack,
-  limit: string,
-  at: Sha | undefined,
-  check: string,
-): string => takenAs(handBack, lateEnding(handBack.ticket.id, limit), at, check)
-
-/**
  * What the worker is told when its hand-back ends, `ending` saying why, and it is not done: the
  * hand-back is over, its branch put back at `handBack.to` and its ticket set aside, its attempt, the
  * commit it had got to (undefined for none), kept in git.
@@ -698,14 +686,6 @@ const overAs = (handBack: HandBack, ending: Ending, attempt: Sha | undefined): s
     `${worktree}, no ticket changes. Say DONE.`
   )
 }
-
-/**
- * What the worker is told when its hand-back is past its time limit, `limit`, and not done: the
- * hand-back is over, its branch put back at `handBack.to` and its ticket set aside, its attempt, the
- * commit it had got to (undefined for none), kept in git.
- */
-export const handBackOver = (handBack: HandBack, limit: string, attempt: Sha | undefined): string =>
-  overAs(handBack, lateEnding(handBack.ticket.id, limit), attempt)
 
 /** What give needs: the host, what a resume records (sessions.ts), and git to end a hand-back. */
 export type GiveEnv = AgentHost | AppConfig | Checks | EventStream | Git | Ledger | Log | Store

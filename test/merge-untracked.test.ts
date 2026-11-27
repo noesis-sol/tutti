@@ -9,7 +9,7 @@ import type { FinishedTicket, MergeStop } from "../src/run/mergeShared.ts"
 import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { Beads, type TicketId } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
-import { checkoutChanges, checkoutTrackedChanges } from "../src/services/gitStatus.ts"
+import { checkoutTrackedChanges } from "../src/services/gitStatus.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import { backlog, expectLog, type Ran, scenario } from "./harness.ts"
@@ -108,6 +108,5 @@ describe("checkoutTrackedChanges", () => {
       { code: " D", path: ".tutti/settings.json" },
     ]
     expect(checkoutTrackedChanges(status)).toEqual([".tutti/settings.json", "a.ts", "b.txt"])
-    expect(checkoutChanges(status)).toEqual([".tutti/settings.json", "a.ts", "b.txt", "z.ts"])
   })
 })

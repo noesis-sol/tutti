@@ -257,16 +257,6 @@ export const emptyState: State = { tickets: new Map(), rows: 0, windDown: null, 
 // A session that is open, or open until the run ends, holds its worker's number.
 const holds = (lifetime: Lifetime): boolean => lifetime === "open" || lifetime === "untilRunEnds"
 
-/**
- * Whether a ticket in `phase` keeps its worker's number: while its session is open (§ 4.8), that
- * is, in the phases with a card, and set aside after a failed check that may be checked again. The
- * merge queue's rechecks are not the ledger's to see, so it takes every ticket set aside after a
- * failed check as one that may be: its number is kept until it leaves Review, though its session
- * closes (sessions.ts fit) when it won't be checked again.
- */
-export const holdsWorker = (phase: TicketPhase): boolean =>
-  holds(factsOf(phase).session(phase, { recheck: true, handBackWaits: false }))
-
 /** Whether `entry` is Blocked on a conflict whose hand-back waits for its steered worker (§ 4.3). */
 export const handBackWaits = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
   entry.handBack === true && entry.phase._tag === "Blocked" && entry.phase.why === Tag.mergeConflict
@@ -279,8 +269,12 @@ export const conflictLeft = (entry: Pick<Entry, "phase" | "handBack">): boolean 
   entry.handBack !== true && entry.phase._tag === "Blocked" && entry.phase.why === Tag.mergeConflict
 
 /**
- * Whether `entry` keeps its worker's number: in a phase that holds one, or Blocked with its
- * hand-back waiting, its session open for it (§ 4.3, § 4.8).
+ * Whether `entry` keeps its worker's number: while its session is open (§ 4.8), that is, in the
+ * phases with a card, set aside after a failed check that may be checked again, or Blocked with its
+ * hand-back waiting, its session open for it (§ 4.3). The merge queue's rechecks are not the
+ * ledger's to see, so it takes every ticket set aside after a failed check as one that may be: its
+ * number is kept until it leaves Review, though its session closes (sessions.ts fit) when it won't
+ * be checked again.
  */
 export const keepsWorker = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
   holds(

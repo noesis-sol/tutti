@@ -20,7 +20,7 @@ import { BunFileSystem, BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Layer } from "effect"
 import { answerFile, attentionFolder, refusedFile, serve } from "../src/agent/attentionFiles.ts"
 import type { Log } from "../src/core/log.ts"
-import { close, libcPath, NotAFileRefused, O, openUnder } from "../src/native/libc.ts"
+import { close, NotAFileRefused, O, openUnder } from "../src/native/libc.ts"
 import { outputTo } from "../src/run/check.ts"
 import { defaultSettings } from "../src/run/resolveConfig.ts"
 import type { TicketId } from "../src/services/Beads.ts"
@@ -31,6 +31,7 @@ import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import * as TestLog from "../src/testing/Log.ts"
 import * as TestWorktrees from "../src/testing/Worktrees.ts"
+import { libcPath } from "./libc.ts"
 
 const tempDir = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-guarded-")))
 

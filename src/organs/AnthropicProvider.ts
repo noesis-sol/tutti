@@ -69,14 +69,6 @@ export const organProvider = (
   })
 }
 
-/** The setup problems with organs' provider in `env`: none, or one. */
-export const providerProblems = (
-  env: Readonly<Record<string, string | undefined>>,
-): ReadonlyArray<string> => {
-  const chosen = organProvider(env)
-  return Result.isFailure(chosen) ? [chosen.failure] : []
-}
-
 /** The request's effort for an organ's: @effect/ai-anthropic's config takes none above `high`. */
 export const apiEffort = (
   effort: NonNullable<OrganCallConfig["effort"]>,

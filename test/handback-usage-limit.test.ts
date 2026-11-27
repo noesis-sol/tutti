@@ -11,13 +11,11 @@ import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
 import { resetLabel } from "../src/core/localTime.ts"
 import { line } from "../src/core/log.ts"
-import { type HandBack, handBackOver, handBackTaken } from "../src/run/handback.ts"
-import type { FinishedTicket } from "../src/run/mergeShared.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { resetHandBackText, resetText } from "../src/run/told.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
-import { Git, type Sha } from "../src/services/Git.ts"
+import { Git } from "../src/services/Git.ts"
 import {
   apiErrorResult,
   apiRetry,
@@ -509,34 +507,6 @@ describe("a hand-back past resolve_timeout", () => {
 })
 
 describe("what the worker is told", () => {
-  const ticket: FinishedTicket = {
-    id: "b" as TicketId,
-    title: "Ticket b",
-    branch: "tutti/b",
-    worktree: "/w/b",
-  }
-  const handBack = (mode: HandBack["mode"]): HandBack => ({
-    ticket,
-    mode,
-    prompt: "",
-    what: line``,
-    onto: "1111111111aaaa" as Sha,
-    to: "2222222222bbbb" as Sha,
-    done: Effect.succeed(false),
-  })
-
-  test("the hand-back over names the commit its attempt got to, which git keeps", () => {
-    expect(handBackOver(handBack("fixing"), "20m", "3333333333cccc" as Sha)).toBe(
-      "tutti: the 20m for this hand-back is up, so tutti has stopped you and ends it: it puts tutti/b back at 2222222222, where the check failed, and sets b aside for review. Your attempt so far is commit 3333333333, which git keeps (git show 3333333333). Don't work on it any more: no git commands in /w/b, no ticket changes. Say DONE.",
-    )
-  })
-
-  test("a hand-back taken as it is says where, and what checks it", () => {
-    expect(handBackTaken(handBack("fixing"), "20m", "4444444444dddd" as Sha, check)).toBe(
-      "tutti: the 20m for this hand-back is up, and your fix is committed, so tutti has stopped you and takes tutti/b as it is now, at 4444444444, to check with 'scripts/check-fast.sh' and merge. Leave /w/b as it is: no more commits, no amending, no git commands in it, no ticket changes. Say DONE.",
-    )
-  })
-
   test("the carry-on after the reset names the hand-back, not the ticket", () => {
     expect(resetHandBackText("b" as TicketId, "tutti/b", "fixing", "main")).toBe(
       "tutti: the account's usage limit has reset. Carry on where you left off with the failing check tutti handed back to you, fixing tutti/b so that it passes and committing the fix, as tutti's message asked, not with b itself, which you closed already. If you had finished that before the limit, check that git shows it done and say DONE.",

@@ -15,14 +15,13 @@ import { Effect, Exit } from "effect"
 import fc from "fast-check"
 import {
   close,
-  createExclusive,
   flockExclusiveNonBlocking,
-  isCloseOnExec,
   O,
   openCloexec,
   openUnder,
   unlock,
 } from "../src/native/libc.ts"
+import { isCloseOnExec } from "./libc.ts"
 
 const run = <A, E>(effect: Effect.Effect<A, E>): A => Effect.runSync(effect)
 
@@ -145,7 +144,7 @@ describe("openCloexec", () => {
     const dir = tempDir()
     const path = join(dir, "file")
     const fd = run(openCloexec(path, O.WRONLY | O.CREAT, 0o600))
-    expect(run(isCloseOnExec(fd))).toBe(true)
+    expect(isCloseOnExec(fd)).toBe(true)
     writeSync(fd, "written")
     run(close(fd))
     // Without darwin arm64's padding, the variadic mode is garbage (140 rather than 600).
@@ -201,27 +200,6 @@ describe("flock", () => {
   })
 })
 
-describe("createExclusive", () => {
-  test("creates a file with mode 0600, and fails when it exists", () => {
-    const path = join(tempDir(), "req-1.json")
-    const fd = run(createExclusive(path))
-    expect(run(isCloseOnExec(fd))).toBe(true)
-    run(close(fd))
-    expect(modeOf(path)).toBe(0o600)
-    const error = failure(createExclusive(path))
-    expect(error._tag).toBe("LibcError")
-    expect(error.code).toBe("EEXIST")
-  })
-
-  test("doesn't create through a link", () => {
-    const dir = tempDir()
-    const outside = join(dir, "outside")
-    symlinkSync(outside, join(dir, "req-1.json"))
-    expect(failure(createExclusive(join(dir, "req-1.json"))).code).toBe("EEXIST")
-    expect(() => statSync(outside)).toThrow()
-  })
-})
-
 describe("openUnder", () => {
   /** A worktree with .tutti/run/check.log, a folder outside it, and a link to the worktree. */
   const layout = () => {
@@ -239,7 +217,7 @@ describe("openUnder", () => {
   test("opens a plain path below the directory, close-on-exec", () => {
     const { tree } = layout()
     const fd = run(openUnder(tree, ".tutti/run/check.log", O.WRONLY | O.APPEND))
-    expect(run(isCloseOnExec(fd))).toBe(true)
+    expect(isCloseOnExec(fd)).toBe(true)
     writeSync(fd, " more")
     run(close(fd))
     expect(readFileSync(join(tree, ".tutti/run/check.log"), "utf8")).toBe("inside more")

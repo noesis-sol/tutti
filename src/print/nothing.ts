@@ -2,17 +2,14 @@
 // src/run/nothing.ts's check made, in a rounded box in the theme's styles, or as plain lines, each
 // after the time; and the run's end with it, before its loop, the done line said to the log and
 // the event stream as the loop's end would say it, then the end record.
-import { Console, Effect, Result } from "effect"
+import { Console, Effect } from "effect"
 import { dated, detail, type Line, Log, line } from "../core/log.ts"
 import * as free from "../run/deferredFree.ts"
 import { exitCodes } from "../run/holds.ts"
-import { check, type NothingToRun, type Options } from "../run/nothing.ts"
+import type { NothingToRun } from "../run/nothing.ts"
 import { say } from "../run/say.ts"
-import type { Beads } from "../services/Beads.ts"
 import { EventStream } from "../services/EventStream.ts"
-import type { Git } from "../services/Git.ts"
 import { endRecord } from "../services/Spending.ts"
-import type { Worktrees } from "../services/Worktrees.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
 import { boxed, type Look, paint, seg } from "../ui/line.tsx"
 import { boxPad } from "../ui/spacing.ts"
@@ -248,22 +245,6 @@ export const report = (
   })
 
 /**
- * Whether the run `options` describes has nothing to run, which it then reports (see `report`):
- * the run ends there, with exit code 0 and no dashboard. What the check can't read, the loop reads
- * again and reports, so a bd failure is something to run.
- */
-export const nothingToRun = (
-  options: Options,
-  output: Output,
-): Effect.Effect<boolean, never, Beads | Git | Worktrees | Log | EventStream> =>
-  Effect.gen(function* () {
-    const n = yield* Effect.result(check(options))
-    if (Result.isFailure(n) || n.success === null) return false
-    yield* report(n.success, output)
-    return true
-  })
-
-/**
  * Ends the run before its loop with the message `n`, as main does: reported (see `report`), then
  * the end record with exit code 0, which it gives back.
  */
@@ -275,18 +256,4 @@ export const endWith = (
     yield* report(n, output)
     yield* (yield* EventStream).emit(yield* endRecord(exitCodes.ok))
     return exitCodes.ok
-  })
-
-/**
- * Ends the run before its loop when it has nothing to run (see `endWith`), giving back its exit
- * code; null when the run has something to run, or bd can't say, and goes on to its loop.
- */
-export const endIfNothing = (
-  options: Options,
-  output: Output,
-): Effect.Effect<number | null, never, Beads | Git | Worktrees | Log | EventStream> =>
-  Effect.gen(function* () {
-    const n = yield* Effect.result(check(options))
-    if (Result.isFailure(n) || n.success === null) return null
-    return yield* endWith(n.success, output)
   })

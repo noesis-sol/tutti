@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Exports only tests used are gone from `src/` (tutti-f241): `checkoutChanges`, `nothingToRun`, `endIfNothing`, `handBackTaken`, `handBackOver`, `holdsWorker`, `isFinal`, `builtInNames`, `providerProblems` and `createExclusive` are deleted, their tests reading what the product calls (`check` and `endWith`, `keepsWorker`, `organProvider`); `undated` moves to `src/testing/Log.ts`, and `libcPath` and `isCloseOnExec` to `test/libc.ts`.
 - A card's action line is drawn a step brighter (§ 7.2, § 7.11; `src/ui/Card.tsx`; tutti-d9j1): `▸ DONE · vitest tests ━━━───── ≈38%` was faint throughout, close to the background in many terminals, its filled and empty cells told apart by glyph alone. The action, the ` · `, the suite and the count are now `quiet`, the bar's filled cells in the text's colour and its empty ones faint; a denied action stays `notice`. `test/check-progress.test.tsx` and `test/full-check-box.test.tsx` cover it.
 
 ## [0.9.1] - 2026-11-27

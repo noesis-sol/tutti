@@ -71,7 +71,7 @@ describe("Python f-strings", () => {
   })
 })
 
-describe("reading any text", () => {
+describe("reading any text of heredocs, characters and f-strings", () => {
   const piece = fc.oneof(
     fc.string(),
     fc.constantFrom(

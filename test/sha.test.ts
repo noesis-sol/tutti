@@ -1,15 +1,13 @@
 // A commit's hash as a type of its own (Git.ts's Sha): made where git gives it or Sha.parse reads
 // it, and undefined, not "", where git couldn't say. The marks in state.json leave out a commit not
-// known, and read the "" an earlier run wrote as none; the lines and prompts say nothing of it.
+// known, and read the "" an earlier run wrote as none; the lines say nothing of it.
 
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import fc from "fast-check"
-import { line } from "../src/core/log.ts"
 import { aheadJson, rebasedAheadOf } from "../src/run/ahead.ts"
 import { attemptAt, leftAt } from "../src/run/branch.ts"
 import { markUnchecked, uncheckedKey, uncheckedOf } from "../src/run/check.ts"
-import { type HandBack, handBackOver, handBackTaken } from "../src/run/handback.ts"
 import type { TicketId } from "../src/services/Beads.ts"
 import { Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
@@ -69,28 +67,6 @@ describe("the marks in state.json", () => {
 })
 
 describe("what is said of a commit git couldn't say", () => {
-  const handBack: HandBack = {
-    ticket: { id: "b" as TicketId, title: "Ticket b", branch: "tutti/b", worktree: "/w/b" },
-    mode: "fixing",
-    prompt: "",
-    what: line``,
-    onto: "1111111111aaaa" as Sha,
-    to: "2222222222bbbb" as Sha,
-    done: Effect.succeed(false),
-  }
-
-  test("a hand-back taken as it is names no commit", () => {
-    const told = handBackTaken(handBack, "20m", undefined, "scripts/check-fast.sh")
-    expect(told).toContain("takes tutti/b as it is now, to check with 'scripts/check-fast.sh'")
-    expect(told).not.toContain(" at ")
-  })
-
-  test("a hand-back over with nothing committed keeps none of it", () => {
-    expect(handBackOver(handBack, "20m", undefined)).toContain(
-      "Nothing of your attempt was committed, so none of it is kept.",
-    )
-  })
-
   test("a branch not put back is left where it is, its worker's attempt not named", () => {
     expect(leftAt(undefined)).toBe("where it is")
     expect(leftAt(hash)).toBe("at 0123456789")

@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Result } from "effect"
 import { TestClock } from "effect/testing"
-import { holdsWorker, keepsWorker, Ledger } from "../src/run/ledger.ts"
+import { keepsWorker, Ledger } from "../src/run/ledger.ts"
 import { finished } from "../src/run/notices.ts"
 import {
   type Activity,
@@ -295,21 +295,15 @@ describe("the facts each phase.ts set and switch was", () => {
     ])
   })
 
-  test("holdsWorker: a card, or set aside after a failed check", () => {
-    for (const phase of variants) {
-      const before = hasCard(phase) || (phase._tag === "Review" && phase.why === "CHECKS_FAILED")
-      expect([phaseLabel(phase), holdsWorker(phase)]).toEqual([phaseLabel(phase), before])
-    }
-  })
-
-  test("keepsWorker: holdsWorker, or Blocked on a conflict whose hand-back waits", () => {
+  test("keepsWorker: a card, set aside after a failed check, or Blocked on a conflict whose hand-back waits", () => {
     for (const handBack of [false, true]) {
       for (const phase of variants) {
+        const holds = hasCard(phase) || (phase._tag === "Review" && phase.why === "CHECKS_FAILED")
         const waits = handBack && phase._tag === "Blocked" && phase.why === "MERGE_CONFLICT"
         expect([phaseLabel(phase), handBack, keepsWorker({ phase, handBack })]).toEqual([
           phaseLabel(phase),
           handBack,
-          holdsWorker(phase) || waits,
+          holds || waits,
         ])
       }
     }

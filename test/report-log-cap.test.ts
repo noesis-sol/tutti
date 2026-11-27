@@ -6,7 +6,7 @@ import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { stamp } from "../src/core/localTime.ts"
-import { detail, Log, line, start, undated } from "../src/core/log.ts"
+import { detail, Log, line, start } from "../src/core/log.ts"
 import type { Section } from "../src/organs/evidence.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { cappedLog, gather, logCap } from "../src/run/report.ts"
@@ -17,7 +17,7 @@ import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as beadsLayer } from "../src/testing/Beads.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as gitLayer, Repository } from "../src/testing/Git.ts"
-import { layer as logLayer } from "../src/testing/Log.ts"
+import { layer as logLayer, undated } from "../src/testing/Log.ts"
 
 const at = new Date(2026, 9, 17, 9, 5, 3).getTime()
 const dated = (text: string) => `${stamp(at)} ${text}`

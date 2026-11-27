@@ -249,9 +249,6 @@ const builtInFiles: ReadonlyMap<string, ColourScheme> = new Map([
   ["tutti", decodeBuiltIn(tuttiFile)],
 ])
 
-/** The names no file can take. */
-export const builtInNames: ReadonlyArray<string> = [...builtInFiles.keys()]
-
 /** The default scheme, the built-in tutti. */
 export const tuttiScheme: Scheme = Result.getOrThrow(
   over(builtInFiles.get("tutti") as ColourScheme, null),

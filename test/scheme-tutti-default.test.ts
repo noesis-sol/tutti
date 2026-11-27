@@ -7,7 +7,7 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Effect } from "effect"
 import { noFlags } from "../src/project/flags.ts"
-import { builtInNames, loadScheme, type SchemeFolders, tuttiScheme } from "../src/project/scheme.ts"
+import { loadScheme, type SchemeFolders, tuttiScheme } from "../src/project/scheme.ts"
 import { load } from "../src/run/resolveConfig.ts"
 
 const emptyFolders = (): SchemeFolders => {
@@ -35,8 +35,7 @@ const loadConfig = (project: string, xdg: string) =>
   )
 
 describe("the built-in scheme", () => {
-  test("is tutti, and the only one", () => {
-    expect(builtInNames).toEqual(["tutti"])
+  test("is tutti", () => {
     expect(tuttiScheme.name).toBe("tutti")
     expect(new Set(Object.values(tuttiScheme.from))).toEqual(new Set(["tutti"]))
   })
