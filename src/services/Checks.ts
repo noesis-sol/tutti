@@ -72,6 +72,18 @@ export const suiteMarker = "SUITE:"
 /** Starts the line a check may print as it goes, `PROGRESS: 312/848` (§ 3.3). */
 export const progressMarker = "PROGRESS:"
 
+// shellCouldNotRun matches a line, trimmed, in which a shell says it could not find or execute a
+// command: dash's `sh: 1: scripts/check-own.sh: not found`, bash's `command not found`, `No such
+// file or directory`, `Permission denied`, `cannot execute: …` and `Is a directory`.
+const shellCouldNotRun =
+  /: ((command )?not found|No such file or directory|Permission denied|Is a directory)$|: cannot execute\b/
+
+/** Whether `trimmed` is one of the lines a check prints of itself: SUITE:, PROGRESS: or FLAKY:. */
+const isMarkerLine = (trimmed: string): boolean =>
+  trimmed.startsWith(suiteMarker) ||
+  trimmed.startsWith(progressMarker) ||
+  trimmed.startsWith(flakyPrefix)
+
 /** How far the suite running has got, in whatever it counts: its PROGRESS: line's two numbers. */
 export interface CheckProgress {
   readonly done: number
@@ -261,8 +273,10 @@ export class CheckOutput {
   private suite: string | null = null
   /** The latest PROGRESS: line of the suite running, forgotten at the next SUITE: line. */
   private progress: CheckProgress | null = null
-  /** The first line printed that isn't blank, trimmed; null until there is one. */
+  /** The first line printed that isn't blank nor a marker line, trimmed; null until there is one. */
   private first: string | null = null
+  /** The last line printed in which a shell says it could not run a command, trimmed; null for none. */
+  private couldNotRun: string | null = null
 
   /** Takes the next chunk printed on `from`. */
   write(chunk: Uint8Array, from: "stdout" | "stderr" = "stdout"): void {
@@ -292,9 +306,15 @@ export class CheckOutput {
     return { suite: this.suite, progress: this.progress }
   }
 
-  /** The first line printed that isn't blank, trimmed and cut to saidWidth; null for none. */
-  firstLine(): string | null {
-    return this.first === null ? null : (boundLines([this.first], 1)[0] ?? null)
+  /**
+   * Why a check that exited with one of notRunCodes could not be run: the last line in which a
+   * shell says it could not find or execute a command, else the first line that isn't blank nor a
+   * SUITE:, PROGRESS: or FLAKY: line (a script that printed `SUITE: check` before a command in it
+   * was missing); trimmed and cut to saidWidth, null for none.
+   */
+  notRunReason(): string | null {
+    const reason = this.couldNotRun ?? this.first
+    return reason === null ? null : (boundLines([reason], 1)[0] ?? null)
   }
 
   /** What is said of the output taken so far. */
@@ -324,7 +344,11 @@ export class CheckOutput {
     buffer.length = 0
     this.keepTail(raw)
     const line = raw.replace(/\r+$/, "")
-    if (this.first === null && line.trim() !== "") this.first = line.trim()
+    const trimmed = line.trim()
+    if (trimmed !== "" && !isMarkerLine(trimmed)) {
+      if (this.first === null) this.first = trimmed
+      if (shellCouldNotRun.test(trimmed)) this.couldNotRun = trimmed
+    }
     this.scanFailure(line)
     if (line.startsWith(flakyPrefix)) {
       this.flakyCount++
@@ -332,7 +356,6 @@ export class CheckOutput {
         this.flaky.push(line.slice(flakyPrefix.length).trim())
       }
     }
-    const trimmed = line.trim()
     if (trimmed.startsWith(suiteMarker)) {
       const name = trimmed.slice(suiteMarker.length).trim().split(/\s+/).join(" ")
       if (name !== "") {
@@ -552,7 +575,8 @@ export const notRunCodes: ReadonlyArray<number> = [126, 127]
 /**
  * What a check that ran to its end gives: CheckPassed when it exited with 0; CheckNotRun when it
  * exited with one of notRunCodes, as its command could not be found or executed, its reason the
- * first line it printed (the shell's `sh: scripts/check-fast.sh: not found`); else CheckFailed,
+ * line in which the shell says so (`sh: scripts/check-fast.sh: not found`; CheckOutput's
+ * notRunReason); else CheckFailed,
  * with what `output` said of what it printed. A suite inside it that exits 127 while the command
  * goes on to exit with another code is that code's. Takes the last lines printed without a newline
  * first.
@@ -566,7 +590,7 @@ export const resultOf = (
 ): Effect.Effect<CheckPassed, CheckFailed | CheckNotRun> => {
   output.end()
   if (notRunCodes.includes(exitCode)) {
-    const reason = output.firstLine() ?? `it exited with ${exitCode}, printing nothing`
+    const reason = output.notRunReason() ?? `it exited with ${exitCode}, printing nothing`
     return Effect.fail(new CheckNotRun({ check, command, reason }))
   }
   if (exitCode !== 0) {
