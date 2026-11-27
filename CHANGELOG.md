@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A card's action line is drawn a step brighter (§ 7.2, § 7.11; `src/ui/Card.tsx`; tutti-d9j1): `▸ DONE · vitest tests ━━━───── ≈38%` was faint throughout, close to the background in many terminals, its filled and empty cells told apart by glyph alone. The action, the ` · `, the suite and the count are now `quiet`, the bar's filled cells in the text's colour and its empty ones faint; a denied action stays `notice`. `test/check-progress.test.tsx` and `test/full-check-box.test.tsx` cover it.
+
 ## [0.9.1] - 2026-11-27
 
 - The ticket `tutti init` files to set the project's checks up, labelled `tutti-tests` and `solo`, runs first (§ 5 item 5, § 8.3; `src/run/solo.ts`, `src/run/scope.ts`; tutti-z96d): it was P1, and older P1 tickets started before it, merged on checks nobody had shown to pass. A run's queue now puts it ahead of every other ticket whatever their priority, and says `<id> sets the project's checks up: it runs first, alone` under its dispatch line; its description says the same. A test-work ticket that isn't solo takes its turn by priority. `test/checks-first.test.ts` covers it.

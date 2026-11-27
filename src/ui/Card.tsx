@@ -59,7 +59,7 @@ import {
   spinnerGap,
   wordSpace,
 } from "./spacing.ts"
-import { filledCells, gauge } from "./TitleLine.tsx"
+import { filledCells, gaugeCells } from "./TitleLine.tsx"
 import type { Theme } from "./theme.ts"
 import { lookOf, motionTones } from "./tone.ts"
 import { useNow, useSpinner } from "./useRunView.ts"
@@ -228,14 +228,21 @@ const checkLine = (
 }
 
 /**
- * What a check running says of itself (§ 7.2): the suite it is in, the bar it fills with done over
- * total, and the count beside it, `test ━━━━──── 312/848`, everything faint; the estimate from its
- * recent passes where its suite counts nothing, `≈23%`, and the suite's name alone where there is
- * no bar to draw. Nothing where it has said nothing at all.
+ * What a check running says of itself on a card (§ 7.2): the suite it is in, the bar it fills with
+ * done over total, and the count beside it, `test ━━━━──── 312/848`, the suite and the count quiet,
+ * the bar's filled cells in the text's colour and the rest faint; the estimate from its recent
+ * passes where its suite counts nothing, `≈23%`, and the suite's name alone where there is no bar
+ * to draw. Nothing where it has said nothing at all.
  */
 export const checkSegments = (shown: CheckShown, theme: Theme): Segments => {
-  const { dim } = theme.styles
-  return checkLine(shown, dim, (fill) => [seg(gauge(fill.filled), dim)])
+  const { dim, quiet } = theme.styles
+  return checkLine(shown, quiet, (fill) => {
+    const filled = filledCells(fill.filled, gaugeCells)
+    return [
+      seg(marks.gaugeFull.repeat(filled)),
+      seg(marks.gaugeEmpty.repeat(gaugeCells - filled), dim),
+    ]
+  })
 }
 
 /** The most cells the box with no worker draws a check's bar in: as one bar still, at 180 columns. */
@@ -267,23 +274,24 @@ export const boxCheckSegments = (shown: CheckShown, theme: Theme, room: number):
 const checkBeside = (card: Card, theme: Theme): Segments => {
   if (card.check === undefined) return []
   const shown = checkSegments(card.check, theme)
-  return shown.length === 0 ? [] : [seg(separator, theme.styles.dim), ...shown]
+  return shown.length === 0 ? [] : [seg(separator, theme.styles.quiet), ...shown]
 }
 
 /**
- * The card's action line: the phase's, else its worker's latest action behind `▸`; null for none.
- * While its merge check runs, where it has got to is beside the action (§ 7.2).
+ * The card's action line, quiet: the phase's, else its worker's latest action behind `▸`, a denied
+ * one deferred; null for none. While its merge check runs, where it has got to is beside the action
+ * (§ 7.2).
  */
 export const actionLine = (card: Card, theme: Theme): Segments | null => {
   const { styles } = theme
   const beside = checkBeside(card, theme)
-  if (card.action !== null) return [seg(cardIndent), seg(card.action, styles.dim), ...beside]
+  if (card.action !== null) return [seg(cardIndent), seg(card.action, styles.quiet), ...beside]
   if (card.latest === null) {
     return beside.length === 0 ? null : [seg(cardIndent), ...beside.slice(1)]
   }
   return [
     seg(cardIndent),
-    seg(`${marks.latest} ${card.latest.text}`, card.latest.denied ? styles.deferred : styles.dim),
+    seg(`${marks.latest} ${card.latest.text}`, card.latest.denied ? styles.deferred : styles.quiet),
     ...beside,
   ]
 }

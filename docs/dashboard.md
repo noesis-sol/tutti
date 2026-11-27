@@ -339,7 +339,8 @@ counts nothing, and a check that counts nothing at all, fills the bar by the tim
 against the median of that check's recent passes, marked as an estimate, `tsc ━━━━──── ≈50%`; with
 no pass to go by there is no bar. A spec run's checks gate, before its tickets start, shows the
 same under the title `Starting the run`. A ticket's merge check shows its 8-cell bar beside its
-card's action, faint, `running the check on main · test ━━────── 212/848`. The environment
+card's action, `running the check on main · test ━━────── 212/848`, in a quiet grey a step
+brighter than faint, its filled cells in the text's colour and the rest faint. The environment
 probe has a card of its own, labelled `probe`. Elapsed times update every 3 seconds.
 
 ### Attention cards

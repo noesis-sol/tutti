@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { TextAttributes } from "@opentui/core"
 import { Clock, Duration, Effect, Fiber } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
@@ -59,6 +60,7 @@ import { renderFrame } from "./render.ts"
 const themeOf = (appearance: Appearance) =>
   makeTheme(tuttiScheme, { appearance, depth: "truecolor", noColor: false })
 const theme = themeOf("dark")
+const noColor = { appearance: "dark", depth: "truecolor", noColor: true } as const
 
 const text = (segments: Segments) => segments.map((each) => each.text).join("")
 
@@ -377,6 +379,44 @@ describe("the bar on the dashboard", () => {
         actionLine({ ...card, check: shownCheck({ suite: null, progress: null }) }, theme) ?? [],
       ),
     ).toBe("   running the check on main")
+  })
+
+  test("a card's check line is quiet, its bar's filled cells in the text's colour", () => {
+    const card = {
+      ticket: "t-1" as TicketId,
+      label: "t-1",
+      title: "Fix it",
+      worker: 1,
+      phase: null,
+      state: null,
+      status: "working",
+      tone: "live" as const,
+      motion: "working" as const,
+      since: 0,
+      action: null,
+      latest: { text: "DONE", denied: false },
+      steered: false,
+      requests: [],
+      check: shownCheck({ suite: "vitest tests", progress: { done: 3, total: 8 } }),
+    }
+    for (const each of [theme, makeTheme(tuttiScheme, noColor)]) {
+      const line = actionLine(card, each) ?? []
+      expect(text(line)).toBe("   ▸ DONE · vitest tests ━━━───── 3/8")
+      const lookOf = (start: string) => line.find((part) => part.text.startsWith(start))?.look
+      const { dim, quiet } = each.styles
+      expect([lookOf("▸"), lookOf(" · "), lookOf("vitest"), lookOf("3/8")]).toEqual([
+        quiet,
+        quiet,
+        quiet,
+        quiet,
+      ])
+      expect(lookOf("━")).toBeNull()
+      expect(lookOf("─")).toBe(dim)
+      // Under NO_COLOR too, where quiet is faint, the empty cells are faint and the filled ones not.
+      expect(dim.attributes & TextAttributes.DIM).toBe(TextAttributes.DIM)
+    }
+    const denied = actionLine({ ...card, latest: { text: "Bash", denied: true } }, theme) ?? []
+    expect(denied.find((part) => part.text.startsWith("▸"))?.look).toBe(theme.styles.deferred)
   })
 
   test("a suite's name is sanitised: a project's script wrote it", () => {

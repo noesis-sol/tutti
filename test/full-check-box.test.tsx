@@ -115,10 +115,9 @@ describe("the box's bar", () => {
     expect(lookOf("─")).toBe(theme.styles.dim)
   })
 
-  test("a card's merge check keeps its 8 faint cells", () => {
+  test("a card's merge check keeps its 8 cells", () => {
     const segments = checkSegments({ ...shownAt(424), name: "merge check" }, theme)
     expect(text(segments)).toBe("test ━━━━──── 424/848")
-    expect(segments.every((each) => each.text === " " || each.look === theme.styles.dim)).toBe(true)
   })
 
   test("never runs past its room where the suite and count fit, and keeps the count whole", () => {

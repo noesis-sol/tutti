@@ -73,7 +73,7 @@ const bannerText = (
 }
 
 /** How many cells a window's gauge has. */
-const gaugeCells = 8
+export const gaugeCells = 8
 
 /** How many of a gauge's `cells` `utilization` fills, to the nearest. */
 export const filledCells = (utilization: number, cells: number): number =>
