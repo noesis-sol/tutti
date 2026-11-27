@@ -1,8 +1,8 @@
 // tutti init's own command end to end (§ 7): `bun src/main.ts init` without a terminal, which asks
 // nothing and takes the flags, in a temp repository on real git with a fake bd on the PATH. Its
-// refusals (in a linked worktree, flag problems; outside a repository is test/startup.test.ts'
-// and test/smoke.test.ts'), --update in a set-up project, and a whole init's summary, a failing
-// bd init's included, through runInit and the live machine it runs bd on.
+// refusals (outside a repository, in a linked worktree, flag problems), --update in a set-up
+// project, and a whole init's summary, a failing bd init's included, through runInit and the live
+// machine it runs bd on.
 import { describe, expect, setDefaultTimeout } from "bun:test"
 import {
   existsSync,
@@ -90,6 +90,18 @@ const setupFiles = [
 ]
 
 describe("tutti init's refusals", () => {
+  slow.test("outside a git repository: its line, exit 2, nothing run", async () => {
+    const on = machine()
+    const folder = join(on.root, "not-a-repository")
+    mkdirSync(folder)
+    const { code, stdout, stderr } = await tuttiInit(on, folder)
+    expect(code).toBe(2)
+    expect(stdout).toBe("")
+    expect(stderr).toBe("tutti init: Not inside a git repository: cd into the project first.\n")
+    expect(bdCalls(on)).toEqual([])
+    expect(existsSync(join(folder, ".tutti"))).toBe(false)
+  })
+
   slow.test("in a linked worktree: exit 2, and to run it from the main checkout", async () => {
     const on = machine()
     const repo = makeRepo()

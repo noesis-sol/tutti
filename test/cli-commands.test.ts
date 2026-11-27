@@ -281,6 +281,13 @@ describe("tutti answer", () => {
     ])
     expect(failed).toBe(true)
     expect(existsSync(join(dir, answerFile("r1")))).toBe(false)
+    // Without it, the wait is § 4.5's 10 s.
+    const wait = Effect.runSync(
+      Effect.gen(function* () {
+        return yield* TakeWithin
+      }),
+    )
+    expect(Duration.toSeconds(wait)).toBe(10)
   })
 
   test("an answer the run refuses: it fails, with the run's reason", async () => {
