@@ -33,10 +33,7 @@ import { warn } from "./say.ts"
 import { ledgerView } from "./scope.ts"
 import type { UsageView } from "./usageLimit.ts"
 
-/** The label of a ticket that runs alone (§ 2 Solo). */
-export const soloLabel = "solo"
-
-export const isSolo = (issue: Pick<Issue, "labels">): boolean => issue.labels.includes(soloLabel)
+export { isSolo, soloLabel } from "./solo.ts"
 
 /** What holds a ticket back, and why, as the log's `… waits: <text>` or `skipping …: <text>` says. */
 export interface Held {

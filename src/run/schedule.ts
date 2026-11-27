@@ -1,6 +1,8 @@
 // The scheduler (§ 5 item 5): it reads bd ready within the run's scope (scope.ts), enters each
 // candidate in the ledger as Queued, and dispatches the highest-priority Queued ticket to Working
-// while a slot is free, handing it to its per-ticket fiber through Start. A slot is taken for as
+// while a slot is free, handing it to its per-ticket fiber through Start; the ticket init filed to
+// set the project's checks up (tutti-tests and solo, solo.ts) is ahead of every other, whatever its
+// priority, as every merge's check stands on it. A slot is taken for as
 // long as that fiber runs. Free slots are filled at once (as the run starts, and as a ticket's
 // fiber ends) and on the ready poll, every 30 s.
 //
@@ -66,7 +68,7 @@ import { slotsNow } from "./schedule/slots.ts"
 import { reached, scheduling } from "./schedule/state.ts"
 import { noneVendored, readVendored } from "./vendored.ts"
 
-export { dispatchLine, footprintLine } from "./schedule/dispatch.ts"
+export { checksFirstLine, dispatchLine, footprintLine } from "./schedule/dispatch.ts"
 export {
   beadsOutage,
   busyPoll,

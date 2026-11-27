@@ -42,7 +42,7 @@ import {
   verifierSection,
 } from "../project/templateFiles.ts"
 import verifierTemplate from "../project/templates/verifier.md" with { type: "text" }
-import { soloLabel } from "../run/holds.ts"
+import { soloLabel, testWorkLabel } from "../run/solo.ts"
 import { Beads, beadsWhy, type TicketId } from "../services/Beads.ts"
 import { dollars, type Total } from "../services/OrganCost.ts"
 import { sanitizeLine } from "../text/sanitize.ts"
@@ -728,8 +728,8 @@ export const applyVerifier = (
 
 // --- The test work ---
 
-/** Labels the tickets init files for the project's tests: init run again finds those still open. */
-export const testWorkLabel = "tutti-tests"
+// Labels the tickets init files for the project's tests: init run again finds those still open.
+export { testWorkLabel }
 
 /** A ticket init files for the project's tests. */
 export interface TestTicket {
@@ -857,7 +857,7 @@ export const testWork = (
         labels: [testWorkLabel, soloLabel],
         parent: 0,
         blockedBy: [],
-        description: `${runnersAsWritten(onDisk, "until this ticket is done, nothing merged is checked.")} It runs first and alone (P1, solo), so nothing merges meanwhile.\n\nUse ${skill}, every section:\n- set up a harness and smoke tests in the project's own frameworks, added to the runners;\n- get both runners passing on ${base};\n- map the features in FEATURES.md;\n- file one P3 ticket per untested area, under this ticket's epic.`,
+        description: `${runnersAsWritten(onDisk, "until this ticket is done, nothing merged is checked.")} It runs first and alone (tutti-tests, solo: a run starts it ahead of every other ticket, whatever their priority), so nothing merges meanwhile.\n\nUse ${skill}, every section:\n- set up a harness and smoke tests in the project's own frameworks, added to the runners;\n- get both runners passing on ${base};\n- map the features in FEATURES.md;\n- file one P3 ticket per untested area, under this ticket's epic.`,
         acceptance: `${runners} run the new suites and exit 0 on ${base}; FEATURES.md maps the features; each untested area has a P3 ticket under the epic.`,
       },
     ]
@@ -870,7 +870,7 @@ export const testWork = (
     labels: [testWorkLabel, soloLabel],
     parent: null,
     blockedBy: [],
-    description: `${runnersAsWritten(onDisk, "nothing merged is checked.")} Every merge runs ${fastRunner}, so it runs first and alone (P1, solo).\n\nRun ${fastRunner} and fix what fails; once it passes, run it twice more, to catch a test that passes only sometimes. Then run ${fullRunner} once, as a run does at its end, fixing what fails, and again only where a fix since touched what it runs. A failing test whose fix isn't trivial and plainly right is skipped with its framework's own skip, naming in the skip's reason a bug ticket filed for it. Record how long each runner takes in this ticket's notes.`,
+    description: `${runnersAsWritten(onDisk, "nothing merged is checked.")} Every merge runs ${fastRunner}, so it runs first and alone (tutti-tests, solo: a run starts it ahead of every other ticket, whatever their priority).\n\nRun ${fastRunner} and fix what fails; once it passes, run it twice more, to catch a test that passes only sometimes. Then run ${fullRunner} once, as a run does at its end, fixing what fails, and again only where a fix since touched what it runs. A failing test whose fix isn't trivial and plainly right is skipped with its framework's own skip, naming in the skip's reason a bug ticket filed for it. Record how long each runner takes in this ticket's notes.`,
     acceptance: `${fastRunner} exits 0 on ${base} three times running, and ${fullRunner} once; how long each takes is in the notes.`,
   }
   if (!choice.fileUntested) return [pass]

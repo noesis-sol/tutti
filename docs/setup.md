@@ -227,6 +227,13 @@ lines; `Ctrl+D` cancels.
     runner that is missing is written checking nothing, one there is kept as it is, and no ticket
     is filed.
 
+  The ticket that sets the tests up (from scratch) or gets the runners passing (with the suites
+  found) is labelled `tutti-tests` and `solo`: every merge runs `scripts/check-fast.sh`, so the
+  next run starts it first, ahead of every other ticket whatever their priority, and nothing else
+  beside it, saying `<id> sets the project's checks up: it runs first, alone` under its dispatch
+  line. The tickets for the untested areas, `tutti-tests` but not `solo`, take their turn by
+  priority.
+
   Where it files the test work, `init` lists the features map the skill writes (`test/FEATURES.md`,
   or where the project has it) in the settings' `queue.shared_files`, as nearly every ticket keeps
   it current: two tickets touching only it start side by side unwarned. It lists a map already there too, while

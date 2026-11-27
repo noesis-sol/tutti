@@ -12,6 +12,7 @@ import {
   type TicketId,
 } from "../services/Beads.ts"
 import type { State } from "./ledger.ts"
+import { setsChecksUp } from "./solo.ts"
 
 /** The issue type that is never dispatched, whatever `exclude_types` says (§ 2 Ticket). */
 export const epicType = "epic"
@@ -30,10 +31,16 @@ export const excludedTypes = (filter: Filter): ReadonlyArray<string> =>
 export const takes = (filter: Filter, issue: Issue): boolean =>
   !issue.labels.includes(HumanLabel) && !excludedTypes(filter).includes(issue.type)
 
-/** The issue's priority for sorting: bd's 0 to 4, and after them an issue bd gives none. */
-const rank = (issue: Issue): number => issue.priority ?? 9
+/**
+ * The issue's priority for sorting: bd's 0 to 4, and after them an issue bd gives none; a ticket
+ * that sets the project's checks up before them all.
+ */
+const rank = (issue: Issue): number => (setsChecksUp(issue) ? -1 : (issue.priority ?? 9))
 
-/** `issues` highest priority first, keeping bd's order among equals. */
+/**
+ * `issues` highest priority first, a ticket that sets the project's checks up ahead of them all,
+ * keeping bd's order among equals.
+ */
 export const byPriority = (issues: ReadonlyArray<Issue>): ReadonlyArray<Issue> =>
   issues
     .map((issue, i) => [issue, i] as const)

@@ -792,6 +792,9 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
   a file every other ticket touches, starts only when nothing else runs, and nothing starts beside it.
   When it is next while others run, nothing new starts behind it:
   `solo ticket <id> is next: no new tickets start until the running ones finish, then it runs alone`.
+  The one `tutti init` files to set the project's checks up, labelled `tutti-tests` and `solo`, is
+  also first in line, ahead of every other ticket whatever their priority, as every merge's check
+  stands on it: `<id> sets the project's checks up: it runs first, alone`.
 - **`--limit`** counts the tickets this run starts, with no limit unless it is given; workers carried
   over from the last run count toward nothing. Once reached, the run finishes what it has and ends
   `LIMIT_REACHED`. Without one, the dispatch lines say `[n]` rather than `[n/limit]`, and the run ends

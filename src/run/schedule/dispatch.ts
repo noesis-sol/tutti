@@ -9,6 +9,7 @@ import { type Footprint, footprintOf, showFootprint } from "../footprint.ts"
 import { isSolo, takesBack, takesNew } from "../holds.ts"
 import { Move, TicketPhase } from "../phase.ts"
 import type { Said as SaidRecord } from "../say.ts"
+import { setsChecksUp } from "../solo.ts"
 import { issueOf, known } from "./place.ts"
 import { recorded, remember, soloState } from "./queue.ts"
 import { claimRoom, current, mergingIn, occupy, slotFree } from "./slots.ts"
@@ -38,6 +39,13 @@ export const footprintLine = (id: TicketId, fp: Footprint): Line =>
   detail`${id} footprint: ${showFootprint(fp)}`
 
 /**
+ * `<id> sets the project's checks up: it runs first, alone`, under the dispatch's line of the
+ * ticket init filed to set the checks up, which the queue puts ahead of every other (solo.ts).
+ */
+export const checksFirstLine = (id: TicketId): Line =>
+  detail`${id} sets the project's checks up: it runs first, alone`
+
+/**
  * Whether a dispatch may start now: a slot is free, and, after `beforeStart`, the gate lets a
  * ticket start and the machine has room for it (claimRoom).
  */
@@ -52,8 +60,9 @@ export const mayStart = (sched: Scheduling): Effect.Effect<boolean> =>
 /**
  * Dispatches `issue`: counts it toward --limit, moves it to Working with its dispatch record (the
  * queue's counts among `ids` with it, its playbook's lessons, and the follow-up it is of a scored
- * ticket), logs its footprint line, and runs its fiber in a slot (occupy). False, nothing counted,
- * when the ledger refuses the move (a PHASE_BUG, which it logged).
+ * ticket), logs checksFirstLine for the ticket that sets the checks up and its footprint line, and
+ * runs its fiber in a slot (occupy). False, nothing counted, when the ledger refuses the move (a
+ * PHASE_BUG, which it logged).
  */
 export const dispatch = (
   sched: Scheduling,
@@ -99,6 +108,7 @@ export const dispatch = (
       yield* Ref.update(sched.slots, (s) => ({ ...s, started: s.started - 1 }))
       return false
     }
+    if (setsChecksUp(issue)) yield* sched.logs.write(checksFirstLine(issue.id))
     if (footprint !== undefined) yield* sched.logs.write(footprintLine(issue.id, footprint))
     yield* occupy(sched, issue.id, options.start.start(issue), issue, true)
     return true

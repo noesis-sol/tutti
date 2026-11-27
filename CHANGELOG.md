@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The ticket `tutti init` files to set the project's checks up, labelled `tutti-tests` and `solo`, runs first (§ 5 item 5, § 8.3; `src/run/solo.ts`, `src/run/scope.ts`; tutti-z96d): it was P1, and older P1 tickets started before it, merged on checks nobody had shown to pass. A run's queue now puts it ahead of every other ticket whatever their priority, and says `<id> sets the project's checks up: it runs first, alone` under its dispatch line; its description says the same. A test-work ticket that isn't solo takes its turn by priority. `test/checks-first.test.ts` covers it.
+
 ## [0.9.0] - 2026-11-18
 
 - **Linear sync** (the epic tutti-qatu; § 5.2; [docs/linear.md](docs/linear.md)), optional and off unless the settings hold a `linear` block: file work in a Linear team, move an issue to Todo to hand it to tutti, and watch it move to In Progress and Done as tutti works it. Built on Beads' own sync, `bd linear` (bd 1.3.0 or later). `tutti linear setup` and `tutti init`'s *Sync tickets with Linear?* turn it on; a run pulls the issues it may take as it starts and every `pull_every`, never a ticket it holds, pushes the status of linked tickets and the tickets it files (not the maintainer's questions), shows each ticket's Linear key and counts what the sync did; a failed pull or push fails nothing. The key comes only from the environment (`LINEAR_API_KEY`) and reaches no worker, check or organ. `--no-linear` runs once without it; removing the block turns it off.
