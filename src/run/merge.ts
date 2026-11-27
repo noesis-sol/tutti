@@ -52,11 +52,13 @@
 // that fails on the branch, rebased or on top of the base already (checkback.ts): one that can't be
 // handed back is set aside for review, kept to be checked once more once the base moves on
 // (recheck.ts).
+// A check, or the setup before it, that could not be run (its command not found or not
+// executable) is neither: it checked nothing of the ticket, which waits in line (notRun).
 import { Data, Effect, Result } from "effect"
 import { AppConfig } from "../core/AppConfig.ts"
-import { branchOn, detail, type Line, Log, line, Tag, tagged } from "../core/log.ts"
+import { branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "../core/log.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
-import { checksNow } from "../services/Checks.ts"
+import { type CheckNotRun, checksNow } from "../services/Checks.ts"
 import { EventStream } from "../services/EventStream.ts"
 import {
   Git,
@@ -133,7 +135,7 @@ import {
   unchanged,
 } from "./mergeShared.ts"
 import { Detail, Move } from "./phase.ts"
-import { info, type Said } from "./say.ts"
+import { info, type Said, warn } from "./say.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
 import { fileList, setUp } from "./setup.ts"
 import { forgetConflictHead, keepConflictHead } from "./takenBack.ts"
@@ -700,6 +702,9 @@ const check = (
     const failed = (failure: CheckFailure) =>
       Effect.gen(function* () {
         const { error, output, kept } = failure
+        // A check that could not be run checked nothing of the ticket, and the next ticket's would
+        // end the same way: nothing is handed back or set aside, and it waits in line.
+        if (error._tag === "CheckNotRun") return yield* notRun(ticket, options, onto, onTop, error)
         // A check the machine's load stretched may pass on a run of its own: once, before it is set
         // aside, as it did not finish, so there is no failure to show its worker.
         if (!again && timedOutLoaded(error)) {
@@ -822,6 +827,34 @@ const check = (
   })
 
 /**
+ * A check, or the setup before it, that could not be run on the ticket's branch rebased onto the
+ * base at `onto`, or `onTop` of it (CHECK_NOT_RUN): its command not found or not executable, say,
+ * as when a merged ticket deleted the script. Nothing of the ticket was checked, and the next
+ * ticket's check would end the same way, so nothing is handed back to its worker, nor is it set
+ * aside: its line and notes say so, and it waits in line (NotRun), while the run takes no new
+ * tickets and no ticket takes its turn until the base moves on (mergequeue.ts).
+ */
+const notRun = (
+  ticket: FinishedTicket,
+  options: MergeTarget,
+  onto: Sha,
+  onTop: boolean,
+  error: CheckNotRun,
+): Effect.Effect<Prepared, never, Beads | Log | EventStream> =>
+  Effect.gen(function* () {
+    const { id, branch } = ticket
+    const on = branchOn(branch, options.base, onTop)
+    const why = line`${failedHow(error)} on ${on}: nothing was checked; no new tickets start until it can`
+    yield* warn(ticketLine(Tag.checkNotRun)`${why}`, id)
+    yield* Effect.ignore(
+      (yield* Beads).update(id, {
+        appendNotes: line`tutti: ${failedHow(error)} on ${on}, so nothing of ${id} was checked; it waits to merge, and is checked again once ${options.base} moves on, or by the next run.`,
+      }),
+    )
+    return Prepared.NotRun({ onto, why })
+  })
+
+/**
  * Checked: the base and its branch read again side by side. Neither moved, it is ready; only its
  * branch did, it is checked again; the base did, the merge locates its branch again, to rebase it.
  */
@@ -915,8 +948,9 @@ export const keptChanging = (
  * the check passed on it as it is in this run, the memory's passes, or its commits change nothing),
  * is fast-forwarded onto it; Over when it was set aside (kept in the memory's rechecks when its
  * check failed), blocked or stopped the merges; HandBack when its rebase stopped on conflicts its
- * worker can take; FixBack when its check failed in a way its worker can take; Unchanged when its
- * branch changes nothing beyond the base, as when git's rebase dropped every commit.
+ * worker can take; FixBack when its check failed in a way its worker can take; NotRun when its
+ * check could not be run; Unchanged when its branch changes nothing beyond the base, as when git's
+ * rebase dropped every commit.
  */
 export const mergeTurn = (
   ticket: FinishedTicket,

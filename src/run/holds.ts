@@ -298,8 +298,8 @@ export const exitCodes = {
   ok: 0,
   /**
    * A setup problem found before the run started, or in a worker's first system/init, a
-   * requirement missing as it starts, a spec run's checks gate holding its tree, or Claude's login
-   * refused in a worker's turn.
+   * requirement missing as it starts, a merge check that could not be run, a spec run's checks gate
+   * holding its tree, or Claude's login refused in a worker's turn.
    */
   setup: 2,
   /** A worker needs you: PAUSED, BLOCKED, TICKET_LIMIT. */
@@ -329,6 +329,8 @@ export const exitMeanings: Record<keyof typeof exitCodes, string> = {
   setup:
     "a setup problem: the startup checks failed, a worker's first system/init showed one " +
     "(SETUP_PROBLEM), a requirement went missing as the run went (REQUIREMENTS_MISSING), " +
+    "a ticket's merge check could not be run, its command not found or not executable " +
+    "(CHECK_NOT_RUN), " +
     "a spec run's checks gate held its tree, its checks checking nothing or failing (CHECKS_HELD), " +
     "or Claude's login was refused in a worker's turn (LOGIN)",
   stuck: "a worker stopped the run (PAUSED, BLOCKED, TICKET_LIMIT) and needs attention",
@@ -352,6 +354,7 @@ export const stopCodes = {
   REQUIREMENTS_MISSING: exitCodes.setup,
   SETUP_PROBLEM: exitCodes.setup,
   CHECKS_HELD: exitCodes.setup,
+  CHECK_NOT_RUN: exitCodes.setup,
   LOGIN: exitCodes.setup,
   PAUSED: exitCodes.stuck,
   BLOCKED: exitCodes.stuck,

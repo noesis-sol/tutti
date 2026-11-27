@@ -489,8 +489,8 @@ a hand-back not done in time is (`MERGE_CONFLICT`, `CHECKS_FAILED`), its notes s
 had done already, the rebase finished or a fix committed, is taken and checked. A question that is `maintainer_only`, or has no options, waits for you as
 in any run, and the run goes on without its ticket. What makes carrying on unsafe, or would only
 fail again, still stops an overnight run: `DIRTY_TREE`, `GIT_FAILED`, `MERGE_FAILED`,
-`ENVIRONMENT`, `REQUIREMENTS_MISSING`, `BEADS_FAILED`, `SETUP_PROBLEM`, `LOGIN`, `PANIC`, and the
-usage limit held past `--usage-limit-wait`.
+`ENVIRONMENT`, `REQUIREMENTS_MISSING`, `CHECK_NOT_RUN`, `BEADS_FAILED`, `SETUP_PROBLEM`, `LOGIN`,
+`PANIC`, and the usage limit held past `--usage-limit-wait`.
 
 ### One ticket and its subtickets
 
@@ -1205,6 +1205,12 @@ An [overnight run](#overnight) sets the ticket aside for these three instead, an
 - **`REQUIREMENTS_MISSING`**: what the project's requires list names is missing as the run starts,
   or once a merge has changed the list; the run ends at once, or once the running tickets finish,
   exit 2 ([above](#starting-a-run)).
+- **`CHECK_NOT_RUN`**: a ticket's merge check could not be run, the shell finding no command to
+  run or unable to execute it (exit 127 or 126): its script not committed, deleted or renamed by a
+  merge, or no longer executable. Nothing of the ticket was checked, so it isn't handed back to its
+  worker or set aside: it waits to merge, with the tickets that finish after it, and no new tickets
+  start. Once the base moves on (you commit the script), they are checked again in their turns
+  (`RECHECK`); a run that ends first leaves them for the next, exit 2.
 - **`CHECKS_HELD`**: a spec run's checks gate held its tree once the environment ticket merged: a
   runner still checks nothing, or failed when run again; the line names the question the tree waits
   on, exit 2 ([the checks gate](#the-checks-gate)).
@@ -1422,7 +1428,7 @@ same lines, without colour, in the summary at the end of its log.
 | Code | Meaning |
 |---|---|
 | 0 | the run ended by itself: nothing left (`READY_EMPTY`), the limit reached (`LIMIT_REACHED`), or wound down as asked (`DRAINED`); also nothing to run, a feature plan declined, or an interview left before its epic ran |
-| 2 | a setup problem (all are listed), one a worker's first `system/init` showed (`SETUP_PROBLEM`), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), a spec run's checks gate holding its tree (`CHECKS_HELD`), Claude's login refused in a worker's turn (`LOGIN`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
+| 2 | a setup problem (all are listed), one a worker's first `system/init` showed (`SETUP_PROBLEM`), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), a merge check that could not be run (`CHECK_NOT_RUN`), a spec run's checks gate holding its tree (`CHECKS_HELD`), Claude's login refused in a worker's turn (`LOGIN`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
 | 3 | a worker idle with its ticket in progress (`PAUSED`), a request unanswered (`BLOCKED`), or a worker past its ticket limit (`TICKET_LIMIT`) |
 | 4 | Beads or git failing (`BEADS_FAILED`, `GIT_FAILED`, …), or tutti failing itself (`PANIC`) |
 | 5 | uncommitted changes in the main checkout, or it left its branch (`DIRTY_TREE`) |

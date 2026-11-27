@@ -32,6 +32,7 @@ import {
   foldersOf,
   type MergeOptions,
   type MergeTarget,
+  type NotRun,
   type Recheck,
   type Rechecks,
   someFiles,
@@ -176,6 +177,32 @@ const movedOn = (options: MergeTarget, onto: string, base: string) =>
     // On a base moved back, its branch would fast-forward unchecked.
     return base !== onto && (yield* (yield* Git).mergeBase(options.repo, onto, base)) === onto
   }).pipe(Effect.orElseSucceed(() => false))
+
+/**
+ * Whether the tickets waiting in line since a check could not be run on the base at `notRun.onto`
+ * (CHECK_NOT_RUN) take their turns again: the base has moved on from it since, as a commit of the
+ * check's script moves it, and the RECHECK line says so. Not while git can't say where the base is.
+ * `at`: where the base is, as a merge just put it; git is asked without it.
+ */
+export const notRunDue = (
+  notRun: NotRun,
+  options: MergeTarget,
+  at?: string,
+): Effect.Effect<boolean, never, Git | Log | EventStream> =>
+  Effect.gen(function* () {
+    const base =
+      at === undefined
+        ? yield* Effect.result((yield* Git).revParse(options.repo, options.base))
+        : Result.succeed(at)
+    if (Result.isFailure(base) || !(yield* movedOn(options, notRun.onto, base.success))) {
+      return false
+    }
+    const text = ticketLine(
+      Tag.recheck,
+    )`${options.base} has moved on from ${shortHash(notRun.onto)}, where ${notRun.ticket}'s check could not be run; checking the tickets waiting to merge again, ${notRun.ticket} first`
+    yield* info(text, notRun.ticket)
+    return true
+  })
 
 /**
  * Why the ticket, `issue` as bd has it now, is left as it is rather than checked once more, or

@@ -124,9 +124,22 @@ export interface MergeStop {
 }
 
 /**
+ * A check, or the setup before it, that could not be run in a ticket's merge (CHECK_NOT_RUN): no
+ * ticket takes its turn until the base moves on from `onto`, and the run takes no new tickets.
+ */
+export interface NotRun {
+  /** The ticket whose check it was, waiting in line again. */
+  readonly ticket: TicketId
+  /** The base's commit its branch was rebased onto, or is on top of, as the check ran. */
+  readonly onto: Sha
+  /** Why, as its CHECK_NOT_RUN line says it, without the word: the stop holding the run says it. */
+  readonly why: Line
+}
+
+/**
  * How a ticket's merge in its turn ends (mergeTurn): over (set aside, blocked or stopped), merged,
- * with nothing of its own left to merge, its rebase stopped on conflicts its worker can take, or its
- * check failed in a way its worker can take, to be handed back.
+ * with nothing of its own left to merge, its rebase stopped on conflicts its worker can take, its
+ * check failed in a way its worker can take, to be handed back, or its check could not be run.
  */
 export type Prepared = Data.TaggedEnum<{
   /** Set aside or blocked, or, with `stop`, stopping the merges. */
@@ -140,6 +153,11 @@ export type Prepared = Data.TaggedEnum<{
   Unchanged: { readonly why: string; readonly own: boolean }
   HandBack: { readonly stop: HandedRebase }
   FixBack: { readonly stop: HandedCheck }
+  /**
+   * Its check, or the setup before it, could not be run on its branch rebased onto the base at
+   * `onto`, or on top of it, as `why` says (CHECK_NOT_RUN): it waits in line for the base to move on.
+   */
+  NotRun: { readonly onto: Sha; readonly why: Line }
 }>
 
 export const Prepared = Data.taggedEnum<Prepared>()

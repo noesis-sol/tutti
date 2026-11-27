@@ -175,6 +175,11 @@ export type Move = Data.TaggedEnum<{
   FastForwarded: { readonly commit: string }
   /** The run ended during its rebase or check: the rebase put back, the check killed (§ 3.4). */
   MergeInterrupted: { readonly place: number }
+  /**
+   * Its check, or the setup before it, could not be run (CHECK_NOT_RUN): nothing was checked, and
+   * it waits in line for the base to move on.
+   */
+  CheckNotRun: { readonly place: number }
   /** The rebase stopped on conflicts, handed back to its worker. */
   ConflictsHandedBack: { readonly attempt: number }
   /** The check failed, handed back to its worker. */
@@ -430,6 +435,15 @@ export const transitions: ReadonlyArray<Transition> = [
   row({
     from: "Merging",
     when: "MergeInterrupted",
+    to: "ToMerge",
+    recorded: { kinds: ["phase"] },
+    next: (_, { place }) => TicketPhase.ToMerge({ place }),
+  }),
+  // A check that could not be run checked nothing of the ticket: it waits to merge, at the head of
+  // the line, while no ticket takes its turn until the base moves on (mergequeue.ts).
+  row({
+    from: "Merging",
+    when: "CheckNotRun",
     to: "ToMerge",
     recorded: { kinds: ["phase"] },
     next: (_, { place }) => TicketPhase.ToMerge({ place }),

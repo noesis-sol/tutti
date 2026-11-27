@@ -53,6 +53,7 @@ export const Tag = {
   resolving: "RESOLVING",
   fixing: "FIXING",
   recheck: "RECHECK",
+  checkNotRun: "CHECK_NOT_RUN",
   takenBack: "TAKEN_BACK",
   badTicketId: "BAD_TICKET_ID",
   runFilesOutside: "RUN_FILES_OUTSIDE",

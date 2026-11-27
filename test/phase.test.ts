@@ -152,6 +152,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Move, TicketPha
     ToMerge({ place: 1 }),
   ],
   [
+    "Merging → ToMerge (its check could not be run: CHECK_NOT_RUN)",
+    Merging({ step: "check" }),
+    Move.CheckNotRun({ place: 1 }),
+    ToMerge({ place: 1 }),
+  ],
+  [
     "Merging → Resolving",
     Merging({ step: "rebase" }),
     Move.ConflictsHandedBack({ attempt: 1 }),
@@ -336,6 +342,7 @@ const moveOf: { readonly [C in MoveTag]: Extract<Move, { readonly _tag: C }> } =
   ItsTurn: Move.ItsTurn(),
   FastForwarded: Move.FastForwarded({ commit: "abc" }),
   MergeInterrupted: Move.MergeInterrupted({ place: 1 }),
+  CheckNotRun: Move.CheckNotRun({ place: 1 }),
   ConflictsHandedBack: Move.ConflictsHandedBack({ attempt: 1 }),
   CheckHandedBack: Move.CheckHandedBack({ attempt: 1 }),
   Block: Move.Block({ why: "GIT_FAILED" }),

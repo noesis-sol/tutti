@@ -1,7 +1,8 @@
 // The run's merge side (run.ts, § 5 item 8): each finished ticket's branch checked early
 // (earlyCheck.ts), the critic, the auditor and the playbook's reflections when the run has organs
 // (critic.ts, auditor.ts, playbookRun.ts), the merge queue (mergequeue.ts), the stop a merge
-// that stopped the merges holds the run with, taken up once, the closed blockers whose work
+// that stopped the merges holds the run with, taken up once, and the one a check that could not be
+// run holds it with until the base moves on (CHECK_NOT_RUN), the closed blockers whose work
 // git finds only on their branch (closedBranches.ts), and, with the settings' linear block, the
 // pushes to Linear of the tickets whose status changes (linearPush.ts).
 import { Effect, Option, Ref, type Scope } from "effect"
@@ -10,7 +11,7 @@ import { type Auditor, off as auditorOff, make as makeAuditor } from "../auditor
 import { type ClosedBranches, closedBranches } from "../closedBranches.ts"
 import { type Critic, off as criticOff, make as makeCritic } from "../critic.ts"
 import { type EarlyChecks, make as makeEarlyChecks } from "../earlyCheck.ts"
-import { stopFor, stopOfLine } from "../holds.ts"
+import { changeStops, type StopReason, stopFor, stopOfLine, swapStop } from "../holds.ts"
 import { Ledger } from "../ledger.ts"
 import { type LinearPushes, off as linearOff, make as makeLinearPushes } from "../linearPush.ts"
 import { type MergeQueue, make as makeQueue, type QueueState } from "../mergequeue.ts"
@@ -29,7 +30,10 @@ export interface MergeSide {
   readonly auditor: Auditor
   readonly playbook: RunPlaybook
   readonly queue: MergeQueue
-  /** The merge that stopped the merges, taken up once, by its watcher or by the end. */
+  /**
+   * The merge that stopped the merges, taken up once, by its watcher or by the end; and the stop of
+   * a check that could not be run, raised while the queue holds for it and lifted once it doesn't.
+   */
   readonly mergeStop: (state: QueueState) => Effect.Effect<void>
   readonly branches: ClosedBranches
   /** The pushes to Linear, `off` without the settings' linear block. */
@@ -56,7 +60,7 @@ export const make = (
 ): Effect.Effect<MergeSide, never, RunEnv | Ledger | Scope.Scope> =>
   Effect.gen(function* () {
     const { config, base, status, wakeUp } = services
-    const { stopped } = services.holds
+    const { stopped, changeHolds } = services.holds
     const {
       panicked,
       setUps,
@@ -135,10 +139,37 @@ export const make = (
       (where, defect) =>
         panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
     )
+    // The check that could not be run in a merge holds the run while no ticket takes its turn for
+    // it (CHECK_NOT_RUN, its line said by the merge), the stop lifted once the base has moved on.
+    const notRunStop = yield* Ref.make<StopReason | null>(null)
+    const checkHold = (state: QueueState) =>
+      Effect.gen(function* () {
+        const { notRun } = state
+        const raise =
+          notRun === undefined
+            ? null
+            : stopFor("CHECK_NOT_RUN", notRun.why, { ticket: notRun.ticket, held: true })
+        type Change = readonly [StopReason | null, StopReason | null]
+        const [raised, lifted] = yield* Ref.modify(
+          notRunStop,
+          (now): readonly [Change, StopReason | null] =>
+            raise !== null && now === null
+              ? [[raise, null], raise]
+              : raise === null && now !== null
+                ? [[null, now], null]
+                : [[null, null], now],
+        )
+        if (raised !== null) yield* stopped(raised)
+        if (lifted !== null) {
+          yield* changeHolds((now) => changeStops(now, (all) => swapStop(all, lifted, null)))
+          yield* wakeUp("hold")
+        }
+      })
     // The merge that stopped the merges, taken up once, by its watcher or by the end.
     const mergeStopSeen = yield* Ref.make(false)
     const mergeStop = (state: QueueState) =>
       Effect.gen(function* () {
+        yield* checkHold(state)
         const stop = state.stop
         if (stop === null || (yield* Ref.getAndSet(mergeStopSeen, true))) return
         yield* showOn(status, "mergesStopped")(true)

@@ -29,6 +29,9 @@
 // hand-back, as its worker found nothing to fix. Each pass through Merging counts toward the
 // attempts, which a run keeps per ticket.
 //
+// A check that could not be run on a fix or a resolution (CHECK_NOT_RUN) says nothing of it: the
+// ticket goes back in line, where its turn's check holds the run if it still can't be run.
+//
 // A fix that can't be accepted is undone, the branch reset to where the check failed, and nothing
 // more is handed back. Then, as when the attempts are used up, the ticket is set aside: Review with
 // CHECKS_FAILED after a clean rebase (kept to be checked once more, recheck.ts), Blocked with
@@ -41,7 +44,7 @@ import { AppConfig } from "../core/AppConfig.ts"
 import { branchOn, detail, fixing, Log, line } from "../core/log.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
-import { type CheckError, type Checks, checksNow } from "../services/Checks.ts"
+import { type CheckError, type CheckNotRun, type Checks, checksNow } from "../services/Checks.ts"
 import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { attemptAt, leftAt, restoreBranch } from "./branch.ts"
 import { type CheckFailure, failedHow, outputKept } from "./check.ts"
@@ -405,6 +408,22 @@ export const fixPassed = (
   })
 
 /**
+ * Says that the check, or the setup before it, could not be run on what its worker left after a
+ * hand-back, `how`: that says nothing of it, so it goes back in line, where its turn's check holds
+ * the run if it still can't be run (merge.ts's notRun).
+ */
+const notChecked = (
+  ticket: FinishedTicket,
+  error: CheckNotRun,
+  how: string,
+): Effect.Effect<void, never, Log> =>
+  Effect.flatMap(Log, (log) =>
+    log.write(
+      detail`${failedHow(error)} on ${ticket.branch} ${how}; back in line, its turn checks it`,
+    ),
+  )
+
+/**
  * What came of a check, or the setup before it, that failed (`failure`) on what its worker left after `stop`'s failure was handed back, `left`, `tries` saying what came of
  * the hand-backs before it: Aside when its worker committed nothing, or no hand-back is left, the
  * ticket set aside; else Again, the failure on the fix, to be handed back again, its `tried` saying
@@ -515,6 +534,10 @@ export const fixCheck = (
         yield* fixPassed(stop.ticket, verified)
         return FixEnd.Verified()
       }
+      if (checked.error._tag === "CheckNotRun") {
+        yield* notChecked(stop.ticket, checked.error, "as its worker fixed it")
+        return FixEnd.Verified()
+      }
       const after = yield* fixFailed(stop, verified, checked, tries, options, memory, at)
       if (after._tag !== "Again") return after
       if (!(yield* handOverFix(after.stop, options, memory.fixes))) return FixEnd.Aside()
@@ -537,6 +560,10 @@ export const fixResolution = (
   memory: MergeMemory,
 ): Effect.Effect<Fixed, never, MergeEnv> =>
   Effect.gen(function* () {
+    if (failure.error._tag === "CheckNotRun") {
+      yield* notChecked(rebase.ticket, failure.error, "as its worker resolved it")
+      return FixEnd.Verified()
+    }
     // A fix whose rebase onto the moved base stopped on the conflicts resolved here.
     const tries = (yield* memory.fixes.carried(rebase.ticket.id))?.tries ?? []
     const stop: CheckStop = {

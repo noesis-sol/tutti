@@ -16,6 +16,11 @@
 // A merge that stops the merges (DIRTY_TREE, GIT_FAILED, MERGE_FAILED) is kept in the queue's state
 // for the run loop, and no ticket merges after it: those behind it stay ToMerge.
 //
+// A check that could not be run (CHECK_NOT_RUN, merge.ts's notRun) puts its ticket back at the head
+// of the line, ToMerge, and no ticket takes its turn until the base moves on from where it ran, as
+// each look and each merge ask (checkableAgain): the run holds meanwhile (run/mergeSide.ts), and a
+// run that ends first leaves those in line waiting to merge, for the next run.
+//
 // A ticket set aside as its check failed is kept in the queue's rechecks, and after each merge the
 // ones whose base has moved on since are put back in line, ToMerge by RECHECK (recheck.ts): first,
 // those merged by hand since the base last moved are taken as merged (handMerged.ts). Then those
@@ -40,6 +45,7 @@
 // the ticket ahead merged as it was checked. Quitting, or the merges stopping, puts back the branches
 // the trains rebased.
 import {
+  type Data,
   Effect,
   FiberSet,
   Ref,
@@ -75,11 +81,13 @@ import type {
   MergeEnv,
   MergeOptions,
   MergeStop,
+  NotRun,
+  Prepared,
   Rechecks,
 } from "./mergeShared.ts"
 import { type CheckAhead, make as makeTrain } from "./mergetrain.ts"
 import { Detail, type InvalidTransition, Move, type TicketPhase } from "./phase.ts"
-import { makeRechecks, recheckDue } from "./recheck.ts"
+import { makeRechecks, notRunDue, recheckDue } from "./recheck.ts"
 import { fit } from "./sessions.ts"
 import { makeSetUps, setUpCheckout, takeSettings } from "./setup.ts"
 import { type Conflicting, takeBackDue } from "./takenBack.ts"
@@ -96,6 +104,11 @@ export interface QueueState {
   readonly resolving: ReadonlyArray<TicketId>
   /** What stopped the merges, if anything has. */
   readonly stop: MergeStop | null
+  /**
+   * The check that could not be run, while no ticket takes its turn for it, until the base moves on
+   * (CHECK_NOT_RUN); none when left out.
+   */
+  readonly notRun?: NotRun
 }
 
 export const emptyQueue: QueueState = { waiting: [], merging: null, resolving: [], stop: null }
@@ -155,10 +168,15 @@ export interface MergeQueue {
   readonly stopMerges: Effect.Effect<void>
 }
 
-/** Whether nothing is left for the queue to do. */
+/**
+ * Whether nothing is left for the queue to do: those waiting wait for the base to move on, when a
+ * check could not be run, as for the next run.
+ */
 export const isSettled = (state: QueueState): boolean =>
   state.merging === null &&
-  ((state.waiting.length === 0 && state.resolving.length === 0) || state.stop !== null)
+  ((state.waiting.length === 0 && state.resolving.length === 0) ||
+    state.stop !== null ||
+    (state.notRun !== undefined && state.resolving.length === 0))
 
 /**
  * The merge queue, its consumer forked into a FiberSet of the caller's scope. A defect in the
@@ -262,7 +280,9 @@ export const make = (
         Effect.uninterruptible(
           Effect.gen(function* () {
             const state = yield* SubscriptionRef.get(ref)
-            if (state.stop !== null || (yield* Ref.get(held))) return false
+            if (state.stop !== null || state.notRun !== undefined || (yield* Ref.get(held))) {
+              return false
+            }
             const waiting = state.waiting.filter((id) => id !== ticket.id)
             const moved = yield* ledger.transition(ticket.id, Move.ItsTurn())
             yield* renumber(waiting)
@@ -298,6 +318,26 @@ export const make = (
         }),
       )
 
+    // A check that could not be run: back at the head of the line, ToMerge, and no ticket takes its
+    // turn until the base moves on (checkableAgain).
+    const waitForBase = (
+      ticket: FinishedTicket,
+      notRun: Data.TaggedEnum.Value<Prepared, "NotRun">,
+    ) =>
+      lock.withPermit(
+        Effect.gen(function* () {
+          yield* ledger.transition(ticket.id, Move.CheckNotRun({ place: 1 }))
+          yield* renumber([ticket.id, ...(yield* SubscriptionRef.get(ref)).waiting])
+          yield* Ref.update(line, (now) => new Map(now).set(ticket.id, ticket))
+          yield* SubscriptionRef.update(ref, (now) => ({
+            ...now,
+            waiting: [ticket.id, ...now.waiting],
+            merging: null,
+            notRun: { ticket: ticket.id, onto: notRun.onto, why: notRun.why },
+          }))
+        }),
+      )
+
     // A ticket left Blocked on its conflict, no hand-back waiting, is kept: you may hand it back once
     // more (§ 4.3).
     const keepAside = (ticket: FinishedTicket) =>
@@ -318,10 +358,19 @@ export const make = (
     const mergedByHand = looking.withPermits(1)(
       handMerged(seen, { rechecks, handBacks }, options).pipe(Effect.provideContext(context)),
     )
+    // The turns held since a check could not be run go on once the base has moved on from where it
+    // was run, as a commit of its script moves it: those waiting are checked in their turns again.
+    const checkableAgain = (at?: Sha) =>
+      Effect.gen(function* () {
+        const notRun = (yield* SubscriptionRef.get(ref)).notRun
+        if (notRun === undefined || !(yield* notRunDue(notRun, options, at))) return
+        yield* SubscriptionRef.update(ref, ({ notRun: _, ...now }) => now)
+      })
     // `at`: where the base is, as a merge just put it, for neither to ask git again.
     const recheckFrom = (at?: Sha) =>
       looking.withPermits(1)(
         Effect.gen(function* () {
+          yield* checkableAgain(at)
           const inLine = { offer, state, changes: SubscriptionRef.changes(ref) }
           yield* handMerged(seen, { rechecks, handBacks }, options, at)
           const again = yield* recheckDue(rechecks, inLine, options, at)
@@ -440,6 +489,7 @@ export const make = (
           if (handingBack && (yield* Ref.get(held))) return yield* backInLine(ticket)
           if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
           if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
+          if (prepared._tag === "NotRun") return yield* waitForBase(ticket, prepared)
           if (prepared._tag === "Unchanged") yield* closeUnchanged(ticket, options, prepared)
           const stop = prepared._tag === "Over" ? prepared.stop : undefined
           // A merge that changed .tutti/settings.json may set the setup the run uses from now on.
@@ -475,7 +525,9 @@ export const make = (
       Stream.mapEffect(() =>
         Effect.gen(function* () {
           const now = yield* state
-          return now.stop !== null || (yield* Ref.get(held)) ? undefined : yield* waits.next(now)
+          return now.stop !== null || now.notRun !== undefined || (yield* Ref.get(held))
+            ? undefined
+            : yield* waits.next(now)
         }),
       ),
       Stream.filter((ticket) => ticket !== undefined),

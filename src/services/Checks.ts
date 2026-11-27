@@ -261,6 +261,8 @@ export class CheckOutput {
   private suite: string | null = null
   /** The latest PROGRESS: line of the suite running, forgotten at the next SUITE: line. */
   private progress: CheckProgress | null = null
+  /** The first line printed that isn't blank, trimmed; null until there is one. */
+  private first: string | null = null
 
   /** Takes the next chunk printed on `from`. */
   write(chunk: Uint8Array, from: "stdout" | "stderr" = "stdout"): void {
@@ -290,6 +292,11 @@ export class CheckOutput {
     return { suite: this.suite, progress: this.progress }
   }
 
+  /** The first line printed that isn't blank, trimmed and cut to saidWidth; null for none. */
+  firstLine(): string | null {
+    return this.first === null ? null : (boundLines([this.first], 1)[0] ?? null)
+  }
+
   /** What is said of the output taken so far. */
   summary(): Said {
     const said =
@@ -317,6 +324,7 @@ export class CheckOutput {
     buffer.length = 0
     this.keepTail(raw)
     const line = raw.replace(/\r+$/, "")
+    if (this.first === null && line.trim() !== "") this.first = line.trim()
     this.scanFailure(line)
     if (line.startsWith(flakyPrefix)) {
       this.flakyCount++
@@ -446,7 +454,10 @@ export class CheckTimedOut extends Schema.TaggedError<CheckTimedOut>()("CheckTim
   }
 }
 
-/** The check didn't start, or its output couldn't be read or written to its file. */
+/**
+ * The check didn't start, its output couldn't be read or written to its file, or the shell could
+ * not find or execute its command (notRunCodes): nothing of it ran.
+ */
 export class CheckNotRun extends Schema.TaggedError<CheckNotRun>()("CheckNotRun", {
   check: CheckKind,
   command: Schema.String,
@@ -533,8 +544,18 @@ export interface SetupOptions extends RunOptions {
 }
 
 /**
- * What a check that ran to its end gives: CheckPassed when it exited with 0, else CheckFailed, with
- * what `output` said of what it printed. Takes the last lines printed without a newline first.
+ * The shell's exit codes for a command it could not find (127) or could not execute (126): a check
+ * that ends with one of them, as `sh -c` gives it, ran none of its suites.
+ */
+export const notRunCodes: ReadonlyArray<number> = [126, 127]
+
+/**
+ * What a check that ran to its end gives: CheckPassed when it exited with 0; CheckNotRun when it
+ * exited with one of notRunCodes, as its command could not be found or executed, its reason the
+ * first line it printed (the shell's `sh: scripts/check-fast.sh: not found`); else CheckFailed,
+ * with what `output` said of what it printed. A suite inside it that exits 127 while the command
+ * goes on to exit with another code is that code's. Takes the last lines printed without a newline
+ * first.
  */
 export const resultOf = (
   check: CheckKind,
@@ -542,8 +563,12 @@ export const resultOf = (
   exitCode: number,
   output: CheckOutput,
   outputFile: string,
-): Effect.Effect<CheckPassed, CheckFailed> => {
+): Effect.Effect<CheckPassed, CheckFailed | CheckNotRun> => {
   output.end()
+  if (notRunCodes.includes(exitCode)) {
+    const reason = output.firstLine() ?? `it exited with ${exitCode}, printing nothing`
+    return Effect.fail(new CheckNotRun({ check, command, reason }))
+  }
   if (exitCode !== 0) {
     return Effect.fail(
       new CheckFailed({ check, command, exitCode, outputFile, ...output.summary() }),
