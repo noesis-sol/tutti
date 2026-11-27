@@ -189,8 +189,18 @@ export const showQueue = (sched: Scheduling): Effect.Effect<void> =>
       Effect.flatMap(
         Ref.modify(sched.memo, (m): readonly [QueueShown | undefined, Memo] => {
           const solo = soloState(s, m.soloNext)
+          // state.ts's reached, which imports this module: the solo ticket next won't start.
+          const { limit } = sched.options
+          const pastLimit = solo?.next === true && limit !== null && s.started >= limit
           const queue: QueueShown = {
-            solo: solo === null ? null : { ticket: solo.ticket, running: solo.next !== true },
+            solo:
+              solo === null
+                ? null
+                : {
+                    ticket: solo.ticket,
+                    running: solo.next !== true,
+                    ...(pastLimit ? { pastLimit } : {}),
+                  },
             unclosed: m.unclosed,
             waits: reasons(m.waitSaid),
             skips: reasons(m.skipSaid),

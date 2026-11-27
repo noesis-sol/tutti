@@ -33,7 +33,7 @@ import { noScoring, type Scoring } from "../services/scorecard.ts"
 import { sanitize, sanitizeLine } from "../text/sanitize.ts"
 import type { OpenQuestion } from "../ui/questions.ts"
 import type { Motion, Shown, Tone } from "../ui/tone.ts"
-import { afterMerging, afterSolo } from "./after.ts"
+import { afterMerging, afterSolo, soloNextAfter, soloNextRun } from "./after.ts"
 import type { CheckShown } from "./checking.ts"
 import { fullCheckKey } from "./checking.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
@@ -116,6 +116,8 @@ export const windowLabel = (name: string): string => {
 export interface Solo {
   readonly ticket: string
   readonly running: boolean
+  /** Next, it won't start in this run, which has reached --limit; absent otherwise. */
+  readonly pastLimit?: true
 }
 
 /** What the run says about itself, beside its tickets. */
@@ -1191,11 +1193,32 @@ const sanitisedAbout = (about: BlockedAbout): BlockedAbout => ({
 })
 
 /**
+ * The solo ticket next's own reason: the tickets running, and those past their work, it waits for
+ * to finish, in the ledger's order; in a run that won't start it, winding down, stopping, past its
+ * last look or at --limit, the next run.
+ */
+const soloNextText = (solo: Solo, ledger: State, status: Status): string => {
+  if (solo.pastLimit === true || runGoes(ledger, status) !== "on" || status.looksOver) {
+    return soloNextRun
+  }
+  const running = [...ledger.tickets.values()].filter(
+    (entry) => entry.ticket !== solo.ticket && phaseFacts[entry.phase._tag].running,
+  )
+  return soloNextAfter(running.map((entry) => entry.ticket))
+}
+
+/**
  * Why a ticket waiting in the queue in `phase` waits, for the Up next panel: a hold's reason as the
  * log last said it (`status.holdTexts`), else in words of its own; null for a Queued ticket, which
- * waits for a free slot alone.
+ * waits for a free slot alone. The solo ticket next, held back with the rest, waits for no solo
+ * ticket but the running ones.
  */
-const heldText = (ticket: TicketId, phase: TicketPhase, status: Status): string | null => {
+const heldText = (
+  ticket: TicketId,
+  phase: TicketPhase,
+  status: Status,
+  ledger: State,
+): string | null => {
   const { waits, skips } = status.holdTexts
   switch (phase._tag) {
     case "HeldBack":
@@ -1207,7 +1230,10 @@ const heldText = (ticket: TicketId, phase: TicketPhase, status: Status): string 
         case "parent":
           return waits[ticket] ?? "its subtickets are not all closed and merged"
         case "solo":
-          return status.solo === null ? "waits for a solo ticket" : afterSolo(status.solo.ticket)
+          if (status.solo === null) return "waits for a solo ticket"
+          return status.solo.ticket === ticket && !status.solo.running
+            ? soloNextText(status.solo, ledger, status)
+            : afterSolo(status.solo.ticket)
       }
       return null
     case "Waiting":
@@ -1311,7 +1337,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       )
     }
     if (phaseFacts[phase._tag].inQueue) {
-      const why = heldText(entry.ticket, phase, status)
+      const why = heldText(entry.ticket, phase, status, ledger)
       const each = {
         ticket: entry.ticket,
         label,
