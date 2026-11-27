@@ -1,10 +1,11 @@
-// `tutti answer`, `tutti plan`, `tutti playbook` and `tutti requires` end to end (§ 8.1): `bun src/main.ts` started in
-// a repository on real git, with the tests' environment and, for plan, a fake bd on the PATH. Each
-// command's lines on stdout and stderr and its exit code: answer's listing and its errors as the
-// command prints them (src/answer/answer.ts), plan's proposal and the problems it stops on
-// (src/plan/plan.ts' settingsProblem and beadsProblem), and requires' exit codes. bd taking too
-// long and an answer no run takes are run in-process, as bd's read limit is 30 s and the answer's wait
-// 10 s.
+// `tutti answer`, `tutti plan`, `tutti playbook` and `tutti requires` (§ 8.1). Through the binary,
+// `bun src/main.ts` started in a repository on real git with the tests' environment and, for plan, a
+// fake bd on the PATH, a case or two of each command, proving its exit code and its lines on stdout
+// and stderr reach the terminal. The rest runs the command in-process, over in-memory git: answer's
+// errors as the command prints them (src/answer/answer.ts), and the problems plan stops on
+// (src/plan/plan.ts' settingsProblem and beadsProblem). What the in-process tests of each command
+// already cover (test/attention-files.test.ts, test/plan-command.test.ts, test/requires.test.ts,
+// test/playbook-run.test.ts) isn't run again here.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import {
   chmodSync,
@@ -38,7 +39,8 @@ import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
 
-// Each test starts tutti as a bun process, which bun's 5 s default fails beside other checks.
+// A case through the binary starts tutti as a bun process, which bun's 5 s default fails beside
+// other checks.
 setDefaultTimeout(60_000)
 
 const main = join(import.meta.dir, "..", "src", "main.ts")
@@ -69,17 +71,18 @@ const tutti = async (cwd: string, args: ReadonlyArray<string>, bin?: string) => 
 
 /**
  * `tutti …args` run in-process in `dir` over in-memory git, with `beads` for its Beads and
- * `provide` around it: its exit and the lines it wrote to stderr.
+ * `provide` around it: its exit, the lines it logged and those it wrote to stderr.
  */
 const inProcess = async (
   dir: string,
   args: ReadonlyArray<string>,
-  beads: () => Layer.Layer<Beads, never, BunServices.BunServices>,
+  beads: () => Layer.Layer<Beads, never, BunServices.BunServices> = () => beadsLayer(),
   provide: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R> = (effect) => effect,
 ) => {
+  const printed: Array<string> = []
   const errors: Array<string> = []
   const console: Console.Console = Object.assign(Object.create(globalThis.console), {
-    log: () => {},
+    log: (...said: ReadonlyArray<unknown>) => printed.push(said.join(" ")),
     error: (...said: ReadonlyArray<unknown>) => errors.push(said.join(" ")),
   })
   const services = () => Layer.mergeAll(beads(), gitLayer({ dir, files: {} }), lockLayer())
@@ -94,7 +97,7 @@ const inProcess = async (
       Effect.provide(BunServices.layer),
     ),
   )
-  return { exit, errors }
+  return { failed: exit._tag === "Failure", printed, errors }
 }
 
 // tutti playbook
@@ -116,26 +119,18 @@ describe("tutti playbook", () => {
     version: 1,
   }
 
-  test("lists, approves, and refuses what it can't do, in the main checkout", async () => {
+  test("approves, and refuses what it can't do, in the main checkout", async () => {
     const repo = makeRepo()
     mkdirSync(join(repo.dir, ".tutti"), { recursive: true })
     writeFileSync(join(repo.dir, ".tutti", "playbook.jsonl"), `${JSON.stringify(seeded)}\n`)
-    const listed = await tutti(repo.dir, ["playbook"])
-    expect(listed.code).toBe(0)
-    expect(listed.stdout).toContain("L1 proposed strategy [src/parse/**]")
     const approved = await tutti(repo.dir, ["playbook", "approve", "L1"])
     expect(approved).toMatchObject({ code: 0, stdout: "L1 approved.\n" })
     expect(readFileSync(join(repo.dir, ".tutti", "playbook.jsonl"), "utf8")).toContain(
       '"state":"active"',
     )
-    const edited = await tutti(repo.dir, ["playbook", "edit", "L1", "Reset the cursor per file."])
-    expect(edited.code).toBe(0)
     const refused = await tutti(repo.dir, ["playbook", "retire", "L9"])
     expect(refused.code).toBe(2)
     expect(refused.stderr).toContain("tutti playbook: no lesson L9")
-    const wrong = await tutti(repo.dir, ["playbook", "merge", "L1"])
-    expect(wrong.code).toBe(2)
-    expect(wrong.stderr).toContain("give approve, edit or retire")
   })
 })
 
@@ -163,53 +158,35 @@ const withRequest = () => {
   return repo
 }
 
+/** A folder whose run has the request open, for the command run in-process. */
+const withRequestIn = () => {
+  const dir = folder()
+  mkdirSync(join(dir, attentionFolder), { recursive: true })
+  writeFileSync(join(dir, requestFile(request.id)), `${JSON.stringify(request)}\n`)
+  return dir
+}
+
 /**
- * Plays the run's side for up to 30 s: once the answer to request r1 appears, it leaves a refusal saying
- * `refusal` beside it when given, and takes the answer, removing its file; the answer's text.
+ * Plays the run's side for up to 30 s: once the answer to request r1 appears, it leaves a refusal
+ * saying `refusal` beside it, and takes the answer, removing its file.
  */
-const takeAnswer = async (dir: string, refusal?: string): Promise<string | undefined> => {
+const refuseAnswer = async (dir: string, refusal: string): Promise<void> => {
   const answer = join(dir, answerFile("r1"))
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
     if (existsSync(answer)) {
-      const text = readFileSync(answer, "utf8")
-      if (refusal !== undefined) {
-        writeFileSync(
-          join(dir, refusedFile("r1")),
-          JSON.stringify({ v: 1, request: "r1", reason: refusal }),
-        )
-      }
+      writeFileSync(
+        join(dir, refusedFile("r1")),
+        JSON.stringify({ v: 1, request: "r1", reason: refusal }),
+      )
       unlinkSync(answer)
-      return text
+      return
     }
     await Bun.sleep(20)
   }
-  return undefined
 }
 
 describe("tutti answer", () => {
-  slow.test("with no requests open, says there are none", async () => {
-    const repo = makeRepo()
-    const { code, stdout, stderr } = await tutti(repo.dir, ["answer"])
-    expect(stdout).toBe("No open requests.\n")
-    expect(stderr).toBe("")
-    expect(code).toBe(0)
-  })
-
-  slow.test("lists an open request, and --json gives its file's fields", async () => {
-    const repo = withRequest()
-    const listed = await tutti(repo.dir, ["answer"])
-    expect(listed.stdout).toBe(
-      "r1  t-1  permission: Bash(rm -rf build)\n    answer with: tutti answer r1 allow | allow-run | deny\n",
-    )
-    expect(listed.code).toBe(0)
-
-    const json = await tutti(repo.dir, ["answer", "--json"])
-    expect(JSON.parse(json.stdout)).toEqual([request])
-    expect(json.stderr).toBe("")
-    expect(json.code).toBe(0)
-  })
-
   slow.test("a request without an answer: exit 1, and how to answer it", async () => {
     const repo = withRequest()
     const { code, stdout, stderr } = await tutti(repo.dir, ["answer", "r1"])
@@ -218,123 +195,106 @@ describe("tutti answer", () => {
     expect(code).toBe(1)
   })
 
-  slow.test("a request that isn't open: exit 1, there is no such request", async () => {
-    const repo = withRequest()
+  test("a request that isn't open: it fails, there is no such request", async () => {
+    const dir = withRequestIn()
     for (const id of ["r2", "../r1"]) {
-      const { code, stderr } = await tutti(repo.dir, ["answer", id, "allow"])
-      expect(stderr).toBe(`tutti answer: there is no open request ${id}; tutti answer lists them\n`)
-      expect(code).toBe(1)
+      const { failed, errors } = await inProcess(dir, ["answer", id, "allow"])
+      expect(errors).toEqual([
+        `tutti answer: there is no open request ${id}; tutti answer lists them`,
+      ])
+      expect(failed).toBe(true)
     }
   })
 
-  slow.test("a request whose file can't be read: exit 1, and why", async () => {
-    const repo = makeRepo()
-    const attention = join(repo.dir, attentionFolder)
-    mkdirSync(attention, { recursive: true })
+  test("a request whose file can't be read: it fails, saying why", async () => {
+    const dir = folder()
+    mkdirSync(join(dir, attentionFolder), { recursive: true })
     const elsewhere = join(folder(), "r1.json")
     writeFileSync(elsewhere, `${JSON.stringify(request)}\n`)
-    symlinkSync(elsewhere, join(repo.dir, requestFile("r1")))
-    writeFileSync(join(repo.dir, requestFile("r2")), "not json\n")
+    symlinkSync(elsewhere, join(dir, requestFile("r1")))
+    writeFileSync(join(dir, requestFile("r2")), "not json\n")
 
-    const linked = await tutti(repo.dir, ["answer", "r1", "allow"])
-    expect(linked.stderr).toBe(
-      "tutti answer: not answered: its file can't be read: it is a symbolic link\n",
-    )
-    expect(linked.code).toBe(1)
+    const linked = await inProcess(dir, ["answer", "r1", "allow"])
+    expect(linked.errors).toEqual([
+      "tutti answer: not answered: its file can't be read: it is a symbolic link",
+    ])
+    expect(linked.failed).toBe(true)
 
-    const broken = await tutti(repo.dir, ["answer", "r2", "deny"])
-    expect(broken.stderr).toStartWith(
+    const broken = await inProcess(dir, ["answer", "r2", "deny"])
+    expect(broken.errors).toHaveLength(1)
+    expect(broken.errors[0]).toStartWith(
       "tutti answer: not answered: its file can't be read: it isn't JSON: ",
     )
-    expect(broken.code).toBe(1)
-    expect(existsSync(join(repo.dir, answerFile("r1")))).toBe(false)
-    expect(existsSync(join(repo.dir, answerFile("r2")))).toBe(false)
+    expect(broken.failed).toBe(true)
+    expect(existsSync(join(dir, answerFile("r1")))).toBe(false)
+    expect(existsSync(join(dir, answerFile("r2")))).toBe(false)
   })
 
-  slow.test("an answer that doesn't fit the request: exit 1, nothing written", async () => {
-    const repo = withRequest()
-    const { code, stderr } = await tutti(repo.dir, ["answer", "r1", "allow", "--choice", "yes"])
-    expect(stderr).toBe("tutti answer: not answered: choices answer a question's allow only\n")
-    expect(code).toBe(1)
-    expect(existsSync(join(repo.dir, answerFile("r1")))).toBe(false)
+  test("an answer that doesn't fit the request: it fails, nothing written", async () => {
+    const dir = withRequestIn()
+    const { failed, errors } = await inProcess(dir, ["answer", "r1", "allow", "--choice", "yes"])
+    expect(errors).toEqual(["tutti answer: not answered: choices answer a question's allow only"])
+    expect(failed).toBe(true)
+    expect(existsSync(join(dir, answerFile("r1")))).toBe(false)
   })
 
-  slow.test("an answer already waiting for the run: exit 1, and the first one stays", async () => {
-    const repo = withRequest()
+  test("an answer already waiting for the run: it fails, and the first one stays", async () => {
+    const dir = withRequestIn()
     const waiting = `${JSON.stringify({ v: 1, request: "r1", answer: "deny" })}\n`
-    writeFileSync(join(repo.dir, answerFile("r1")), waiting)
-    const { code, stderr } = await tutti(repo.dir, ["answer", "r1", "allow"])
-    expect(stderr).toBe(
-      "tutti answer: an answer to request r1 is already waiting for the run to take it\n",
-    )
-    expect(code).toBe(1)
-    expect(readFileSync(join(repo.dir, answerFile("r1")), "utf8")).toBe(waiting)
+    writeFileSync(join(dir, answerFile("r1")), waiting)
+    const { failed, errors } = await inProcess(dir, ["answer", "r1", "allow"])
+    expect(errors).toEqual([
+      "tutti answer: an answer to request r1 is already waiting for the run to take it",
+    ])
+    expect(failed).toBe(true)
+    expect(readFileSync(join(dir, answerFile("r1")), "utf8")).toBe(waiting)
   })
 
-  slow.test("an answer that can't be written: exit 1, and why", async () => {
-    const repo = withRequest()
-    const attention = join(repo.dir, attentionFolder)
+  test("an answer that can't be written: it fails, saying why", async () => {
+    const dir = withRequestIn()
+    const attention = join(dir, attentionFolder)
     chmodSync(attention, 0o555)
     try {
-      const { code, stdout, stderr } = await tutti(repo.dir, ["answer", "r1", "deny"])
-      expect(stderr).toStartWith("tutti answer: the answer to request r1 couldn't be written: ")
-      expect(stderr).toContain("EACCES")
-      expect(stdout).toBe("")
-      expect(code).toBe(1)
+      const { failed, printed, errors } = await inProcess(dir, ["answer", "r1", "deny"])
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toStartWith("tutti answer: the answer to request r1 couldn't be written: ")
+      expect(errors[0]).toContain("EACCES")
+      expect(printed).toEqual([])
+      expect(failed).toBe(true)
     } finally {
       chmodSync(attention, 0o755)
     }
-    expect(existsSync(join(repo.dir, answerFile("r1")))).toBe(false)
+    expect(existsSync(join(dir, answerFile("r1")))).toBe(false)
   })
 
-  // The wait is the command's own, 10 s, so the command runs in-process with TakeWithin shorter;
-  // the cases above prove a failure's exit code and stderr through the binary.
-  test("an answer no run takes: the command fails after the wait, and the answer withdrawn", async () => {
-    const dir = folder()
-    mkdirSync(join(dir, attentionFolder), { recursive: true })
-    writeFileSync(join(dir, requestFile(request.id)), `${JSON.stringify(request)}\n`)
-    const { exit, errors } = await inProcess(
+  // The wait is the command's own, 10 s: TakeWithin makes it shorter.
+  test("an answer no run takes: it fails after the wait, and the answer withdrawn", async () => {
+    const dir = withRequestIn()
+    const { failed, errors } = await inProcess(
       dir,
       ["answer", "r1", "deny"],
       () => beadsLayer(),
       Effect.provideService(TakeWithin, Duration.millis(300)),
     )
-    expect(exit._tag).toBe("Failure")
     expect(errors).toEqual([
       "tutti answer: the run didn't take the answer to request r1 within 0.3 s, so it was withdrawn; is tutti running in this repository?",
     ])
+    expect(failed).toBe(true)
     expect(existsSync(join(dir, answerFile("r1")))).toBe(false)
   })
 
-  slow.test("an answer the run takes: exit 0, and the answer as written", async () => {
-    const repo = withRequest()
-    const [taken, { code, stdout, stderr }] = await Promise.all([
-      takeAnswer(repo.dir),
-      tutti(repo.dir, ["answer", "r1", "deny", "--reason", "not now"]),
+  test("an answer the run refuses: it fails, with the run's reason", async () => {
+    const dir = withRequestIn()
+    const [, { failed, printed, errors }] = await Promise.all([
+      refuseAnswer(dir, "the request was answered in the dashboard"),
+      inProcess(dir, ["answer", "r1", "allow"]),
     ])
-    expect(JSON.parse(taken ?? "null")).toEqual({
-      v: 1,
-      request: "r1",
-      answer: "deny",
-      reason: "not now",
-    })
-    expect(stdout).toBe("The run took the answer to request r1: deny.\n")
-    expect(stderr).toBe("")
-    expect(code).toBe(0)
-  })
-
-  slow.test("an answer the run refuses: exit 1, and the run's reason", async () => {
-    const repo = withRequest()
-    const [, { code, stdout, stderr }] = await Promise.all([
-      takeAnswer(repo.dir, "the request was answered in the dashboard"),
-      tutti(repo.dir, ["answer", "r1", "allow"]),
+    expect(errors).toEqual([
+      "tutti answer: the run refused the answer: the request was answered in the dashboard",
     ])
-    expect(stderr).toBe(
-      "tutti answer: the run refused the answer: the request was answered in the dashboard\n",
-    )
-    expect(stdout).toBe("")
-    expect(code).toBe(1)
-    expect(existsSync(join(repo.dir, refusedFile("r1")))).toBe(false)
+    expect(printed).toEqual([])
+    expect(failed).toBe(true)
+    expect(existsSync(join(dir, refusedFile("r1")))).toBe(false)
   })
 })
 
@@ -389,42 +349,17 @@ const overlapping = [
 // The source declaring the function both name, so that it links them (declared.ts).
 const loopSource = "export class Loop {\n  merge() {\n  }\n}\n"
 
+/** The live Beads layer over `bd`'s bd, in `dir`, with these time limits. */
+const beadsOver =
+  (
+    dir: string,
+    bd: { readonly bin: string },
+    timeLimits?: { readonly read: Duration.Input; readonly write: Duration.Input },
+  ) =>
+  () =>
+    Beads.layer({ cwd: dir, command: join(bd.bin, "bd"), ...(timeLimits && { timeLimits }) })
+
 describe("tutti plan", () => {
-  slow.test("without .tutti/settings.json, reads the tickets with the defaults", async () => {
-    const repo = makeRepo()
-    const bd = listingBd([])
-    const { code, stdout, stderr } = await tutti(repo.dir, ["plan"], bd.bin)
-    expect(stdout).toBe(
-      "No links to add: no two of the 0 open tickets touch the same code without being ordered already.\n",
-    )
-    expect(stderr).toBe("")
-    expect(code).toBe(0)
-  })
-
-  slow.test("settings that aren't JSON: exit 1, the file and its problem", async () => {
-    const repo = makeRepo()
-    repo.write({ ".tutti/settings.json": "nope\n" })
-    const bd = listingBd([])
-    const { code, stdout, stderr } = await tutti(repo.dir, ["plan"], bd.bin)
-    expect(stderr).toStartWith(
-      `tutti plan: ${join(repo.dir, ".tutti", "settings.json")} isn't valid JSON: `,
-    )
-    expect(stdout).toBe("")
-    expect(code).toBe(1)
-    expect(existsSync(bd.log)).toBe(false)
-  })
-
-  slow.test("settings with an unknown key: exit 1, the file, the key and its problem", async () => {
-    const repo = makeRepo()
-    repo.write({ ".tutti/settings.json": '{"bogus": 1}\n' })
-    const bd = listingBd([])
-    const { code, stderr } = await tutti(repo.dir, ["plan"], bd.bin)
-    expect(stderr).toBe(
-      `tutti plan: ${join(repo.dir, ".tutti", "settings.json")}: bogus: unknown key "bogus"\n`,
-    )
-    expect(code).toBe(1)
-  })
-
   slow.test("bd failing to list the tickets: exit 1, its exit code and stderr", async () => {
     const repo = makeRepo()
     const bd = fakeBd(() => "echo 'no beads database found' >&2\nexit 3\n")
@@ -434,35 +369,6 @@ describe("tutti plan", () => {
     )
     expect(stdout).toBe("")
     expect(code).toBe(1)
-  })
-
-  slow.test("bd listing what isn't a list of tickets: exit 1, and why", async () => {
-    const repo = makeRepo()
-    const bd = fakeBd(() => "echo 'garbage'\n")
-    const { code, stderr } = await tutti(repo.dir, ["plan"], bd.bin)
-    expect(stderr).toMatch(
-      /^tutti plan: cannot read the open tickets: bd list .*: a list of issues: not JSON\n$/,
-    )
-    expect(code).toBe(1)
-  })
-
-  // bd's read limit is 30 s, so the command runs in-process with the real Beads layer given a
-  // shorter one, over in-memory git.
-  test("bd taking too long to list the tickets: the command fails, saying so", async () => {
-    const dir = folder()
-    const bd = fakeBd(() => "sleep 30\n")
-    const { exit, errors } = await inProcess(dir, ["plan"], () =>
-      Beads.layer({
-        cwd: dir,
-        command: join(bd.bin, "bd"),
-        timeLimits: { read: "300 millis", write: "300 millis" },
-      }),
-    )
-    expect(exit._tag).toBe("Failure")
-    expect(errors).toHaveLength(1)
-    expect(errors[0]).toMatch(
-      /^tutti plan: cannot read the open tickets: \S*bd list .* took too long$/,
-    )
   })
 
   slow.test("two tickets naming one function: the proposal, and nothing changed", async () => {
@@ -480,19 +386,58 @@ describe("tutti plan", () => {
     expect(readFileSync(bd.log, "utf8")).not.toContain("dep add")
   })
 
-  slow.test("--apply adds the proposed link with bd dep add", async () => {
-    const repo = makeRepo()
-    repo.commit("Loop", { "src/run/loop.ts": loopSource })
-    const bd = listingBd(overlapping)
-    const { code, stdout, stderr } = await tutti(repo.dir, ["plan", "--apply"], bd.bin)
-    expect(stdout).toBe(
-      "Adding 1 blocks link between the 2 open tickets:\n" +
-        "  t-2 (P2) waits for t-1 (P1): both touch Loop.merge\n" +
-        "Added 1 link.\n",
+  test("settings that aren't JSON: it fails, naming the file and its problem", async () => {
+    const dir = folder()
+    mkdirSync(join(dir, ".tutti"))
+    writeFileSync(join(dir, ".tutti", "settings.json"), "nope\n")
+    const bd = listingBd([])
+    const { failed, printed, errors } = await inProcess(dir, ["plan"], beadsOver(dir, bd))
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toStartWith(
+      `tutti plan: ${join(dir, ".tutti", "settings.json")} isn't valid JSON: `,
     )
-    expect(stderr).toBe("")
-    expect(code).toBe(0)
-    expect(readFileSync(bd.log, "utf8")).toContain("dep add t-2 t-1 --json --type=blocks\n")
+    expect(printed).toEqual([])
+    expect(failed).toBe(true)
+    expect(existsSync(bd.log)).toBe(false)
+  })
+
+  test("settings with an unknown key: it fails, naming the file, the key and its problem", async () => {
+    const dir = folder()
+    mkdirSync(join(dir, ".tutti"))
+    writeFileSync(join(dir, ".tutti", "settings.json"), '{"bogus": 1}\n')
+    const bd = listingBd([])
+    const { failed, errors } = await inProcess(dir, ["plan"], beadsOver(dir, bd))
+    expect(errors).toEqual([
+      `tutti plan: ${join(dir, ".tutti", "settings.json")}: bogus: unknown key "bogus"`,
+    ])
+    expect(failed).toBe(true)
+  })
+
+  test("bd listing what isn't a list of tickets: it fails, saying why", async () => {
+    const dir = folder()
+    const bd = fakeBd(() => "echo 'garbage'\n")
+    const { failed, errors } = await inProcess(dir, ["plan"], beadsOver(dir, bd))
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatch(
+      /^tutti plan: cannot read the open tickets: \S*bd list .*: a list of issues: not JSON$/,
+    )
+    expect(failed).toBe(true)
+  })
+
+  // bd's read limit is 30 s: the Beads layer is given a shorter one.
+  test("bd taking too long to list the tickets: it fails, saying so", async () => {
+    const dir = folder()
+    const bd = fakeBd(() => "sleep 30\n")
+    const { failed, errors } = await inProcess(
+      dir,
+      ["plan"],
+      beadsOver(dir, bd, { read: "300 millis", write: "300 millis" }),
+    )
+    expect(failed).toBe(true)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatch(
+      /^tutti plan: cannot read the open tickets: \S*bd list .* took too long$/,
+    )
   })
 })
 
@@ -507,26 +452,6 @@ describe("tutti requires", () => {
     expect(stderr).toStartWith(`tutti requires: ${outside} isn't in a git checkout: `)
     expect(stdout).toBe("")
     expect(code).toBe(2)
-  })
-
-  slow.test("no requires list: exit 0, and that there is none", async () => {
-    const repo = makeRepo()
-    const { code, stdout } = await tutti(repo.dir, ["requires"])
-    expect(stdout).toBe("No requirements: .tutti/settings.json has no 'requires' list.\n")
-    expect(code).toBe(0)
-  })
-
-  slow.test("an entry whose check passes: its line, exit 0", async () => {
-    const repo = makeRepo()
-    repo.commit("Requires", {
-      ".tutti/settings.json": requiring([
-        { name: "shell", check: "true", manual: "Install a shell." },
-      ]),
-    })
-    const { code, stdout, stderr } = await tutti(repo.dir, ["requires"])
-    expect(stdout).toBe("shell: met\n")
-    expect(stderr).toBe("")
-    expect(code).toBe(0)
   })
 
   slow.test("an entry missing with --no-install: exit 2, its install not run", async () => {

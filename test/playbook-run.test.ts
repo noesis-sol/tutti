@@ -795,7 +795,7 @@ describe("tutti playbook", () => {
     expect(typeof playbookAct("edit", "L1", undefined)).toBe("string")
     expect(typeof playbookAct("approve", undefined, undefined)).toBe("string")
     expect(typeof playbookAct("approve", "L1", "extra")).toBe("string")
-    expect(typeof playbookAct("merge", "L1", undefined)).toBe("string")
+    expect(playbookAct("merge", "L1", undefined)).toContain("give approve, edit or retire")
   })
 
   test("lists the lessons, those proposed first, with counts and effect", async () => {
