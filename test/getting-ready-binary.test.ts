@@ -3,7 +3,8 @@
 // a fake Claude Code (test/fixtures/fake-claude/claude.ts, behind --claude). On each path of the
 // run's start the line is drawn while the checks go and is erased, with nothing left, before the
 // first thing else is written: the renderer taking the screen, the Nothing to run box, a plain
-// run's log lines, why the run can't start, and the Interview view --feature opens.
+// run's log lines, and the Interview view --feature opens. Why the run can't start is
+// test/getting-ready.test.ts'.
 import { afterEach, describe, expect, setDefaultTimeout } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -156,11 +157,6 @@ describe("the getting-ready line on a terminal", () => {
     const rest = afterTheLine(await onTerminal(["--plain", "--tickets"], "READY_EMPTY"))
     expect(rest).toContain("READY_EMPTY")
     expect(rest).not.toContain(altScreen)
-  })
-
-  slow.test("is erased before why the run can't start", async () => {
-    const rest = afterTheLine(await onTerminal(["--yes"], "cannot start"))
-    expect(visible(rest)).toMatch(/^tutti cannot start:/)
   })
 
   slow.test(

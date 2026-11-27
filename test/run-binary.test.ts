@@ -1,8 +1,8 @@
 // A bare `tutti` end to end (§ 5): `bun src/main.ts` inside a repository on real git, with a fake bd
 // and a fake Claude Code (test/fixtures/fake-claude/claude.ts, behind --claude) on the PATH, so the
 // startup checks pass but for the problem a test makes. Its refusals, each exit 2 with its problem
-// on stderr: a repository without .tutti/, a dirty main checkout, a detached HEAD, and a second run
-// while another holds the run lock (test/fixtures/run-lock/holder.ts). A signal before the run
+// on stderr: a dirty main checkout, and a second run while another holds the run lock
+// (test/fixtures/run-lock/holder.ts); the startup checks' other problems are test/startup.test.ts'. A signal before the run
 // starts interrupts the command (src/run/quit.ts's runMain): exit 130.
 import { afterEach, describe, expect, setDefaultTimeout } from "bun:test"
 import {
@@ -16,7 +16,6 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
-import { notSetUpMessage } from "../src/run/startup.ts"
 import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 import { makeRepo, type Repo } from "./git.ts"
@@ -136,15 +135,6 @@ const holdLock = async (commonDir: string) => {
 }
 
 describe("a bare tutti's startup refusals", () => {
-  slow.test("a repository without .tutti/: exit 2, and to run tutti init", async () => {
-    const on = machine()
-    const repo = makeRepo()
-    const { code, stdout, stderr } = await tutti(on, repo.dir)
-    expect(stderr).toBe(`${notSetUpMessage}\n`)
-    expect(stdout).toBe("")
-    expect(code).toBe(2)
-  })
-
   slow.test("a dirty main checkout: exit 2, its uncommitted changes named", async () => {
     const on = machine()
     const repo = setUpRepo()
@@ -153,18 +143,6 @@ describe("a bare tutti's startup refusals", () => {
     expect(stderr).toBe(
       "tutti cannot start:\n" +
         "  - The main checkout has uncommitted changes (README.md). Commit or stash them first: finished tickets merge into it. Inspect with: git status\n",
-    )
-    expect(code).toBe(2)
-  })
-
-  slow.test("a detached HEAD: exit 2, and to check out a branch", async () => {
-    const on = machine()
-    const repo = setUpRepo()
-    repo.git(["checkout", "--quiet", "--detach"])
-    const { code, stderr } = await tutti(on, repo.dir)
-    expect(stderr).toBe(
-      "tutti cannot start:\n" +
-        "  - The main checkout is on a detached HEAD. Check out the branch finished tickets should land on.\n",
     )
     expect(code).toBe(2)
   })

@@ -3,8 +3,8 @@
 // (test/fixtures/fake-claude/claude.ts, behind --claude) that logs what it reads. On a terminal,
 // the feature is talked through in the Interview view, the request the breakdown's first message,
 // nothing asked first; without a terminal that shows it, the run ends with exit 2 and nothing
-// filed; --yes and TUTTI_YES, gone with the unattended feature run, end it with exit 2 at the
-// startup checks.
+// filed. --yes and TUTTI_YES, gone with the unattended feature run, are the startup checks'
+// problems (test/feature-retired.test.ts).
 import { afterEach, describe, expect, setDefaultTimeout } from "bun:test"
 import {
   existsSync,
@@ -74,11 +74,10 @@ exec bun '${fake}' "$@"
   return { home, bin, bdLog, claudeLog, repo: repo.dir }
 }
 
-/** tutti's environment on the machine `setUp` made, with `variables` over the tests'. */
-const envOf = (on: ReturnType<typeof setUp>, variables: Record<string, string> = {}) => {
+/** tutti's environment on the machine `setUp` made. */
+const envOf = (on: ReturnType<typeof setUp>) => {
   const env: Record<string, string | undefined> = {
     ...testEnv,
-    ...variables,
     PATH: `${on.bin}:${testEnv.PATH ?? ""}`,
     HOME: on.home,
     FAKE_CLAUDE_SCENARIO: JSON.stringify({ log: on.claudeLog }),
@@ -92,14 +91,14 @@ const envOf = (on: ReturnType<typeof setUp>, variables: Record<string, string> =
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "")
 
 /** A bare `tutti` with `args`, stdin no terminal, to its end: its exit code, stdout and stderr. */
-const tutti = async (args: ReadonlyArray<string>, variables: Record<string, string> = {}) => {
+const tutti = async (args: ReadonlyArray<string>) => {
   const on = setUp()
   const proc = Bun.spawn(["bun", main, "--claude", join(on.bin, "claude"), ...args], {
     cwd: on.repo,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
-    env: envOf(on, variables),
+    env: envOf(on),
   })
   toKill.push(proc.pid)
   const [code, stdout, stderr] = await Promise.all([
@@ -159,10 +158,6 @@ const onTerminal = async (args: ReadonlyArray<string>, request: string) => {
   return { written, messages: messages(), bd: read(on.bdLog) }
 }
 
-/** What the startup checks say of --yes, or TUTTI_YES, as `given`: one of their problems. */
-const yesProblem = (given: string) =>
-  `\n  - ${given} is no longer read: --feature always talks the feature through with you; tutti --spec <file> runs a request written to a file unattended.\n`
-
 /** What the renderer writes as it takes the screen: the alternate screen. */
 const altScreen = "\x1b[?1049h"
 
@@ -196,22 +191,5 @@ describe("--feature where it can't talk", () => {
       expect(code).toBe(2)
       expect(bd).not.toContain("create")
     }
-  })
-
-  slow.test("--yes ends the run at the startup checks: exit 2, nothing filed", async () => {
-    const { code, stderr, bd } = await tutti(["--feature", "Add a greeting", "--yes"])
-    expect(stderr).toStartWith("tutti cannot start:\n")
-    expect(stderr).toContain(yesProblem("--yes"))
-    expect(code).toBe(2)
-    expect(bd).not.toContain("create")
-  })
-
-  slow.test("TUTTI_YES ends the run the same, with --feature or without it", async () => {
-    const withFeature = await tutti(["--feature", "Add a greeting"], { TUTTI_YES: "1" })
-    expect(withFeature.stderr).toContain(yesProblem("TUTTI_YES"))
-    expect(withFeature.code).toBe(2)
-    const alone = await tutti(["--tickets"], { TUTTI_YES: "1" })
-    expect(alone.stderr).toContain(yesProblem("TUTTI_YES"))
-    expect(alone.code).toBe(2)
   })
 })
