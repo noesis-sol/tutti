@@ -32,6 +32,7 @@ import {
 } from "../src/run/checking.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { fullCheck } from "../src/run/fullcheck.ts"
+import { TicketPhase } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
@@ -387,11 +388,11 @@ describe("the bar on the dashboard", () => {
       label: "t-1",
       title: "Fix it",
       worker: 1,
-      phase: null,
+      phase: TicketPhase.Working(),
       state: null,
       status: "working",
-      tone: "live" as const,
-      motion: "working" as const,
+      tone: "picked" as const,
+      motion: "spinner" as const,
       since: 0,
       action: null,
       latest: { text: "DONE", denied: false },
