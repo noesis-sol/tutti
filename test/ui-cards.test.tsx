@@ -195,7 +195,7 @@ describe("a card for each status", () => {
     sameLook(lookOf(lines, "t-1"), theme.styles.picked)
     sameLook(lookOf(lines, "⣾"), theme.styles.picked)
     sameLook(lookOf(lines, "1m07s"), theme.styles.dim)
-    sameLook(lookOf(lines, "▸ Bash(scripts/check-fast.sh)"), theme.styles.dim)
+    sameLook(lookOf(lines, "▸ Bash(scripts/check-fast.sh)"), theme.styles.quiet)
     const frame = lines[0]?.[0]?.look
     if (frame === undefined || frame === null) throw new Error("no frame")
     sameLook(frame, theme.look("live"))
