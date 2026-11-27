@@ -102,7 +102,7 @@ describe("the ticket that sets the checks up", () => {
     const dispatched = lines.indexOf("[1/40] s dispatching solo: Make the runners pass")
     expect(dispatched).toBeGreaterThanOrEqual(0)
     expect(lines[dispatched + 1]).toBe("  s sets the project's checks up: it runs first, alone")
-    expect(checksFirstLine("s" as TicketId)).toBe(lines[dispatched + 1] as string)
+    expect(String(checksFirstLine("s" as TicketId))).toBe(lines[dispatched + 1] as string)
   })
 
   test("without one, the order is by priority, a plain solo ticket waiting its turn", async () => {
