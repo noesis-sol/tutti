@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.9.2] - 2026-11-28
+
 - Exports only tests used are gone from `src/` (tutti-f241): `checkoutChanges`, `nothingToRun`, `endIfNothing`, `handBackTaken`, `handBackOver`, `holdsWorker`, `isFinal`, `builtInNames`, `providerProblems` and `createExclusive` are deleted, their tests reading what the product calls (`check` and `endWith`, `keepsWorker`, `organProvider`); `undated` moves to `src/testing/Log.ts`, and `libcPath` and `isCloseOnExec` to `test/libc.ts`.
 - A worker's narrow test run draws no bar on its card (§ 7.2; `src/run/ownCheck.ts`; tutti-h2zc): a run of one test file, over in seconds, flashed a bar beside the worker's action. The bar now waits 5 s from the Bash call's start (`ownBarAfter`); a shorter run is still timed for the next run's estimate. `test/worker-check-bar-delay.test.ts` covers it.
 - A card's action line is drawn a step brighter (§ 7.2, § 7.11; `src/ui/Card.tsx`; tutti-d9j1): `▸ DONE · vitest tests ━━━───── ≈38%` was faint throughout, close to the background in many terminals, its filled and empty cells told apart by glyph alone. The action, the ` · `, the suite and the count are now `quiet`, the bar's filled cells in the text's colour and its empty ones faint; a denied action stays `notice`. `test/check-progress.test.tsx` and `test/full-check-box.test.tsx` cover it.
